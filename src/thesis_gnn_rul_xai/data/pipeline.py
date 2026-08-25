@@ -19,20 +19,33 @@ Order of the steps
    Table 3, so that the sensor axis lines up with the sensor graph.
 4. **Cap** the labels at the ceiling, producing the piecewise-linear target.
 5. **Smooth** the sensor signals with an exponentially weighted moving average.
-6. **Identify operating conditions** and **rescale** the sensors, learning all
+6. **Split** the training engines into a training part and a validation part.
+7. **Identify operating conditions** and **rescale** the sensors, learning all
    statistics from the training engines only.
-7. **Cut** the histories into fixed-length windows.
-8. **Split** the training engines into a training part and a validation part.
+8. **Cut** the histories into fixed-length windows.
+9. **Apply** the split decided in step 6 to the windows.
 
 Why smoothing comes before rescaling
 ------------------------------------
 Smoothing removes measurement noise and is most naturally expressed in the
 sensor's own physical units, where the noise actually occurs. Rescaling is the
 final preparation before the model and should therefore see the signal the
-model will use. Applying them in the other order would give an almost identical
-result, because both operations are close to linear, but the rescaled range on
-the training set would no longer be exactly the intended one. The paper does
-not state an order; this choice is recorded in ``docs/ASSUMPTIONS.md``.
+model will use.
+
+This order is **taken from the paper**, not chosen here: Fig. 1 of Wen et al.
+(2026) shows the preprocessing chain as *feature selection, data smoothing,
+piece-wise RUL, data normalisation, train and test datasets*. See A-08 in
+``docs/ASSUMPTIONS.md``, and the caution recorded there about what this order
+does on the multi-condition subsets FD002 and FD004.
+
+Why the split comes before the scaling
+--------------------------------------
+The validation engines are chosen in step 6, before any statistic is computed
+in step 7. Fitting the scaler on all training engines and only afterwards
+holding some of them out would let a held-out engine define a minimum or a
+maximum, which is the same kind of leak that keeping the test set separate is
+meant to prevent (Kapoor & Narayanan, 2023). The effect is smaller than test
+leakage, but it biases exactly the quantity a validation set exists to measure.
 
 Where the training and test paths differ, and where they must not
 -----------------------------------------------------------------
@@ -41,7 +54,7 @@ and are exactly two:
 
 * All statistics -- cluster centres, minima, maxima, means, standard
   deviations -- are learned from the training engines and then applied to the
-  test engines unchanged.
+  validation and test engines unchanged.
 * Training engines produce every window; test engines produce only their final
   window, because that is the single moment the official labels describe.
 """
@@ -62,7 +75,12 @@ from ..utils.paths import processed_data_dir, raw_data_dir, synthetic_data_dir
 from .labeling import apply_piecewise_rul
 from .loading import CMAPSSData, load_subset
 from .normalization import CONDITION_COL, OperatingConditionEncoder, SensorNormalizer
-from .sensors import PAPER_SENSOR_COLUMNS, PAPER_SENSOR_SYMBOLS, detect_uninformative_sensors
+from .sensors import (
+    PAPER_SENSOR_COLUMNS,
+    PAPER_SENSOR_SYMBOLS,
+    UNIT_COL,
+    detect_uninformative_sensors,
+)
 from .smoothing import apply_ewma
 from .windowing import WindowedDataset, make_last_windows, make_windows, split_units_by_id
 
@@ -260,17 +278,36 @@ def run_preprocessing(
     train = apply_ewma(train, columns, alpha=config.smoothing_alpha)
     test = apply_ewma(test, columns, alpha=config.smoothing_alpha)
 
-    # -- 6. operating conditions and rescaling (fitted on training only) --
-    encoder = OperatingConditionEncoder(seed=config.seed).fit(train)
+    # -- 6. hold out the validation engines -------------------------------
+    # This happens BEFORE any statistic is learned. If the split were made
+    # later, the minima, maxima and cluster centres would be computed over
+    # engines that are about to be held out, and the validation error would
+    # be optimistic for exactly the reason the test set is kept separate.
+    train_units, validation_units = split_units_by_id(
+        np.unique(train[UNIT_COL].to_numpy()),
+        validation_fraction=config.validation_fraction,
+        seed=config.seed,
+    )
+
+    # -- 7. operating conditions and rescaling ----------------------------
+    # Fitted on the training engines only; applied unchanged to the
+    # validation and test engines.
+    training_rows = train[UNIT_COL].isin(train_units)
+    encoder = OperatingConditionEncoder(seed=config.seed).fit(train[training_rows])
     train = encoder.transform(train)
     test = encoder.transform(test)
     diagnostics["n_operating_conditions"] = encoder.n_detected
 
-    normalizer = SensorNormalizer(method=config.normalization, columns=columns).fit(train)
+    # Recomputed rather than reused: `train` was rebound above, so a mask
+    # captured before the rebind would be indexing a different frame.
+    training_rows = train[UNIT_COL].isin(train_units)
+    normalizer = SensorNormalizer(method=config.normalization, columns=columns).fit(
+        train[training_rows]
+    )
     train = normalizer.transform(train)
     test = normalizer.transform(test)
 
-    # -- 7. windowing -----------------------------------------------------
+    # -- 8. windowing -----------------------------------------------------
     train_windows = make_windows(
         train,
         columns,
@@ -285,12 +322,7 @@ def run_preprocessing(
         node_feature_mode=config.node_feature_mode,
     )
 
-    # -- 8. split the training engines ------------------------------------
-    train_units, validation_units = split_units_by_id(
-        np.unique(train_windows.units),
-        validation_fraction=config.validation_fraction,
-        seed=config.seed,
-    )
+    # -- 9. apply the split decided in step 6 -----------------------------
     validation_windows = train_windows.subset_by_units(validation_units)
     train_windows = train_windows.subset_by_units(train_units)
 

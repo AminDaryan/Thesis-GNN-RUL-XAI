@@ -120,7 +120,15 @@ class WindowedDataset:
     def __len__(self) -> int:
         return int(self.features.shape[0])
 
-    def __repr__(self) -> str:  # pragma: no cover - display only
+    def __repr__(self) -> str:
+        # An empty dataset is legitimate: it is what a validation fraction of
+        # zero produces. Reporting the minimum and maximum of an empty array
+        # would raise, so that case is described separately.
+        if len(self) == 0:
+            return (
+                f"WindowedDataset(empty, "
+                f"sensors={len(self.sensor_columns)})"
+            )
         return (
             f"WindowedDataset(examples={len(self)}, "
             f"shape={tuple(self.features.shape)}, "

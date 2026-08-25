@@ -7,7 +7,7 @@ graph-based deep learning for predictive maintenance.
 **Current stage:** preprocessing of the C-MAPSS FD001 sub-dataset, fully tested
 and documented. The model itself is not part of this stage.
 
-**Status:** 79 automated tests pass. The notebook has been executed end to end
+**Status:** 81 automated tests pass. The notebook has been executed end to end
 on the real FD001 files and all 14 of its internal checks pass.
 
 ---
@@ -236,9 +236,21 @@ This writes files with the same format as the real ones into `data/synthetic/`.
 It exists so the code can be read, tested, and demonstrated on any machine.
 
 > **Generated data is for testing the code only.** The signals come from a
-> simple wear model written for this project, not from NASA's simulator. No
-> number computed from them may be reported as a scientific result. The
-> pipeline prints a warning whenever it runs in this mode.
+> simple wear model written for this project, not from NASA's simulator, and
+> not from anything in Wen et al. (2026). Only the *format* and the sensor
+> list are shared with the real files. No number computed from generated data
+> may be reported as a scientific result. The pipeline prints a warning
+> whenever it runs in this mode, and writes its output to a separate
+> `data/processed/synthetic_demo/` folder.
+
+**What generated data cannot show you.** Anything that depends on the real
+physics is absent by construction. In particular the findings recorded in
+[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) — that `P15` takes only two
+distinct values (F-01), that eleven test labels exceed the ceiling (F-02), and
+that the shortest test history is 31 cycles (F-03) — appear **only** on the
+real files. So does any comparison between the physics graph and a
+correlation graph. Use generated data to check that the code runs; use the
+NASA files to learn anything about engines.
 
 ---
 
@@ -303,9 +315,9 @@ each carrying its own 30-cycle history.
 | 3 | Select | Keep the paper's 14 sensors, in the order its adjacency matrix expects | `data/sensors.py` |
 | 4 | Cap labels | Hold the label at 125 while the engine is healthy | `data/labeling.py` |
 | 5 | Smooth | Remove measurement noise with a backward-looking filter | `data/smoothing.py` |
-| 6 | Rescale | Put all sensors on a comparable scale, using training data only | `data/normalization.py` |
-| 7 | Window | Cut histories into 30-cycle examples | `data/windowing.py` |
-| 8 | Split | Hold out 20 % of engines for validation | `data/windowing.py` |
+| 6 | Split | Hold out 20 % of engines for validation, **before any statistic is learned** | `data/windowing.py` |
+| 7 | Rescale | Put all sensors on a comparable scale, using training engines only | `data/normalization.py` |
+| 8 | Window | Cut histories into 30-cycle examples | `data/windowing.py` |
 | — | Graph | Build the 14-node sensor graph from the paper's Table 3 | `graph/adjacency.py` |
 
 Each module's docstring explains the reasoning behind its step in full. Start
@@ -372,6 +384,7 @@ end to end. Three tests deserve special mention, because they check the
 properties that make the experiment valid rather than merely correct:
 
 - `test_normalization.py::test_test_data_never_influences_the_scaling`
+- `test_pipeline.py::test_validation_engines_never_influence_the_scaling`
 - `test_smoothing.py::test_the_filter_only_looks_backwards`
 - `test_pipeline.py::test_training_and_validation_engines_never_overlap`
 
@@ -384,7 +397,9 @@ regardless of how good they look.
 
 1. **Statistics come from training data only.** Every minimum, maximum, mean,
    standard deviation and cluster centre is computed from the training engines
-   and then applied unchanged to the test engines.
+   and then applied unchanged to the validation and test engines. The
+   validation engines are held out *before* those statistics are computed, so a
+   held-out engine can never define the scale of a sensor.
 2. **Splits are made by engine, never by window.** Two neighbouring windows
    from one engine share 29 of their 30 cycles. Splitting windows at random
    would place nearly identical examples on both sides.
@@ -410,8 +425,13 @@ than invent those details, this project omits the stage. The paper publishes
 this exact configuration itself, as the "ESTGNN w/o LSTM" row of its ablation
 table. Comparisons must be made against that row. See assumption A-11.
 
-**Only FD001 is handled so far.** The code for several operating conditions is
-written and tested, but FD002, FD003 and FD004 have not been run.
+**Only FD001 is handled so far.** The per-condition *scaler* is written and
+tested, but the pipeline is not yet ready for FD002 or FD004. The paper's own
+step order (Fig. 1) smooths in raw physical units before the per-condition
+scaling removes the jumps between flight conditions, which blends readings from
+different conditions together. On FD001 there is one condition and the order is
+harmless; on FD002 and FD004 it collapses the wear signal. See A-08. FD003 has a
+single operating condition and should work as-is, but has not been run.
 
 **The published numbers have not been reproduced, and may not be reachable.**
 The paper's preprocessing is not fully described, its results come from a
@@ -433,7 +453,10 @@ the code.
 3. Reproduce a simple published baseline first, before trusting any graph
    result. Li et al. (2018) report an error of about 12.6 on FD001 and is a
    good target: a pipeline that cannot approach a known baseline has a problem
-   that no amount of model tuning will fix.
+   that no amount of model tuning will fix. The figure to compare the graph
+   model against is **14.93**, the FD001 entry of the paper's own
+   "ESTGNN w/o LSTM" ablation (their Table 11), not the 19.68 four-dataset
+   average quoted in assumption A-11.
 4. Add the evaluation measures from the paper: the NASA scoring function, root
    mean squared error, the coefficient of determination, and average safe
    underestimation error.

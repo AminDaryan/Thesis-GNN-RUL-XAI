@@ -29,7 +29,7 @@ identifier below.
 | A-05 | Window stride | Not stated | 1 cycle |
 | A-06 | Validation split | None; trains for a fixed 200 epochs | 20 % of engines held out |
 | A-07 | Node feature content | Table 4 implies one number per sensor, produced by an LSTM that is never specified | The whole 30-cycle window per sensor (configurable) |
-| A-08 | Order: smoothing and scaling | Not stated | Smooth first, then rescale |
+| ~~A-08~~ | Order: smoothing and scaling | **Fig. 1 specifies it**: smoothing then normalisation | Withdrawn as an assumption; the paper's order is followed |
 | A-09 | Smoothing formula variant | Gives the recursive form as Equation 18 | Recursive form (`adjust=False` in pandas) |
 | A-10 | Identity of the 7th dropped sensor | Says "seven", names six | The seventh is `NRc`, deduced from their Table 3 |
 | A-11 | The LSTM stage | Central to their architecture | Omitted, matching their own published ablation |
@@ -46,12 +46,26 @@ identifier below.
 
 **What we chose.** 125 cycles.
 
-**Why.** Two independent indications point to it. First, Section 4.2 of the
-paper describes the predicted life staying "relatively stable values around
-125" while an engine is still healthy, which is exactly the flat part of the
-capped label curve. Second, 125 is the value used by Jin et al. (2025) on the
-same dataset, and it sits inside the range of 120 to 130 that Heimes (2008)
-reported as effective when he introduced this kind of label.
+**Why.** Three indications point to it, and one figure appears to contradict
+them.
+
+1. **The strongest evidence is Fig. 7.** Its four panels plot the *True RUL*
+   for one engine from each sub-dataset. That curve is the ground-truth label
+   itself, so its flat portion *is* `RUL_max`. Measuring the FD001 panel
+   against its own axis ticks puts the plateau at **125.2**, which is 125 to
+   within the width of the printed line.
+2. Section 4.2 describes the predicted life holding at "relatively stable
+   values around 125" while an engine is still healthy.
+3. 125 is the value used by Jin et al. (2025) on the same dataset, and it sits
+   inside the range of 120 to 130 that Heimes (2008) reported as effective when
+   he introduced this kind of label.
+
+**The contrary indication.** Fig. 6, the schematic that illustrates the
+truncation, draws its `RUL_max` line on the 120 gridline. It is a diagram of
+the *concept*, drawn with round numbers, and carries no experimental data;
+Fig. 7 does. Where the two disagree, Fig. 7 is the record of what was actually
+computed. This is noted here so that a reader who opens Fig. 6 first is not
+left thinking the value was misread.
 
 **How much it matters.** Moderately. Changing the ceiling changes every label
 above it and therefore every error figure. A sensitivity check over the values
@@ -176,6 +190,26 @@ error.
 **Honesty note.** This is a deliberate **improvement** on the source, not a
 reconstruction. It should be described as such in the thesis.
 
+**The validation set does not mirror the test protocol.** The two measure
+different things and their error figures are not comparable:
+
+|            | what it contains                                        |
+|------------|---------------------------------------------------------|
+| validation | *every* window of 20 held-out engines (3272 on FD001)   |
+| test       | *one* window per engine, at the truncation point NASA chose |
+
+A validation set built from whole histories is dominated by windows from
+healthy engines, whose label is pinned at the ceiling and which are therefore
+easy. Validation error will look better than test error for that reason alone.
+This is acceptable for what a validation set is for — choosing when to stop
+training, and comparing settings, which are relative judgements — but a
+validation figure must never be reported as if it were a test figure.
+
+If the two need to be directly comparable, draw one random truncation point per
+validation engine so that the validation set imitates the test protocol. That
+is not done here, because the present form gives the early-stopping signal more
+data to work with.
+
 ---
 
 ## A-07 — Each sensor node carries its whole time window
@@ -202,21 +236,41 @@ matrix and the amount of information the model receives.
 
 ---
 
-## A-08 — Smoothing is applied before rescaling
+## A-08 — WITHDRAWN: the paper does state the order
 
 **Where:** `data/pipeline.py`
 
-**The gap.** The paper does not state the order of its preprocessing steps.
+**Status.** This was logged as an assumption in error. It is not one. Fig. 1 of
+the paper prints the preprocessing chain explicitly:
 
-**What we chose.** Smooth first, then rescale.
+> feature selection → **data smoothing** → piece-wise RUL →
+> **data normalisation** → train and test datasets
 
-**Why.** Measurement noise lives in the sensor's own physical units, so the
-filter is most naturally applied there. Rescaling is the last step before the
-model. Both operations are close to linear, so the reverse order would give an
-almost identical result, but with this order the training set maps exactly onto
-the intended [0, 1] range, which makes the pipeline easier to check.
+Smoothing before normalisation is therefore *taken from the paper*, not chosen
+here, and this project happens to match it. The entry is kept with its original
+number so that references to A-08 elsewhere remain valid.
 
-**How much it matters.** Very small.
+**Why it is still worth reading.** The order is safe on FD001 and only on
+FD001. On FD002 and FD004 the operating condition changes from one cycle to the
+next, and — as `data/normalization.py` explains — the jump between conditions is
+far larger than the drift caused by wear. Smoothing in raw physical units
+*before* the per-condition scaling has had a chance to remove those jumps blends
+readings taken under different flight conditions together.
+
+Measured on a six-condition signal built with a known wear curve:
+
+| Order | correlation of the scaled signal with true wear |
+|-------|--------------------------------------------------|
+| smoothing → scaling (the paper's order, Fig. 1) | **0.045** |
+| scaling → smoothing (condition-aware) | **0.997** |
+| scaling only, no smoothing | 0.993 |
+
+This is a property of the published method, not a defect introduced here, and
+it is a candidate explanation for the paper's much weaker multi-condition
+results (RMSE 16.21 on FD002 and 18.67 on FD004 against 11.78 on FD001; R²
+falling to 0.603 and 0.510). Before this pipeline is run on FD002 or FD004 the
+order must be revisited and the deviation from the paper recorded as a new
+assumption.
 
 ---
 
@@ -326,6 +380,11 @@ implementation of it would be invention rather than reproduction. Second, the
 paper itself publishes this exact configuration: "ESTGNN w/o LSTM" is one of
 the three variants in its ablation study (Table 11), reported at an average
 error of 19.68 against 14.75 for the full model.
+
+**The number to aim at on FD001 is 14.93.** 19.68 is the average across all
+four sub-datasets. Table 11's FD001 column gives the w/o-LSTM variant an RMSE
+of **14.93** (against 11.78 for the full model). Since only FD001 is handled so
+far, 14.93 is the figure any result from this code should be compared with.
 
 **Consequence to state clearly.** Results from this code must be compared
 against the paper's **"ESTGNN w/o LSTM"** row, not against its headline figures.

@@ -163,7 +163,19 @@ def main() -> int:
         prepared = run_preprocessing(config)
         print()
         print(prepared.summary().to_string())
-        destination = prepared.save(processed_data_dir())
+        # Generated data never shares a directory with real results. Without
+        # this, a synthetic run would overwrite a real one under identical
+        # file names, and nothing in the file names would say which is which.
+        output_dir = processed_data_dir()
+        if config.use_synthetic_data:
+            output_dir = output_dir / "synthetic_demo"
+            print(
+                "Running on generated data, so the output goes to a separate "
+                "folder to keep it away from anything that could be mistaken "
+                "for a result."
+            )
+
+        destination = prepared.save(output_dir)
         print(f"\nSaved to {destination}")
 
     return exit_code

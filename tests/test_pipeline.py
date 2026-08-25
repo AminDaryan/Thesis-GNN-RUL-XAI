@@ -33,6 +33,53 @@ def test_training_and_validation_engines_never_overlap(prepared):
     assert train_engines.isdisjoint(validation_engines)
 
 
+def test_validation_engines_never_influence_the_scaling(prepared):
+    """The scaler must be fitted on the training engines alone.
+
+    If the statistics were learned before the validation engines were held
+    out, a held-out engine could define a minimum or a maximum. The visible
+    consequence is this: with min-max scaling, the *training* windows span
+    exactly [0, 1] only when the extremes belong to training engines. If a
+    validation engine owned one of them, the training range would fall
+    strictly inside [0, 1].
+
+    This is the validation-side counterpart of
+    ``test_normalization.py::test_test_data_never_influences_the_scaling``.
+    """
+    assert prepared.config.normalization.startswith("minmax")
+    assert len(prepared.validation) > 0, "nothing is being held out"
+
+    # Checked per sensor, not over the whole array. Globally the extremes of
+    # one sensor mask another's, so a global range of [0, 1] would pass even
+    # when a held-out engine owns a particular sensor's minimum.
+    features = prepared.train.features                    # (examples, sensors, cycles)
+    lowest = features.min(axis=(0, 2))
+    highest = features.max(axis=(0, 2))
+
+    offenders = [
+        (symbol, float(low), float(high))
+        for symbol, low, high in zip(prepared.sensor_symbols, lowest, highest)
+        if abs(low) > 1e-6 or abs(high - 1.0) > 1e-6
+    ]
+    assert not offenders, (
+        "These sensors do not span exactly [0, 1] across the training windows, "
+        "which means a validation engine defined their scale: " + str(offenders)
+    )
+
+
+def test_an_empty_validation_split_is_usable(synthetic_dir):
+    """A validation fraction of zero must produce an empty split, not a crash."""
+    prepared = run_preprocessing(
+        PreprocessingConfig(
+            window_size=20, validation_fraction=0.0, use_synthetic_data=True
+        ),
+        data_dir=synthetic_dir,
+    )
+    assert len(prepared.validation) == 0
+    assert "empty" in repr(prepared.validation)      # must not raise
+    assert prepared.summary().loc["validation", "examples"] == 0
+
+
 def test_one_test_example_per_engine(prepared):
     assert len(prepared.test) == len(np.unique(prepared.test.units))
 
