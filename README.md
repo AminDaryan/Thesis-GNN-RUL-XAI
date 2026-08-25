@@ -4,10 +4,10 @@ Preprocessing pipeline for predicting how much life is left in a jet engine,
 built as the software foundation for a master's thesis on **explainable**
 graph-based deep learning for predictive maintenance.
 
-**Current stage:** preprocessing of the C-MAPSS FD001 sub-dataset, fully tested
-and documented. The model itself is not part of this stage.
+**Current stage:** preprocessing of the C-MAPSS FD001 sub-dataset, plus the
+graph network of the paper's Table 4. Training, evaluation and SHAP are next.
 
-**Status:** 83 automated tests pass. The notebook has been executed end to end
+**Status:** 98 automated tests pass (83 without PyTorch installed). The notebook has been executed end to end
 on the real FD001 files and all 14 of its internal checks pass.
 
 ---
@@ -187,6 +187,18 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+### PyTorch
+
+Only `src/thesis_gnn_rul_xai/models/` needs it; the preprocessing pipeline and
+its tests run without it, and the model tests skip themselves when it is
+absent. `requirements.txt` installs the CPU build. To train on an NVIDIA card,
+install the CUDA build for your driver instead, using the command generated at
+<https://pytorch.org/get-started/locally/>, for example:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+```
+
 `pip install -e .` installs the project in "editable" mode: the package becomes
 importable from anywhere, while still pointing at the source files in this
 folder, so edits take effect immediately without reinstalling.
@@ -347,9 +359,10 @@ Thesis GNN RUL XAI/
 │   ├── config.py                 Typed settings
 │   ├── data/                     Loading, cleaning, reshaping
 │   ├── graph/                    The sensor graph
+│   ├── models/                   The network of the paper's Table 4
 │   └── utils/                    Paths, seeding, logging
 │
-└── tests/                        83 tests
+└── tests/                        98 tests
 ```
 
 **Why the logic lives in `src/` and not in the notebook.** A notebook is good
@@ -438,8 +451,12 @@ realistic target; understanding and documenting the difference is.
 
 1. Run this pipeline on the real FD001 files and compare the sensor diagnosis
    with the paper's stated selection.
-2. Implement the graph convolution model from Table 4 of the paper: three
-   layers of sizes 32, 64 and 32, then two fully connected layers.
+2. ~~Implement the graph convolution model from Table 4 of the paper: three
+   layers of sizes 32, 64 and 32, then two fully connected layers.~~ **Done**,
+   in `src/thesis_gnn_rul_xai/models/`. `ESTGNN.layer_summary()` prints the
+   architecture in the same form as Table 4 for checking against the paper.
+   Still to write: the training loop (Table 6 gives Adam, 200 epochs, batch 32,
+   learning rate 1e-3 decaying to 1e-4, MSE loss).
 3. Reproduce a simple published baseline first, before trusting any graph
    result. Li et al. (2018) report an error of about 12.6 on FD001 and is a
    good target: a pipeline that cannot approach a known baseline has a problem

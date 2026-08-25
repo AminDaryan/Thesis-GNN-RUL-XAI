@@ -20,6 +20,15 @@ jupyterlab>=4.0
 ipykernel>=6.25
 seaborn>=0.13
 
+# Model
+#
+# PyTorch is needed only by src/thesis_gnn_rul_xai/models/. The preprocessing
+# pipeline and its tests run without it. The line below installs the CPU build;
+# for training on an NVIDIA card install the CUDA build instead, choosing the
+# command for your driver at https://pytorch.org/get-started/locally/ , e.g.
+#     pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0
+
 # Testing
 pytest>=7.4
 nbformat>=5.9

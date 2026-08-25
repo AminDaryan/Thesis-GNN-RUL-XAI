@@ -29,4 +29,7 @@ dependencies:
   - nbconvert>=7.9
   - pip
   - pip:
+      # CPU build. For training on an NVIDIA card, replace this with the CUDA
+      # command from https://pytorch.org/get-started/locally/ for your driver.
+      - torch>=2.0
       - -e .

@@ -20,6 +20,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The preprocessing half of the package needs none of these.
+model = ["torch>=2.0"]
 notebook = ["jupyterlab>=4.0", "ipykernel>=6.25", "seaborn>=0.13"]
 dev = ["pytest>=7.4", "pytest-cov>=4.1", "nbconvert>=7.9", "nbformat>=5.9"]
 

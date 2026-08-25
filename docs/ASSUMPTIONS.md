@@ -33,6 +33,9 @@ identifier below.
 | A-09 | Smoothing formula variant | Gives the recursive form as Equation 18 | Recursive form (`adjust=False` in pandas) |
 | A-10 | Identity of the 7th dropped sensor | Says "seven", names six | The seventh is `NRc`, deduced from their Table 3 |
 | A-11 | The LSTM stage | Central to their architecture | Omitted, matching their own published ablation |
+| A-12 | Bias in the graph layers | Equations 8-10 print only `W` | No bias, as printed; configurable |
+| A-13 | Scaling of the target | Sigmoid output called a "normalized RUL value" | Targets divided by `rul_max` for training |
+| A-14 | Weight initialisation | Not stated | Glorot uniform, following Kipf & Welling (2017) |
 
 ---
 
@@ -390,6 +393,79 @@ far, 14.93 is the figure any result from this code should be compared with.
 against the paper's **"ESTGNN w/o LSTM"** row, not against its headline figures.
 The full ESTGNN has not been reproduced here and no claim about it should be
 made from this code.
+
+---
+
+## A-12 — The graph convolution layers carry no bias
+
+**Where:** `models/layers.py`, `GraphConvolution(bias=False)`
+
+**The gap.** Equations 8, 9 and 10 of the paper give the graph layers as
+`H = ReLU(A_hat X W)`, with no bias term. Equations 12 and 13, which describe
+the two fully connected layers, print biases explicitly as `W.z + b`.
+
+**What we chose.** Follow the equations exactly: no bias in the three graph
+layers, biases in the two dense layers.
+
+**Why.** The paper writes biases where it means them. Within the same short
+section it prints them for the dense layers and omits them for the graph
+layers, which reads as a deliberate distinction rather than a shorthand. It is
+also the convention of the layer the paper is citing: Kipf and Welling (2017)
+define the propagation rule without a bias.
+
+**How much it matters.** Small. A bias per output channel would add 128
+parameters to a network of about 62 000. `GraphConvolution` takes `bias=True`
+so the difference can be measured rather than argued about.
+
+---
+
+## A-13 — Targets are divided by the label ceiling for training
+
+**Where:** `models/estgnn.py`, `ESTGNN.forward` and `ESTGNN.predict_cycles`
+
+**The gap.** The paper's final layer is a sigmoid, and the text says it
+"ensures normalized RUL values within [0,1]". It never states the arithmetic
+that turns that number back into flight cycles, nor what the training targets
+look like.
+
+**What we chose.** The network predicts `RUL / rul_max`, and a prediction in
+cycles is that number multiplied by `rul_max`. Training targets are divided by
+the same constant.
+
+**Why.** It is forced, not chosen. A sigmoid cannot leave `[0, 1]`, so a
+network trained against targets measured in cycles could never reach a label of
+40, let alone 125. Dividing by the ceiling is the only scaling that puts the
+targets where the output layer can reach them and keeps the "normalized RUL"
+description true.
+
+**Consequence.** The model cannot predict a remaining life above `rul_max` for
+any input whatsoever. This is the architectural fact that assumption A-02 rests
+on, and it is checked directly by
+`test_models.py::test_the_prediction_can_never_exceed_the_ceiling`.
+
+---
+
+## A-14 — Weights are initialised with Glorot uniform sampling
+
+**Where:** `models/layers.py`, `GraphConvolution.reset_parameters`
+
+**The gap.** The paper does not say how any weight matrix is initialised. Its
+Table 6 lists the optimiser, learning rate, batch size and epoch count, and
+stops there.
+
+**What we chose.** Glorot (Xavier) uniform initialisation for the graph
+convolution weights. The dense layers keep PyTorch's default, which is the
+Kaiming-uniform variant that library has used for `Linear` for years.
+
+**Why.** Glorot is what Kipf and Welling (2017) use for this exact layer. It
+keeps the variance of the activations roughly constant as they pass through the
+three stacked layers, which is what makes a deep stack trainable; an
+initialisation that is too large or too small makes the first epochs behave
+very differently even when everything else is identical.
+
+**How much it matters.** Moderate for a single run and small on average.
+Initialisation is one of the reasons a single seed is not evidence, which is
+why this project reports results across several seeds (see `utils/seeding.py`).
 
 ---
 
