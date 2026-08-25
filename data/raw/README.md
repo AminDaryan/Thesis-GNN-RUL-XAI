@@ -23,6 +23,12 @@ python scripts/prepare_data.py --check
 which reports which files are present, which are missing, and whether the ones
 present have the expected number of rows.
 
+All four sub-datasets (FD001 to FD004) can live here together. Only the three
+files for the sub-dataset named in the configuration are read on any one run.
+
+If you would rather keep a single copy of the dataset elsewhere, leave this
+directory empty and pass `--data-dir /path/to/CMAPSSData` instead.
+
 ## Do not edit these files
 
 Nothing in this project ever writes to this directory. Keeping the raw files

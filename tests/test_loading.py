@@ -13,6 +13,13 @@ from thesis_gnn_rul_xai.data.loading import (
 )
 
 
+def test_the_files_match_the_published_release(loaded):
+    """The official FD001 release has 20 631 training rows over 100 engines."""
+    assert len(loaded.train) == 20631
+    assert loaded.train["unit"].nunique() == 100
+    assert loaded.test["unit"].nunique() == 100
+
+
 def test_loaded_frame_has_the_expected_columns(loaded):
     assert list(loaded.train.columns) == [*RAW_COLUMNS, "rul"]
 
@@ -42,7 +49,8 @@ def test_test_labels_match_the_official_file_at_the_last_cycle(loaded):
 
 
 def test_missing_file_gives_an_instructive_error(tmp_path):
-    with pytest.raises(FileNotFoundError, match="Getting the data"):
+    """The message must carry the download link, not just say 'not found'."""
+    with pytest.raises(FileNotFoundError, match="pcoe-data-set-repository"):
         read_cmapss_frame(tmp_path / "train_FD001.txt")
 
 
@@ -53,7 +61,7 @@ def test_attach_rul_rejects_an_incomplete_label_file(loaded):
         attach_rul(loaded.test.drop(columns="rul"), rul_at_last_cycle=incomplete)
 
 
-def test_rul_file_is_indexed_from_one(synthetic_dir):
-    series = read_rul_file(synthetic_dir / "RUL_FD001.txt")
+def test_rul_file_is_indexed_from_one(raw_dir):
+    series = read_rul_file(raw_dir / "RUL_FD001.txt")
     assert series.index[0] == 1
     assert series.index[-1] == len(series)

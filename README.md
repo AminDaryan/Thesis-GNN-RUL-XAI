@@ -7,7 +7,7 @@ graph-based deep learning for predictive maintenance.
 **Current stage:** preprocessing of the C-MAPSS FD001 sub-dataset, fully tested
 and documented. The model itself is not part of this stage.
 
-**Status:** 81 automated tests pass. The notebook has been executed end to end
+**Status:** 83 automated tests pass. The notebook has been executed end to end
 on the real FD001 files and all 14 of its internal checks pass.
 
 ---
@@ -197,7 +197,9 @@ folder, so edits take effect immediately without reinstalling.
 pytest
 ```
 
-All tests should pass. They run on generated data and need no download.
+The tests run on the real FD001 files, so download the dataset first (see
+[section 5](#5-getting-the-data)). Without it they skip with a message saying
+what is missing and where to get it, rather than failing.
 
 ---
 
@@ -224,33 +226,22 @@ rather than ship a copy that may fall out of date.
    engine counts published for the official release (20 631 training rows over
    100 engines, and 100 test engines, for FD001).
 
-### Working without the data
+### Keeping the dataset somewhere else
 
-The whole pipeline runs on generated example data:
+If you already have the files outside this project, point the script at them
+instead of copying:
 
 ```bash
-python scripts/prepare_data.py --synthetic --run --use-synthetic
+python scripts/prepare_data.py --run --data-dir /path/to/CMAPSSData
 ```
 
-This writes files with the same format as the real ones into `data/synthetic/`.
-It exists so the code can be read, tested, and demonstrated on any machine.
+The same applies to `run_preprocessing(config, data_dir=...)` in Python.
 
-> **Generated data is for testing the code only.** The signals come from a
-> simple wear model written for this project, not from NASA's simulator, and
-> not from anything in Wen et al. (2026). Only the *format* and the sensor
-> list are shared with the real files. No number computed from generated data
-> may be reported as a scientific result. The pipeline prints a warning
-> whenever it runs in this mode, and writes its output to a separate
-> `data/processed/synthetic_demo/` folder.
-
-**What generated data cannot show you.** Anything that depends on the real
-physics is absent by construction. In particular the findings recorded in
-[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) — that `P15` takes only two
-distinct values (F-01), that eleven test labels exceed the ceiling (F-02), and
-that the shortest test history is 31 cycles (F-03) — appear **only** on the
-real files. So does any comparison between the physics graph and a
-correlation graph. Use generated data to check that the code runs; use the
-NASA files to learn anything about engines.
+> **There is no substitute for the real files.** This project does not
+> generate stand-in data, on purpose. A pipeline that appears to work on
+> invented signals tells you nothing about whether it works on engines, and a
+> number computed from invented signals is not a result. If the files are
+> missing, every command and every test says so and points at the download.
 
 ---
 
@@ -340,7 +331,6 @@ Thesis GNN RUL XAI/
 │
 ├── data/
 │   ├── raw/                      The NASA files go here (not in git)
-│   ├── synthetic/                Generated example data (not in git)
 │   └── processed/                Pipeline output (not in git)
 │
 ├── docs/
@@ -359,7 +349,7 @@ Thesis GNN RUL XAI/
 │   ├── graph/                    The sensor graph
 │   └── utils/                    Paths, seeding, logging
 │
-└── tests/                        79 tests
+└── tests/                        83 tests
 ```
 
 **Why the logic lives in `src/` and not in the notebook.** A notebook is good
@@ -380,7 +370,7 @@ pytest --doctest-modules src   # only the examples inside docstrings
 ```
 
 The suite covers each preprocessing step, the sensor graph, and the pipeline
-end to end. Three tests deserve special mention, because they check the
+end to end. Four tests deserve special mention, because they check the
 properties that make the experiment valid rather than merely correct:
 
 - `test_normalization.py::test_test_data_never_influences_the_scaling`
@@ -411,8 +401,10 @@ regardless of how good they look.
 5. **Randomness is seeded and reported.** A single run is repeatable. Because
    one run is not evidence, experiments are intended to be repeated across
    several seeds with the mean and standard deviation reported.
-6. **Synthetic and real data never mix.** They live in separate directories and
-   the pipeline warns loudly when running on generated data.
+6. **Only real measurements are used.** The project generates no stand-in
+   data. Every number it produces traces back to the NASA files, and when
+   those files are absent the code says so instead of substituting something
+   that merely has the right shape.
 
 ---
 
@@ -439,8 +431,6 @@ single run with no seeds or error bars, and its reported software environment
 lists no deep learning framework at all. Matching its figures exactly is not a
 realistic target; understanding and documenting the difference is.
 
-**Synthetic data is not a substitute for the real dataset.** It exists to test
-the code.
 
 ---
 

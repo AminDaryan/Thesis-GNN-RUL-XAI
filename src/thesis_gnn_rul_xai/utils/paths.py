@@ -20,7 +20,6 @@ __all__ = [
     "project_root",
     "raw_data_dir",
     "processed_data_dir",
-    "synthetic_data_dir",
     "reports_dir",
     "figures_dir",
     "ensure_dir",
@@ -83,16 +82,6 @@ def raw_data_dir() -> Path:
 def processed_data_dir() -> Path:
     """Directory holding arrays produced by the preprocessing pipeline."""
     return ensure_dir(project_root() / "data" / "processed")
-
-
-def synthetic_data_dir() -> Path:
-    """Directory holding artificially generated data used for testing.
-
-    Synthetic data lets the whole pipeline be executed and tested on a machine
-    that does not have the real NASA files. It must never be used to produce
-    results that are reported as scientific findings.
-    """
-    return ensure_dir(project_root() / "data" / "synthetic")
 
 
 def reports_dir() -> Path:

@@ -28,11 +28,6 @@ node_feature_mode: window            # ASSUMPTION A-07.
 validation_fraction: 0.2             # ASSUMPTION A-06: the paper has no split.
 seed: 42
 
-# --- Execution mode -------------------------------------------------------
-# Set to true to run on generated example data instead of the NASA files.
-# Results produced this way are for testing the code only.
-use_synthetic_data: false
-
 notes: >-
   Preprocessing configuration for the FD001 subset. Fields marked ASSUMPTION
   are not specified by Wen et al. (2026); see docs/ASSUMPTIONS.md.

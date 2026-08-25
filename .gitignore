@@ -5,8 +5,6 @@ data/raw/*
 !data/raw/README.md
 data/processed/*
 !data/processed/.gitkeep
-data/synthetic/*
-!data/synthetic/.gitkeep
 
 # --- Generated outputs --------------------------------------------------
 reports/figures/*

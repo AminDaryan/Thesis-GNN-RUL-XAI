@@ -71,7 +71,7 @@ import pandas as pd
 from ..config import PreprocessingConfig
 from ..graph.adjacency import adjacency_report, build_physics_adjacency, normalize_adjacency
 from ..utils.logging_setup import get_logger
-from ..utils.paths import processed_data_dir, raw_data_dir, synthetic_data_dir
+from ..utils.paths import processed_data_dir, raw_data_dir
 from .labeling import apply_piecewise_rul
 from .loading import CMAPSSData, load_subset
 from .normalization import CONDITION_COL, OperatingConditionEncoder, SensorNormalizer
@@ -214,8 +214,8 @@ def run_preprocessing(
         Settings to use. Defaults to :class:`PreprocessingConfig`, which is
         configured for FD001.
     data_dir : str or Path, optional
-        Where the raw files live. Defaults to ``data/raw`` for real data and
-        ``data/synthetic`` when ``config.use_synthetic_data`` is set.
+        Directory holding the three C-MAPSS text files for this
+        sub-dataset. Defaults to ``data/raw``.
     keep_frames : bool
         When ``True``, the intermediate data frames are kept on the returned
         object. This costs memory but is useful in a notebook, where the tables
@@ -229,28 +229,15 @@ def run_preprocessing(
     """
     config = config or PreprocessingConfig()
 
-    if data_dir is None:
-        data_dir = synthetic_data_dir() if config.use_synthetic_data else raw_data_dir()
-    data_dir = Path(data_dir)
-
-    if config.use_synthetic_data:
-        logger.warning(
-            "Running on SYNTHETIC data. The numbers produced are for testing "
-            "the code only and must never be reported as scientific results."
-        )
+    data_dir = Path(data_dir) if data_dir is not None else raw_data_dir()
 
     diagnostics: dict[str, object] = {
         "subset": config.subset,
         "data_dir": str(data_dir),
-        "used_synthetic_data": config.use_synthetic_data,
     }
 
     # -- 1. load ----------------------------------------------------------
-    data = load_subset(
-        config.subset,
-        data_dir=data_dir,
-        verify_expected_shape=not config.use_synthetic_data,
-    )
+    data = load_subset(config.subset, data_dir=data_dir)
 
     # -- 2. diagnose the sensor selection ---------------------------------
     detected = detect_uninformative_sensors(data.train)

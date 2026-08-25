@@ -62,6 +62,7 @@ from .sensors import CYCLE_COL, RAW_COLUMNS, UNIT_COL
 
 __all__ = [
     "CMAPSSData",
+    "DOWNLOAD_URL",
     "read_cmapss_frame",
     "read_rul_file",
     "attach_rul",
@@ -70,6 +71,14 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
+
+#: Where the official C-MAPSS files are distributed. It is quoted in the
+#: error a first-time user is most likely to hit, so the fix travels with
+#: the problem instead of living only in the README.
+DOWNLOAD_URL = (
+    "https://www.nasa.gov/intelligent-systems-division/"
+    "discovery-and-systems-health/pcoe/pcoe-data-set-repository/"
+)
 
 #: Row and engine counts reported in the literature for each sub-dataset.
 #: These are used only as a sanity check when real data is loaded: a mismatch
@@ -169,10 +178,12 @@ def read_cmapss_frame(path: str | Path) -> pd.DataFrame:
         raise FileNotFoundError(
             f"C-MAPSS file not found: {path}\n\n"
             "The NASA files are not included in this repository because they "
-            "are redistributed under NASA's own terms. See README.md, section "
-            "'Getting the data', for how to download them, or set "
-            "use_synthetic_data=True in the configuration to run the pipeline "
-            "on generated example data instead."
+            "are redistributed under NASA's own terms. Download the "
+            "'Turbofan Engine Degradation Simulation Data Set' from the NASA "
+            "Prognostics Center of Excellence repository:\n\n"
+            f"    {DOWNLOAD_URL}\n\n"
+            "and put the three files for this sub-dataset into data/raw/. "
+            "See README.md, section 'Getting the data'."
         )
 
     # The files use one or more spaces as the separator and have a trailing
@@ -328,9 +339,9 @@ def load_subset(
         if differences:
             logger.warning(
                 "Loaded %s does not match the published shape of the official "
-                "release. Differences (expected, actual): %s. "
-                "This is expected when using synthetic data; investigate it "
-                "if you believe you are using the real files.",
+                "release. Differences (expected, actual): %s. The files may be "
+                "a different version, truncated, or modified. Investigate this "
+                "before reporting any result computed from them.",
                 subset,
                 differences,
             )

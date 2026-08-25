@@ -13,9 +13,9 @@ from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
 
 @pytest.fixture(scope="module")
 def prepared(request):
-    directory = request.getfixturevalue("synthetic_dir")
+    directory = request.getfixturevalue("raw_dir")
     config = PreprocessingConfig(
-        window_size=20, validation_fraction=0.25, use_synthetic_data=True, seed=7
+        window_size=20, validation_fraction=0.25, seed=7
     )
     return run_preprocessing(config, data_dir=directory)
 
@@ -67,13 +67,13 @@ def test_validation_engines_never_influence_the_scaling(prepared):
     )
 
 
-def test_an_empty_validation_split_is_usable(synthetic_dir):
+def test_an_empty_validation_split_is_usable(raw_dir):
     """A validation fraction of zero must produce an empty split, not a crash."""
     prepared = run_preprocessing(
         PreprocessingConfig(
-            window_size=20, validation_fraction=0.0, use_synthetic_data=True
+            window_size=20, validation_fraction=0.0
         ),
-        data_dir=synthetic_dir,
+        data_dir=raw_dir,
     )
     assert len(prepared.validation) == 0
     assert "empty" in repr(prepared.validation)      # must not raise
@@ -113,29 +113,30 @@ def test_diagnostics_record_the_important_facts(prepared):
     assert diagnostics["graph"]["n_edges"] == 41
     assert diagnostics["graph"]["is_connected"] is True
     assert diagnostics["n_operating_conditions"] == 1
-    assert diagnostics["used_synthetic_data"] is True
+    assert diagnostics["subset"] == "FD001"
+    assert diagnostics["kept_but_uninformative"] == ["P15"]   # finding F-01
 
 
-def test_the_run_is_repeatable(synthetic_dir):
+def test_the_run_is_repeatable(raw_dir):
     """The same settings must give bit-for-bit identical arrays."""
     config = PreprocessingConfig(
-        window_size=20, validation_fraction=0.25, use_synthetic_data=True, seed=7
+        window_size=20, validation_fraction=0.25, seed=7
     )
-    first = run_preprocessing(config, data_dir=synthetic_dir)
-    second = run_preprocessing(config, data_dir=synthetic_dir)
+    first = run_preprocessing(config, data_dir=raw_dir)
+    second = run_preprocessing(config, data_dir=raw_dir)
     np.testing.assert_array_equal(first.train.features, second.train.features)
     np.testing.assert_array_equal(first.validation.units, second.validation.units)
 
 
-def test_a_different_seed_changes_the_split(synthetic_dir):
+def test_a_different_seed_changes_the_split(raw_dir):
     base = PreprocessingConfig(
-        window_size=20, validation_fraction=0.25, use_synthetic_data=True, seed=7
+        window_size=20, validation_fraction=0.25, seed=7
     )
     other = PreprocessingConfig(
-        window_size=20, validation_fraction=0.25, use_synthetic_data=True, seed=8
+        window_size=20, validation_fraction=0.25, seed=8
     )
-    first = run_preprocessing(base, data_dir=synthetic_dir)
-    second = run_preprocessing(other, data_dir=synthetic_dir)
+    first = run_preprocessing(base, data_dir=raw_dir)
+    second = run_preprocessing(other, data_dir=raw_dir)
     assert set(first.validation.units.tolist()) != set(second.validation.units.tolist())
 
 
@@ -162,23 +163,23 @@ def test_saving_writes_every_expected_file(prepared, tmp_path):
     assert diagnostics["subset"] == "FD001"
 
 
-def test_disabling_smoothing_changes_the_features(synthetic_dir):
+def test_disabling_smoothing_changes_the_features(raw_dir):
     smoothed = run_preprocessing(
-        PreprocessingConfig(window_size=20, use_synthetic_data=True, smoothing_alpha=0.5),
-        data_dir=synthetic_dir,
+        PreprocessingConfig(window_size=20, smoothing_alpha=0.5),
+        data_dir=raw_dir,
     )
     unsmoothed = run_preprocessing(
-        PreprocessingConfig(window_size=20, use_synthetic_data=True, smoothing_alpha=None),
-        data_dir=synthetic_dir,
+        PreprocessingConfig(window_size=20, smoothing_alpha=None),
+        data_dir=raw_dir,
     )
     assert not np.allclose(smoothed.train.features, unsmoothed.train.features)
 
 
-def test_last_step_mode_produces_single_feature_nodes(synthetic_dir):
+def test_last_step_mode_produces_single_feature_nodes(raw_dir):
     prepared = run_preprocessing(
         PreprocessingConfig(
-            window_size=20, use_synthetic_data=True, node_feature_mode="last_step"
+            window_size=20, node_feature_mode="last_step"
         ),
-        data_dir=synthetic_dir,
+        data_dir=raw_dir,
     )
     assert prepared.train.features.shape[1:] == (14, 1)

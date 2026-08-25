@@ -122,11 +122,6 @@ class PreprocessingConfig:
         ASSUMPTION: the paper describes no validation split at all.
     seed : int
         Random seed controlling the validation split.
-    use_synthetic_data : bool
-        When ``True``, the pipeline reads artificially generated files instead
-        of the real NASA files. This exists so that the code can be executed
-        and tested on a machine that does not have the dataset. Results
-        produced this way are never scientifically meaningful.
     """
 
     subset: str = "FD001"
@@ -149,9 +144,6 @@ class PreprocessingConfig:
     # --- Data splitting ----------------------------------------------------
     validation_fraction: float = 0.2
     seed: int = 42
-
-    # --- Execution mode ----------------------------------------------------
-    use_synthetic_data: bool = False
 
     # --- Bookkeeping -------------------------------------------------------
     notes: str = field(
