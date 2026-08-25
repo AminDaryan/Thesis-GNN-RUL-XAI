@@ -1,0 +1,38 @@
+# --- Data ---------------------------------------------------------------
+# The NASA C-MAPSS files are not redistributed with this repository.
+# See README.md, section "Getting the data".
+data/raw/*
+!data/raw/README.md
+data/processed/*
+!data/processed/.gitkeep
+data/synthetic/*
+!data/synthetic/.gitkeep
+
+# --- Generated outputs --------------------------------------------------
+reports/figures/*
+!reports/figures/.gitkeep
+*.log
+
+# --- Python -------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# --- Tooling ------------------------------------------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/
+
+# --- Editors and operating systems --------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

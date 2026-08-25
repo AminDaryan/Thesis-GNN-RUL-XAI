@@ -1,0 +1,32 @@
+# Conda environment for this project.
+#
+# Create it with:
+#     conda env create -f environment.yml
+#     conda activate thesis-gnn-rul-xai
+#
+# Conda is used here rather than plain pip because it also installs the Python
+# interpreter itself, which makes the environment easier to reproduce on a
+# different operating system.
+
+name: thesis-gnn-rul-xai
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python>=3.10,<3.13
+  - numpy>=1.24
+  - pandas>=2.0
+  - scipy>=1.10
+  - scikit-learn>=1.3
+  - matplotlib>=3.7
+  - pyyaml>=6.0
+  - jupyterlab>=4.0
+  - ipykernel>=6.25
+  - seaborn>=0.13
+  - pytest>=7.4
+  - nbformat>=5.9
+  - nbconvert>=7.9
+  - pip
+  - pip:
+      - -e .

@@ -1,0 +1,38 @@
+# Preprocessing settings for the C-MAPSS FD001 sub-dataset.
+#
+# Every field is documented in src/thesis_gnn_rul_xai/config.py.
+# Fields whose value is NOT taken from Wen et al. (2026) are marked below and
+# explained in docs/ASSUMPTIONS.md.
+
+subset: FD001
+
+# --- Windowing ------------------------------------------------------------
+window_size: 30        # From the paper, Table 6 ("Time steps").
+window_stride: 1       # ASSUMPTION A-05: not stated in the paper.
+
+# --- Labels ---------------------------------------------------------------
+rul_max: 125           # ASSUMPTION A-01: the paper never prints this value.
+clip_test_labels: true # ASSUMPTION A-02: forced by the sigmoid output layer.
+
+# --- Signal processing ----------------------------------------------------
+normalization: minmax_per_condition  # ASSUMPTION A-03: the paper is silent.
+smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
+
+# --- Model input shape ----------------------------------------------------
+# "window"    -> each sensor node carries its whole 30-step history.
+# "last_step" -> each sensor node carries one number, matching the input shape
+#                [batch, 14, 1] printed in the paper's Table 4.
+node_feature_mode: window            # ASSUMPTION A-07.
+
+# --- Data splitting -------------------------------------------------------
+validation_fraction: 0.2             # ASSUMPTION A-06: the paper has no split.
+seed: 42
+
+# --- Execution mode -------------------------------------------------------
+# Set to true to run on generated example data instead of the NASA files.
+# Results produced this way are for testing the code only.
+use_synthetic_data: false
+
+notes: >-
+  Preprocessing configuration for the FD001 subset. Fields marked ASSUMPTION
+  are not specified by Wen et al. (2026); see docs/ASSUMPTIONS.md.
