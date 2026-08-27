@@ -41,6 +41,7 @@ identifier below.
 | A-17 | Learning-rate schedule | Both endpoints given, mechanism not | Exponential decay reaching 1e-4 at the last epoch |
 | A-18 | Early stopping | None; trains a fixed 200 epochs | Stop after 20 epochs without improvement |
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
+| A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
 
 ---
 
@@ -639,6 +640,85 @@ also a testable prediction — adding any temporal encoder should shrink the gap
 
 **Do not report the two ablation numbers as directly comparable with the
 paper's.** They come from a configuration the paper does not run.
+
+---
+
+## A-20 — An absent sensor is replaced by its average training window
+
+**Where:** `explain/shap.py`, `mean_window_baseline`
+
+**The gap.** Equation 15 is defined in terms of `f(S)`, "the ESTGNN prediction
+when only sensors in subset S are considered". A trained network cannot be
+given thirteen inputs; it always requires fourteen. So a sensor is never
+actually removed, only **replaced** by a stand-in, and which stand-in is used
+decides what the resulting numbers mean. The paper does not say what it uses.
+
+**What we chose.** The average window of that sensor across the training set,
+so the model is shown "this sensor is behaving typically".
+
+**Why.** The obvious alternative, substituting zero, is much worse than it
+looks. After the min-max rescaling of A-03, zero is not a neutral value: it is
+the lowest reading that sensor ever recorded in training. Feeding it would tell
+the model something strong and false rather than nothing, and every Shapley
+value would be measured against that fiction.
+
+Using the training mean also keeps the explanation honest in the same sense
+the scaling is: nothing from the validation or test engines enters it.
+
+**What the numbers then mean.** A Shapley value here answers: *how much did
+knowing this sensor's actual readings, rather than a typical engine's, change
+the prediction?* It is measured in flight cycles, and by the efficiency
+property the fourteen values plus the baseline prediction reconstruct the
+actual prediction exactly.
+
+**How much it matters.** Moderate, and measurable. The ranking of sensors is
+fairly stable across reasonable baselines; the magnitudes are not. Any figure
+quoted from this analysis must say which baseline produced it.
+
+---
+
+### F-05 — What the first SHAP run says about P15, and what it does not
+
+Finding F-01 recorded that `P15` takes only two distinct values on FD001 and
+predicted that a working attribution method should give it close to zero
+importance. The first run of the exact Shapley computation, on the full life of
+one held-out engine (240 windows, 16 384 coalitions each), gives a more
+interesting answer than that.
+
+**Averaged over the engine's life, P15 ranks last of the fourteen**, with a
+mean absolute contribution of 4.2 cycles against 11.8 for `T24`. That agrees
+with the paper's own Fig. 9, which also places `P15` at the bottom, and it is a
+point of genuine agreement between this re-implementation and the original.
+
+**But its contribution is not uniformly small.** It reaches 12 to 15 cycles in
+the first five windows of the engine's history and then collapses to about
+0.05 cycles for the remaining 235. A sensor carrying no information should not
+be worth fifteen cycles at any moment.
+
+The mechanism is in the preprocessing, not the attribution. `P15`'s two raw
+levels are 0.01 psia apart, which is measurement quantisation rather than
+signal. The smoothing filter of A-04 interpolates between those two levels, and
+the min-max rescaling of A-03 then stretches the result across the full `[0, 1]`
+range. Measured on the scaled training windows, `P15` ends up with a standard
+deviation of 0.083, which is essentially the same as `Nc` at 0.081. A sensor
+with nothing to say arrives at the model with the same amplitude as one that
+has. The early windows are where the exponential filter is still settling from
+its first reading, which is exactly where the spurious contribution appears.
+
+**Consequences worth stating in the thesis.**
+
+1. F-01's proposed sanity check is right on average and wrong window by window.
+   The sharper version: `P15`'s attribution should be near zero *once the
+   smoothing filter has settled*, and it is.
+2. Min-max rescaling is unsafe for a near-constant sensor, because it maps
+   quantisation noise onto the same range as real variation. Standardising by
+   the standard deviation instead would have the same problem; only dropping
+   the sensor, or scaling by a fixed physical range, avoids it. The pipeline
+   keeps `P15` because the paper's adjacency matrix is defined over its fixed
+   14-sensor set, so this is a limitation to report rather than to correct.
+3. This is a concrete example of an explanation revealing a preprocessing
+   defect rather than a model defect, which is a useful thing for a thesis on
+   explainability to be able to show.
 
 ---
 

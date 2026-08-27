@@ -8,9 +8,10 @@ graph-based deep learning for predictive maintenance.
 training loop of its Table 6, and the four evaluation measures of its
 Section 3.3. On FD001 this reaches **RMSE 13.45 +/- 0.20** across five seeds,
 against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation.
-SHAP is next.
+The dynamic SHAP analysis of its Section 2.4 is implemented, exactly rather
+than by sampling.
 
-**Status:** 138 automated tests pass (107 without PyTorch installed). The notebook has been executed end to end
+**Status:** 155 automated tests pass (107 without PyTorch installed). The notebook has been executed end to end
 on the real FD001 files and all 14 of its internal checks pass.
 
 ---
@@ -381,9 +382,10 @@ Thesis GNN RUL XAI/
 │       ├── models/
 │       ├── training/
 │       ├── evaluation/
+│       ├── explain/
 │       └── utils/
 │
-└── tests/                        138 tests
+└── tests/                        155 tests
 ```
 
 ### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
@@ -429,6 +431,7 @@ importable and lists which names are public.
 | `models/` | What is the network? | `estgnn.py`, the paper's Table 4 |
 | `training/` | How is the network fitted to the data? | `loop.py`, the paper's Table 6 |
 | `evaluation/` | How good is the result? | `metrics.py`, the four measures |
+| `explain/` | Which sensor drove this prediction? | `shap.py`, exact Shapley values |
 | `utils/` | Housekeeping the others share | `paths.py`, `seeding.py` |
 
 `config.py` sits at the top level rather than in a folder because every one of
@@ -577,12 +580,16 @@ realistic target; understanding and documenting the difference is.
    RMSE here, against the 0.56 the paper reports, most likely because the
    omitted LSTM would otherwise supply the same information by another route.
    "Without GCN" still needs a plain network on the same features.
-6. Add SHAP, then move beyond it to graph-native explanations that describe
+6. ~~Add SHAP~~ **Done**, in `src/thesis_gnn_rul_xai/explain/`. With only 14
+   sensors the Shapley values of Equation 15 can be enumerated exactly, so no
+   sampling approximation is used and a disagreement with the paper cannot be
+   blamed on estimation noise. The first run is recorded as finding F-05.
+7. Move beyond node attribution to graph-native explanations that describe
    edges and subgraphs rather than single sensors — the actual research gap
-   this thesis addresses. Two ready-made checks: `P15` should receive close to
-   zero attribution (finding F-01), and every path from the fan sensors to the
-   core sensors runs through `T24`, which is the graph's only articulation
-   point.
+   this thesis addresses. SHAP divides credit among the 14 sensors and cannot,
+   by construction, express a fact like this one: every path from the fan
+   sensors to the core sensors runs through `T24`, the graph's only
+   articulation point.
 
 ---
 

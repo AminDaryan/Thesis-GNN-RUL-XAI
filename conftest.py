@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover
     collect_ignore_glob = [
         "src/thesis_gnn_rul_xai/models/*.py",
         "src/thesis_gnn_rul_xai/training/*.py",
+        "src/thesis_gnn_rul_xai/explain/*.py",
         "tests/test_models.py",
         "tests/test_training.py",
+        "tests/test_shap.py",
     ]
