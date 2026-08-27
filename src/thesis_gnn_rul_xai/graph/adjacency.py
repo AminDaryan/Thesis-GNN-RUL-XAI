@@ -49,8 +49,20 @@ works, and print the result as their Table 3. Their five stated rules are:
 5. Cooling quantities are connected to each other, because they jointly manage
    the temperature of the turbine section.
 
-This module reproduces their Table 3 exactly, as printed. It is one of the few
-parts of the paper that is fully specified, so no assumption is needed here.
+This module reproduces their Table 3 exactly, as printed, and the
+transcription has been checked against both of the paper's own renderings of
+the matrix: the numbers in Table 3 and the colour grid in Fig. 3 agree with
+each other and with the array below, in all 196 cells.
+
+Two things about it are **not** fully specified, despite the matrix itself
+being printed twice:
+
+* The paper's own fourth rule says `phi` influences `htBleed`, `W31` **and
+  `W32`**, but the entry for `phi`-`W32` is 0 in Table 3 and in Fig. 3. The
+  matrix is followed here, because it is what the model consumes, and the
+  conflict is recorded as finding F-07.
+* The paper never prints the formula used to normalise the matrix. See
+  assumption A-21 and :func:`normalize_adjacency`.
 
 Normalising the matrix before use
 ---------------------------------
@@ -230,6 +242,14 @@ def normalize_adjacency(
 
     Computes ``D^(-1/2) (A + I) D^(-1/2)`` as defined by Kipf and Welling
     (2017). See the module docstring for what each part does and why.
+
+    ASSUMPTION A-21: Wen et al. (2026) never print this formula. Their
+    Equation 8 says only that "A denotes the normalized adjacency matrix
+    incorporating self-loops", and that the normalisation "ensures stable
+    gradient propagation and balanced feature aggregation across different
+    node degrees". Symmetric normalisation satisfies that description, and
+    so does the row normalisation ``D^(-1) (A + I)``. The symmetric form is
+    used because it is the one defined by the layer the paper cites.
 
     Parameters
     ----------

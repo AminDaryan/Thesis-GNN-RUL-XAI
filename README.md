@@ -12,7 +12,7 @@ against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation
 The dynamic SHAP analysis of its Section 2.4 is implemented, exactly rather
 than by sampling.
 
-**Status:** 155 automated tests pass (107 without PyTorch installed). The notebook has been executed end to end
+**Status:** 157 automated tests pass (107 without PyTorch installed). The notebook has been executed end to end
 on the real FD001 files and all 14 of its internal checks pass.
 
 ---
@@ -480,7 +480,7 @@ Thesis GNN RUL XAI/
 │       ├── explain/
 │       └── utils/
 │
-└── tests/                        155 tests
+└── tests/                        157 tests
 ```
 
 ### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
@@ -666,7 +666,8 @@ Understanding and recording the difference is the achievable goal.
 in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) states how much it is
 expected to matter, but for most that expectation is an argument rather
 than a measurement. Three have actually been measured — A-07 and A-19 in
-finding F-06, A-20 in its own entry. Nine more are settings that could be
+finding F-06, A-20 in its own entry. A-21, the adjacency normalisation, would
+need a code change rather than a setting to test. Nine more are settings that could be
 varied and have not been: A-01 (the ceiling), A-03 (the scaling method),
 A-04 (the smoothing strength), A-05 (the stride), A-06 (the validation
 fraction), A-12 (the bias), A-14 (the initialisation), A-17 (the schedule)

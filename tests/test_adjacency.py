@@ -80,6 +80,56 @@ def test_selected_edges_follow_the_stated_physical_rules():
     assert frame.loc["T24", "T50"] == 0
 
 
+def test_the_matrix_matches_the_papers_own_construction_rules_except_one():
+    """Finding F-07, pinned down.
+
+    Section 2.3.1 gives five rules for building the matrix, each with a worked
+    example. Twenty-three of the twenty-four edges those examples require are
+    present. The exception is ``phi``-``W32``: the text says phi "subsequently
+    affects htBleed, W31, and W32", but the entry is 0 in Table 3 and in the
+    Fig. 3 colour grid alike.
+
+    This project follows the matrix rather than the text, because the matrix is
+    what the model consumes. The test exists so that the discrepancy is a
+    recorded, checkable fact rather than a footnote that could drift.
+    """
+    matrix, symbols = build_physics_adjacency()
+    frame = adjacency_to_frame(matrix, symbols)
+
+    required = [
+        ("P30", "Ps30"), ("T30", "P30"), ("T30", "Ps30"),      # rule 1
+        ("P15", "BPR"), ("W31", "W32"),
+        ("Nf", "NRf"),                                          # rule 2
+        ("T24", "T30"), ("T30", "T50"),                         # rule 3a
+        ("P15", "Nf"), ("P15", "NRf"), ("P15", "BPR"),          # rule 3b
+        ("Nf", "NRf"), ("Nf", "BPR"), ("NRf", "BPR"),
+        ("phi", "T30"), ("phi", "P30"), ("phi", "Ps30"),        # rule 4
+        ("phi", "htBleed"), ("phi", "W31"), ("phi", "W32"),
+        ("W31", "W32"), ("W31", "htBleed"), ("W32", "htBleed"), # rule 5
+    ]
+    missing = [(a, b) for a, b in required if frame.loc[a, b] != 1]
+
+    assert missing == [("phi", "W32")], (
+        "The set of rule-implied edges absent from the matrix has changed. "
+        f"Expected only phi-W32, got {missing}. See finding F-07."
+    )
+
+
+def test_rule_3b_makes_the_fan_sensors_a_complete_subgraph():
+    """All six pairs among P15, NF, NRf and BPR are connected.
+
+    The paper's third rule mentions "pressure connections between P15, NF, NRf,
+    and BPR" without saying they form a clique, but the matrix makes them one.
+    It is why those four sensors behave as a single tightly coupled group.
+    """
+    matrix, symbols = build_physics_adjacency()
+    frame = adjacency_to_frame(matrix, symbols)
+    group = ["P15", "Nf", "NRf", "BPR"]
+    for i, a in enumerate(group):
+        for b in group[i + 1:]:
+            assert frame.loc[a, b] == 1, f"{a}-{b} is missing from the fan group"
+
+
 def test_normalisation_matches_the_formula_on_a_tiny_graph():
     """Two nodes, one edge. With self-loops each degree is 2, so each entry is 0.5."""
     matrix = np.array([[0.0, 1.0], [1.0, 0.0]])

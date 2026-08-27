@@ -26,7 +26,7 @@ identifier below.
 | A-02 | Ceiling on test labels | Not discussed | Applied, because the model's output layer cannot exceed the ceiling |
 | A-03 | Input rescaling | Not described at all | Per-condition min-max scaling to [0, 1], following Jin et al. (2025) |
 | A-04 | Smoothing strength | Self-contradictory sentence in Section 3.2.3 | Read as `alpha = 0.5` |
-| A-05 | Window stride | Not stated | 1 cycle |
+| A-05 | Window stride | Not in the text; **Fig. 1 indicates one time step** | 1 cycle |
 | A-06 | Validation split | None; trains for a fixed 200 epochs | 20 % of engines held out |
 | A-07 | Node feature content | Table 4 implies one number per sensor, produced by an LSTM that is never specified | The whole 30-cycle window per sensor (configurable) |
 | ~~A-08~~ | Order: smoothing and scaling | **Fig. 1 specifies it**: smoothing then normalisation | Withdrawn as an assumption; the paper's order is followed |
@@ -42,6 +42,7 @@ identifier below.
 | A-18 | Early stopping | None; trains a fixed 200 epochs | Stop after 20 epochs without improvement |
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
+| A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | Symmetric `D^(-1/2)(A+I)D^(-1/2)`, from the layer the paper cites |
 
 ---
 
@@ -167,13 +168,20 @@ straightforward to measure.
 
 **Where:** `config.PreprocessingConfig.window_stride`, `data/windowing.py`
 
-**The gap.** Table 6 of the paper gives a window of 30 time steps but no stride.
+**The gap, and how much of one it really is.** Table 6 gives a window of 30
+time steps and no stride, and the running text never mentions one. But
+**Fig. 1 does**: the panel showing five overlapping windows sliding along the
+`T24`, `T30` and `T50` traces is captioned *"Sliding window (t=1s)"*.
 
-**What we chose.** A stride of 1 cycle.
+**What we chose.** A stride of 1 cycle, which is what that caption indicates.
 
-**Why.** A stride of 1 is the usual choice on this dataset and produces the
-largest number of training examples from a fixed amount of data. A larger
-stride would reduce the training set without any stated benefit.
+**Why this is still logged as an assumption rather than withdrawn like A-08.**
+The caption's unit is wrong. C-MAPSS is sampled once per flight cycle and
+contains no seconds anywhere; Table 6 calls the same axis "time steps". So
+the figure indicates a stride of one *sample*, and reading that as one cycle
+is an inference, even if an easy one. A stride of 1 is also the usual choice
+on this dataset and produces the largest number of training examples from a
+fixed amount of data.
 
 **How much it matters.** Small for accuracy, large for training time.
 
@@ -860,6 +868,74 @@ finding F-04 discusses. Run B removes 29 of every 30 cycles from each node and
 costs 6.3 cycles (13.45 to 19.76). The two are close in size, which is a useful
 observation on its own: with no temporal encoder, *how much history each node
 carries* matters about as much as *which nodes are connected*.
+
+---
+
+## A-21 — The adjacency matrix is normalised symmetrically
+
+**Where:** `graph/adjacency.py`, `normalize_adjacency`
+
+**The gap.** Equation 8 of the paper is `H = ReLU(A X W)`, and the text beside
+it says only that "A denotes the normalized adjacency matrix incorporating
+self-loops" and that the normalisation "ensures stable gradient propagation and
+balanced feature aggregation across different node degrees". The formula itself
+is never printed. Searching the paper for `D`, "degree matrix" or any symmetric
+normalisation returns nothing.
+
+**What we chose.** The symmetric form of Kipf and Welling (2017),
+`D^(-1/2) (A + I) D^(-1/2)`.
+
+**Why.** Two forms fit the paper's description equally well. The symmetric one
+above, and the row-normalised `D^(-1) (A + I)`, which also adds self-loops and
+also balances across node degrees — it simply averages over each node's
+neighbourhood instead of taking a geometric mean of the two degrees. The
+symmetric form is chosen because it is the one defined by the layer the paper
+cites, and because it is what nearly all GCN implementations mean by "the
+normalised adjacency matrix".
+
+**How much it matters.** Unmeasured, and worth measuring. The two forms differ
+most where node degrees are uneven, and this graph's degrees run from 4 to 8,
+so the difference is not negligible. Unlike most of the entries here, testing
+this one needs a code change rather than a configuration change.
+
+---
+
+### F-07 — The paper's construction rules require an edge its matrix does not contain
+
+Section 2.3.1 gives five rules for building the adjacency matrix, each with a
+worked example. Checking every edge those examples require against the matrix
+as printed:
+
+| Rule | Edges required | Present |
+|------|----------------|---------|
+| 1. same engine station | `P30`-`Ps30`, `T30`-`P30`, `T30`-`Ps30`, `P15`-`BPR`, `W31`-`W32` | 5 of 5 |
+| 2. physical and corrected speed | `Nf`-`NRf` | 1 of 1 |
+| 3a. temperature chain `T24`→`T30`→`T50` | `T24`-`T30`, `T30`-`T50` | 2 of 2 |
+| 3b. pressure connections among `P15`, `NF`, `NRf`, `BPR` | all six pairs | 6 of 6 |
+| 4. `phi` influences `T30`, `P30`, `Ps30`, then `htBleed`, `W31`, `W32` | six edges | **5 of 6** |
+| 5. cooling interdependencies | `W31`-`W32`, `W31`-`htBleed`, `W32`-`htBleed` | 3 of 3 |
+
+**Twenty-three of the twenty-four hold. The exception is `phi`-`W32`.** The
+text names it explicitly — "phi influencing T30, P30, Ps30 and subsequently
+affecting htBleed, W31, and W32" — and the matrix gives it as 0, in Table 3 and
+in the Fig. 3 colour grid alike.
+
+Rule 3b is worth noting separately, because it is stronger than it looks: all
+six pairs among `P15`, `NF`, `NRf` and `BPR` are connected, so those four
+sensors form a complete subgraph. That is consistent with the rule as stated,
+and it is why the fan sensors behave as one tightly-coupled group.
+
+**This project follows the matrix, not the text**, because the matrix is what
+the model consumes and it is the version the paper prints twice. Adding the
+missing edge would change nothing structural: the graph would have 42 edges
+instead of 41, and its diameter (4), its four distance-4 pairs, and `T24`'s
+status as the only articulation point would all be unchanged.
+
+**What it means for the thesis.** It is a small internal inconsistency, but it
+bears on how much of the graph is really "physics-informed". If the text is the
+intent and the matrix is the artefact, then the matrix was not generated from
+the rules programmatically — it was written out by hand, and one cell was
+missed. That is worth one sentence when describing how the prior was built.
 
 ---
 

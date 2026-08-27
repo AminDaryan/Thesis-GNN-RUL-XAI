@@ -255,6 +255,10 @@ def run_preprocessing(
         )
 
     # -- 3 & 4. select sensors and cap labels -----------------------------
+    # Fig. 1 of the paper puts the piecewise RUL *after* the smoothing; here
+    # it comes before. The two commute exactly: capping touches only the
+    # label column and smoothing touches only the sensor columns, so no row
+    # is read by both. The order below groups the label work together.
     columns = list(PAPER_SENSOR_COLUMNS)
     train = apply_piecewise_rul(data.train, rul_max=config.rul_max)
     test = apply_piecewise_rul(
