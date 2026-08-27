@@ -24,7 +24,7 @@ on the real FD001 files and all 14 of its internal checks pass.
 5. [Getting the data](#5-getting-the-data)
 6. [Running the pipeline](#6-running-the-pipeline)
 7. [What the pipeline does, step by step](#7-what-the-pipeline-does-step-by-step)
-8. [Project layout](#8-project-layout)
+8. [How the project is organised](#8-how-the-project-is-organised)
 9. [Testing](#9-testing)
 10. [Rules this project follows](#10-rules-this-project-follows)
 11. [Known limitations](#11-known-limitations)
@@ -344,14 +344,16 @@ decisions that matter most for the validity of the results.
 
 ---
 
-## 8. Project layout
+## 8. How the project is organised
+
+### The directory tree
 
 ```
 Thesis GNN RUL XAI/
 ├── README.md                     This file
-├── pyproject.toml                Package definition and test settings
-├── requirements.txt              Dependencies for pip
-├── environment.yml               Dependencies for conda
+├── pyproject.toml                Declares the package and the test settings
+├── requirements.txt              Dependencies, for pip
+├── environment.yml               Dependencies, for conda
 │
 ├── config/
 │   └── fd001.yaml                Settings for the FD001 sub-dataset
@@ -371,23 +373,104 @@ Thesis GNN RUL XAI/
 │   ├── prepare_data.py           Check or preprocess the raw data
 │   └── train.py                  Train, score, and average over seeds
 │
-├── src/thesis_gnn_rul_xai/
-│   ├── config.py                 Typed settings
-│   ├── data/                     Loading, cleaning, reshaping
-│   ├── graph/                    The sensor graph
-│   ├── models/                   The network of the paper's Table 4
-│   ├── training/                 The loop and settings of Table 6
-│   ├── evaluation/               RMSE, NASA score, R-squared, ASUE
-│   └── utils/                    Paths, seeding, logging
+├── src/
+│   └── thesis_gnn_rul_xai/       All the computation lives here
+│       ├── config.py
+│       ├── data/
+│       ├── graph/
+│       ├── models/
+│       ├── training/
+│       ├── evaluation/
+│       └── utils/
 │
 └── tests/                        138 tests
 ```
 
-**Why the logic lives in `src/` and not in the notebook.** A notebook is good
-for explaining and for showing figures, but it is hard to test and easy to run
-out of order. Keeping the actual computation in importable modules means every
-step can be tested automatically, reused by a script, and cited by line number
-in the thesis. The notebook imports those modules and narrates what they do.
+### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
+
+This looks like one folder too many. It is three separate things stacked, and
+only the middle one is about this project.
+
+**`src/` is a safety convention.** Python normally finds code that sits next to
+whatever you are running. That is convenient and it hides mistakes: the tests
+would pass on your own machine using the loose files in the project folder, and
+then fail for anybody who installs the project properly, because some file you
+forgot to declare was being picked up silently. Moving the code one level down
+into `src/` makes that impossible. Python cannot see it by accident, so
+`pip install -e .` has to succeed before anything runs at all. If the tests
+pass, it is the *installed* package that passed them.
+
+**`thesis_gnn_rul_xai/` is the name you type in an `import` statement.** The
+folder name and the import name are the same thing:
+
+```python
+from thesis_gnn_rul_xai.data.smoothing import apply_ewma
+#    └─ the folder ───┘ └ folder ┘ └ file ┘   └ function ┘
+```
+
+That line is a path through the tree: the folder `src/thesis_gnn_rul_xai/`,
+then the folder `data/`, then the file `smoothing.py`, then the function
+`apply_ewma` defined inside it. The link between "the code is in `src/`" and
+"you import it as `thesis_gnn_rul_xai`" is declared once, in `pyproject.toml`:
+
+```toml
+[tool.setuptools.packages.find]
+where = ["src"]
+```
+
+**Every folder inside is one job**, and holds one `.py` file per task. Each
+also holds a file called `__init__.py`, which is what marks a folder as
+importable and lists which names are public.
+
+| Folder | The question it answers | An example file inside |
+|--------|-------------------------|------------------------|
+| `data/` | How do raw text files become model input? | `smoothing.py`, the noise filter |
+| `graph/` | Which sensors are connected to which? | `adjacency.py`, the paper's Table 3 |
+| `models/` | What is the network? | `estgnn.py`, the paper's Table 4 |
+| `training/` | How is the network fitted to the data? | `loop.py`, the paper's Table 6 |
+| `evaluation/` | How good is the result? | `metrics.py`, the four measures |
+| `utils/` | Housekeeping the others share | `paths.py`, `seeding.py` |
+
+`config.py` sits at the top level rather than in a folder because every one of
+those needs the settings.
+
+### The notebook and `src/`: the same step in two forms
+
+They are not alternatives, and neither is a copy of the other. Take one step,
+the smoothing filter, and look at it in both places.
+
+**In `src/thesis_gnn_rul_xai/data/smoothing.py`** it is about 170 lines: the
+formula, an explanation of why each engine must be filtered separately from its
+neighbours, the errors raised for impossible settings, and a docstring giving a
+worked example. Eight tests in `tests/test_smoothing.py` check it, including
+one that confirms the filter never reads a value from later in the sequence.
+
+**In the notebook** the same step is one line and a picture:
+
+```python
+train_smoothed = apply_ewma(train_frame, sensor_columns, alpha=config.smoothing_alpha)
+```
+
+followed by a plot of one engine before and after, and a table showing that the
+cycle-to-cycle jitter fell by about 59 %.
+
+So: **`src/` is the machine, and the notebook is a guided tour of the machine
+running.** The reason for keeping them apart is that a notebook can be run out
+of order. You can execute cell 20 before cell 5, get a plausible-looking wrong
+answer, and never be told. Code in a module cannot be run out of order and can
+be tested automatically, so a result does not depend on which cells somebody
+happened to click. A thesis figure that depends on cell execution order is not
+reproducible, and reproducibility is the whole point of the arrangement.
+
+### Which file should I open?
+
+| If you want to... | Open |
+|-------------------|------|
+| Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
+| Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
+| Know why a value was chosen when the paper is silent | `docs/ASSUMPTIONS.md` |
+| Run the whole thing without reading anything | `scripts/prepare_data.py`, then `scripts/train.py` |
+| Check that a step really does what it claims | the matching file in `tests/` |
 
 ---
 
