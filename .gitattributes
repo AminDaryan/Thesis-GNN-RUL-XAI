@@ -1,0 +1,11 @@
+# Keep line endings stable across machines. Without this, git rewrites every
+# file on checkout on Windows and every commit shows spurious whitespace churn.
+* text=auto eol=lf
+
+# Notebooks are JSON. Never let git try to merge them; resolve by re-executing.
+*.ipynb -merge diff=jupyternotebook
+
+# Data files are never text.
+*.npz binary
+*.png binary
+*.pdf binary

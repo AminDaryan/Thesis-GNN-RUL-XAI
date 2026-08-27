@@ -132,9 +132,7 @@ numerical scale, so that a temperature near 1400 does not dominate a ratio near
 8 simply because it is a larger number. This project uses **min-max scaling**,
 which maps each sensor's smallest observed value to 0 and its largest to 1:
 
-```
-scaled = (value - minimum) / (maximum - minimum)
-```
+$$\text{scaled} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
 
 with the minimum and maximum taken from the training engines only, and
 separately for each operating condition. `zscore` is available as an
@@ -144,18 +142,14 @@ alternative. See assumption A-03.
 measurement noise. Each smoothed value is a blend of the current reading and
 the previous smoothed value:
 
-```
-S(t) = α · X(t) + (1 - α) · S(t-1)          S(1) = X(1),  α = 0.5
-```
+$$S_t = \alpha X_t + (1 - \alpha) S_{t-1}, \qquad S_1 = X_1, \qquad \alpha = 0.5$$
 
 Because it only ever looks backwards, it cannot leak a future reading into the
 present. See assumptions A-04 and A-09.
 
 **Graph convolution.** The operation each of the three network layers performs:
 
-```
-H' = ReLU( Â · H · W )        Â = D^(-1/2) (A + I) D^(-1/2)
-```
+$$H' = \mathrm{ReLU}\left(\hat{A} H W\right), \qquad \hat{A} = D^{-1/2} (A + I) D^{-1/2}$$
 
 `H` holds the current node features, `W` is learned, and `Â` is the fixed
 sensor graph with self-loops added and each edge divided by the degrees it
@@ -164,9 +158,7 @@ joins. See assumption A-21.
 **Piecewise-linear RUL.** The target. While an engine is healthy the label is
 held at a ceiling; after that it falls by one per cycle:
 
-```
-RUL(t) = min(T_total - t, RUL_max)          RUL_max = 125
-```
+$$\mathrm{RUL}(t) = \min\left(T_{\text{total}} - t,\; \mathrm{RUL}_{\max}\right), \qquad \mathrm{RUL}_{\max} = 125$$
 
 See assumption A-01.
 
@@ -179,20 +171,16 @@ what the rest can do without it. If accuracy barely changes, that part was
 not doing much. It is how a paper shows which of its ingredients matter.
 
 **The four measures used to score a prediction.** All four are computed over
-the *N* test engines, from one prediction each. Throughout, `y` is the true
-remaining life of an engine and `ŷ` the predicted one, both in flight
+the $N$ test engines, from one prediction each. Throughout, $y$ is the true
+remaining life of an engine and $\hat{y}$ the predicted one, both in flight
 cycles, and the error is
 
-```
-d = ŷ - y          positive means the model was optimistic
-```
+$$d = \hat{y} - y \qquad \text{positive means the model was optimistic}$$
 
 * **RMSE — root mean squared error.** The typical size of the error, in
   flight cycles.
 
-  ```
-  RMSE = sqrt( (1/N) * Σ d² )
-  ```
+  $$\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N} d_i^{\,2}}$$
 
   Squaring makes it symmetric: a prediction 10 cycles too high counts
   exactly like one 10 cycles too low. This is the number most papers quote.
@@ -200,10 +188,11 @@ d = ŷ - y          positive means the model was optimistic
 * **NASA score (SF).** The official score of the 2008 PHM competition this
   dataset comes from.
 
-  ```
-  SF = Σ s,   where   s = exp(-d / 13) - 1   if d < 0   (early, safe)
-                      s = exp( d / 10) - 1   if d >= 0  (late, dangerous)
-  ```
+  $$\mathrm{SF} = \sum_{i=1}^{N} s_i, \qquad
+  s_i = \begin{cases}
+  e^{-d_i/13} - 1 & d_i < 0 \quad \text{(early, safe)}\\[2pt]
+  e^{\;d_i/10} - 1 & d_i \ge 0 \quad \text{(late, dangerous)}
+  \end{cases}$$
 
   Unlike RMSE it is **asymmetric**, and deliberately so: the divisor 10 for
   a late prediction is smaller than the 13 for an early one, so the same
@@ -217,9 +206,7 @@ d = ŷ - y          positive means the model was optimistic
 * **R² — coefficient of determination.** The fraction of the variation in
   the true labels that the model accounts for.
 
-  ```
-  R² = 1 - Σ(ŷ - y)² / Σ(y - ȳ)²        ȳ = mean of the true labels
-  ```
+  $$R^2 = 1 - \frac{\sum_i (\hat{y}_i - y_i)^2}{\sum_i (y_i - \bar{y})^2}, \qquad \bar{y} = \text{mean of the true labels}$$
 
   1 is perfect; 0 is no better than always guessing the average; negative
   is worse than that. (The paper prints a different denominator; see A-16.)
@@ -227,9 +214,8 @@ d = ŷ - y          positive means the model was optimistic
 * **ASUE — Average Safe Underestimation Error.** The average shortfall,
   counted only over the engines the model was *pessimistic* about.
 
-  ```
-  ASUE = (1 / N_under) * Σ max(0, y - ŷ)     over the engines where ŷ < y
-  ```
+  $$\mathrm{ASUE} = \frac{1}{N_{\text{under}}}
+  \sum_{i\,:\,\hat{y}_i < y_i} \max\left(0,\; y_i - \hat{y}_i\right)$$
 
   Underestimating is the safe direction, so this measures the cost of being
   too cautious: servicing engines that still had life left in them. Engines
@@ -238,6 +224,11 @@ d = ŷ - y          positive means the model was optimistic
 All four are implemented in `src/thesis_gnn_rul_xai/evaluation/metrics.py`,
 on plain NumPy arrays, so a figure copied out of a published table can be
 scored the same way a model's output is.
+
+> The formulas above are LaTeX, written between `$` delimiters. GitHub and
+> JupyterLab both render that syntax natively, so **no library or build step
+> is involved** — nothing needs installing to read them. In a plain text
+> editor they appear as their source, which is still readable.
 
 ---
 
