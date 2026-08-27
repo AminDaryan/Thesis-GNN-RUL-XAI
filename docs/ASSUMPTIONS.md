@@ -952,6 +952,22 @@ missing edge would change nothing structural: the graph would have 42 edges
 instead of 41, and its diameter (4), its four distance-4 pairs, and `T24`'s
 status as the only articulation point would all be unchanged.
 
+Every structural figure quoted above can be recomputed from the package rather
+than taken on trust:
+
+```python
+from thesis_gnn_rul_xai.graph.adjacency import (
+    adjacency_report, build_physics_adjacency, pairs_beyond_reach)
+
+matrix, symbols = build_physics_adjacency()
+report = adjacency_report(matrix, symbols)
+report["diameter"]              # 4
+report["articulation_points"]   # ['T24']
+report["distance_histogram"]    # {1: 41, 2: 25, 3: 21, 4: 4}
+pairs_beyond_reach(matrix, symbols, n_layers=3)
+# [('BPR', 'W32', 4), ('NRf', 'W32', 4), ('Nf', 'W32', 4), ('P15', 'W32', 4)]
+```
+
 **What it means for the thesis.** It is a small internal inconsistency, but it
 bears on how much of the graph is really "physics-informed". If the text is the
 intent and the matrix is the artefact, then the matrix was not generated from

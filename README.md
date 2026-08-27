@@ -1,19 +1,25 @@
 # Thesis GNN RUL XAI
 
-Preprocessing pipeline for predicting how much life is left in a jet engine,
-built as the software foundation for a master's thesis on **explainable**
-graph-based deep learning for predictive maintenance.
+Predicting how much life is left in a jet engine, built as the software
+foundation for a master's thesis on **explainable** graph-based deep learning
+for predictive maintenance. It re-implements a published method on the NASA
+C-MAPSS benchmark and measures how far it can be taken from the paper alone.
 
-**Current stage:** preprocessing, the graph network of the paper's Table 4, the
-training loop of its Table 6, and the four evaluation measures of its
-Section 3.3. On FD001 this reaches **RMSE 13.45 +/- 0.20** across five seeds,
-against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation
-(see finding F-06 for what that comparison does and does not establish).
-The dynamic SHAP analysis of its Section 2.4 is implemented, exactly rather
-than by sampling.
+**What is implemented.** The preprocessing of the paper's Section 3.2, the
+graph network of its Table 4, the training loop of its Table 6, the four
+evaluation measures of its Section 3.3, and the dynamic SHAP analysis of its
+Section 2.4 — the last computed exactly rather than by sampling. The
+per-sensor LSTM stage is deliberately omitted; see
+[section 12](#12-known-limitations).
 
-**Status:** 157 automated tests pass (107 without PyTorch installed). The notebook has been executed end to end
-on the real FD001 files and all 14 of its internal checks pass.
+**Where that gets to.** On FD001, **RMSE 13.45 ± 0.20** across five seeds,
+against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation.
+[Section 8](#8-results-so-far) gives all four measures and says what that
+comparison does and does not establish.
+
+**Status.** 163 automated tests pass, 107 of them without PyTorch installed.
+Both notebooks have been executed end to end on the real FD001 files, and
+every check inside them passes.
 
 ---
 
@@ -158,7 +164,8 @@ joins. See assumption A-21.
 **Piecewise-linear RUL.** The target. While an engine is healthy the label is
 held at a ceiling; after that it falls by one per cycle:
 
-$$\mathrm{RUL}(t) = \min\left(T_{\text{total}} - t,\; \mathrm{RUL}_{\max}\right), \qquad \mathrm{RUL}_{\max} = 125$$
+$$\mathrm{RUL}(t) = \min\left(T_{\text{total}} - t,\; \mathrm{RUL}_{\max}\right),
+\qquad \mathrm{RUL}_{\max} = 125$$
 
 See assumption A-01.
 
@@ -177,49 +184,55 @@ cycles, and the error is
 
 $$d = \hat{y} - y \qquad \text{positive means the model was optimistic}$$
 
-* **RMSE — root mean squared error.** The typical size of the error, in
-  flight cycles.
+#### RMSE — root mean squared error
 
-  $$\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N} d_i^{\,2}}$$
+The typical size of the error, in flight cycles.
 
-  Squaring makes it symmetric: a prediction 10 cycles too high counts
-  exactly like one 10 cycles too low. This is the number most papers quote.
+$$\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N} d_i^{\,2}}$$
 
-* **NASA score (SF).** The official score of the 2008 PHM competition this
-  dataset comes from.
+Squaring makes it symmetric: a prediction 10 cycles too high counts exactly
+like one 10 cycles too low. This is the number most papers quote.
 
-  $$\mathrm{SF} = \sum_{i=1}^{N} s_i, \qquad
-  s_i = \begin{cases}
-  e^{-d_i/13} - 1 & d_i < 0 \quad \text{(early, safe)}\\[2pt]
-  e^{\;d_i/10} - 1 & d_i \ge 0 \quad \text{(late, dangerous)}
-  \end{cases}$$
+#### NASA score (SF)
 
-  Unlike RMSE it is **asymmetric**, and deliberately so: the divisor 10 for
-  a late prediction is smaller than the 13 for an early one, so the same
-  error costs more when the model was optimistic. Predicting more life than
-  an engine has leaves a failing engine flying; predicting less only
-  services it early. Being exponential, one badly wrong engine can outweigh
-  ninety-nine good ones. Lower is better, 0 is perfect, and because it is a
-  **sum** it grows with the size of the test set — so it can only be
-  compared between runs on the same sub-dataset.
+The official score of the 2008 PHM competition this dataset comes from.
 
-* **R² — coefficient of determination.** The fraction of the variation in
-  the true labels that the model accounts for.
+$$\mathrm{SF} = \sum_{i=1}^{N} s_i, \qquad
+s_i = \begin{cases}
+e^{-d_i/13} - 1 & d_i < 0 \quad \text{(early, safe)} \\
+e^{\;d_i/10} - 1 & d_i \ge 0 \quad \text{(late, dangerous)}
+\end{cases}$$
 
-  $$R^2 = 1 - \frac{\sum_i (\hat{y}_i - y_i)^2}{\sum_i (y_i - \bar{y})^2}, \qquad \bar{y} = \text{mean of the true labels}$$
+Unlike RMSE it is **asymmetric**, and deliberately so: the divisor 10 for a
+late prediction is smaller than the 13 for an early one, so the same error
+costs more when the model was optimistic. Predicting more life than an engine
+has leaves a failing engine flying; predicting less only services it early.
+Being exponential, one badly wrong engine can outweigh ninety-nine good ones.
+Lower is better, 0 is perfect, and because it is a **sum** it grows with the
+size of the test set — so it can only be compared between runs on the same
+sub-dataset.
 
-  1 is perfect; 0 is no better than always guessing the average; negative
-  is worse than that. (The paper prints a different denominator; see A-16.)
+#### R² — coefficient of determination
 
-* **ASUE — Average Safe Underestimation Error.** The average shortfall,
-  counted only over the engines the model was *pessimistic* about.
+The fraction of the variation in the true labels that the model accounts for.
 
-  $$\mathrm{ASUE} = \frac{1}{N_{\text{under}}}
-  \sum_{i\,:\,\hat{y}_i < y_i} \max\left(0,\; y_i - \hat{y}_i\right)$$
+$$R^2 = 1 - \frac{\sum_i (\hat{y}_i - y_i)^2}{\sum_i (y_i - \bar{y})^2},
+\qquad \bar{y} = \text{mean of the true labels}$$
 
-  Underestimating is the safe direction, so this measures the cost of being
-  too cautious: servicing engines that still had life left in them. Engines
-  the model was optimistic about do not contribute at all.
+1 is perfect; 0 is no better than always guessing the average; negative is
+worse than that. (The paper prints a different denominator; see A-16.)
+
+#### ASUE — Average Safe Underestimation Error
+
+The average shortfall, counted only over the engines the model was
+*pessimistic* about.
+
+$$\mathrm{ASUE} = \frac{1}{N_{\text{under}}}
+\sum_{i\,:\,\hat{y}_i < y_i} \max\left(0,\; y_i - \hat{y}_i\right)$$
+
+Underestimating is the safe direction, so this measures the cost of being too
+cautious: servicing engines that still had life left in them. Engines the
+model was optimistic about do not contribute at all.
 
 All four are implemented in `src/thesis_gnn_rul_xai/evaluation/metrics.py`,
 on plain NumPy arrays, so a figure copied out of a published table can be
@@ -376,11 +389,11 @@ Each explains every step, shows the intermediate tables and figures, and
 verifies the stage as it goes. Together they are the intended entry point for
 a reader who wants to understand what happens and why.
 
-> The notebook is shipped with its outputs already filled in, so it can be read
-> without running anything. Those outputs were produced on the **real FD001
-> files**, which were verified against the published release (20 631 training
-> rows, 100 training engines, 100 test engines). The data files themselves are
-> not in this repository; see [section 5](#5-getting-the-data).
+> Both notebooks are shipped with their outputs already filled in, so they can
+> be read without running anything. Those outputs were produced on the **real
+> FD001 files**, verified against the published release (20 631 training rows,
+> 100 training engines, 100 test engines). The data files themselves are not in
+> this repository; see [section 5](#5-getting-the-data).
 
 ### From the command line
 
@@ -430,6 +443,9 @@ each carrying its own 30-cycle history.
 
 ## 7. What the pipeline does, step by step
 
+Paths in the "Where" column are relative to `src/thesis_gnn_rul_xai/`, so
+`data/loading.py` means `src/thesis_gnn_rul_xai/data/loading.py`.
+
 | # | Step | What happens | Where |
 |---|------|--------------|-------|
 | 1 | Load | Read the three text files; work out the Remaining Useful Life at every row | `data/loading.py` |
@@ -440,7 +456,7 @@ each carrying its own 30-cycle history.
 | 6 | Split | Hold out 20 % of engines for validation, **before any statistic is learned** | `data/windowing.py` |
 | 7 | Rescale | Put all sensors on a comparable scale, using training engines only | `data/normalization.py` |
 | 8 | Window | Cut histories into 30-cycle examples | `data/windowing.py` |
-| — | Graph | Build the 14-node sensor graph from the paper's Table 3 | `graph/adjacency.py` |
+| — | Graph | Build the 14-node sensor graph from the paper's Table 3, and describe it: 41 edges, diameter 4, `T24` its only articulation point | `graph/adjacency.py` |
 
 Those eight steps turn the raw files into arrays. Four more stages turn the
 arrays into a result:
@@ -454,7 +470,9 @@ arrays into a result:
 
 Each module's docstring explains the reasoning behind its step in full. Start
 with `data/normalization.py` and `data/windowing.py`; those two contain the
-decisions that matter most for the validity of the results.
+decisions that matter most for the validity of the results. For the graph,
+`adjacency_report()` computes every structural figure quoted above, so none of
+them has to be taken on trust.
 
 ---
 
@@ -556,7 +574,7 @@ Thesis GNN RUL XAI/
 │       ├── explain/
 │       └── utils/
 │
-└── tests/                        157 tests
+└── tests/                        163 tests
 ```
 
 ### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
@@ -643,9 +661,9 @@ the package and the two scripts:
 
 | | lines | share |
 |---|-------|-------|
-| executable code | 1 970 | 36 % |
-| explanation (docstrings and comments) | 2 690 | 49 % |
-| blank | 839 | 15 % |
+| executable code | 2 000 | 35 % |
+| explanation (docstrings and comments) | 2 785 | 49 % |
+| blank | 860 | 15 % |
 
 So the thing to be read is about **two thousand lines**, and it is spread thinly:
 the largest single file has 219 lines of code, and several of the most important
@@ -691,9 +709,9 @@ the layers above, so read them last and they will contain no surprises.
 
 **Four shortcuts that save more time than they cost.**
 
-1. **Start with the notebook, not with `src/`.** It runs the whole preprocessing
-   chain on real data and shows the numbers changing at every step. An hour
-   there makes `src/` read like a reference rather than a puzzle.
+1. **Start with the notebooks, not with `src/`.** They run the whole chain on
+   real data and show the numbers changing at every step. An hour there makes
+   `src/` read like a reference rather than a puzzle.
 2. **Read every module's docstring first, and nothing else.** The docstring at
    the top of each file says what the step does, why it is done that way, and
    what the paper says about it. Reading only those — about forty minutes for
@@ -736,7 +754,15 @@ pytest                     # everything
 pytest -v                  # with the name of each test
 pytest tests/test_normalization.py
 pytest --doctest-modules src   # only the examples inside docstrings
+ruff check .               # style, unused imports, dead code
 ```
+
+Every push also runs `ruff check` and `pytest` on GitHub Actions, against
+Python 3.10 and 3.13 — see `.github/workflows/checks.yml`. The runner has no
+NASA data, so 73 tests pass there and 42 skip themselves. A green run means
+nothing that can be checked *without* the dataset is broken; it does not mean
+the numbers in [section 8](#8-results-so-far) still hold, which needs the data
+and has to be checked locally.
 
 The suite covers each preprocessing step, the sensor graph, the network, the
 training loop, the four measures, the Shapley values, and the pipeline end to
@@ -829,7 +855,6 @@ A-04 (the smoothing strength), A-05 (the stride), A-06 (the validation
 fraction), A-12 (the bias), A-14 (the initialisation), A-17 (the schedule)
 and A-18 (early stopping). Each would take one run of
 `scripts/train.py --seeds 5` to settle.
-
 
 ---
 

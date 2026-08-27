@@ -1,0 +1,66 @@
+# Automated checks, run on every push and pull request.
+#
+# What this can and cannot verify
+# -------------------------------
+# The NASA C-MAPSS files are not in this repository, so the runner has no data.
+# Every test that needs the real measurements skips itself with a message
+# rather than failing, which is the behaviour tests/conftest.py is written to
+# give. PyTorch is installed, so the model, training and explanation tests do
+# run; only the data-dependent ones are skipped.
+#
+# That leaves 73 tests passing and 42 skipped. What survives is the part that
+# can be checked without engines: the sensor graph and everything derived from
+# it, the four evaluation measures, the piecewise label, the configuration
+# objects, the Shapley properties on small synthetic graphs, and every
+# docstring example in the package.
+#
+# A green run here therefore means "nothing that can be checked without the
+# dataset is broken". It does not mean the pipeline still reproduces the
+# numbers in README section 8 - that needs the data, and has to be run locally
+# with `pytest` and `python scripts/train.py --seeds 5`.
+
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The lowest version the project claims to support, and the current
+        # one. A break on either is worth knowing about.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install the package and its checking tools
+        run: |
+          python -m pip install --upgrade pip
+          # CPU build: the runner has no GPU, and the tests do not need one.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev]"
+
+      - name: Style and dead code (ruff)
+        run: ruff check .
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Type hints (mypy)
+        # Not blocking. The hints are checked so that they stay meaningful, but
+        # pandas' type stubs disagree with correct pandas code often enough
+        # that a red build here would train everyone to ignore it.
+        continue-on-error: true
+        run: mypy --ignore-missing-imports src/thesis_gnn_rul_xai

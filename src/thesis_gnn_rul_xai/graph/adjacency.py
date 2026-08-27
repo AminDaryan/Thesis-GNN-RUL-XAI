@@ -80,6 +80,21 @@ Two things happen in this formula, both from Kipf and Welling (2017):
   dominating. Without this scaling, repeatedly summing over neighbours makes
   feature values grow layer after layer, and training becomes unstable.
 
+What this module can tell you about the graph
+---------------------------------------------
+:func:`adjacency_report` describes it, and several of the things it reports
+bound what the model can express before any training happens:
+
+* the **diameter** is the largest number of edges between any two sensors. A
+  network with fewer graph convolution layers than the diameter cannot let
+  every pair of sensors influence each other, whatever it learns.
+* the **articulation points** are sensors whose removal would split the graph
+  in two. Every message between the halves passes through one of them.
+
+Those come from ``networkx`` rather than from code written here, because a
+breadth-first search written for one project is tested by that project alone,
+and these numbers appear in the thesis.
+
 References
 ----------
 Corso, G., Stark, H., Jegelka, S., Jaakkola, T., & Barzilay, R. (2024). Graph
@@ -101,6 +116,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -116,6 +132,7 @@ __all__ = [
     "build_fully_connected_adjacency",
     "build_physics_adjacency",
     "normalize_adjacency",
+    "pairs_beyond_reach",
 ]
 
 logger = get_logger(__name__)
@@ -348,6 +365,31 @@ def normalize_adjacency(
     return normalized.astype(np.float32)
 
 
+def to_networkx(
+    adjacency: np.ndarray,
+    symbols: Sequence[str],
+) -> nx.Graph:
+    """Return the graph as a :class:`networkx.Graph` labelled by sensor symbol.
+
+    Working through networkx rather than by hand means the properties below are
+    computed by a library that is tested far more heavily than this project
+    could test its own breadth-first search, and it makes the standard graph
+    vocabulary available for anything the thesis needs later.
+
+    Parameters
+    ----------
+    adjacency : numpy.ndarray
+        A square, symmetric matrix of edge indicators. Self-loops are ignored:
+        a node is never its own neighbour for the purpose of counting distance.
+    symbols : sequence of str
+        Node labels, in the order of the matrix rows.
+    """
+    matrix = np.asarray(adjacency, dtype=float).copy()
+    np.fill_diagonal(matrix, 0.0)
+    graph = nx.from_numpy_array(matrix)
+    return nx.relabel_nodes(graph, dict(enumerate(symbols)))
+
+
 def adjacency_report(
     adjacency: np.ndarray,
     symbols: Sequence[str],
@@ -357,41 +399,135 @@ def adjacency_report(
     Returns
     -------
     dict
-        Keys: ``n_nodes``, ``n_edges``, ``density``, ``is_symmetric``,
-        ``has_self_loops``, ``is_connected``, ``degrees`` and
-        ``isolated_nodes``.
+        Basic structure:
 
-        ``density`` is the fraction of all possible edges that are present.
-        ``is_connected`` says whether every node can be reached from every
-        other node by following edges; a graph that is not connected would
-        split the sensors into groups that can never exchange information, no
-        matter how many layers the network has.
+        ``n_nodes``, ``n_edges``, ``degrees``, ``isolated_nodes``
+            Counts and per-node degree.
+        ``density``
+            The fraction of all possible edges that are present.
+        ``is_symmetric``, ``has_self_loops``
+            Properties of the matrix as given.
+        ``is_connected``
+            Whether every node can be reached from every other one. A graph
+            that is not connected splits the sensors into groups that can never
+            exchange information, however many layers the network has.
+
+        How far information can travel, which bounds what the model can
+        express:
+
+        ``diameter``
+            The largest number of edges between any two sensors. A graph
+            convolution network with fewer layers than this cannot let every
+            pair of sensors influence each other, whatever it learns.
+        ``distance_histogram``
+            How many pairs sit at each distance, as ``{distance: pairs}``.
+        ``articulation_points``
+            Sensors whose removal would disconnect the graph. Every message
+            between the two halves passes through one of these, which makes
+            them the natural target of a graph-native explanation.
+        ``algebraic_connectivity``
+            The second-smallest eigenvalue of the Laplacian. Near zero means
+            the graph nearly falls into two pieces; larger means it is
+            well-knit. Reported as ``None`` for a disconnected graph, where it
+            is zero by definition and says nothing.
+
+    Examples
+    --------
+    The paper's own sensor graph:
+
+    >>> matrix, symbols = build_physics_adjacency()
+    >>> report = adjacency_report(matrix, symbols)
+    >>> report["n_edges"], report["diameter"]
+    (41, 4)
+    >>> report["articulation_points"]
+    ['T24']
     """
     matrix = np.asarray(adjacency)
     n_nodes = matrix.shape[0]
     degrees = matrix.sum(axis=1).astype(int)
+    graph = to_networkx(matrix, symbols)
 
-    # Breadth-first search from node 0 to test connectivity.
-    reached = {0}
-    frontier = [0]
-    while frontier:
-        current = frontier.pop()
-        for neighbour in np.flatnonzero(matrix[current]):
-            if int(neighbour) not in reached:
-                reached.add(int(neighbour))
-                frontier.append(int(neighbour))
-
+    connected = nx.is_connected(graph) if n_nodes else False
     n_possible = n_nodes * (n_nodes - 1)
-    return {
+
+    report: dict[str, object] = {
         "n_nodes": n_nodes,
-        "n_edges": int(matrix.sum() // 2),
+        "n_edges": graph.number_of_edges(),
         "density": float(matrix.sum() / n_possible) if n_possible else 0.0,
         "is_symmetric": bool(np.allclose(matrix, matrix.T)),
         "has_self_loops": bool(np.any(np.diag(matrix) != 0)),
-        "is_connected": len(reached) == n_nodes,
+        "is_connected": connected,
         "degrees": dict(zip(symbols, degrees.tolist(), strict=True)),
         "isolated_nodes": [symbols[i] for i in np.flatnonzero(degrees == 0)],
+        "articulation_points": sorted(nx.articulation_points(graph)),
     }
+
+    if connected:
+        lengths = dict(nx.all_pairs_shortest_path_length(graph))
+        counts: dict[int, int] = {}
+        for source, reachable in lengths.items():
+            for target, distance in reachable.items():
+                if source < target:
+                    counts[distance] = counts.get(distance, 0) + 1
+        report["diameter"] = nx.diameter(graph)
+        report["distance_histogram"] = dict(sorted(counts.items()))
+        report["algebraic_connectivity"] = float(nx.algebraic_connectivity(graph))
+    else:
+        report["diameter"] = None
+        report["distance_histogram"] = None
+        report["algebraic_connectivity"] = None
+
+    return report
+
+
+def pairs_beyond_reach(
+    adjacency: np.ndarray,
+    symbols: Sequence[str],
+    n_layers: int,
+) -> list[tuple[str, str, int]]:
+    """Sensor pairs that ``n_layers`` of graph convolution cannot connect.
+
+    One graph convolution layer moves information one edge. Two sensors more
+    than ``n_layers`` edges apart therefore cannot influence each other at all,
+    no matter what the network learns. This is a property of the graph and the
+    depth, fixed before training begins.
+
+    With the three layers of Table 4 on the paper's own graph, four pairs are
+    out of reach.
+
+    Parameters
+    ----------
+    adjacency : numpy.ndarray
+        A square, symmetric matrix of edge indicators.
+    symbols : sequence of str
+        Node labels, in matrix row order.
+    n_layers : int
+        Number of graph convolution layers.
+
+    Returns
+    -------
+    list of tuple
+        ``(symbol_a, symbol_b, distance)``, sorted by distance then by name.
+        Empty when every pair is within reach.
+
+    Examples
+    --------
+    >>> matrix, symbols = build_physics_adjacency()
+    >>> pairs_beyond_reach(matrix, symbols, n_layers=3)
+    [('BPR', 'W32', 4), ('NRf', 'W32', 4), ('Nf', 'W32', 4), ('P15', 'W32', 4)]
+    >>> pairs_beyond_reach(matrix, symbols, n_layers=4)
+    []
+    """
+    if n_layers < 1:
+        raise ValueError(f"n_layers must be at least 1, got {n_layers}.")
+
+    graph = to_networkx(adjacency, symbols)
+    out: list[tuple[str, str, int]] = []
+    for source, reachable in nx.all_pairs_shortest_path_length(graph):
+        for target, distance in reachable.items():
+            if source < target and distance > n_layers:
+                out.append((source, target, distance))
+    return sorted(out, key=lambda item: (item[2], item[0], item[1]))
 
 
 def adjacency_to_frame(

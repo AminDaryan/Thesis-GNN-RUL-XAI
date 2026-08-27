@@ -121,7 +121,7 @@ the author's decision, not yours.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 157 tests; must all pass
+pytest                # 163 tests; must all pass
 ```
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the

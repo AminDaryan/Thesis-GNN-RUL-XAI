@@ -18,6 +18,7 @@ from thesis_gnn_rul_xai.graph.adjacency import (
     build_fully_connected_adjacency,
     build_physics_adjacency,
     normalize_adjacency,
+    pairs_beyond_reach,
 )
 
 
@@ -128,6 +129,55 @@ def test_rule_3b_makes_the_fan_sensors_a_complete_subgraph():
     for i, a in enumerate(group):
         for b in group[i + 1:]:
             assert frame.loc[a, b] == 1, f"{a}-{b} is missing from the fan group"
+
+
+def test_the_graph_has_a_diameter_of_four():
+    """Two sensors are four edges apart, which bounds what three layers can do."""
+    matrix, symbols = build_physics_adjacency()
+    report = adjacency_report(matrix, symbols)
+    assert report["diameter"] == 4
+    assert report["distance_histogram"] == {1: 41, 2: 25, 3: 21, 4: 4}
+    assert sum(report["distance_histogram"].values()) == 14 * 13 // 2
+
+
+def test_three_layers_leave_four_pairs_unreachable():
+    """The architectural consequence of that diameter.
+
+    Table 4 stacks three graph convolution layers, and one layer moves
+    information one edge. Every pair further apart than three therefore cannot
+    influence each other, whatever the network learns. On this graph that is
+    four pairs, all of them involving W32.
+    """
+    matrix, symbols = build_physics_adjacency()
+    beyond = pairs_beyond_reach(matrix, symbols, n_layers=3)
+    assert beyond == [
+        ("BPR", "W32", 4), ("NRf", "W32", 4), ("Nf", "W32", 4), ("P15", "W32", 4),
+    ]
+    assert pairs_beyond_reach(matrix, symbols, n_layers=4) == []
+
+
+def test_t24_is_the_only_articulation_point():
+    """Removing T24 would split the sensors into a fan group and a core group.
+
+    Every message between the two halves therefore passes through it. That is
+    a fact about the published graph, and the kind of structure a graph-native
+    explanation can express but node-level attribution cannot.
+    """
+    matrix, symbols = build_physics_adjacency()
+    report = adjacency_report(matrix, symbols)
+    assert report["articulation_points"] == ["T24"]
+    assert 0 < report["algebraic_connectivity"] < 1      # connected, but weakly
+
+
+def test_a_disconnected_graph_reports_no_diameter():
+    """Distance is undefined between components, so the fields are None."""
+    matrix = np.zeros((4, 4))
+    matrix[0, 1] = matrix[1, 0] = 1
+    matrix[2, 3] = matrix[3, 2] = 1
+    report = adjacency_report(matrix, ["a", "b", "c", "d"])
+    assert report["is_connected"] is False
+    assert report["diameter"] is None
+    assert report["algebraic_connectivity"] is None
 
 
 def test_normalisation_matches_the_formula_on_a_tiny_graph():
