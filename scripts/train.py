@@ -49,6 +49,7 @@ from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config  # noqa: 
 from thesis_gnn_rul_xai.data.pipeline import run_preprocessing  # noqa: E402
 from thesis_gnn_rul_xai.graph.adjacency import (  # noqa: E402
     build_fully_connected_adjacency,
+    build_physics_adjacency,
     normalize_adjacency,
 )
 from thesis_gnn_rul_xai.models import ESTGNN  # noqa: E402
@@ -71,13 +72,13 @@ PAPER_FD001 = {
 }
 
 
-def build_model(prepared, graph: str) -> ESTGNN:
+def build_model(prepared, graph: str, adjacency_norm: str = "symmetric") -> ESTGNN:
     """Build the network on either the physics graph or a complete one."""
     if graph == "physics":
-        adjacency = prepared.adjacency_normalized
+        raw, _ = build_physics_adjacency()
     else:
-        complete, _ = build_fully_connected_adjacency(len(prepared.sensor_symbols))
-        adjacency = normalize_adjacency(complete)
+        raw, _ = build_fully_connected_adjacency(len(prepared.sensor_symbols))
+    adjacency = normalize_adjacency(raw, method=adjacency_norm)
     return ESTGNN(
         adjacency,
         in_features=prepared.train.features.shape[2],
@@ -101,6 +102,9 @@ def main() -> int:
                         help="Override the epoch count (Table 6 gives 200)")
     parser.add_argument("--graph", choices=("physics", "complete"), default="physics",
                         help="'complete' is the 'without physics prior' ablation")
+    parser.add_argument("--adjacency-norm", choices=("symmetric", "row"),
+                        default="symmetric",
+                        help="How to normalise the sensor graph. See assumption A-21")
     parser.add_argument("--lr-schedule",
                         choices=("exponential", "cosine", "plateau", "constant"),
                         default="exponential", help="See assumption A-17")
@@ -134,7 +138,7 @@ def main() -> int:
         import torch
 
         torch.manual_seed(seed)
-        model = build_model(prepared, arguments.graph)
+        model = build_model(prepared, arguments.graph, arguments.adjacency_norm)
         history = train(model, prepared.train, prepared.validation, training)
 
         result = evaluate_model(model, prepared.test)
@@ -184,6 +188,7 @@ def main() -> int:
         f"{preprocessing.subset.lower()}"
         f"_{arguments.graph}"
         f"_{preprocessing.node_feature_mode}"
+        f"_{arguments.adjacency_norm}"
         f"_{arguments.seeds}seed"
     )
     output = arguments.output or (reports_dir() / name)
@@ -196,6 +201,7 @@ def main() -> int:
                 "subset": preprocessing.subset,
                 "graph": arguments.graph,
                 "node_feature_mode": preprocessing.node_feature_mode,
+                "adjacency_norm": arguments.adjacency_norm,
                 "seeds": arguments.seeds,
                 "early_stopping": not arguments.no_early_stopping,
                 "lr_schedule": arguments.lr_schedule,

@@ -560,6 +560,85 @@ be tested automatically, so a result does not depend on which cells somebody
 happened to click. A thesis figure that depends on cell execution order is not
 reproducible, and reproducibility is the whole point of the arrangement.
 
+### How to read this code without reading all of it
+
+There is a lot of text in `src/`, and most of it is not code. Measured across
+the package and the two scripts:
+
+| | lines | share |
+|---|-------|-------|
+| executable code | 1 970 | 36 % |
+| explanation (docstrings and comments) | 2 690 | 49 % |
+| blank | 839 | 15 % |
+
+So the thing to be read is about **two thousand lines**, and it is spread thinly:
+the largest single file has 219 lines of code, and several of the most important
+have almost none. `data/smoothing.py` is 176 lines of which **30** are code.
+`data/labeling.py` is 132 lines of which **8** are code. The explanation is long
+because the *reasons* are what a thesis has to defend; the operations themselves
+are small.
+
+**Do not read it in file order.** The package has three layers, and nothing in a
+layer depends on anything below it, so this order never requires you to hold an
+unexplained name in your head:
+
+**Layer 1 — no internal dependencies.** Read these first; each stands alone.
+
+| File | What it is |
+|------|------------|
+| `config.py` | every setting, with the reason for each value |
+| `data/sensors.py` | the 21 sensors, and which 14 the paper keeps |
+| `data/labeling.py` | the piecewise-linear target (8 lines of code) |
+| `models/layers.py` | one graph convolution (43 lines of code) |
+| `utils/` | paths, seeding, logging — housekeeping, read only if curious |
+
+**Layer 2 — uses layer 1.**
+
+| File | What it is |
+|------|------------|
+| `data/loading.py` | the three text files become one table |
+| `data/smoothing.py` | the noise filter (30 lines of code) |
+| `data/normalization.py` | operating conditions and rescaling |
+| `data/windowing.py` | histories become fixed-size examples |
+| `graph/adjacency.py` | the sensor graph and its normalisation |
+| `models/estgnn.py` | the network of Table 4 |
+| `evaluation/metrics.py` | the four measures |
+
+**Layer 3 — the three that put it together.** Each is a sequence of calls to
+the layers above, so read them last and they will contain no surprises.
+
+| File | What it is |
+|------|------------|
+| `data/pipeline.py` | the eight preprocessing steps in order |
+| `training/loop.py` | the training loop |
+| `explain/shap.py` | the Shapley values |
+
+**Four shortcuts that save more time than they cost.**
+
+1. **Start with the notebook, not with `src/`.** It runs the whole preprocessing
+   chain on real data and shows the numbers changing at every step. An hour
+   there makes `src/` read like a reference rather than a puzzle.
+2. **Read every module's docstring first, and nothing else.** The docstring at
+   the top of each file says what the step does, why it is done that way, and
+   what the paper says about it. Reading only those — about forty minutes for
+   the whole package — gives you the entire argument without a line of code.
+3. **When you want to know what a function really does, read its test.** The
+   tests are written as statements about behaviour:
+   `test_the_filter_only_looks_backwards`,
+   `test_three_layers_cannot_reach_four_hops`,
+   `test_the_prediction_can_never_exceed_the_ceiling`. A test is usually
+   shorter than the function and tells you what matters about it.
+4. **Follow the shapes.** Almost every step is a change of shape, and section 7
+   lists them all. If you can say what shape the data has after each step —
+   `(20631, 26)` to `(17731, 14, 30)` to `(100,)` — you understand the pipeline,
+   whatever the code looks like.
+
+**If you have one hour**, read the notebook end to end. **If you have three**,
+add the module docstrings of `data/normalization.py`, `data/windowing.py`,
+`graph/adjacency.py` and `models/estgnn.py`, in that order. **If you have a
+day**, add `docs/ASSUMPTIONS.md`, which is where every judgement call this
+project makes is defended.
+
 ### Which file should I open?
 
 | If you want to... | Open |
@@ -665,10 +744,9 @@ Understanding and recording the difference is the achievable goal.
 **Most of the assumptions have not been tested for sensitivity.** Each entry
 in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) states how much it is
 expected to matter, but for most that expectation is an argument rather
-than a measurement. Three have actually been measured — A-07 and A-19 in
-finding F-06, A-20 in its own entry. A-21, the adjacency normalisation, would
-need a code change rather than a setting to test. Nine more are settings that could be
-varied and have not been: A-01 (the ceiling), A-03 (the scaling method),
+than a measurement. Four have actually been measured — A-07 and A-19 in
+finding F-06, A-20 and A-21 in their own entries. Nine more are settings that
+could be varied and have not been: A-01 (the ceiling), A-03 (the scaling method),
 A-04 (the smoothing strength), A-05 (the stride), A-06 (the validation
 fraction), A-12 (the bias), A-14 (the initialisation), A-17 (the schedule)
 and A-18 (early stopping). Each would take one run of

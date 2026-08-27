@@ -893,10 +893,31 @@ symmetric form is chosen because it is the one defined by the layer the paper
 cites, and because it is what nearly all GCN implementations mean by "the
 normalised adjacency matrix".
 
-**How much it matters.** Unmeasured, and worth measuring. The two forms differ
-most where node degrees are uneven, and this graph's degrees run from 4 to 8,
-so the difference is not negligible. Unlike most of the entries here, testing
-this one needs a code change rather than a configuration change.
+**How much it matters.** Measured, and the answer is: not much for accuracy,
+but noticeably for stability. Five seeds of each form on FD001, everything else
+identical (`scripts/train.py --adjacency-norm symmetric|row`):
+
+| Normalisation | RMSE | NASA score | R-squared | ASUE |
+|---------------|------|-----------|-----------|------|
+| symmetric `D^(-1/2)(A+I)D^(-1/2)` | **13.45 ± 0.20** | 312 ± 11 | 0.887 ± 0.003 | 8.85 ± 0.36 |
+| row `D^(-1)(A+I)` | 13.74 ± 0.52 | 336 ± 25 | 0.882 ± 0.009 | 9.71 ± 1.02 |
+
+The gap in mean RMSE is 0.29 cycles and it is **not statistically significant**:
+paired across seeds, t = −1.53 and p = 0.20; unpaired with unequal variances,
+t = −1.15 and p = 0.30. So the choice this entry records does not materially
+change what the model achieves, which is the reassuring outcome — it means the
+paper's silence on the formula does not put its headline numbers out of reach.
+
+The spread does differ, and by more than the means do. **The row form's variance
+across seeds is 6.7 times the symmetric form's** (0.52 against 0.20 in RMSE, and
+1.02 against 0.36 in ASUE). A run using row normalisation is therefore a less
+reliable single measurement, which matters when comparing configurations that
+differ by less than a cycle — most of the comparisons in this project.
+
+Symmetric normalisation is kept as the default on those two grounds: it is the
+form defined by the layer the paper cites, and it is the more stable of the two.
+This entry is now one of the few whose "how much it matters" is a measurement
+rather than an argument.
 
 ---
 

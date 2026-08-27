@@ -99,6 +99,7 @@ enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -107,6 +108,7 @@ from ..data.sensors import PAPER_SENSOR_SYMBOLS
 from ..utils.logging_setup import get_logger
 
 __all__ = [
+    "AdjacencyNormalization",
     "PHYSICS_ADJACENCY_ROWS",
     "build_physics_adjacency",
     "build_fully_connected_adjacency",
@@ -117,6 +119,22 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
+
+#: How the adjacency matrix is normalised before a graph convolution uses it.
+#:
+#: ``"symmetric"``
+#:     ``D^(-1/2) (A + I) D^(-1/2)``, the form defined by Kipf and Welling
+#:     (2017). Each edge is divided by the geometric mean of the two degrees it
+#:     joins, so a message between two well-connected sensors is damped more
+#:     than one between two sparsely connected sensors.
+#: ``"row"``
+#:     ``D^(-1) (A + I)``, which simply averages over each node's own
+#:     neighbourhood. Rows sum to exactly 1, so every node receives the mean of
+#:     its neighbours regardless of how many it has.
+#:
+#: Both add self-loops and both "balance feature aggregation across different
+#: node degrees", which is all Wen et al. (2026) say about it. See A-21.
+AdjacencyNormalization = Literal["symmetric", "row"]
 
 #: Table 3 of Wen et al. (2026), transcribed row by row. The keys and the order
 #: of the values both follow :data:`PAPER_SENSOR_SYMBOLS`. The matrix is checked
@@ -237,6 +255,7 @@ def normalize_adjacency(
     adjacency: np.ndarray,
     *,
     add_self_loops: bool = True,
+    method: AdjacencyNormalization = "symmetric",
 ) -> np.ndarray:
     """Apply the symmetric normalisation used by graph convolution layers.
 
@@ -259,6 +278,11 @@ def normalize_adjacency(
         Whether to add the identity matrix before normalising. This should stay
         ``True`` for graph convolution; the option exists so the effect can be
         demonstrated.
+    method : str
+        ``"symmetric"`` for ``D^(-1/2) (A + I) D^(-1/2)``, or ``"row"`` for
+        ``D^(-1) (A + I)``. See :data:`AdjacencyNormalization` and assumption
+        A-21: the paper describes the normalisation but never prints it, and
+        both forms fit the description.
 
     Returns
     -------
@@ -279,6 +303,17 @@ def normalize_adjacency(
     >>> normalize_adjacency(np.array([[0.0, 1.0], [1.0, 0.0]]))
     array([[0.5, 0.5],
            [0.5, 0.5]], dtype=float32)
+
+    On that symmetric two-node graph the row form agrees, because both degrees
+    are equal. The two differ as soon as the degrees do:
+
+    >>> star = np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    >>> rows = normalize_adjacency(star, method="row").sum(axis=1)
+    >>> [round(float(v), 6) for v in rows]
+    [1.0, 1.0, 1.0]
+    >>> symmetric = normalize_adjacency(star).sum(axis=1)
+    >>> [round(float(v), 3) for v in symmetric]
+    [1.15, 0.908, 0.908]
     """
     matrix = np.asarray(adjacency, dtype=np.float64)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
@@ -301,8 +336,16 @@ def normalize_adjacency(
             "normalisation would divide by zero. Add self-loops or edges."
         )
 
-    inverse_sqrt_degrees = np.diag(1.0 / np.sqrt(degrees))
-    return (inverse_sqrt_degrees @ matrix @ inverse_sqrt_degrees).astype(np.float32)
+    if method == "symmetric":
+        inverse_sqrt = np.diag(1.0 / np.sqrt(degrees))
+        normalized = inverse_sqrt @ matrix @ inverse_sqrt
+    elif method == "row":
+        normalized = matrix / degrees[:, None]
+    else:
+        raise ValueError(
+            f"method must be 'symmetric' or 'row', got {method!r}."
+        )
+    return normalized.astype(np.float32)
 
 
 def adjacency_report(
