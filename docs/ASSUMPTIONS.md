@@ -36,6 +36,11 @@ identifier below.
 | A-12 | Bias in the graph layers | Equations 8-10 print only `W` | No bias, as printed; configurable |
 | A-13 | Scaling of the target | Sigmoid output called a "normalized RUL value" | Targets divided by `rul_max` for training |
 | A-14 | Weight initialisation | Not stated | Glorot uniform, following Kipf & Welling (2017) |
+| A-15 | Sign of the score function | Equations 20 and 21 contradict each other | The NASA convention the paper's own text describes |
+| A-16 | R-squared denominator | Equation 23 uses the predicted values | The standard definition, using the observed ones |
+| A-17 | Learning-rate schedule | Both endpoints given, mechanism not | Exponential decay reaching 1e-4 at the last epoch |
+| A-18 | Early stopping | None; trains a fixed 200 epochs | Stop after 20 epochs without improvement |
+| A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 
 ---
 
@@ -201,12 +206,22 @@ different things and their error figures are not comparable:
 | validation | *every* window of 20 held-out engines (3272 on FD001)   |
 | test       | *one* window per engine, at the truncation point NASA chose |
 
-A validation set built from whole histories is dominated by windows from
-healthy engines, whose label is pinned at the ceiling and which are therefore
-easy. Validation error will look better than test error for that reason alone.
+The important consequence is not that one is harder than the other, but that
+**each engine carries a completely different weight**. In the validation set
+the 20 engines contribute between 108 and 240 windows each, so three engines
+alone supply about a fifth of the total and an unusual engine can move the
+figure on its own. In the test set every engine contributes exactly one window,
+so each is worth exactly 1 %.
+
+Which of the two looks better is therefore not predictable in advance. On the
+first full run of this pipeline the validation error was 16.2 cycles and the
+test error 13.9 — the *opposite* of what the greater share of easy
+ceiling-labelled windows in validation (24 % against 11 %) would suggest.
+
 This is acceptable for what a validation set is for — choosing when to stop
-training, and comparing settings, which are relative judgements — but a
-validation figure must never be reported as if it were a test figure.
+training, and comparing settings, which are relative judgements made against a
+fixed set — but a validation figure must never be reported as if it were a test
+figure, and the gap between them must not be read as evidence of anything.
 
 If the two need to be directly comparable, draw one random truncation point per
 validation engine so that the validation set imitates the test protocol. That
@@ -466,6 +481,164 @@ very differently even when everything else is identical.
 **How much it matters.** Moderate for a single run and small on average.
 Initialisation is one of the reasons a single seed is not evidence, which is
 why this project reports results across several seeds (see `utils/seeding.py`).
+
+---
+
+## A-15 — The score function uses the NASA sign convention, not Equation 20
+
+**Where:** `evaluation/metrics.py`
+
+**The gap.** This is a contradiction inside the paper rather than an omission.
+Equation 20 defines the error as `delta = actual - predicted`. Equation 21 then
+scores `delta >= 0` with `exp(delta/10) - 1` and `delta < 0` with
+`exp(-delta/13) - 1`.
+
+Substituting the first into the second gives the *gentler* divisor of 13 to
+over-prediction and the *harsher* divisor of 10 to under-prediction. The
+surrounding text says the opposite in words: "the penalty for over-prediction
+is relatively large, while the penalty for under-prediction is relatively
+small ... over-prediction introduces security risks". The published function
+from the 2008 NASA PHM Data Challenge, which the paper cites, also says the
+opposite.
+
+**What we chose.** The convention the paper describes in words and the
+challenge defines: `d = predicted - actual`, with `exp(d/10) - 1` when the
+model was late and `exp(-d/13) - 1` when it was early.
+
+**Why.** Two of the paper's three statements agree with each other and with the
+literature; only the printed sign of Equation 20 disagrees. Implementing the
+outlier would produce numbers that cannot be compared with any other work on
+this dataset, including the paper's own comparison table.
+
+**How much it matters.** Large for the score, nothing for the other three
+measures. Getting it backwards would reward exactly the behaviour the metric
+exists to punish.
+
+---
+
+## A-16 — R-squared uses the observed values in its denominator
+
+**Where:** `evaluation/metrics.py`
+
+**The gap.** Equation 23 prints
+`R^2 = 1 - sum(delta_i^2) / sum((predicted_i - mean_i)^2)`, with the
+*predicted* values in the denominator.
+
+**What we chose.** The standard definition, with the observed values:
+`1 - sum((predicted - actual)^2) / sum((actual - mean)^2)`.
+
+**Why.** As printed, the denominator measures how far the *predictions* spread
+around the mean of the observations, rather than how far the observations
+spread around it. That rewards the wrong thing: a model can raise its score by
+spreading its output more widely without becoming any more accurate. For truth
+`[10, 20, 30, 40]`, the prediction `[-5, 15, 35, 55]` is exactly as good as
+predicting the mean, and the standard formula scores it 0.0 — but the paper's
+version scores it 0.75.
+
+That is not a coefficient of determination, and it is not what the text beside
+the equation describes ("the proportion of variance in the dependent variable
+that is predictable from the independent variables"). It reads as a typesetting
+error.
+
+---
+
+## A-17 — The learning rate decays exponentially to its final value
+
+**Where:** `training/config.py`, `TrainingConfig.lr_schedule`
+
+**The gap.** Table 6 gives `1e-3 -> 1e-4` and Section 3.4 calls it "an adaptive
+learning rate schedule". The mechanism is never stated: the sentence is
+consistent with a smooth decay, a step at a fixed epoch, or a reduction
+triggered by a plateau in the loss.
+
+**What we chose.** Exponential decay, with the factor chosen so the last epoch
+lands exactly on `1e-4`.
+
+**Why.** It is the reading that reaches both stated endpoints and passes
+through everything between them, and it needs no further invented constants —
+a step schedule would require inventing the epoch to step at. The `"plateau"`
+option implements the main alternative reading, and `"cosine"` and
+`"constant"` are provided so the sensitivity to this choice can be measured.
+
+**How much it matters.** Moderate. It changes the trajectory of a run and
+therefore where early stopping lands, but the endpoints are fixed by the paper.
+
+---
+
+## A-18 — Training stops after 20 epochs without improvement
+
+**Where:** `training/config.py`, `TrainingConfig.early_stopping_patience`
+
+**The gap.** The paper trains for a fixed 200 epochs and describes no early
+stopping, which follows from having no validation set (see A-06).
+
+**What we chose.** Stop when the validation error has not improved for 20
+epochs, and restore the weights from the best epoch.
+
+**Why.** With a validation set available, training past the point where it
+stops improving only fits noise. Restoring the best weights rather than keeping
+the last ones is what makes the stopping rule useful rather than merely
+cheaper.
+
+**Honesty note.** This is a deliberate **improvement** on the source, like
+A-06, and it must be described as one. Setting
+`early_stopping_patience: null` reproduces the paper's procedure exactly, and
+that comparison is worth running once so the size of the difference is known
+rather than assumed.
+
+---
+
+## A-19 — The "without physics prior" ablation uses a fully connected graph
+
+**Where:** `scripts/train.py --graph complete`
+
+**The gap.** Table 11 reports a variant called "ESTGNN w/o Physics prior", but
+the paper never says what replaces the hand-designed adjacency matrix. At least
+three readings are possible: every sensor connected to every other, no edges at
+all (self-loops only), or a graph learned or derived from the data.
+
+**What we chose.** A fully connected graph, built by
+`graph.adjacency.build_fully_connected_adjacency` and normalised the same way.
+
+**Why.** It is the only one of the three that removes the engineering knowledge
+while changing nothing else. Removing all edges would also remove message
+passing itself, which would make the variant an ablation of the GCN rather than
+of the prior — and the paper reports that separately, as "w/o GCN". A learned
+graph would add a mechanism the paper does not describe.
+
+**How much it matters.** A great deal, as F-04 below records.
+
+---
+
+### F-04 — The physics graph is worth far more here than the paper reports
+
+Five seeds of each variant on FD001, identical in every other respect:
+
+| Sensor graph | RMSE | NASA score | R-squared | ASUE |
+|--------------|------|-----------|-----------|------|
+| Physics (their Table 3) | **13.45 +/- 0.20** | 312 +/- 11 | 0.887 +/- 0.003 | 8.85 +/- 0.36 |
+| Fully connected (A-19) | 19.17 +/- 0.45 | 743 +/- 53 | 0.771 +/- 0.011 | 13.44 +/- 0.27 |
+
+Removing the physics prior costs **5.7 cycles of RMSE** in this configuration.
+The paper reports the same ablation costing **0.56** cycles (12.34 against
+11.78), and calls it "the smallest performance impact" of the three components
+it tests.
+
+The most likely explanation is the LSTM stage this project omits (A-11). In the
+full architecture, a per-sensor temporal encoder extracts degradation
+information before the graph layers ever run, so the graph is one of two routes
+to the same information and the model can compensate when it is removed.
+Without the encoder, the graph is the only structure the model has, and taking
+it away removes far more.
+
+If that explanation is right it is a point in favour of the paper's central
+claim rather than against it: the physics prior does real work, and the paper's
+own ablation *understates* how much because its LSTM masks the effect. It is
+also a testable prediction — adding any temporal encoder should shrink the gap
+— and therefore something the thesis can investigate rather than merely assert.
+
+**Do not report the two ablation numbers as directly comparable with the
+paper's.** They come from a configuration the paper does not run.
 
 ---
 

@@ -4,10 +4,13 @@ Preprocessing pipeline for predicting how much life is left in a jet engine,
 built as the software foundation for a master's thesis on **explainable**
 graph-based deep learning for predictive maintenance.
 
-**Current stage:** preprocessing of the C-MAPSS FD001 sub-dataset, plus the
-graph network of the paper's Table 4. Training, evaluation and SHAP are next.
+**Current stage:** preprocessing, the graph network of the paper's Table 4, the
+training loop of its Table 6, and the four evaluation measures of its
+Section 3.3. On FD001 this reaches **RMSE 13.45 +/- 0.20** across five seeds,
+against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation.
+SHAP is next.
 
-**Status:** 98 automated tests pass (83 without PyTorch installed). The notebook has been executed end to end
+**Status:** 138 automated tests pass (107 without PyTorch installed). The notebook has been executed end to end
 on the real FD001 files and all 14 of its internal checks pass.
 
 ---
@@ -292,6 +295,18 @@ print(prepared.summary())
 prepared.save()
 ```
 
+### Training a model
+
+```bash
+python scripts/train.py --seeds 5
+```
+
+This preprocesses, builds the network of Table 4, trains it with the settings
+of Table 6, and reports the four measures on the test engines, averaged over
+five seeds. One seed is not evidence, so the script says so when given only
+one. `--graph complete` runs the "without physics prior" ablation, and
+`--no-early-stopping` reproduces the paper's fixed 200 epochs.
+
 ### What you get
 
 Five files in `data/processed/`:
@@ -353,16 +368,19 @@ Thesis GNN RUL XAI/
 │   └── 01_preprocessing_fd001.ipynb
 │
 ├── scripts/
-│   └── prepare_data.py           Check, generate, or preprocess data
+│   ├── prepare_data.py           Check or preprocess the raw data
+│   └── train.py                  Train, score, and average over seeds
 │
 ├── src/thesis_gnn_rul_xai/
 │   ├── config.py                 Typed settings
 │   ├── data/                     Loading, cleaning, reshaping
 │   ├── graph/                    The sensor graph
 │   ├── models/                   The network of the paper's Table 4
+│   ├── training/                 The loop and settings of Table 6
+│   ├── evaluation/               RMSE, NASA score, R-squared, ASUE
 │   └── utils/                    Paths, seeding, logging
 │
-└── tests/                        98 tests
+└── tests/                        138 tests
 ```
 
 **Why the logic lives in `src/` and not in the notebook.** A notebook is good
@@ -464,12 +482,24 @@ realistic target; understanding and documenting the difference is.
    model against is **14.93**, the FD001 entry of the paper's own
    "ESTGNN w/o LSTM" ablation (their Table 11), not the 19.68 four-dataset
    average quoted in assumption A-11.
-4. Add the evaluation measures from the paper: the NASA scoring function, root
+4. ~~Add the evaluation measures from the paper: the NASA scoring function, root
    mean squared error, the coefficient of determination, and average safe
-   underestimation error.
-5. Add SHAP, then move beyond it to graph-native explanations that describe
+   underestimation error.~~ **Done**, in `src/thesis_gnn_rul_xai/evaluation/`.
+   Two of the paper's printed formulas could not be used as written: its
+   Equations 20 and 21 disagree with each other about which direction of error
+   is dangerous, and its Equation 23 is not the coefficient of determination.
+   Both departures are recorded as A-15 and A-16.
+5. Run the remaining ablations. "Without physics prior" is done and is
+   reported as finding F-04: removing the physics graph costs 5.7 cycles of
+   RMSE here, against the 0.56 the paper reports, most likely because the
+   omitted LSTM would otherwise supply the same information by another route.
+   "Without GCN" still needs a plain network on the same features.
+6. Add SHAP, then move beyond it to graph-native explanations that describe
    edges and subgraphs rather than single sensors — the actual research gap
-   this thesis addresses.
+   this thesis addresses. Two ready-made checks: `P15` should receive close to
+   zero attribution (finding F-01), and every path from the fan sensors to the
+   core sensors runs through `T24`, which is the graph's only articulation
+   point.
 
 ---
 
