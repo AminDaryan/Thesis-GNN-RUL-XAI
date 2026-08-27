@@ -177,7 +177,15 @@ def main() -> int:
         "this pipeline differs from the paper."
     )
 
-    name = f"{preprocessing.subset.lower()}_{arguments.graph}_{arguments.seeds}seed"
+    # The node feature mode belongs in the name: two runs that differ only in
+    # it are different experiments, and without it the second silently
+    # overwrites the first.
+    name = (
+        f"{preprocessing.subset.lower()}"
+        f"_{arguments.graph}"
+        f"_{preprocessing.node_feature_mode}"
+        f"_{arguments.seeds}seed"
+    )
     output = arguments.output or (reports_dir() / name)
     output.mkdir(parents=True, exist_ok=True)
     table.to_csv(output / "results.csv", index=False)
@@ -187,7 +195,10 @@ def main() -> int:
             {
                 "subset": preprocessing.subset,
                 "graph": arguments.graph,
+                "node_feature_mode": preprocessing.node_feature_mode,
                 "seeds": arguments.seeds,
+                "early_stopping": not arguments.no_early_stopping,
+                "lr_schedule": arguments.lr_schedule,
                 "mean": {c: float(table[c].mean()) for c in columns},
                 "std": {
                     c: (float(table[c].std(ddof=1)) if arguments.seeds > 1 else None)

@@ -722,6 +722,80 @@ its first reading, which is exactly where the spurious contribution appears.
 
 ---
 
+### F-06 — Where this code lands against the paper's FD001 figures
+
+Five seeds of each configuration, everything else identical.
+
+| Run | Configuration | RMSE | NASA score | R-squared | ASUE |
+|-----|---------------|------|-----------|-----------|------|
+| A | physics graph, whole 30-cycle window (`fd001.yaml`) | **13.45 ± 0.20** | 312 ± 11 | 0.887 ± 0.003 | 8.85 ± 0.36 |
+| B | physics graph, last reading only (`fd001_last_step.yaml`) | 19.76 ± 0.57 | 750 ± 64 | 0.757 ± 0.014 | 15.19 ± 0.97 |
+| C | complete graph, whole window (A-19) | 19.17 ± 0.45 | 743 ± 53 | 0.771 ± 0.011 | 13.44 ± 0.27 |
+
+The paper, on FD001:
+
+| Variant | RMSE | Source |
+|---------|------|--------|
+| ESTGNN, full model | 11.78 | Tables 7-10 |
+| **ESTGNN w/o LSTM** | **14.93** | Table 11 |
+| ESTGNN w/o GCN | 16.42 | Table 11 |
+| ESTGNN w/o physics prior | 12.34 | Table 11 |
+
+**Only one number is directly comparable.** Table 11 reports RMSE alone, so
+the score, R-squared and ASUE columns exist for the full model only. Since the
+LSTM stage is not implemented here (A-11), the row to compare against is
+"w/o LSTM", and the comparison is 13.45 ± 0.20 against 14.93.
+
+#### The published value is bracketed by the two readings of A-07
+
+Assumption A-07 records that Table 4 prints the input to the first graph layer
+as `[batch, 14, 1]`, one number per sensor, produced by the LSTM. With the LSTM
+removed there are two defensible things to feed the graph instead, and this
+project runs both:
+
+* the whole 30-cycle window, `[batch, 14, 30]`, which is run A;
+* the most recent reading only, `[batch, 14, 1]`, keeping the printed shape,
+  which is run B.
+
+The paper's 14.93 falls between them: **13.45 < 14.93 < 19.76**. Neither
+reading reproduces it, and the gap in both directions is far larger than the
+seed-to-seed spread, so this is a real difference and not noise.
+
+That is worth stating plainly, because the obvious expectation — that a correct
+re-implementation of the "w/o LSTM" configuration should land on 14.93 — turns
+out to be unreachable from the paper's description. Whatever their ablation
+fed the graph layers, it was neither of the two things the text supports.
+
+#### Why run A is *better* than the published figure
+
+Being 1.5 cycles better than the reference is itself evidence that something
+differs, and the candidates are all documented rather than mysterious:
+
+* **A-03**, the input rescaling, is substituted from Jin et al. (2025) because
+  the paper never describes its own. This is the largest single unknown.
+* **A-18**, early stopping on a held-out set, is an addition; the paper trains
+  a fixed 200 epochs. Running with `--no-early-stopping` reproduces their
+  procedure and is the first check to make.
+* **A-02**, capping the test labels, can only move the figure favourably, as
+  the entry for A-02 explains.
+* **A-13, A-14, A-17** (target scaling, initialisation, learning-rate
+  schedule) are all unstated in the paper.
+
+None of this makes 13.45 wrong. It makes it *a different experiment*, and the
+honest way to report it is as this project's result for a configuration the
+paper describes but does not fully specify, quoted with the assumptions above
+attached.
+
+#### What the ablations say
+
+Run C removes the physics prior and costs 5.7 cycles (13.45 to 19.17), which
+finding F-04 discusses. Run B removes 29 of every 30 cycles from each node and
+costs 6.3 cycles (13.45 to 19.76). The two are close in size, which is a useful
+observation on its own: with no temporal encoder, *how much history each node
+carries* matters about as much as *which nodes are connected*.
+
+---
+
 ## References
 
 Full citations for every work mentioned above are in `REFERENCES.md`.

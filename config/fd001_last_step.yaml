@@ -1,0 +1,34 @@
+# FD001, with each sensor node carrying a single number instead of its whole
+# window. This reproduces the input shape printed in Table 4 of Wen et al.
+# (2026), which is [batch, 14, 1].
+#
+# In the paper that single number is the output of a per-sensor LSTM. That
+# stage is not implemented here (assumption A-11), so the number is simply the
+# most recent reading in the window. Everything else is identical to
+# fd001.yaml.
+#
+# The purpose of this configuration is to test which of the two readings of
+# the paper's "ESTGNN w/o LSTM" ablation it actually ran: this one, which
+# keeps the printed input shape, or fd001.yaml, which keeps the whole window
+# because dropping the temporal encoder otherwise discards 29 of every 30
+# cycles. See assumption A-07.
+
+subset: FD001
+
+window_size: 30
+window_stride: 1
+
+rul_max: 125
+clip_test_labels: true
+
+normalization: minmax_per_condition
+smoothing_alpha: 0.5
+
+node_feature_mode: last_step      # <-- the only difference from fd001.yaml
+
+validation_fraction: 0.2
+seed: 42
+
+notes: >-
+  FD001 with single-value node features, reproducing the [batch, 14, 1] input
+  shape of Table 4. See docs/ASSUMPTIONS.md, A-07 and A-11.

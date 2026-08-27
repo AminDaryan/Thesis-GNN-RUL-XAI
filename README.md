@@ -7,7 +7,8 @@ graph-based deep learning for predictive maintenance.
 **Current stage:** preprocessing, the graph network of the paper's Table 4, the
 training loop of its Table 6, and the four evaluation measures of its
 Section 3.3. On FD001 this reaches **RMSE 13.45 +/- 0.20** across five seeds,
-against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation.
+against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation
+(see finding F-06 for what that comparison does and does not establish).
 The dynamic SHAP analysis of its Section 2.4 is implemented, exactly rather
 than by sampling.
 
