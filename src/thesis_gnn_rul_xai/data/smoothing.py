@@ -78,6 +78,11 @@ __all__ = ["apply_ewma", "ewma_series"]
 logger = get_logger(__name__)
 
 
+# ASSUMPTION A-09: pandas offers two conventions for this filter, which differ
+# in how they weight the first few values of a series. ``adjust=False`` is the
+# plain recursive form, which is exactly Equation 18 of the paper.
+#
+# ASSUMPTION A-04: the value of alpha itself. See config.PreprocessingConfig.
 def ewma_series(values: Sequence[float] | np.ndarray, alpha: float) -> np.ndarray:
     """Apply the exponentially weighted moving average to a single series.
 

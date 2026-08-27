@@ -134,6 +134,9 @@ class GraphConvolution(nn.Module):
         self.out_features = out_features
 
         self.weight = nn.Parameter(torch.empty(in_features, out_features))
+        # ASSUMPTION A-12: Equations 8 to 10 print only W, while Equations 12
+        # and 13 print an explicit bias for the dense layers. The omission is
+        # followed as printed, and bias=True exists so it can be measured.
         if bias:
             self.bias: nn.Parameter | None = nn.Parameter(torch.empty(out_features))
         else:

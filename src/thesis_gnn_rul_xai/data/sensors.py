@@ -189,6 +189,10 @@ PAPER_SENSOR_SYMBOLS: tuple[str, ...] = (
 
 #: The 7 sensors dropped by Wen et al. (2026). See the module docstring for the
 #: discrepancy in how the paper describes this set.
+#:
+#: ASSUMPTION A-10: Section 3.2.2 says seven sensors are removed and then names
+#: only six. ``NRc`` is the seventh, identified as the one sensor of Table 2
+#: that is absent from Table 3 without being named in that sentence.
 PAPER_EXCLUDED_SYMBOLS: tuple[str, ...] = (
     "T2", "P2", "epr", "NRc", "farB", "Nf_dmd", "PCNfR_dmd",
 )

@@ -26,12 +26,13 @@ on the real FD001 files and all 14 of its internal checks pass.
 5. [Getting the data](#5-getting-the-data)
 6. [Running the pipeline](#6-running-the-pipeline)
 7. [What the pipeline does, step by step](#7-what-the-pipeline-does-step-by-step)
-8. [How the project is organised](#8-how-the-project-is-organised)
-9. [Testing](#9-testing)
-10. [Rules this project follows](#10-rules-this-project-follows)
-11. [Known limitations](#11-known-limitations)
-12. [What comes next](#12-what-comes-next)
-13. [References](#13-references)
+8. [Results so far](#8-results-so-far)
+9. [How the project is organised](#9-how-the-project-is-organised)
+10. [Testing](#10-testing)
+11. [Rules this project follows](#11-rules-this-project-follows)
+12. [Known limitations](#12-known-limitations)
+13. [What comes next](#13-what-comes-next)
+14. [References](#14-references)
 
 ---
 
@@ -97,7 +98,7 @@ specific layer used here.
 sequences, which keeps an internal memory of what it has already seen
 (Hochreiter & Schmidhuber, 1997). The paper being re-implemented uses one LSTM
 per sensor. This project deliberately leaves that part out; see
-[section 11](#11-known-limitations).
+[section 12](#12-known-limitations).
 
 **XAI — Explainable Artificial Intelligence.** Methods that make the output of
 a machine learning model understandable to a person, for example by saying
@@ -124,7 +125,7 @@ prediction. In this project the players will be the 14 sensors.
 **Data leakage.** When information that should be unavailable at prediction
 time reaches the model during training. It makes results look better than they
 are and is a leading cause of published findings that cannot be reproduced
-(Kapoor & Narayanan, 2023). Two rules in [section 10](#10-rules-this-project-follows)
+(Kapoor & Narayanan, 2023). Two rules in [section 11](#11-rules-this-project-follows)
 exist to prevent it.
 
 **Normalisation (rescaling).** Putting different measurements onto a comparable
@@ -134,6 +135,32 @@ numerical scale, so that a temperature near 1400 does not dominate a ratio near
 **Time window.** A short, fixed-length slice of an engine's history, for
 example 30 consecutive cycles. Windows are what the model actually receives,
 because histories have different lengths and a network needs a fixed input size.
+
+**Ablation.** An experiment that removes one part of a method and measures
+what the rest can do without it. If accuracy barely changes, that part was
+not doing much. It is how a paper shows which of its ingredients matter.
+
+**The four measures used to score a prediction.** All four are computed for
+each of the 100 test engines and then combined.
+
+* **RMSE — root mean squared error.** The typical size of the error, in
+  flight cycles. It treats a prediction 10 cycles too high exactly like one
+  10 cycles too low. This is the number most papers quote.
+* **NASA score.** The official score of the 2008 competition this dataset
+  comes from. Unlike RMSE it is **asymmetric**: predicting more life than an
+  engine has is punished far harder than predicting less, because the first
+  mistake leaves a failing engine flying and the second only services it
+  early. The penalty grows exponentially, so one badly wrong engine can
+  outweigh ninety-nine good ones. Lower is better, and it is a sum rather
+  than an average, so it can only be compared between runs on the same
+  sub-dataset.
+* **R² — coefficient of determination.** The fraction of the variation in
+  the true labels that the model accounts for. 1 is perfect; 0 is no better
+  than always guessing the average.
+* **ASUE — Average Safe Underestimation Error.** The average size of the
+  error, counted only over the engines the model was *pessimistic* about.
+  Underestimating is the safe direction, so this measures the cost of being
+  too cautious: servicing engines that still had life left in them.
 
 ---
 
@@ -340,13 +367,80 @@ each carrying its own 30-cycle history.
 | 8 | Window | Cut histories into 30-cycle examples | `data/windowing.py` |
 | — | Graph | Build the 14-node sensor graph from the paper's Table 3 | `graph/adjacency.py` |
 
+Those eight steps turn the raw files into arrays. Four more stages turn the
+arrays into a result:
+
+| # | Stage | What happens | Where |
+|---|-------|--------------|-------|
+| 9 | Build the network | Three graph convolution layers of widths 32, 64 and 32, then two fully connected layers ending in a sigmoid — the paper's Table 4, transcribed layer by layer | `models/estgnn.py` |
+| 10 | Train | Adam, 200 epochs, batch size 32, learning rate 1e-3 decaying to 1e-4, mean squared error — the paper's Table 6 | `training/loop.py` |
+| 11 | Score | RMSE, the NASA score, R² and ASUE, on the 100 test engines | `evaluation/metrics.py` |
+| 12 | Explain | Exact Shapley values for the 14 sensors, recomputed at every cycle — the paper's Section 2.4 | `explain/shap.py` |
+
 Each module's docstring explains the reasoning behind its step in full. Start
 with `data/normalization.py` and `data/windowing.py`; those two contain the
 decisions that matter most for the validity of the results.
 
 ---
 
-## 8. How the project is organised
+## 8. Results so far
+
+Every figure below is the mean over **five seeds**, with the standard deviation
+across those seeds. One seed is not evidence, and the training script says so
+when it is given only one.
+
+### On FD001
+
+| Configuration | RMSE | NASA score | R² | ASUE |
+|---------------|------|-----------|-----|------|
+| Physics graph, whole 30-cycle window (the default) | **13.45 ± 0.20** | 312 ± 11 | 0.887 ± 0.003 | 8.85 ± 0.36 |
+| Physics graph, last reading only | 19.76 ± 0.57 | 750 ± 64 | 0.757 ± 0.014 | 15.19 ± 0.97 |
+| Fully connected graph, whole window | 19.17 ± 0.45 | 743 ± 53 | 0.771 ± 0.011 | 13.44 ± 0.27 |
+
+Reproduce the first row with:
+
+```bash
+python scripts/train.py --seeds 5
+```
+
+### How that compares with the paper
+
+| Paper's variant | RMSE | Where |
+|-----------------|------|-------|
+| ESTGNN, full model | 11.78 | Tables 7–10 |
+| **ESTGNN w/o LSTM** | **14.93** | Table 11 |
+| ESTGNN w/o GCN | 16.42 | Table 11 |
+| ESTGNN w/o physics prior | 12.34 | Table 11 |
+
+**Only one of those numbers is comparable with this code.** The per-sensor LSTM
+is deliberately not implemented (see [section 12](#12-known-limitations) and
+assumption A-11), so the matching row is "w/o LSTM", and the comparison is
+13.45 ± 0.20 against 14.93. The paper's ablation table reports RMSE only, which
+is why the other three columns are blank for it.
+
+### What that comparison does and does not show
+
+This code comes out **1.5 cycles better** than the published figure. That is not
+a reproduction, and it should not be presented as one. Being better than the
+reference is itself evidence that something differs, and the differences are all
+written down rather than mysterious: the input rescaling is substituted from a
+different paper (A-03), early stopping is an addition (A-18), capping the test
+labels can only help (A-02), and the target scaling, weight initialisation and
+learning-rate schedule are all unstated by the paper (A-13, A-14, A-17).
+
+There is also a sharper result. Assumption A-07 records that with the LSTM
+removed there are exactly two defensible things to feed the graph layers, and
+both have now been run. **The paper's 14.93 falls between them:** 13.45 with the
+whole window, 19.76 with the last reading only. Both gaps are far larger than
+the seed-to-seed spread, so whatever the paper's ablation fed its graph layers,
+it was neither of the two things its own text supports.
+
+Finding F-06 in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records this in
+full, together with F-04 on the physics graph and F-05 on what SHAP says.
+
+---
+
+## 9. How the project is organised
 
 ### The directory tree
 
@@ -478,7 +572,7 @@ reproducible, and reproducibility is the whole point of the arrangement.
 
 ---
 
-## 9. Testing
+## 10. Testing
 
 ```bash
 pytest                     # everything
@@ -487,21 +581,37 @@ pytest tests/test_normalization.py
 pytest --doctest-modules src   # only the examples inside docstrings
 ```
 
-The suite covers each preprocessing step, the sensor graph, and the pipeline
-end to end. Four tests deserve special mention, because they check the
-properties that make the experiment valid rather than merely correct:
+The suite covers each preprocessing step, the sensor graph, the network, the
+training loop, the four measures, the Shapley values, and the pipeline end to
+end. The model, training and explanation tests need PyTorch; without it they
+are skipped rather than failed, and the remaining 107 still run.
+
+Some of the tests check properties rather than outputs, because a wrong
+answer in this domain still looks plausible. Seven deserve special mention:
+
+*No information may reach the model that would not be available in practice:*
 
 - `test_normalization.py::test_test_data_never_influences_the_scaling`
 - `test_pipeline.py::test_validation_engines_never_influence_the_scaling`
 - `test_smoothing.py::test_the_filter_only_looks_backwards`
 - `test_pipeline.py::test_training_and_validation_engines_never_overlap`
 
+*The architecture and the attribution must match their definitions:*
+
+- `test_models.py::test_parameter_counts_match_table_4` — every weight matrix
+  has the shape the paper prints.
+- `test_models.py::test_three_layers_cannot_reach_four_hops` — message
+  passing follows the sensor graph and nothing else.
+- `test_shap.py::test_efficiency_holds_to_machine_precision` — the fourteen
+  attributions plus the baseline reconstruct the prediction exactly, which is
+  the property that makes them Shapley values rather than a plausible ranking.
+
 If any of these ever fails, results from this code are not trustworthy,
 regardless of how good they look.
 
 ---
 
-## 10. Rules this project follows
+## 11. Rules this project follows
 
 1. **Statistics come from training data only.** Every minimum, maximum, mean,
    standard deviation and cluster centre is computed from the training engines
@@ -526,7 +636,7 @@ regardless of how good they look.
 
 ---
 
-## 11. Known limitations
+## 12. Known limitations
 
 **The LSTM stage is not implemented.** The paper places one LSTM per sensor
 before the graph layers, but never states its size, its depth, or how it
@@ -543,32 +653,44 @@ different conditions together. On FD001 there is one condition and the order is
 harmless; on FD002 and FD004 it collapses the wear signal. See A-08. FD003 has a
 single operating condition and should work as-is, but has not been run.
 
-**The published numbers have not been reproduced, and may not be reachable.**
-The paper's preprocessing is not fully described, its results come from a
-single run with no seeds or error bars, and its reported software environment
-lists no deep learning framework at all. Matching its figures exactly is not a
-realistic target; understanding and documenting the difference is.
+**The published numbers have not been reproduced, and exact agreement is not
+a realistic target.** The paper's preprocessing is not fully described, its
+results come from single runs with no seeds or error bars, and its reported
+software environment lists no deep learning framework at all. This code now
+produces its own numbers and compares them with the published ones in
+[section 8](#8-results-so-far); the comparison differs in both directions and
+the reasons are documented as assumptions rather than left as a gap.
+Understanding and recording the difference is the achievable goal.
+
+**Most of the assumptions have not been tested for sensitivity.** Each entry
+in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) states how much it is
+expected to matter, but for most that expectation is an argument rather
+than a measurement. Three have actually been measured — A-07 and A-19 in
+finding F-06, A-20 in its own entry. Nine more are settings that could be
+varied and have not been: A-01 (the ceiling), A-03 (the scaling method),
+A-04 (the smoothing strength), A-05 (the stride), A-06 (the validation
+fraction), A-12 (the bias), A-14 (the initialisation), A-17 (the schedule)
+and A-18 (early stopping). Each would take one run of
+`scripts/train.py --seeds 5` to settle.
 
 
 ---
 
-## 12. What comes next
+## 13. What comes next
 
-1. Run this pipeline on the real FD001 files and compare the sensor diagnosis
-   with the paper's stated selection.
+1. ~~Run this pipeline on the real FD001 files and compare the sensor
+   diagnosis with the paper's stated selection.~~ **Done.** The comparison
+   produced assumption A-10 and findings F-01 to F-03.
 2. ~~Implement the graph convolution model from Table 4 of the paper: three
    layers of sizes 32, 64 and 32, then two fully connected layers.~~ **Done**,
    in `src/thesis_gnn_rul_xai/models/`. `ESTGNN.layer_summary()` prints the
    architecture in the same form as Table 4 for checking against the paper.
-   Still to write: the training loop (Table 6 gives Adam, 200 epochs, batch 32,
-   learning rate 1e-3 decaying to 1e-4, MSE loss).
-3. Reproduce a simple published baseline first, before trusting any graph
-   result. Li et al. (2018) report an error of about 12.6 on FD001 and is a
-   good target: a pipeline that cannot approach a known baseline has a problem
-   that no amount of model tuning will fix. The figure to compare the graph
-   model against is **14.93**, the FD001 entry of the paper's own
-   "ESTGNN w/o LSTM" ablation (their Table 11), not the 19.68 four-dataset
-   average quoted in assumption A-11.
+   The training loop of Table 6 is in `src/thesis_gnn_rul_xai/training/`.
+3. Reproduce a simple published baseline, as an independent check that the
+   pipeline itself is sound. Li et al. (2018) report an error of about 12.6
+   on FD001; a pipeline that cannot approach a known baseline has a problem
+   no amount of model tuning will fix. **Still outstanding.** The graph
+   model's own result is in [section 8](#8-results-so-far).
 4. ~~Add the evaluation measures from the paper: the NASA scoring function, root
    mean squared error, the coefficient of determination, and average safe
    underestimation error.~~ **Done**, in `src/thesis_gnn_rul_xai/evaluation/`.
@@ -594,7 +716,7 @@ realistic target; understanding and documenting the difference is.
 
 ---
 
-## 13. References
+## 14. References
 
 Full citations, with a note on what each is used for, are in
 [`docs/REFERENCES.md`](docs/REFERENCES.md). The works cited above are:

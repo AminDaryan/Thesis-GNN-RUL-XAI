@@ -219,6 +219,9 @@ class OperatingConditionEncoder:
         return self.fit(frame).transform(frame)
 
 
+# ASSUMPTION A-03: the paper never describes how its inputs are scaled, so the
+# whole of this class is a substitution from Jin et al. (2025), not a
+# reconstruction of what Wen et al. (2026) did.
 @dataclass
 class SensorNormalizer:
     """Rescale sensor columns using statistics learned from training data only.

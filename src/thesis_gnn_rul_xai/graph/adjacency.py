@@ -152,10 +152,15 @@ def build_fully_connected_adjacency(
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     """Return a graph in which every sensor is connected to every other one.
 
-    This is the natural comparison graph for the ablation that Wen et al.
-    (2026) call "without physics prior": it removes all engineering knowledge
-    while keeping the rest of the architecture identical, so any change in
-    accuracy can be attributed to the graph structure alone.
+    This is the comparison graph for the ablation that Wen et al. (2026) call
+    "without physics prior": it removes all engineering knowledge while
+    keeping the rest of the architecture identical, so any change in accuracy
+    can be attributed to the graph structure alone.
+
+    ASSUMPTION A-19: the paper names that ablation but never says what
+    replaces the hand-designed matrix. A graph with no edges would ablate
+    message passing itself, which the paper reports separately as "w/o GCN",
+    so a complete graph is used here.
     """
     matrix = np.ones((n_nodes, n_nodes), dtype=np.float32)
     np.fill_diagonal(matrix, 0.0)

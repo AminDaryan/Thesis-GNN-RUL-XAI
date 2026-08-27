@@ -128,14 +128,22 @@ class PreprocessingConfig:
 
     # --- Windowing ---------------------------------------------------------
     window_size: int = 30
+    # ASSUMPTION A-05: the paper gives a 30-step window in Table 6 but never
+    # states the stride between consecutive windows.
     window_stride: int = 1
 
     # --- Labels ------------------------------------------------------------
+    # ASSUMPTION A-01: Equation 19 defines the ceiling symbolically and the
+    # value is never printed. 125 is read off the True RUL curve of Fig. 7.
     rul_max: int = 125
     clip_test_labels: bool = True
 
     # --- Signal processing -------------------------------------------------
+    # ASSUMPTION A-03: the paper never describes its input scaling at all.
+    # This follows Jin et al. (2025) on the same dataset.
     normalization: NormalizationMethod = "minmax_per_condition"
+    # ASSUMPTION A-04: Section 3.2.3 attaches the value 0.5 to the previous
+    # smoothed value rather than to the smoothing parameter. Read as alpha.
     smoothing_alpha: float | None = 0.5
 
     # --- Model input shape -------------------------------------------------

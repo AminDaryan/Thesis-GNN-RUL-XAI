@@ -246,9 +246,12 @@ carries the full 30-cycle window, giving `[batch, 14, 30]`. The alternative
 recent reading, is available in the configuration.
 
 **Why.** With no temporal encoder, passing only the last reading would discard
-29 of the 30 cycles in each window and make the window size meaningless. Giving
-the graph layer the whole window is the standard form of this ablation and
-keeps the temporal information available to the model.
+29 of the 30 cycles in each window and make the window size meaningless.
+Giving the graph layer the whole window keeps that information available to
+the model.
+
+Both readings have now been run, and neither reproduces the paper's figure
+for this configuration: the published 14.93 falls between them. See F-06.
 
 **How much it matters.** Large. This changes the width of the first weight
 matrix and the amount of information the model receives.
@@ -319,10 +322,19 @@ and then names only six: T2, P2, epr, farB, Nfdmd and PCNRdmd.
 
 **What we chose.** The seventh is `NRc`, the corrected core speed.
 
-**Why.** It is the only sensor that appears in the paper's full sensor list
-(their Table 2) but not among the 14 rows of their adjacency matrix (their
-Table 3). Since Table 3 defines what the model actually consumes, it is the
-authoritative list.
+**Why.** Seven of the 21 sensors in the paper's full list (their Table 2) are
+absent from the 14 rows of their adjacency matrix (their Table 3): T2, P2,
+epr, `NRc`, farB, Nf_dmd and PCNfR_dmd. Six of those seven are the ones
+Section 3.2.2 names. `NRc` is the only one it does not, so it is the
+unnamed seventh. Since Table 3 defines what the model actually consumes, it
+is the authoritative list.
+
+The paper's own Section 3.2.2 supports this independently. It gives the
+removal criterion as "high correlational redundancy (above 0.95) and
+constant values", and names `NRc` in the sentence "Rotational speed
+parameters (Nf, Nc, NRf, NRc) show high correlation coefficients". `NRc` is
+therefore removed by the redundancy half of the criterion rather than the
+constancy half, which is exactly what the data shows.
 
 **Confirmed against the data.** Running the diagnostic on the real FD001
 training set shows that exactly the six *named* sensors are perfectly constant.
@@ -358,9 +370,11 @@ correcting it.
 Why this is interesting for the thesis: `P15` has four neighbours in the
 physics graph (`T24`, `Nf`, `NRf`, `BPR`). A node that carries no information
 but still passes messages to four others is exactly the kind of thing a
-graph-native explanation method should be able to expose, and a feature
-attribution method such as SHAP should assign it near-zero importance. It is a
-ready-made sanity check for the explainability stage.
+graph-native explanation method should be able to expose.
+
+**This entry originally predicted that SHAP would assign `P15` near-zero
+importance. That prediction has since been tested and is only half right;
+see F-05.**
 
 Note that the right test here is the **number of distinct values**, not the
 size of the range. `Nf` has a smaller relative range than `P15` (2.8e-4 against
@@ -437,7 +451,8 @@ so the difference can be measured rather than argued about.
 
 ## A-13 — Targets are divided by the label ceiling for training
 
-**Where:** `models/estgnn.py`, `ESTGNN.forward` and `ESTGNN.predict_cycles`
+**Where:** `training/loop.py`, `_as_loader` divides the targets;
+`models/estgnn.py`, `ESTGNN.predict_cycles` multiplies the prediction back.
 
 **The gap.** The paper's final layer is a sigmoid, and the text says it
 "ensures normalized RUL values within [0,1]". It never states the arithmetic
@@ -466,8 +481,8 @@ on, and it is checked directly by
 **Where:** `models/layers.py`, `GraphConvolution.reset_parameters`
 
 **The gap.** The paper does not say how any weight matrix is initialised. Its
-Table 6 lists the optimiser, learning rate, batch size and epoch count, and
-stops there.
+Table 6 lists six hyper-parameters — learning rate, epochs, batch size, time
+steps, optimiser and loss function — and initialisation is not among them.
 
 **What we chose.** Glorot (Xavier) uniform initialisation for the graph
 convolution weights. The dense layers keep PyTorch's default, which is the
@@ -621,9 +636,11 @@ Five seeds of each variant on FD001, identical in every other respect:
 | Fully connected (A-19) | 19.17 +/- 0.45 | 743 +/- 53 | 0.771 +/- 0.011 | 13.44 +/- 0.27 |
 
 Removing the physics prior costs **5.7 cycles of RMSE** in this configuration.
-The paper reports the same ablation costing **0.56** cycles (12.34 against
-11.78), and calls it "the smallest performance impact" of the three components
-it tests.
+On FD001 the paper reports the same ablation costing **0.56** cycles (12.34
+against 11.78). Its own summary quotes the four-dataset average instead,
+as "the smallest performance impact (Δ=1.32, +9 % degradation)" of the three
+components it tests; either way it is the smallest of their three, and here
+it is the largest.
 
 The most likely explanation is the LSTM stage this project omits (A-11). In the
 full architecture, a per-sensor temporal encoder extracts degradation
@@ -671,54 +688,104 @@ the prediction?* It is measured in flight cycles, and by the efficiency
 property the fourteen values plus the baseline prediction reconstruct the
 actual prediction exactly.
 
-**How much it matters.** Moderate, and measurable. The ranking of sensors is
-fairly stable across reasonable baselines; the magnitudes are not. Any figure
-quoted from this analysis must say which baseline produced it.
+**How much it matters.** A great deal, and it has been measured rather than
+asserted. Computing the Shapley values of the same trained model on the same
+20 test windows under three baselines:
+
+| Baseline | Four most important sensors | Rank correlation with the mean window |
+|----------|-----------------------------|---------------------------------------|
+| mean window (used here) | T24, Nf, phi, P30 | — |
+| median window | T24, Nf, phi, P30 | **0.97** |
+| all zeros | **P15**, phi, W31, P30 | **−0.16** |
+
+Between the two sensible baselines the ranking is essentially unchanged
+(Spearman 0.97) and the average magnitude moves from 5.9 to 5.5 cycles. The
+all-zeros baseline produces an *unrelated* ranking, and promotes `P15` — the
+sensor with the least information in the whole set, see F-01 — to first
+place. That is the argument of the paragraph above, confirmed: under min-max
+scaling, zero is a sensor's lowest recorded reading, so substituting it
+manufactures a large fictitious signal for exactly the sensors whose real
+range is smallest.
+
+Any figure quoted from this analysis must say which baseline produced it.
 
 ---
 
-### F-05 — What the first SHAP run says about P15, and what it does not
+### F-05 — What SHAP says about P15, and what it does not
 
-Finding F-01 recorded that `P15` takes only two distinct values on FD001 and
-predicted that a working attribution method should give it close to zero
-importance. The first run of the exact Shapley computation, on the full life of
-one held-out engine (240 windows, 16 384 coalitions each), gives a more
-interesting answer than that.
+Finding F-01 recorded that `P15` takes only two distinct values on FD001, and
+predicted that a working attribution method would give it close to zero
+importance. Exact Shapley values, computed over the full life of three held-out
+engines, show that the prediction is half right in a way that turns out to be
+more useful than if it had simply been correct.
 
-**Averaged over the engine's life, P15 ranks last of the fourteen**, with a
-mean absolute contribution of 4.2 cycles against 11.8 for `T24`. That agrees
-with the paper's own Fig. 9, which also places `P15` at the bottom, and it is a
-point of genuine agreement between this re-implementation and the original.
+**The ranking prediction holds.** `P15` comes last of the fourteen on every
+engine tested:
 
-**But its contribution is not uniformly small.** It reaches 12 to 15 cycles in
-the first five windows of the engine's history and then collapses to about
-0.05 cycles for the remaining 235. A sensor carrying no information should not
-be worth fifteen cycles at any moment.
+| Engine | Windows | `P15` rank | mean \|φ\| for `P15` | mean \|φ\| for the top sensor |
+|--------|---------|-----------|---------------------|-----------------------------|
+| 5  | 240 | 14 of 14 | 4.15 cycles | 11.80 (`T24`) |
+| 25 | 201 | 14 of 14 | 0.15 cycles | 11.64 (`T24`) |
+| 82 | 185 | 14 of 14 | 6.29 cycles | 11.13 (`T24`) |
 
-The mechanism is in the preprocessing, not the attribution. `P15`'s two raw
-levels are 0.01 psia apart, which is measurement quantisation rather than
-signal. The smoothing filter of A-04 interpolates between those two levels, and
-the min-max rescaling of A-03 then stretches the result across the full `[0, 1]`
-range. Measured on the scaled training windows, `P15` ends up with a standard
-deviation of 0.083, which is essentially the same as `Nc` at 0.081. A sensor
-with nothing to say arrives at the model with the same amplitude as one that
-has. The early windows are where the exponential filter is still settling from
-its first reading, which is exactly where the spurious contribution appears.
+That agrees with the paper's own Fig. 9, which also places `P15` at the bottom,
+and it is a point of genuine agreement between this re-implementation and the
+original.
+
+**The magnitude prediction does not hold, and the failure is engine-specific.**
+On engine 25 the attribution really is negligible: a median of 0.15 cycles and
+a maximum of 0.4 over 201 windows. On engines 5 and 82 it is not: medians of
+1.5 and 4.1 cycles, maxima of 19.1 and 25.8, and roughly half of all windows
+above one cycle. A sensor carrying no information should not be worth twenty
+cycles on any window of any engine.
+
+**The mechanism is measurement quantisation, amplified by the rescaling.**
+`P15`'s two raw levels are 21.60 and 21.61 psia, 0.01 apart, which is the
+resolution of the recording rather than anything physical. Engines differ in
+how often the reading crosses between them:
+
+| Engine | Distinct `P15` values | Times the level changes |
+|--------|----------------------|-------------------------|
+| 5  | 2 | 34 |
+| 25 | 1 | 0 |
+| 82 | 2 | 20 |
+
+Across all 100 training engines the level changes a median of 2 times, never
+for 38 of them, and up to 34 times. Engine 25 — the one whose attribution is
+negligible — is one of the 38 that never change.
+
+So `P15` earns a large Shapley value exactly when a quantisation step falls
+inside the 30-cycle window, and none when it does not. The rescaling is what
+makes those steps loud: min-max scaling maps the 0.01 psia gap onto the full
+`[0, 1]` range, giving `P15` a standard deviation of 0.083 on the scaled
+training windows against 0.081 for `Nc`. A sensor with nothing to say arrives
+at the model with the same amplitude as one that has.
 
 **Consequences worth stating in the thesis.**
 
-1. F-01's proposed sanity check is right on average and wrong window by window.
-   The sharper version: `P15`'s attribution should be near zero *once the
-   smoothing filter has settled*, and it is.
-2. Min-max rescaling is unsafe for a near-constant sensor, because it maps
-   quantisation noise onto the same range as real variation. Standardising by
-   the standard deviation instead would have the same problem; only dropping
-   the sensor, or scaling by a fixed physical range, avoids it. The pipeline
-   keeps `P15` because the paper's adjacency matrix is defined over its fixed
-   14-sensor set, so this is a limitation to report rather than to correct.
-3. This is a concrete example of an explanation revealing a preprocessing
+1. F-01's check should be stated as a *ranking* claim, not a magnitude one.
+   "`P15` should rank last" is confirmed on every engine tested. "`P15`'s
+   attribution should be near zero" is true only for the engines whose reading
+   never crosses between its two levels.
+2. Min-max rescaling is unsafe for a sensor whose real variation is at the
+   resolution limit, because it maps quantisation onto the same range as
+   genuine signal. Standardising by the standard deviation would do the same.
+   Only dropping the sensor, or scaling by a fixed physical range, avoids it.
+   The pipeline keeps `P15` because the paper's adjacency matrix is defined
+   over its fixed 14-sensor set, so this is a limitation to report rather than
+   to correct.
+3. This is a concrete case of an explanation exposing a **preprocessing**
    defect rather than a model defect, which is a useful thing for a thesis on
-   explainability to be able to show.
+   explainability to be able to demonstrate.
+
+**A caution about this entry.** Its first version was written from fourteen
+sampled windows out of 240, and reported that `P15`'s contribution "collapses
+to about 0.05 cycles" after the first five. Checking all 240 showed a median of
+1.5 and a maximum of 19.1, and the large values spread across the first
+three quarters of the engine's life rather than clustering at the start. The
+sampled columns had happened to fall in quiet stretches. Attribution values
+vary enough from window to window that any claim about them has to be computed
+over every window and across more than one engine.
 
 ---
 
