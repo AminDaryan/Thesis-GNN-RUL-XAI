@@ -11,10 +11,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from thesis_gnn_rul_xai.config import PreprocessingConfig  # noqa: E402
-from thesis_gnn_rul_xai.data.pipeline import run_preprocessing  # noqa: E402
-from thesis_gnn_rul_xai.models import ESTGNN  # noqa: E402
-from thesis_gnn_rul_xai.training import (  # noqa: E402
+from thesis_gnn_rul_xai.config import PreprocessingConfig
+from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+from thesis_gnn_rul_xai.models import ESTGNN
+from thesis_gnn_rul_xai.training import (
     TrainingConfig,
     evaluate_model,
     load_training_config,

@@ -58,7 +58,7 @@ def test_validation_engines_never_influence_the_scaling(prepared):
 
     offenders = [
         (symbol, float(low), float(high))
-        for symbol, low, high in zip(prepared.sensor_symbols, lowest, highest)
+        for symbol, low, high in zip(prepared.sensor_symbols, lowest, highest, strict=True)
         if abs(low) > 1e-6 or abs(high - 1.0) > 1e-6
     ]
     assert not offenders, (

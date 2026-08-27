@@ -29,8 +29,8 @@ from typing import Any, Literal
 import yaml
 
 __all__ = [
-    "NormalizationMethod",
     "NodeFeatureMode",
+    "NormalizationMethod",
     "PreprocessingConfig",
     "load_config",
 ]

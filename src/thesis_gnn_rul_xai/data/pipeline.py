@@ -69,12 +69,16 @@ import numpy as np
 import pandas as pd
 
 from ..config import PreprocessingConfig
-from ..graph.adjacency import adjacency_report, build_physics_adjacency, normalize_adjacency
+from ..graph.adjacency import (
+    adjacency_report,
+    build_physics_adjacency,
+    normalize_adjacency,
+)
 from ..utils.logging_setup import get_logger
 from ..utils.paths import processed_data_dir, raw_data_dir
 from .labeling import apply_piecewise_rul
 from .loading import CMAPSSData, load_subset
-from .normalization import CONDITION_COL, OperatingConditionEncoder, SensorNormalizer
+from .normalization import OperatingConditionEncoder, SensorNormalizer
 from .sensors import (
     PAPER_SENSOR_COLUMNS,
     PAPER_SENSOR_SYMBOLS,
@@ -82,7 +86,12 @@ from .sensors import (
     detect_uninformative_sensors,
 )
 from .smoothing import apply_ewma
-from .windowing import WindowedDataset, make_last_windows, make_windows, split_units_by_id
+from .windowing import (
+    WindowedDataset,
+    make_last_windows,
+    make_windows,
+    split_units_by_id,
+)
 
 __all__ = ["PreparedData", "run_preprocessing"]
 
@@ -139,7 +148,7 @@ class PreparedData:
                 {
                     "split": name,
                     "examples": len(dataset),
-                    "engines": int(len(np.unique(dataset.units))) if len(dataset) else 0,
+                    "engines": len(np.unique(dataset.units)) if len(dataset) else 0,
                     "feature_shape": str(tuple(dataset.features.shape[1:])),
                     "target_min": float(dataset.targets.min()) if len(dataset) else float("nan"),
                     "target_max": float(dataset.targets.max()) if len(dataset) else float("nan"),

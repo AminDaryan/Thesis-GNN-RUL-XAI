@@ -75,7 +75,7 @@ from ..models.estgnn import ESTGNN
 from ..utils.logging_setup import get_logger
 from .config import TrainingConfig
 
-__all__ = ["TrainingHistory", "resolve_device", "predict", "train"]
+__all__ = ["TrainingHistory", "predict", "resolve_device", "train"]
 
 logger = get_logger(__name__)
 

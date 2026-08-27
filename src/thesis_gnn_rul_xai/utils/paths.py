@@ -17,12 +17,12 @@ from __future__ import annotations
 from pathlib import Path
 
 __all__ = [
+    "ensure_dir",
+    "figures_dir",
+    "processed_data_dir",
     "project_root",
     "raw_data_dir",
-    "processed_data_dir",
     "reports_dir",
-    "figures_dir",
-    "ensure_dir",
 ]
 
 # A marker file that exists only in the project root directory.

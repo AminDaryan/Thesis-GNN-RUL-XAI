@@ -17,12 +17,12 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from thesis_gnn_rul_xai.graph.adjacency import (  # noqa: E402
+from thesis_gnn_rul_xai.graph.adjacency import (
     build_fully_connected_adjacency,
     build_physics_adjacency,
     normalize_adjacency,
 )
-from thesis_gnn_rul_xai.models import ESTGNN, GraphConvolution  # noqa: E402
+from thesis_gnn_rul_xai.models import ESTGNN, GraphConvolution
 
 
 @pytest.fixture(scope="module")
@@ -206,7 +206,7 @@ def test_building_the_model_is_repeatable(adjacency):
     first = ESTGNN(adjacency, in_features=30)
     torch.manual_seed(7)
     second = ESTGNN(adjacency, in_features=30)
-    for a, b in zip(first.parameters(), second.parameters()):
+    for a, b in zip(first.parameters(), second.parameters(), strict=True):
         torch.testing.assert_close(a, b)
 
 

@@ -31,8 +31,7 @@ on the real FD001 files and all 14 of its internal checks pass.
 10. [Testing](#10-testing)
 11. [Rules this project follows](#11-rules-this-project-follows)
 12. [Known limitations](#12-known-limitations)
-13. [What comes next](#13-what-comes-next)
-14. [References](#14-references)
+13. [References](#13-references)
 
 ---
 
@@ -130,7 +129,46 @@ exist to prevent it.
 
 **Normalisation (rescaling).** Putting different measurements onto a comparable
 numerical scale, so that a temperature near 1400 does not dominate a ratio near
-8 simply because it is a larger number.
+8 simply because it is a larger number. This project uses **min-max scaling**,
+which maps each sensor's smallest observed value to 0 and its largest to 1:
+
+```
+scaled = (value - minimum) / (maximum - minimum)
+```
+
+with the minimum and maximum taken from the training engines only, and
+separately for each operating condition. `zscore` is available as an
+alternative. See assumption A-03.
+
+**Exponentially weighted moving average (EWMA).** The filter used to damp
+measurement noise. Each smoothed value is a blend of the current reading and
+the previous smoothed value:
+
+```
+S(t) = α · X(t) + (1 - α) · S(t-1)          S(1) = X(1),  α = 0.5
+```
+
+Because it only ever looks backwards, it cannot leak a future reading into the
+present. See assumptions A-04 and A-09.
+
+**Graph convolution.** The operation each of the three network layers performs:
+
+```
+H' = ReLU( Â · H · W )        Â = D^(-1/2) (A + I) D^(-1/2)
+```
+
+`H` holds the current node features, `W` is learned, and `Â` is the fixed
+sensor graph with self-loops added and each edge divided by the degrees it
+joins. See assumption A-21.
+
+**Piecewise-linear RUL.** The target. While an engine is healthy the label is
+held at a ceiling; after that it falls by one per cycle:
+
+```
+RUL(t) = min(T_total - t, RUL_max)          RUL_max = 125
+```
+
+See assumption A-01.
 
 **Time window.** A short, fixed-length slice of an engine's history, for
 example 30 consecutive cycles. Windows are what the model actually receives,
@@ -140,27 +178,66 @@ because histories have different lengths and a network needs a fixed input size.
 what the rest can do without it. If accuracy barely changes, that part was
 not doing much. It is how a paper shows which of its ingredients matter.
 
-**The four measures used to score a prediction.** All four are computed for
-each of the 100 test engines and then combined.
+**The four measures used to score a prediction.** All four are computed over
+the *N* test engines, from one prediction each. Throughout, `y` is the true
+remaining life of an engine and `ŷ` the predicted one, both in flight
+cycles, and the error is
+
+```
+d = ŷ - y          positive means the model was optimistic
+```
 
 * **RMSE — root mean squared error.** The typical size of the error, in
-  flight cycles. It treats a prediction 10 cycles too high exactly like one
-  10 cycles too low. This is the number most papers quote.
-* **NASA score.** The official score of the 2008 competition this dataset
-  comes from. Unlike RMSE it is **asymmetric**: predicting more life than an
-  engine has is punished far harder than predicting less, because the first
-  mistake leaves a failing engine flying and the second only services it
-  early. The penalty grows exponentially, so one badly wrong engine can
-  outweigh ninety-nine good ones. Lower is better, and it is a sum rather
-  than an average, so it can only be compared between runs on the same
-  sub-dataset.
+  flight cycles.
+
+  ```
+  RMSE = sqrt( (1/N) * Σ d² )
+  ```
+
+  Squaring makes it symmetric: a prediction 10 cycles too high counts
+  exactly like one 10 cycles too low. This is the number most papers quote.
+
+* **NASA score (SF).** The official score of the 2008 PHM competition this
+  dataset comes from.
+
+  ```
+  SF = Σ s,   where   s = exp(-d / 13) - 1   if d < 0   (early, safe)
+                      s = exp( d / 10) - 1   if d >= 0  (late, dangerous)
+  ```
+
+  Unlike RMSE it is **asymmetric**, and deliberately so: the divisor 10 for
+  a late prediction is smaller than the 13 for an early one, so the same
+  error costs more when the model was optimistic. Predicting more life than
+  an engine has leaves a failing engine flying; predicting less only
+  services it early. Being exponential, one badly wrong engine can outweigh
+  ninety-nine good ones. Lower is better, 0 is perfect, and because it is a
+  **sum** it grows with the size of the test set — so it can only be
+  compared between runs on the same sub-dataset.
+
 * **R² — coefficient of determination.** The fraction of the variation in
-  the true labels that the model accounts for. 1 is perfect; 0 is no better
-  than always guessing the average.
-* **ASUE — Average Safe Underestimation Error.** The average size of the
-  error, counted only over the engines the model was *pessimistic* about.
+  the true labels that the model accounts for.
+
+  ```
+  R² = 1 - Σ(ŷ - y)² / Σ(y - ȳ)²        ȳ = mean of the true labels
+  ```
+
+  1 is perfect; 0 is no better than always guessing the average; negative
+  is worse than that. (The paper prints a different denominator; see A-16.)
+
+* **ASUE — Average Safe Underestimation Error.** The average shortfall,
+  counted only over the engines the model was *pessimistic* about.
+
+  ```
+  ASUE = (1 / N_under) * Σ max(0, y - ŷ)     over the engines where ŷ < y
+  ```
+
   Underestimating is the safe direction, so this measures the cost of being
-  too cautious: servicing engines that still had life left in them.
+  too cautious: servicing engines that still had life left in them. Engines
+  the model was optimistic about do not contribute at all.
+
+All four are implemented in `src/thesis_gnn_rul_xai/evaluation/metrics.py`,
+on plain NumPy arrays, so a figure copied out of a published table can be
+scored the same way a model's output is.
 
 ---
 
@@ -291,15 +368,22 @@ The same applies to `run_preprocessing(config, data_dir=...)` in Python.
 
 ## 6. Running the pipeline
 
-### From the notebook (start here)
+### From the notebooks (start here)
 
 ```bash
-jupyter lab notebooks/01_preprocessing_fd001.ipynb
+jupyter lab notebooks/
 ```
 
-The notebook explains every step, shows the intermediate tables and figures,
-and verifies each stage as it goes. It is the intended entry point for a reader
-who wants to understand what happens and why.
+There are two, and they are meant to be read in order:
+
+| Notebook | Covers |
+|----------|--------|
+| `01_preprocessing_fd001.ipynb` | steps 1 to 8: the raw text files become model-ready arrays |
+| `02_model_fd001.ipynb` | steps 9 to 12: build the network, train it, score it, explain it |
+
+Each explains every step, shows the intermediate tables and figures, and
+verifies the stage as it goes. Together they are the intended entry point for
+a reader who wants to understand what happens and why.
 
 > The notebook is shipped with its outputs already filled in, so it can be read
 > without running anything. Those outputs were produced on the **real FD001
@@ -463,7 +547,8 @@ Thesis GNN RUL XAI/
 │   └── REFERENCES.md             Full citations
 │
 ├── notebooks/
-│   └── 01_preprocessing_fd001.ipynb
+│   ├── 01_preprocessing_fd001.ipynb
+│   └── 02_model_fd001.ipynb
 │
 ├── scripts/
 │   ├── prepare_data.py           Check or preprocess the raw data
@@ -633,7 +718,8 @@ the layers above, so read them last and they will contain no surprises.
    `(20631, 26)` to `(17731, 14, 30)` to `(100,)` — you understand the pipeline,
    whatever the code looks like.
 
-**If you have one hour**, read the notebook end to end. **If you have three**,
+**If you have one hour**, read notebook 01 end to end. **If you have two**, add
+notebook 02. **If you have three**,
 add the module docstrings of `data/normalization.py`, `data/windowing.py`,
 `graph/adjacency.py` and `models/estgnn.py`, in that order. **If you have a
 day**, add `docs/ASSUMPTIONS.md`, which is where every judgement call this
@@ -644,6 +730,7 @@ project makes is defended.
 | If you want to... | Open |
 |-------------------|------|
 | Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
+| Understand the model, the training and the explanations | `notebooks/02_model_fd001.ipynb` |
 | Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
 | Know why a value was chosen when the paper is silent | `docs/ASSUMPTIONS.md` |
 | Run the whole thing without reading anything | `scripts/prepare_data.py`, then `scripts/train.py` |
@@ -755,47 +842,7 @@ and A-18 (early stopping). Each would take one run of
 
 ---
 
-## 13. What comes next
-
-1. ~~Run this pipeline on the real FD001 files and compare the sensor
-   diagnosis with the paper's stated selection.~~ **Done.** The comparison
-   produced assumption A-10 and findings F-01 to F-03.
-2. ~~Implement the graph convolution model from Table 4 of the paper: three
-   layers of sizes 32, 64 and 32, then two fully connected layers.~~ **Done**,
-   in `src/thesis_gnn_rul_xai/models/`. `ESTGNN.layer_summary()` prints the
-   architecture in the same form as Table 4 for checking against the paper.
-   The training loop of Table 6 is in `src/thesis_gnn_rul_xai/training/`.
-3. Reproduce a simple published baseline, as an independent check that the
-   pipeline itself is sound. Li et al. (2018) report an error of about 12.6
-   on FD001; a pipeline that cannot approach a known baseline has a problem
-   no amount of model tuning will fix. **Still outstanding.** The graph
-   model's own result is in [section 8](#8-results-so-far).
-4. ~~Add the evaluation measures from the paper: the NASA scoring function, root
-   mean squared error, the coefficient of determination, and average safe
-   underestimation error.~~ **Done**, in `src/thesis_gnn_rul_xai/evaluation/`.
-   Two of the paper's printed formulas could not be used as written: its
-   Equations 20 and 21 disagree with each other about which direction of error
-   is dangerous, and its Equation 23 is not the coefficient of determination.
-   Both departures are recorded as A-15 and A-16.
-5. Run the remaining ablations. "Without physics prior" is done and is
-   reported as finding F-04: removing the physics graph costs 5.7 cycles of
-   RMSE here, against the 0.56 the paper reports, most likely because the
-   omitted LSTM would otherwise supply the same information by another route.
-   "Without GCN" still needs a plain network on the same features.
-6. ~~Add SHAP~~ **Done**, in `src/thesis_gnn_rul_xai/explain/`. With only 14
-   sensors the Shapley values of Equation 15 can be enumerated exactly, so no
-   sampling approximation is used and a disagreement with the paper cannot be
-   blamed on estimation noise. The first run is recorded as finding F-05.
-7. Move beyond node attribution to graph-native explanations that describe
-   edges and subgraphs rather than single sensors — the actual research gap
-   this thesis addresses. SHAP divides credit among the 14 sensors and cannot,
-   by construction, express a fact like this one: every path from the fan
-   sensors to the core sensors runs through `T24`, the graph's only
-   articulation point.
-
----
-
-## 14. References
+## 13. References
 
 Full citations, with a note on what each is used for, are in
 [`docs/REFERENCES.md`](docs/REFERENCES.md). The works cited above are:

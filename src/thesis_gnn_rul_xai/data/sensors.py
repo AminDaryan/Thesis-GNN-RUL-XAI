@@ -85,19 +85,19 @@ from dataclasses import dataclass
 import pandas as pd
 
 __all__ = [
-    "SensorInfo",
-    "SENSORS",
-    "RAW_COLUMNS",
-    "UNIT_COL",
     "CYCLE_COL",
     "OP_SETTING_COLS",
-    "SENSOR_COLS",
-    "PAPER_SENSOR_SYMBOLS",
-    "PAPER_SENSOR_COLUMNS",
     "PAPER_EXCLUDED_SYMBOLS",
-    "symbol_to_column",
+    "PAPER_SENSOR_COLUMNS",
+    "PAPER_SENSOR_SYMBOLS",
+    "RAW_COLUMNS",
+    "SENSORS",
+    "SENSOR_COLS",
+    "UNIT_COL",
+    "SensorInfo",
     "column_to_symbol",
     "detect_uninformative_sensors",
+    "symbol_to_column",
 ]
 
 #: Name of the column that identifies an engine.

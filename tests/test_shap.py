@@ -24,15 +24,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from thesis_gnn_rul_xai.config import PreprocessingConfig  # noqa: E402
-from thesis_gnn_rul_xai.data.pipeline import run_preprocessing  # noqa: E402
-from thesis_gnn_rul_xai.graph.adjacency import (  # noqa: E402
-    build_fully_connected_adjacency,
-    build_physics_adjacency,
-    normalize_adjacency,
-)
-from thesis_gnn_rul_xai.models import ESTGNN  # noqa: E402
-from thesis_gnn_rul_xai.explain import (  # noqa: E402
+from thesis_gnn_rul_xai.config import PreprocessingConfig
+from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+from thesis_gnn_rul_xai.explain import (
     MAX_EXACT_NODES,
     coalition_weights,
     dynamic_shap,
@@ -41,6 +35,11 @@ from thesis_gnn_rul_xai.explain import (  # noqa: E402
     shap_summary,
     shap_values,
 )
+from thesis_gnn_rul_xai.graph.adjacency import (
+    build_fully_connected_adjacency,
+    normalize_adjacency,
+)
+from thesis_gnn_rul_xai.models import ESTGNN
 
 
 @pytest.fixture(scope="module")

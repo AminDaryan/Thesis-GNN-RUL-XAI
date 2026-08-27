@@ -54,20 +54,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from ..utils.logging_setup import get_logger
 from .sensors import CYCLE_COL, RAW_COLUMNS, UNIT_COL
 
 __all__ = [
-    "CMAPSSData",
     "DOWNLOAD_URL",
-    "read_cmapss_frame",
-    "read_rul_file",
+    "EXPECTED_SHAPES",
+    "CMAPSSData",
     "attach_rul",
     "load_subset",
-    "EXPECTED_SHAPES",
+    "read_cmapss_frame",
+    "read_rul_file",
 ]
 
 logger = get_logger(__name__)

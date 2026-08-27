@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import sys
 
-__all__ = ["get_logger", "configure_logging"]
+__all__ = ["configure_logging", "get_logger"]
 
 _LOG_FORMAT = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
 _DATE_FORMAT = "%H:%M:%S"

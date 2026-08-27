@@ -81,7 +81,7 @@ from ..utils.logging_setup import get_logger
 from ..utils.seeding import make_rng
 from .sensors import CYCLE_COL, UNIT_COL
 
-__all__ = ["WindowedDataset", "make_windows", "make_last_windows", "split_units_by_id"]
+__all__ = ["WindowedDataset", "make_last_windows", "make_windows", "split_units_by_id"]
 
 logger = get_logger(__name__)
 
@@ -343,7 +343,7 @@ def split_units_by_id(
             f"validation_fraction must be in [0, 1), got {validation_fraction}."
         )
 
-    n_validation = int(round(len(unique) * validation_fraction))
+    n_validation = round(len(unique) * validation_fraction)
     if n_validation == 0:
         return unique, np.array([], dtype=np.int64)
     if n_validation >= len(unique):

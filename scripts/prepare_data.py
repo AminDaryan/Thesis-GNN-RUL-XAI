@@ -39,15 +39,18 @@ from pathlib import Path
 # that has not been installed with `pip install -e .`.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config  # noqa: E402
-from thesis_gnn_rul_xai.data.loading import (  # noqa: E402
+from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
+from thesis_gnn_rul_xai.data.loading import (
     DOWNLOAD_URL,
     EXPECTED_SHAPES,
     read_cmapss_frame,
 )
-from thesis_gnn_rul_xai.data.pipeline import run_preprocessing  # noqa: E402
-from thesis_gnn_rul_xai.utils.logging_setup import configure_logging  # noqa: E402
-from thesis_gnn_rul_xai.utils.paths import processed_data_dir, raw_data_dir  # noqa: E402
+from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
+from thesis_gnn_rul_xai.utils.paths import (
+    processed_data_dir,
+    raw_data_dir,
+)
 
 
 def check_raw_data(subset: str, directory: Path | None = None) -> int:

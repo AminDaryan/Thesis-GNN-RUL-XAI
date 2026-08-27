@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_COLUMNS

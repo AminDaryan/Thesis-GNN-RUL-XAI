@@ -34,7 +34,7 @@ import random
 
 import numpy as np
 
-__all__ = ["set_global_seed", "make_rng", "DEFAULT_SEED"]
+__all__ = ["DEFAULT_SEED", "make_rng", "set_global_seed"]
 
 #: The seed used everywhere in this project unless another value is given.
 #: The specific value has no meaning; it only has to stay constant.

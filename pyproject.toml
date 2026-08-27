@@ -23,10 +23,51 @@ dependencies = [
 # The preprocessing half of the package needs none of these.
 model = ["torch>=2.0"]
 notebook = ["jupyterlab>=4.0", "ipykernel>=6.25", "seaborn>=0.13"]
-dev = ["pytest>=7.4", "pytest-cov>=4.1", "nbconvert>=7.9", "nbformat>=5.9"]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "nbconvert>=7.9",
+    "nbformat>=5.9",
+    "ruff>=0.6",       # style and dead-code checks; configured below
+    "mypy>=1.11",      # verifies the type hints the code already carries
+    "pandas-stubs",    # type information for pandas, which mypy needs
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+# Static checks. Run with:  ruff check .      (and `ruff check --fix .` to apply)
+line-length = 88
+target-version = "py310"
+# Notebooks are narrative documents. Their conventions differ from a module's
+# on purpose: a trailing semicolon suppresses a plot's repr, and a cell is
+# meant to be read top to bottom rather than imported. Linting them to module
+# standards makes them worse, not better.
+exclude = ["notebooks"]
+
+[tool.ruff.lint]
+# E,W  style          F     undefined names and unused imports
+# I    import order   B     likely bugs (bugbear)
+# C4   comprehensions SIM   needless complexity
+# RET  return paths   UP    outdated syntax   RUF  ruff's own checks
+select = ["E", "W", "F", "I", "B", "C4", "SIM", "RET", "UP", "RUF"]
+ignore = [
+    # Long lines are left to human judgement. Most of this package is prose,
+    # and reflowing a sentence to satisfy a column count makes it worse.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The two scripts must extend sys.path before importing the package, so that
+# they work from a clone that has not been installed. That is exactly what
+# E402 forbids, and it is deliberate here.
+"scripts/*.py" = ["E402"]
+# The test modules call pytest.importorskip("torch") before importing anything
+# that needs it, for the same reason.
+"tests/test_models.py" = ["E402"]
+"tests/test_training.py" = ["E402"]
+"tests/test_shap.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src"]

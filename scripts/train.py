@@ -40,26 +40,25 @@ import logging
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config  # noqa: E402
-from thesis_gnn_rul_xai.data.pipeline import run_preprocessing  # noqa: E402
-from thesis_gnn_rul_xai.graph.adjacency import (  # noqa: E402
+from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
+from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+from thesis_gnn_rul_xai.graph.adjacency import (
     build_fully_connected_adjacency,
     build_physics_adjacency,
     normalize_adjacency,
 )
-from thesis_gnn_rul_xai.models import ESTGNN  # noqa: E402
-from thesis_gnn_rul_xai.training import (  # noqa: E402
+from thesis_gnn_rul_xai.models import ESTGNN
+from thesis_gnn_rul_xai.training import (
     TrainingConfig,
     evaluate_model,
     train,
 )
-from thesis_gnn_rul_xai.utils.logging_setup import configure_logging  # noqa: E402
-from thesis_gnn_rul_xai.utils.paths import reports_dir  # noqa: E402
+from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
+from thesis_gnn_rul_xai.utils.paths import reports_dir
 
 #: Published figures for FD001, for orientation while a run is in progress.
 #: These are not targets to tune towards; they are there so a result that is

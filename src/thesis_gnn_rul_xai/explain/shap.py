@@ -103,11 +103,11 @@ from ..utils.logging_setup import get_logger
 __all__ = [
     "MAX_EXACT_NODES",
     "coalition_weights",
-    "mean_window_baseline",
-    "shap_values",
-    "efficiency_error",
     "dynamic_shap",
+    "efficiency_error",
+    "mean_window_baseline",
     "shap_summary",
+    "shap_values",
 ]
 
 logger = get_logger(__name__)

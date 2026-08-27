@@ -108,14 +108,14 @@ from ..data.sensors import PAPER_SENSOR_SYMBOLS
 from ..utils.logging_setup import get_logger
 
 __all__ = [
-    "AdjacencyNormalization",
     "PHYSICS_ADJACENCY_ROWS",
-    "build_physics_adjacency",
-    "build_fully_connected_adjacency",
-    "build_correlation_adjacency",
-    "normalize_adjacency",
+    "AdjacencyNormalization",
     "adjacency_report",
     "adjacency_to_frame",
+    "build_correlation_adjacency",
+    "build_fully_connected_adjacency",
+    "build_physics_adjacency",
+    "normalize_adjacency",
 ]
 
 logger = get_logger(__name__)
@@ -389,7 +389,7 @@ def adjacency_report(
         "is_symmetric": bool(np.allclose(matrix, matrix.T)),
         "has_self_loops": bool(np.any(np.diag(matrix) != 0)),
         "is_connected": len(reached) == n_nodes,
-        "degrees": dict(zip(symbols, degrees.tolist())),
+        "degrees": dict(zip(symbols, degrees.tolist(), strict=True)),
         "isolated_nodes": [symbols[i] for i in np.flatnonzero(degrees == 0)],
     }
 

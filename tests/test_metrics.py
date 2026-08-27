@@ -23,7 +23,6 @@ from thesis_gnn_rul_xai.evaluation import (
     rmse,
 )
 
-
 # --- the sign convention ------------------------------------------------
 
 
