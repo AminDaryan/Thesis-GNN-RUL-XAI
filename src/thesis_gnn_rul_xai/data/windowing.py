@@ -28,11 +28,15 @@ The output is arranged for a Graph Neural Network, in which every sensor is a
 
     (number_of_examples, number_of_sensors, features_per_sensor)
 
-With ``node_feature_mode="window"`` the third axis holds the whole window, so
-each sensor node carries 30 numbers -- its own recent history. With
-``node_feature_mode="last_step"`` the third axis has length 1, holding only the
-most recent reading, which reproduces the input shape ``[batch, 14, 1]``
-printed in Table 4 of Wen et al. (2026).
+The third axis always has length 1: each sensor node carries the most recent
+reading of its window. That is the input shape ``[batch, 14, 1]`` printed in
+Table 4 of Wen et al. (2026), whose first graph layer has
+``W(1) in R^(1 x 32)``.
+
+The window is still what decides *which* cycles are eligible -- the first
+example of an engine ends at cycle ``window_size``, not at cycle 1 -- and it is
+what a temporal encoder would consume if one were added. It is simply not
+handed to the graph layer directly; see assumptions A-07 and A-11.
 
 How the test set is treated
 ---------------------------
@@ -154,7 +158,6 @@ def _extract_one_unit(
     window_size: int,
     stride: int,
     last_only: bool,
-    node_feature_mode: str,
     target_column: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Cut the history of a single engine into windows."""
@@ -193,13 +196,11 @@ def _extract_one_unit(
     # a contiguous block of features: (n, W, S) -> (n, S, W)
     windows = np.transpose(windows, (0, 2, 1))
 
-    if node_feature_mode == "last_step":
-        windows = windows[:, :, -1:]
-    elif node_feature_mode != "window":
-        raise ValueError(
-            f"Unknown node_feature_mode {node_feature_mode!r}. "
-            "Valid options are 'window' and 'last_step'."
-        )
+    # ASSUMPTION A-07: Table 4 gives the input to the first graph layer as
+    # [batch, 14, 1], one number per sensor. In the paper that number is the
+    # output of a per-sensor LSTM; with that stage omitted (A-11) it is the
+    # most recent reading of the window.
+    windows = windows[:, :, -1:]
 
     return np.ascontiguousarray(windows), window_targets, window_cycles
 
@@ -211,7 +212,6 @@ def _build(
     window_size: int,
     stride: int,
     last_only: bool,
-    node_feature_mode: str,
     target_column: str,
 ) -> WindowedDataset:
     missing = [c for c in sensor_columns if c not in frame.columns]
@@ -233,7 +233,6 @@ def _build(
             window_size,
             stride,
             last_only,
-            node_feature_mode,
             target_column,
         )
         feature_blocks.append(windows)
@@ -263,7 +262,6 @@ def make_windows(
     *,
     window_size: int = 30,
     stride: int = 1,
-    node_feature_mode: str = "window",
     target_column: str = "rul",
 ) -> WindowedDataset:
     """Cut every engine history into overlapping windows.
@@ -276,7 +274,6 @@ def make_windows(
         window_size=window_size,
         stride=stride,
         last_only=False,
-        node_feature_mode=node_feature_mode,
         target_column=target_column,
     )
 
@@ -286,7 +283,6 @@ def make_last_windows(
     sensor_columns: Sequence[str],
     *,
     window_size: int = 30,
-    node_feature_mode: str = "window",
     target_column: str = "rul",
 ) -> WindowedDataset:
     """Take only the final window of each engine history.
@@ -300,7 +296,6 @@ def make_last_windows(
         window_size=window_size,
         stride=1,
         last_only=True,
-        node_feature_mode=node_feature_mode,
         target_column=target_column,
     )
 

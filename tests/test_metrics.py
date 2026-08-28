@@ -128,7 +128,9 @@ def test_evaluate_returns_every_measure():
         "rmse", "score", "r2", "asue", "n_engines", "mean_error", "n_late"
     }
     assert result["n_engines"] == 3
-    assert result["n_late"] == 1          # only the 50 -> 55 engine
+    # The 50 -> 55 engine is late, and so is the 30 -> 30 one: nasa_score puts
+    # the boundary at d >= 0, and n_late must agree with it.
+    assert result["n_late"] == 2
     assert result["mean_error"] == pytest.approx(0.0)
 
 

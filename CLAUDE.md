@@ -61,7 +61,32 @@ python scripts/train.py --seeds 5
 
 Before saying that one configuration beats another, test whether the difference
 survives the seed-to-seed spread. A-21 was settled that way and turned out not
-to be significant (p = 0.20), which is a real answer and was worth having.
+to be significant, which is a real answer and was worth having.
+
+Then remember it may not stay settled. All three of this project's
+configuration comparisons — A-21, A-02 and F-04 — were re-measured after the
+A-07 correction of 2026-08-28, and two of them **reversed direction**. A
+comparison is a fact about one architecture, not about the two options. Name
+the configuration whenever you quote one, and re-run it whenever the
+architecture moves.
+
+The seed varies the train/validation split as well as the initialisation and
+the batch order, so the spread is what a genuine repetition would show.
+`--fixed-split` holds the split constant, which understates it; if you use that
+flag, say so wherever the number appears.
+
+### 3a. A stored result must name the code that produced it
+
+Every run writes its commit — with a `-dirty` suffix when the tree has
+uncommitted changes — into `summary.json` and into its own directory name,
+alongside a UTC timestamp. Never hand-edit a results file, never quote a number
+from a run whose commit you cannot identify, and never let two runs share a
+directory.
+
+This rule exists because a results file once survived here that contradicted
+the documentation and could not be reproduced from any committed state. It
+happened to contradict a figure that was correct. It could as easily have
+corroborated one that was wrong. See F-09.
 
 ### 4. Every deviation from the paper gets a numbered entry
 

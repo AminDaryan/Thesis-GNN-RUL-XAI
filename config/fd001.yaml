@@ -18,12 +18,6 @@ clip_test_labels: true # ASSUMPTION A-02: forced by the sigmoid output layer.
 normalization: minmax_per_condition  # ASSUMPTION A-03: the paper is silent.
 smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
 
-# --- Model input shape ----------------------------------------------------
-# "window"    -> each sensor node carries its whole 30-step history.
-# "last_step" -> each sensor node carries one number, matching the input shape
-#                [batch, 14, 1] printed in the paper's Table 4.
-node_feature_mode: window            # ASSUMPTION A-07.
-
 # --- Data splitting -------------------------------------------------------
 validation_fraction: 0.2             # ASSUMPTION A-06: the paper has no split.
 seed: 42

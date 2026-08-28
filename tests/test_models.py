@@ -71,11 +71,18 @@ def test_activations_and_shapes_match_table_4(adjacency):
     ]
 
 
-def test_the_window_configuration_only_widens_the_first_layer(adjacency):
-    """Dropping the LSTM changes W(1) and nothing else."""
+def test_the_default_width_reproduces_table_4(adjacency):
+    """The default in_features=1 is Table 4's printed input shape."""
+    table4 = ESTGNN(adjacency)
+    assert table4.in_features == 1
+    assert table4.count_parameters() == 61729
+
+
+def test_a_wider_first_layer_only_changes_w1(adjacency):
+    """in_features stays general; widening it touches W(1) and nothing else."""
     table4 = ESTGNN(adjacency, in_features=1)
-    ours = ESTGNN(adjacency, in_features=30)
-    assert ours.count_parameters() - table4.count_parameters() == (30 - 1) * 32
+    wider = ESTGNN(adjacency, in_features=30)
+    assert wider.count_parameters() - table4.count_parameters() == (30 - 1) * 32
 
 
 # --- what the network produces ------------------------------------------

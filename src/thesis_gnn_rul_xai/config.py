@@ -29,9 +29,10 @@ from typing import Any, Literal
 import yaml
 
 __all__ = [
-    "NodeFeatureMode",
+    "AdjacencyNormalization",
     "NormalizationMethod",
     "PreprocessingConfig",
+    "SensorGraph",
     "load_config",
 ]
 
@@ -53,18 +54,21 @@ __all__ = [
 #:     the results to this choice can be measured.
 NormalizationMethod = Literal["minmax_per_condition", "minmax_global", "zscore"]
 
-#: What each node of the sensor graph carries as its feature vector.
+#: Which sensor graph the model is given.
 #:
-#: ``"window"``
-#:     The whole time window for that sensor, so a node feature is a vector of
-#:     length equal to the window size. This is the natural choice when no
-#:     temporal encoder (such as an LSTM) is used, because the graph layer then
-#:     sees the full recent history.
-#: ``"last_step"``
-#:     Only the most recent value in the window, so a node feature is a single
-#:     number. This reproduces the input shape printed in Table 4 of Wen et al.
-#:     (2026), which is ``[batch, 14, 1]``.
-NodeFeatureMode = Literal["window", "last_step"]
+#: ``"physics"``
+#:     The hand-designed matrix of Table 3 in Wen et al. (2026).
+#: ``"complete"``
+#:     Every sensor connected to every other, which is the paper's
+#:     "without physics prior" ablation. ASSUMPTION A-19: the paper names
+#:     that ablation but never says what replaces the matrix.
+SensorGraph = Literal["physics", "complete"]
+
+#: How the adjacency matrix is normalised before the graph layers use it.
+#: ASSUMPTION A-21: the paper describes the normalisation but never prints
+#: the formula, and two forms fit its description. See
+#: :func:`thesis_gnn_rul_xai.graph.adjacency.normalize_adjacency`.
+AdjacencyNormalization = Literal["symmetric", "row"]
 
 
 @dataclass
@@ -113,8 +117,17 @@ class PreprocessingConfig:
         number 0.5 to the previous smoothed value rather than to the smoothing
         parameter. Reading it as the smoothing parameter is the only
         interpretation that makes the sentence meaningful, so 0.5 is used.
-    node_feature_mode : NodeFeatureMode
-        Shape of the node features. See :data:`NodeFeatureMode`.
+    graph : SensorGraph
+        Which sensor graph to build. ASSUMPTION A-19 covers the meaning of
+        the ``"complete"`` option.
+    adjacency_normalization : AdjacencyNormalization
+        How that graph is normalised. ASSUMPTION A-21.
+
+        These last two describe the model rather than the data, but they
+        live here because this is the object that builds the matrix and
+        that gets saved beside a result. A setting that decides what the
+        model sees and is not written down is a setting that cannot be
+        reproduced.
     validation_fraction : float
         Fraction of *engine units* held out for validation. Splitting by engine
         rather than by window is essential; see
@@ -146,8 +159,12 @@ class PreprocessingConfig:
     # smoothed value rather than to the smoothing parameter. Read as alpha.
     smoothing_alpha: float | None = 0.5
 
-    # --- Model input shape -------------------------------------------------
-    node_feature_mode: NodeFeatureMode = "window"
+    # --- The sensor graph --------------------------------------------------
+    # ASSUMPTION A-19: what the paper's "without physics prior" ablation
+    # replaces the hand-designed matrix with is never stated.
+    graph: SensorGraph = "physics"
+    # ASSUMPTION A-21: the paper never prints the normalisation formula.
+    adjacency_normalization: AdjacencyNormalization = "symmetric"
 
     # --- Data splitting ----------------------------------------------------
     validation_fraction: float = 0.2
@@ -186,6 +203,15 @@ class PreprocessingConfig:
             raise ValueError(
                 "smoothing_alpha must lie in the interval (0, 1], or be None to "
                 f"disable smoothing. Got {self.smoothing_alpha}."
+            )
+        if self.graph not in ("physics", "complete"):
+            raise ValueError(
+                f"graph must be 'physics' or 'complete', got {self.graph!r}."
+            )
+        if self.adjacency_normalization not in ("symmetric", "row"):
+            raise ValueError(
+                "adjacency_normalization must be 'symmetric' or 'row', got "
+                f"{self.adjacency_normalization!r}."
             )
         if not 0.0 <= self.validation_fraction < 1.0:
             raise ValueError(

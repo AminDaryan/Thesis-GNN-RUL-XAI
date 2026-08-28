@@ -163,6 +163,11 @@ def nasa_score(
 ) -> float:
     """The 2008 NASA PHM challenge score (the paper's Equation 21, SF).
 
+    ASSUMPTION A-15: the paper's Equations 20 and 21 contradict each other
+    about which direction of error is the dangerous one. The convention
+    implemented here is the one its own prose describes and the one the
+    2008 challenge defines. See the module docstring for the argument.
+
     For each engine::
 
         d < 0  (early, safe)      ->  exp(-d / 13) - 1
@@ -289,11 +294,14 @@ def evaluate(
 
     Examples
     --------
+    The third engine is predicted exactly right, and counts as late, because
+    ``nasa_score`` puts the boundary at ``d >= 0``:
+
     >>> result = evaluate([100, 50, 30], [95, 55, 30])
     >>> round(result["rmse"], 4)
     4.0825
     >>> result["n_late"]
-    1
+    2
     """
     truth, guess = _as_pair(actual, predicted)
     error = guess - truth
@@ -304,5 +312,8 @@ def evaluate(
         "asue": asue(truth, guess),
         "n_engines": int(truth.size),
         "mean_error": float(error.mean()),
-        "n_late": int((error > 0).sum()),
+        # The same boundary nasa_score uses: d >= 0 is the late, dangerous
+        # side. Counting only d > 0 here would disagree with the score on
+        # an exactly-zero error.
+        "n_late": int((error >= 0).sum()),
     }

@@ -15,20 +15,23 @@ from thesis_gnn_rul_xai.data.windowing import (
 COLUMNS = list(PAPER_SENSOR_COLUMNS)
 
 
-def test_window_shape_is_nodes_then_time(loaded):
-    """The array must be (examples, sensors, time) so sensors are the nodes."""
+def test_window_shape_is_nodes_then_one_feature(loaded):
+    """The array must be (examples, sensors, 1) -- Table 4's [batch, 14, 1]."""
     dataset = make_windows(loaded.train, COLUMNS, window_size=20)
     assert dataset.features.ndim == 3
     assert dataset.features.shape[1] == 14
-    assert dataset.features.shape[2] == 20
+    assert dataset.features.shape[2] == 1
     assert dataset.features.dtype == np.float32
 
 
-def test_last_step_mode_gives_one_feature_per_sensor(loaded):
-    dataset = make_windows(
-        loaded.train, COLUMNS, window_size=20, node_feature_mode="last_step"
-    )
-    assert dataset.features.shape[1:] == (14, 1)
+def test_the_single_feature_is_the_last_cycle_of_the_window(loaded):
+    """A-07: the one number per node is the most recent reading, not a summary."""
+    window = 20
+    dataset = make_windows(loaded.train, COLUMNS, window_size=window, stride=1)
+    first_engine = loaded.train.sort_values(["unit", "cycle"])
+    first_engine = first_engine[first_engine["unit"] == dataset.units[0]]
+    expected = first_engine[COLUMNS].to_numpy(np.float32)[window - 1]
+    np.testing.assert_allclose(dataset.features[0, :, 0], expected, rtol=1e-6)
 
 
 def test_the_number_of_windows_follows_the_formula(loaded):
@@ -50,15 +53,15 @@ def test_the_label_belongs_to_the_last_cycle_of_the_window(loaded):
 
 
 def test_window_content_matches_the_source_rows(loaded):
-    """The numbers inside a window must be the actual sensor readings."""
+    """The number on each node must be the actual reading at the end cycle."""
     dataset = make_windows(loaded.train, COLUMNS, window_size=20)
     unit = int(dataset.units[5])
     end_cycle = int(dataset.end_cycles[5])
     history = loaded.train[loaded.train["unit"] == unit]
     expected = (
-        history[history["cycle"].between(end_cycle - 19, end_cycle)][COLUMNS]
+        history[history["cycle"] == end_cycle][COLUMNS]
         .to_numpy(dtype=np.float32)
-        .T
+        .reshape(14, 1)
     )
     np.testing.assert_allclose(dataset.features[5], expected, rtol=1e-6)
 
@@ -74,7 +77,7 @@ def test_a_short_history_is_padded_rather_than_dropped(loaded):
     short = loaded.test[loaded.test["unit"] == 1].head(5).copy()
     dataset = make_last_windows(short, COLUMNS, window_size=20)
     assert len(dataset) == 1
-    assert dataset.features.shape[2] == 20
+    assert dataset.features.shape[2] == 1
 
 
 def test_engine_split_is_disjoint_and_complete():

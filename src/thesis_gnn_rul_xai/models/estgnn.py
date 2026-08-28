@@ -20,22 +20,25 @@ FC-1         ``(B, 448)``    ->  ``(B, 128)``     ReLU
 FC-2         ``(B, 128)``    ->  ``(B, 1)``       Sigmoid
 ===========  ==================================  ==========================
 
-What ``F`` is, and why it is not 1 here
----------------------------------------
-Table 4 gives the input as ``[batch, 14, 1]``: one number per sensor. That
-number is the output of a per-sensor LSTM which the paper never specifies (its
-hidden size, its depth, and how it reduces a 30-cycle window to a single value
-are all absent). This project omits that stage rather than invent it; see
-assumptions A-07 and A-11.
+What ``F`` is
+-------------
+``F`` is 1, and only the first layer depends on it. Table 4 gives the input as
+``[batch, 14, 1]`` with ``W(1) in R^(1 x 32)``: one number per sensor. In the
+paper that number is the output of a per-sensor LSTM whose hidden size, depth
+and output projection are never stated. This project omits that stage rather
+than invent it (A-11) and passes the most recent reading of the window in its
+place (A-07), which keeps the printed architecture exactly.
 
-With no temporal encoder, each sensor node instead carries its whole 30-cycle
-window, so ``F`` is 30 and the first weight matrix is ``(30, 32)`` rather than
-``(1, 32)``. Everything after the first layer is unchanged, because the first
-layer maps to 32 features either way.
+Note that only GCN-1 sees ``F``. GCN-2 takes ``[batch, 14, 32]`` and GCN-3
+takes ``[batch, 14, 64]``, both fixed by the previous layer's output width.
 
-Setting ``in_features=1`` reproduces Table 4's printed shapes exactly, and is
-what the model would need if the LSTM stage were added later. Both are
-supported; the default follows the configuration this project actually runs.
+The constructor still accepts any ``in_features``, because the model must not
+hard-code a number the data pipeline decides. Passing 30 would hand each node
+its whole window -- but that is not a temporal-encoder-free model: ``W(1)``
+would become ``(30, 32)``, which is 32 learned linear filters over the 30 time
+steps, shared across sensors. That is a temporal encoder, of the kind A-11
+declines to invent, folded into the graph layer where it would not be labelled
+as a choice. It is therefore not the configuration this project runs.
 
 **Results from this network must be compared against the paper's own
 "ESTGNN w/o LSTM" ablation, which is 14.93 RMSE on FD001 (their Table 11), not
@@ -107,9 +110,10 @@ class ESTGNN(nn.Module):
         constructor checks for the self-loops that normalisation adds and
         refuses a matrix with a zero diagonal.
     in_features : int
-        Numbers carried by each sensor node. 30 for a whole window (this
-        project's default, matching ``node_feature_mode="window"``), or 1 to
-        reproduce the printed shapes of Table 4.
+        Numbers carried by each sensor node. Defaults to 1, which is Table 4's
+        printed input shape and what the pipeline produces. Other widths are
+        accepted so the model stays general, but see the note above before
+        using one.
     rul_max : int
         The label ceiling, used to convert the sigmoid output into cycles.
     gcn_hidden : sequence of int
@@ -136,15 +140,14 @@ class ESTGNN(nn.Module):
     >>> from thesis_gnn_rul_xai.graph.adjacency import (
     ...     build_physics_adjacency, normalize_adjacency)
     >>> raw, symbols = build_physics_adjacency()
-    >>> model = ESTGNN(normalize_adjacency(raw), in_features=30)
-    >>> batch = torch.zeros(4, 14, 30)
+    >>> model = ESTGNN(normalize_adjacency(raw))
+    >>> batch = torch.zeros(4, 14, 1)
     >>> model(batch).shape
     torch.Size([4])
 
-    With ``in_features=1`` the parameter count matches Table 4 exactly:
+    The default width reproduces Table 4's parameter count exactly:
 
-    >>> table4 = ESTGNN(normalize_adjacency(raw), in_features=1)
-    >>> sum(p.numel() for p in table4.parameters())
+    >>> sum(p.numel() for p in model.parameters())
     61729
     """
 
@@ -152,7 +155,7 @@ class ESTGNN(nn.Module):
         self,
         adjacency: np.ndarray | Tensor | Sequence[Sequence[float]],
         *,
-        in_features: int = 30,
+        in_features: int = 1,
         rul_max: int = 125,
         gcn_hidden: Sequence[int] = GCN_HIDDEN_SIZES,
         fc_hidden: int = FC_HIDDEN_SIZE,

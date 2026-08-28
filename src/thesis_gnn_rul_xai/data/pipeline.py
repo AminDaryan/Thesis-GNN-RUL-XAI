@@ -71,6 +71,7 @@ import pandas as pd
 from ..config import PreprocessingConfig
 from ..graph.adjacency import (
     adjacency_report,
+    build_fully_connected_adjacency,
     build_physics_adjacency,
     normalize_adjacency,
 )
@@ -313,13 +314,11 @@ def run_preprocessing(
         columns,
         window_size=config.window_size,
         stride=config.window_stride,
-        node_feature_mode=config.node_feature_mode,
     )
     test_windows = make_last_windows(
         test,
         columns,
         window_size=config.window_size,
-        node_feature_mode=config.node_feature_mode,
     )
 
     # -- 9. apply the split decided in step 6 -----------------------------
@@ -334,9 +333,23 @@ def run_preprocessing(
         )
 
     # -- the sensor graph -------------------------------------------------
-    adjacency_raw, symbols = build_physics_adjacency()
-    adjacency_normalized = normalize_adjacency(adjacency_raw)
+    # Which graph, and how it is normalised, are configuration rather than
+    # constants, so that the matrix saved beside a result is the one the
+    # model was actually given. Before this was so, a run with row
+    # normalisation still stored the symmetric matrix, and anything reading
+    # it afterwards saw a graph the model had never used.
+    if config.graph == "physics":
+        adjacency_raw, symbols = build_physics_adjacency()
+    else:
+        adjacency_raw, symbols = build_fully_connected_adjacency(
+            len(PAPER_SENSOR_SYMBOLS)
+        )
+    adjacency_normalized = normalize_adjacency(
+        adjacency_raw, method=config.adjacency_normalization
+    )
     diagnostics["graph"] = adjacency_report(adjacency_raw, symbols)
+    diagnostics["graph_kind"] = config.graph
+    diagnostics["adjacency_normalization"] = config.adjacency_normalization
 
     diagnostics["splits"] = {
         "train_examples": len(train_windows),

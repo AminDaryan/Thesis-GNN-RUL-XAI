@@ -28,7 +28,7 @@ identifier below.
 | A-04 | Smoothing strength | Self-contradictory sentence in Section 3.2.3 | Read as `alpha = 0.5` |
 | A-05 | Window stride | Not in the text; **Fig. 1 indicates one time step** | 1 cycle |
 | A-06 | Validation split | None; trains for a fixed 200 epochs | 20 % of engines held out |
-| A-07 | Node feature content | Table 4 implies one number per sensor, produced by an LSTM that is never specified | The whole 30-cycle window per sensor (configurable) |
+| A-07 | Node feature content | Table 4 **prints** one number per sensor (`W(1) in R^(1x32)`), produced by an LSTM that is never specified | The last cycle of the window, keeping Table 4's shape |
 | ~~A-08~~ | Order: smoothing and scaling | **Fig. 1 specifies it**: smoothing then normalisation | Withdrawn as an assumption; the paper's order is followed |
 | A-09 | Smoothing formula variant | Gives the recursive form as Equation 18 | Recursive form (`adjust=False` in pandas) |
 | A-10 | Identity of the 7th dropped sensor | Says "seven", names six | The seventh is `NRc`, deduced from their Table 3 |
@@ -100,10 +100,25 @@ above 125. Leaving those labels uncapped would charge the model for an error
 that its own architecture makes impossible to avoid, and the resulting figure
 would not measure what it claims to measure.
 
-**How much it matters.** On FD001 this affects only the small number of test
-engines whose true remaining life exceeds the ceiling, but it shifts the error
-measurably. This choice must be stated whenever a number from this code is
-compared with a published one.
+**How much it matters — measured, not argued.** Eleven of the 100 FD001 test
+labels exceed 125 (F-02). Five seeds, the *same trained models* scored two
+ways (identical seeds and identical best epochs, so this is a pure scoring
+difference), commit `cdcc827-dirty`, 2026-08-28:
+
+| Test labels | RMSE | NASA score | R-squared | ASUE |
+|-------------|------|-----------|-----------|------|
+| capped at 125 (`fd001.yaml`) | 20.353 ± 0.752 | 827 ± 85 | 0.742 | 15.67 |
+| uncapped (`fd001_uncapped.yaml`) | 21.664 ± 0.818 | 914 ± 78 | 0.728 | 18.03 |
+
+Per-seed penalty `[1.356, 1.333, 1.167, 1.204, 1.496]`; mean **+1.311 cycles**,
+paired **t = 22.30, p = 0.00002**. Highly significant and one-directional:
+capping can only help, and it helps by about 1.3 cycles.
+
+**Therefore the gap to the paper's 14.93 is wider than the headline says.**
+This code reports 20.35 with the cap; without it, 21.66. Whichever is quoted,
+the cap must be quoted with it. (Under the removed `window` mode the same
+measurement gave +1.762 cycles; the effect is configuration-dependent, so it
+must be re-measured whenever the architecture changes.)
 
 ---
 
@@ -237,32 +252,63 @@ validation engine so that the validation set imitates the test protocol. That
 is not done here, because the present form gives the early-stopping signal more
 data to work with.
 
+**What the reported spread now covers.** Until this was corrected,
+`scripts/train.py` prepared the data once, outside the seed loop, so all five
+seeds shared one train/validation split: the quoted standard deviation covered
+weight initialisation and batch order only. That understates the spread a real
+repetition of the experiment would show, because a repetition also draws a
+different set of validation engines — and with only 20 held out, which 20 they
+are matters.
+
+1
+
 ---
 
-## A-07 — Each sensor node carries its whole time window
+## A-07 — Each sensor node carries the last cycle of its window
 
-**Where:** `config.PreprocessingConfig.node_feature_mode`, `data/windowing.py`
+**Where:** `data/windowing.py`; `models/estgnn.py` (`in_features`)
 
 **The gap.** Table 4 of the paper gives the input to the first graph layer as
-`[batch, 14, 1]`: one number per sensor. That number is produced by a per-sensor
-LSTM whose size, depth, and output projection are never stated anywhere in the
-paper.
+`[batch, 14, 1]` with `W(1) in R^(1 x 32)`: one number per sensor. That number
+is produced by a per-sensor LSTM whose size, depth, and output projection are
+never stated anywhere in the paper. What is *not* a gap is the shape: the
+paper prints it.
 
 **What we chose.** With the LSTM stage omitted (see A-11), each sensor node
-carries the full 30-cycle window, giving `[batch, 14, 30]`. The alternative
-`last_step` mode, which reproduces `[batch, 14, 1]` by keeping only the most
-recent reading, is available in the configuration.
+carries the **most recent reading** of its window, giving `[batch, 14, 1]` and
+`W(1) in R^(1 x 32)` exactly as printed. The parameter count matches Table 4
+to the digit: **61,729**, asserted by
+`test_models.py::test_the_default_width_reproduces_table_4`.
 
-**Why.** With no temporal encoder, passing only the last reading would discard
-29 of the 30 cycles in each window and make the window size meaningless.
-Giving the graph layer the whole window keeps that information available to
-the model.
+**Why.** Reproducing an ablation means keeping the printed architecture and
+removing the named component. Any other filler for that one number — the mean
+of the window, a learned 30 → 1 projection, or handing the graph layer the
+whole window — requires deciding *how to summarise 30 cycles into a
+representation*, which is precisely the decision the paper never states and
+which A-11 declines to invent.
 
-Both readings have now been run, and neither reproduces the paper's figure
-for this configuration: the published 14.93 falls between them. See F-06.
+**Superseded reading, and why it was wrong.** Until 2026-08-28 the default was
+a `window` mode in which each node carried all 30 cycles, making `W(1)` a
+`(30, 32)` matrix. That was justified as "no temporal encoder, so keep the
+history". It is not what it claimed to be. `A_hat X W(1)` with `X` of shape
+`(14, 30)` computes, for each of the 32 output channels, `sum_t w(t,c) x(t)` —
+**32 learned linear filters over the 30 time steps, shared across sensors**.
+That is a temporal encoder, of exactly the kind A-11 refuses to invent, folded
+into the graph layer where it was never labelled as a choice. The mode has been
+removed. Its results remain valid *for the model they describe* and are
+reproducible at commit `cdcc827`; they are no longer this project's numbers.
 
-**How much it matters.** Large. This changes the width of the first weight
-matrix and the amount of information the model receives.
+**How much it matters.** Large, and measured. See F-06: **20.35 ± 0.75** with
+one reading per node against 13.45 ± 0.20 under the removed `window` mode, on
+FD001, five seeds each. The removed mode was the more accurate of the two by a
+wide margin — which is precisely why it needed removing rather than keeping:
+those 928 extra parameters bought their accuracy by doing the temporal
+filtering A-11 declines to invent.
+
+**Note on what `window_size` still does.** It is not inert. It decides which
+cycles are eligible — an engine's first example ends at cycle `window_size`,
+so cycles 1 to 29 are never a prediction point — and it is what a temporal
+encoder would consume if one were added later.
 
 ---
 
@@ -421,6 +467,15 @@ implementation of it would be invention rather than reproduction. Second, the
 paper itself publishes this exact configuration: "ESTGNN w/o LSTM" is one of
 the three variants in its ablation study (Table 11), reported at an average
 error of 19.68 against 14.75 for the full model.
+
+**What this rules out, and did not always.** "No temporal encoder" has to mean
+no temporal encoder *anywhere*, including one hidden inside a layer that is
+named something else. Handing the first graph layer a 30-cycle vector per node
+makes `W(1)` a `(30, 32)` matrix, which is a bank of 32 learned linear filters
+over time. That was this project's default until 2026-08-28 and it contradicted
+this entry. It has been removed; see A-07. The graph stage is now the only
+learned stage, which is what makes a comparison against "ESTGNN w/o LSTM"
+meaningful at all.
 
 **The number to aim at on FD001 is 14.93.** 19.68 is the average across all
 four sub-datasets. Table 11's FD001 column gives the w/o-LSTM variant an RMSE
@@ -634,37 +689,64 @@ graph would add a mechanism the paper does not describe.
 
 ---
 
-### F-04 — The physics graph is worth far more here than the paper reports
+### F-04 — WITHDRAWN AND REVERSED: the physics graph is worth nothing measurable here
 
-Five seeds of each variant on FD001, identical in every other respect:
+**Status.** This entry claimed the opposite of what it now reports. The
+original claim was an artefact of the removed `window` node-feature mode
+(A-07), and re-running under the corrected architecture reverses it. The
+original text is preserved at the bottom because a corrected record is worth
+more than a clean one (working rule 6).
+
+**What it says now.** Five seeds of each variant on FD001, one feature per
+node, identical in every other respect
+(`cdcc827-dirty`, 2026-08-28, varying split):
 
 | Sensor graph | RMSE | NASA score | R-squared | ASUE |
 |--------------|------|-----------|-----------|------|
-| Physics (their Table 3) | **13.45 +/- 0.20** | 312 +/- 11 | 0.887 +/- 0.003 | 8.85 +/- 0.36 |
-| Fully connected (A-19) | 19.17 +/- 0.45 | 743 +/- 53 | 0.771 +/- 0.011 | 13.44 +/- 0.27 |
+| Physics (their Table 3) | 20.353 +/- 0.752 | 827 +/- 85 | 0.742 +/- 0.019 | 15.67 +/- 2.05 |
+| Fully connected (A-19) | 20.397 +/- 0.395 | 896 +/- 113 | 0.741 +/- 0.010 | 14.96 +/- 1.65 |
 
-Removing the physics prior costs **5.7 cycles of RMSE** in this configuration.
-On FD001 the paper reports the same ablation costing **0.56** cycles (12.34
-against 11.78). Its own summary quotes the four-dataset average instead,
-as "the smallest performance impact (Δ=1.32, +9 % degradation)" of the three
-components it tests; either way it is the smallest of their three, and here
-it is the largest.
+Removing the physics prior costs **0.044 cycles of RMSE**. Paired across
+seeds, **t = 0.12, p = 0.913** — indistinguishable from zero. Per-seed
+differences are `[+0.35, +0.56, +0.60, +0.16, -1.45]`: the complete graph is
+*better* on one of the five seeds.
 
-The most likely explanation is the LSTM stage this project omits (A-11). In the
-full architecture, a per-sensor temporal encoder extracts degradation
-information before the graph layers ever run, so the graph is one of two routes
-to the same information and the model can compensate when it is removed.
-Without the encoder, the graph is the only structure the model has, and taking
-it away removes far more.
+**How the old number arose.** Under `window` mode each node carried 30
+features, so the first graph layer mixed 14 nodes x 30 features. A complete
+adjacency matrix averages every sensor into every other, which destroys the
+per-sensor identity of 30 rich traces and is far more destructive than
+averaging 14 single numbers. The 5.7-cycle gap measured how much damage
+uniform mixing does to a wide feature vector, not how much engineering
+knowledge the graph contains.
 
-If that explanation is right it is a point in favour of the paper's central
-claim rather than against it: the physics prior does real work, and the paper's
-own ablation *understates* how much because its LSTM masks the effect. It is
-also a testable prediction — adding any temporal encoder should shrink the gap
-— and therefore something the thesis can investigate rather than merely assert.
+**What this now says about the paper.** The paper reports the same ablation on
+FD001 costing **0.56** cycles (12.34 against 11.78) and calls it "the smallest
+performance impact" of the three components it tests. This project measures
+**0.044** cycles and cannot distinguish it from zero. Both agree the physics
+prior is worth little; this reproduction cannot confirm that it is worth
+anything at all.
 
-**Do not report the two ablation numbers as directly comparable with the
-paper's.** They come from a configuration the paper does not run.
+**The honest reading is that the question is out of reach here, not settled.**
+With one number per sensor the model reaches only 20.35 RMSE, well short of
+the paper's 14.93 for the same ablation. A model that far from the reference
+may simply be too information-starved for graph structure to matter either
+way. Whether the physics prior does real work is a question that needs a
+temporal encoder to answer, which is exactly the component A-11 omits.
+
+---
+
+**Superseded text, kept for the record (produced under the removed `window`
+mode, reproducible only at commit `cdcc827`):**
+
+> Five seeds of each variant: physics 13.45 +/- 0.20, fully connected
+> 19.17 +/- 0.45. "Removing the physics prior costs **5.7 cycles of RMSE** in
+> this configuration... here it is the largest [of their three components]."
+> The proposed mechanism was that without the LSTM the graph is the only
+> structure the model has, so removing it costs more, and that the paper's own
+> ablation therefore *understates* the prior's value. That mechanism predicted
+> the gap should shrink when a temporal encoder is added. Removing the linear
+> temporal encoder hidden in `W(1)` shrank it to nothing instead, which is the
+> opposite direction and refutes the explanation.
 
 ---
 
@@ -801,11 +883,23 @@ over every window and across more than one engine.
 
 Five seeds of each configuration, everything else identical.
 
+Current configuration, five seeds each, varying split, capped test labels,
+commit `cdcc827-dirty`, 2026-08-28:
+
 | Run | Configuration | RMSE | NASA score | R-squared | ASUE |
 |-----|---------------|------|-----------|-----------|------|
-| A | physics graph, whole 30-cycle window (`fd001.yaml`) | **13.45 ± 0.20** | 312 ± 11 | 0.887 ± 0.003 | 8.85 ± 0.36 |
-| B | physics graph, last reading only (`fd001_last_step.yaml`) | 19.76 ± 0.57 | 750 ± 64 | 0.757 ± 0.014 | 15.19 ± 0.97 |
-| C | complete graph, whole window (A-19) | 19.17 ± 0.45 | 743 ± 53 | 0.771 ± 0.011 | 13.44 ± 0.27 |
+| **B** | **physics graph (`fd001.yaml`) — the default** | **20.353 ± 0.752** | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
+| C | complete graph (A-19 ablation) | 20.397 ± 0.395 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
+
+Run B reproduces the 2026-08-27 `last_step` run **bit for bit** — identical
+RMSE to six decimals and identical best epochs `[85, 195, 172, 45, 14]` on all
+five seeds. That is the regression check on the A-07 refactor: removing the
+`window` option changed nothing about the configuration that was kept.
+
+Two earlier runs used the removed `window` mode (physics 13.45 ± 0.20,
+complete 19.17 ± 0.45). They are reproducible at commit `cdcc827` and nowhere
+later, and are recorded in F-04 rather than deleted. They are not this
+project's numbers.
 
 The paper, on FD001:
 
@@ -819,55 +913,70 @@ The paper, on FD001:
 **Only one number is directly comparable.** Table 11 reports RMSE alone, so
 the score, R-squared and ASUE columns exist for the full model only. Since the
 LSTM stage is not implemented here (A-11), the row to compare against is
-"w/o LSTM", and the comparison is 13.45 ± 0.20 against 14.93.
+"w/o LSTM", and the comparison is 20.353 ± 0.752 against 14.93.
 
-#### The published value is bracketed by the two readings of A-07
+#### The architecture-faithful comparison is 20.35 against 14.93
 
-Assumption A-07 records that Table 4 prints the input to the first graph layer
-as `[batch, 14, 1]`, one number per sensor, produced by the LSTM. With the LSTM
-removed there are two defensible things to feed the graph instead, and this
-project runs both:
+Run B is the paper's printed architecture: input `[batch, 14, 1]`,
+`W(1) in R^(1 x 32)`, the same layer widths, and **61,729 parameters — Table 4's
+count exactly**. The only thing removed is the LSTM, which is what "w/o LSTM"
+means. So this is the comparison that carries weight:
 
-* the whole 30-cycle window, `[batch, 14, 30]`, which is run A;
-* the most recent reading only, `[batch, 14, 1]`, keeping the printed shape,
-  which is run B.
+| | RMSE on FD001 |
+|---|---|
+| this code, five seeds | 20.353 ± 0.752 |
+| paper, "ESTGNN w/o LSTM" (Table 11) | 14.93 |
 
-The paper's 14.93 falls between them: **13.45 < 14.93 < 19.76**. Neither
-reading reproduces it, and the gap in both directions is far larger than the
-seed-to-seed spread, so this is a real difference and not noise.
+**A 5.4-cycle miss (+36 %), with no shape mismatch left to blame it on.** For
+scale: it is worse than the paper's *worst* ablation, "w/o GCN" at 16.42 —
+that is, worse than the paper's own model with the graph stage deleted
+entirely. That is a
+sharper statement than the earlier framing of this finding, which presented
+13.45 and 19.76 as two readings bracketing 14.93. The bracket was misleading:
+13.45 came from a wider first layer (`W(1)` of shape `(30, 32)`) that is not
+the printed architecture and that smuggles in a linear temporal encoder — so
+it was never a candidate reproduction of the ablation, whatever its accuracy.
 
-That is worth stating plainly, because the obvious expectation — that a correct
-re-implementation of the "w/o LSTM" configuration should land on 14.93 — turns
-out to be unreachable from the paper's description. Whatever their ablation
-fed the graph layers, it was neither of the two things the text supports.
+What remains to explain the 4.8 cycles is the documented assumptions, in
+roughly descending order of suspicion: A-03 (input scaling, substituted
+wholesale from Jin et al.), A-13/A-14/A-17 (target scaling, initialisation,
+learning-rate schedule), A-18 (early stopping, an addition), and A-02 (label
+capping, measured at 1.76 cycles and in the *favourable* direction, so the
+underlying gap is larger still).
 
-#### Why run A is *better* than the published figure
+#### What run A was, and why beating the paper was a warning sign
 
-Being 1.5 cycles better than the reference is itself evidence that something
-differs, and the candidates are all documented rather than mysterious:
+Run A came in 1.5 cycles *better* than the published "w/o LSTM" figure. That
+should have prompted more suspicion than it did. A re-implementation that is
+missing a component and still beats the original is usually not a better
+implementation; it is a different model. It was: `W(1)` of shape `(30, 32)`
+gave it 928 parameters the paper's architecture does not have, and those
+parameters do temporal filtering (A-07).
 
-* **A-03**, the input rescaling, is substituted from Jin et al. (2025) because
-  the paper never describes its own. This is the largest single unknown.
-* **A-18**, early stopping on a held-out set, is an addition; the paper trains
-  a fixed 200 epochs. Running with `--no-early-stopping` reproduces their
-  procedure and is the first check to make.
-* **A-02**, capping the test labels, can only move the figure favourably, as
-  the entry for A-02 explains.
-* **A-13, A-14, A-17** (target scaling, initialisation, learning-rate
-  schedule) are all unstated in the paper.
+The lesson is worth keeping even though the configuration is gone: **check the
+parameter count against the printed architecture before comparing accuracy.**
+Table 4 gives 61,729. Run A had 62,657. That single number would have caught
+the problem immediately, and it is now asserted by a test.
 
-None of this makes 13.45 wrong. It makes it *a different experiment*, and the
-honest way to report it is as this project's result for a configuration the
-paper describes but does not fully specify, quoted with the assumptions above
-attached.
+#### What the ablations say, re-measured
 
-#### What the ablations say
+All three comparisons that had been taken under the removed `window` mode were
+re-run on 2026-08-28 at commit `cdcc827-dirty`, five seeds each. Every one of
+them changed, and two of them reversed:
 
-Run C removes the physics prior and costs 5.7 cycles (13.45 to 19.17), which
-finding F-04 discusses. Run B removes 29 of every 30 cycles from each node and
-costs 6.3 cycles (13.45 to 19.76). The two are close in size, which is a useful
-observation on its own: with no temporal encoder, *how much history each node
-carries* matters about as much as *which nodes are connected*.
+| Comparison | under `window` (removed) | under the current architecture |
+|---|---|---|
+| physics vs complete graph (F-04) | 5.72 cycles apart | **0.044 apart, p = 0.913** — reversed |
+| symmetric vs row normalisation (A-21) | symmetric better by 0.29, 6.7x more stable | **row better by 0.36 (p = 0.097), symmetric 1.81x *less* stable** — reversed |
+| capped vs uncapped test labels (A-02) | +1.762 cycles | +1.311 cycles, p = 0.00002 — same direction, smaller |
+
+**The general lesson is worth more than any of the three.** None of these
+comparisons was robust to a change in what each node carries. A result of the
+form "configuration X beats configuration Y on this dataset" evidently depends
+on the rest of the architecture in ways this project cannot currently predict,
+so each such claim has to name the configuration it was measured under and
+must not be quoted as a general fact. That applies to the paper's ablations as
+much as to ours.
 
 ---
 
@@ -893,31 +1002,32 @@ symmetric form is chosen because it is the one defined by the layer the paper
 cites, and because it is what nearly all GCN implementations mean by "the
 normalised adjacency matrix".
 
-**How much it matters.** Measured, and the answer is: not much for accuracy,
-but noticeably for stability. Five seeds of each form on FD001, everything else
-identical (`scripts/train.py --adjacency-norm symmetric|row`):
+**How much it matters — re-measured 2026-08-28, and both earlier grounds have
+gone.** Five seeds of each form under the current architecture, everything else
+identical (`scripts/train.py --seeds 5 --adjacency-norm symmetric|row`),
+commit `cdcc827-dirty`:
 
 | Normalisation | RMSE | NASA score | R-squared | ASUE |
 |---------------|------|-----------|-----------|------|
-| symmetric `D^(-1/2)(A+I)D^(-1/2)` | **13.45 ± 0.20** | 312 ± 11 | 0.887 ± 0.003 | 8.85 ± 0.36 |
-| row `D^(-1)(A+I)` | 13.74 ± 0.52 | 336 ± 25 | 0.882 ± 0.009 | 9.71 ± 1.02 |
+| symmetric `D^(-1/2)(A+I)D^(-1/2)` (default) | 20.353 ± 0.752 | 827 ± 85 | 0.742 | 15.67 |
+| row `D^(-1)(A+I)` | **19.992 ± 0.416** | 797 ± 84 | 0.751 | 15.52 |
 
-The gap in mean RMSE is 0.29 cycles and it is **not statistically significant**:
-paired across seeds, t = −1.53 and p = 0.20; unpaired with unequal variances,
-t = −1.15 and p = 0.30. So the choice this entry records does not materially
-change what the model achieves, which is the reassuring outcome — it means the
-paper's silence on the formula does not put its headline numbers out of reach.
+Row is **better** by 0.360 cycles, paired **t = −2.16, p = 0.097** — still not
+significant at the 5 % level, but marginal, and pointing the *other way* from
+before. And the stability argument has inverted outright: **symmetric is now
+the more variable of the two**, sd 0.752 against 0.416, a ratio of 1.81.
 
-The spread does differ, and by more than the means do. **The row form's variance
-across seeds is 6.7 times the symmetric form's** (0.52 against 0.20 in RMSE, and
-1.02 against 0.36 in ASUE). A run using row normalisation is therefore a less
-reliable single measurement, which matters when comparing configurations that
-differ by less than a cycle — most of the comparisons in this project.
+Under the removed `window` mode this entry recorded the opposite on both
+counts: symmetric better by 0.29 cycles (p = 0.20) and 6.7 times more stable.
+Neither of those survives the A-07 correction. What that really shows is that
+**this comparison is not robust to the rest of the architecture**, so neither
+result should be quoted as a general fact about the two formulas.
 
-Symmetric normalisation is kept as the default on those two grounds: it is the
-form defined by the layer the paper cites, and it is the more stable of the two.
-This entry is now one of the few whose "how much it matters" is a measurement
-rather than an argument.
+**Symmetric is kept as the default on one ground only, and it is the right
+one:** it is the form defined by Kipf and Welling (2017), the layer the paper
+cites, and it is what nearly all GCN implementations mean by "the normalised
+adjacency matrix". The stability argument that used to accompany it has been
+withdrawn.
 
 ---
 
@@ -973,6 +1083,126 @@ bears on how much of the graph is really "physics-informed". If the text is the
 intent and the matrix is the artefact, then the matrix was not generated from
 the rules programmatically — it was written out by hand, and one cell was
 missed. That is worth one sentence when describing how the prior was built.
+
+---
+
+### F-08 — The paper's Table 12 cannot hold signed Shapley values
+
+This is the strongest objection available to the interpretability half of the
+paper, and it follows from the paper's own equations.
+
+**What Equation 14 requires.** It states
+
+```
+g(z) = phi_0 + sum_i phi_i
+```
+
+with `phi_0` "the average value of target variable across all samples" — a
+single constant, not a per-time-step quantity. Rearranged, the fourteen
+Shapley values at time `t` must satisfy
+
+```
+sum_i phi_i(t) = f(t)(x) - phi_0
+```
+
+**What that implies over an engine's life.** The paper's Table 12 covers graphs
+G1 to G191, so the engine ran about 220 cycles. Across that life the prediction
+`f` falls from the label ceiling to nearly zero. Two consequences follow, and
+neither depends on any assumption of ours:
+
+1. the column sums must span roughly the whole label range — about 125 cycles;
+2. they must **change sign**, because `f` starts above the constant `phi_0` and
+   ends below it.
+
+**What the table actually contains.** Summing its printed columns:
+
+| | G1 | G2 | G5 | G82 | G189 | G190 | G191 |
+|---|----|----|----|-----|------|------|------|
+| sum of the 14 values | 45.51 | 41.33 | 33.92 | 26.38 | 18.16 | 16.67 | 17.60 |
+
+The sums fall from 45.51 to 16.67, a span of **28.8**, and never approach zero,
+let alone cross it. Independently: **all 210 cells are positive**, with a
+minimum of 0.20. A set of signed Shapley values for a regression that traverses
+its label range essentially cannot be all-positive.
+
+**Conclusion.** Table 12 reports magnitudes — `|phi|`, or some other summary —
+not the signed values Equation 14 defines, and the paper never says which. Its
+Equation 14 is printed but is not satisfied by the table it licenses.
+
+**Three consequences for this project.**
+
+1. `dynamic_shap` returns **signed** values in cycles. Its output must not be
+   placed beside Table 12 without saying that the two quantities differ. The
+   docstrings in `explain/shap.py` now say so; they previously claimed the
+   opposite.
+2. The exact implementation here satisfies efficiency to about `1e-4` cycles,
+   asserted by `test_shap.py::test_efficiency_holds_to_machine_precision` and
+   again per time step by `test_dynamic_shap_rows_each_satisfy_efficiency`. So
+   this project can **demonstrate the property the source paper states and its
+   own table violates**. That is a result, not a complaint, and it is the
+   clearest thing the reproduction has produced about the paper's XAI half.
+3. Any comparison of sensor *rankings* with the paper remains legitimate, since
+   a ranking by magnitude is well defined either way. F-05's agreement about
+   `P15` is therefore unaffected.
+
+---
+
+### F-09 — A results file survived in the repository that no committed code produced
+
+Not a finding about the paper, but about this project's own practice, and it is
+recorded here because rule 2 exists to prevent exactly it.
+
+`reports/fd001_physics_window_symmetric_5seed/results.csv` reported
+**13.810 ± 0.161** with best epochs `[157, 148, 162, 148, 126]`, while
+`README.md`, A-21, F-04 and F-06 all quoted **13.45 ± 0.20**. An outside review
+found the disagreement and concluded, reasonably, that the documentation was
+stale.
+
+It was the other way round. Re-running settled it:
+
+| Source | RMSE | best epochs |
+|--------|------|-------------|
+| documented in this repository | 13.452 ± 0.202 | — |
+| re-run at the current commit | **13.452 ± 0.202** | 87, 135, 132, 113, 139 |
+| re-run at commit `e5b15be`, seeds 42–43 | **13.408, 13.501** | 87, 135 |
+| the stored `results.csv` | 13.810 ± 0.161 | 157, 148, 162, 148, 126 |
+
+Three of the four agree to three decimals, per seed and per best epoch. Two
+candidate explanations were tested and rejected: the intervening edit to
+`data/windowing.py` is a pair of semantic no-ops (`round()` already returns an
+`int`, and the other change sorts `__all__`), and training is bit-identical
+across repeated runs regardless of thread count, so it is not non-determinism.
+The stored file's `summary.json` records settings identical to the reproducing
+run. **Its provenance could not be established**, and it has been deleted.
+
+What that is worth: a results file whose origin cannot be traced is not
+evidence, whichever way it points. It happened to contradict a figure that was
+correct; it could as easily have corroborated one that was wrong, and nothing
+in the repository would have caught it.
+
+**The fix, now in `scripts/train.py`.** Every run records the commit it was
+produced at — with a `-dirty` suffix when the working tree has uncommitted
+changes — in both `summary.json` and the run directory name, together with a
+UTC timestamp. Two runs of the same configuration can no longer overwrite one
+another, and any stored result can be traced to the code that produced it.
+
+**A second gap in the same scheme, closed 2026-08-28.** The directory name
+carried the graph, the normalisation and the split, but not
+`clip_test_labels`. The A-02 measurement therefore produced two directories
+identical except for their timestamps, whose RMSEs differ by 1.3 cycles. The
+timestamp made them unique, which is what the original fix promised, but a
+name you cannot read is not provenance. The name now carries the cap, and
+marks early stopping and the learning-rate schedule when they are not at their
+defaults:
+
+```
+fd001_physics_symmetric_cap_5seed_varsplit_<commit>_<utc>
+fd001_physics_symmetric_uncap_5seed_varsplit_noearlystop_<commit>_<utc>
+```
+
+The general point, which is the one worth keeping: **a naming scheme has to
+cover every switch that changes the number, not every switch that existed when
+it was written.** Adding a configuration option means extending the name.
 
 ---
 

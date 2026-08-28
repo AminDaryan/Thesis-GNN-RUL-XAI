@@ -37,20 +37,19 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from dataclasses import replace
+
 from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
 from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
-from thesis_gnn_rul_xai.graph.adjacency import (
-    build_fully_connected_adjacency,
-    build_physics_adjacency,
-    normalize_adjacency,
-)
 from thesis_gnn_rul_xai.models import ESTGNN
 from thesis_gnn_rul_xai.training import (
     TrainingConfig,
@@ -71,15 +70,44 @@ PAPER_FD001 = {
 }
 
 
-def build_model(prepared, graph: str, adjacency_norm: str = "symmetric") -> ESTGNN:
-    """Build the network on either the physics graph or a complete one."""
-    if graph == "physics":
-        raw, _ = build_physics_adjacency()
-    else:
-        raw, _ = build_fully_connected_adjacency(len(prepared.sensor_symbols))
-    adjacency = normalize_adjacency(raw, method=adjacency_norm)
+def current_commit() -> str:
+    """The commit this run was produced at, or "unknown" outside a clone.
+
+    A results file whose provenance cannot be established is not evidence.
+    This project once carried one that contradicted its own documentation
+    and could not be reproduced from any committed state; stamping the
+    commit into every run is what stops that happening again.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+            cwd=Path(__file__).resolve().parent,
+        )
+        if out.returncode != 0:
+            return "unknown"
+        commit = out.stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10,
+            cwd=Path(__file__).resolve().parent,
+        )
+        return commit + ("-dirty" if dirty.stdout.strip() else "")
+    except Exception:  # pragma: no cover - git absent or not a clone
+        return "unknown"
+
+
+def build_model(prepared) -> ESTGNN:
+    """Build the network on the graph the pipeline produced.
+
+    Which graph that is, and how it was normalised, are decided by
+    ``PreprocessingConfig.graph`` and ``.adjacency_normalization`` and are
+    recorded in the configuration saved beside the results. Rebuilding the
+    matrix here instead would let the model train on one graph while the
+    stored ``adjacency.npz`` held another.
+    """
     return ESTGNN(
-        adjacency,
+        prepared.adjacency_normalized,
         in_features=prepared.train.features.shape[2],
         rul_max=prepared.config.rul_max,
     )
@@ -99,11 +127,17 @@ def main() -> int:
                         help="How many seeds to average over (default: 1)")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the epoch count (Table 6 gives 200)")
-    parser.add_argument("--graph", choices=("physics", "complete"), default="physics",
-                        help="'complete' is the 'without physics prior' ablation")
+    parser.add_argument("--graph", choices=("physics", "complete"), default=None,
+                        help="Overrides the config. 'complete' is the "
+                             "'without physics prior' ablation (A-19)")
     parser.add_argument("--adjacency-norm", choices=("symmetric", "row"),
-                        default="symmetric",
-                        help="How to normalise the sensor graph. See assumption A-21")
+                        default=None,
+                        help="Overrides the config. See assumption A-21")
+    parser.add_argument("--fixed-split", action="store_true",
+                        help="Reuse one train/validation split for every seed. "
+                             "The default varies it, so the reported spread "
+                             "includes split variance as well as "
+                             "initialisation and batch order")
     parser.add_argument("--lr-schedule",
                         choices=("exponential", "cosine", "plateau", "constant"),
                         default="exponential", help="See assumption A-17")
@@ -120,7 +154,29 @@ def main() -> int:
     preprocessing = (
         load_config(arguments.config) if arguments.config else PreprocessingConfig()
     )
-    prepared = run_preprocessing(preprocessing, data_dir=arguments.data_dir)
+    # A command-line choice is written into the configuration object, so the
+    # YAML saved beside the results describes the run that was made.
+    if arguments.graph is not None:
+        preprocessing.graph = arguments.graph
+    if arguments.adjacency_norm is not None:
+        preprocessing.adjacency_normalization = arguments.adjacency_norm
+    preprocessing.__post_init__()          # re-validate after the overrides
+
+    commit = current_commit()
+    print(f"commit {commit}   graph {preprocessing.graph}   "
+          f"normalisation {preprocessing.adjacency_normalization}   "
+          f"split {'fixed' if arguments.fixed_split else 'varies with seed'}")
+
+    # With --fixed-split the split is prepared once and reused, which is what
+    # this script used to do unconditionally. That understates the spread:
+    # five seeds then vary only the weight initialisation and the batch
+    # order, while a real repetition of the experiment would also draw a
+    # different set of validation engines.
+    shared = (
+        run_preprocessing(preprocessing, data_dir=arguments.data_dir)
+        if arguments.fixed_split
+        else None
+    )
 
     runs: list[dict[str, float]] = []
     for index in range(arguments.seeds):
@@ -136,8 +192,14 @@ def main() -> int:
 
         import torch
 
+        if shared is not None:
+            prepared = shared
+        else:
+            per_seed = replace(preprocessing, seed=seed)
+            prepared = run_preprocessing(per_seed, data_dir=arguments.data_dir)
+
         torch.manual_seed(seed)
-        model = build_model(prepared, arguments.graph, arguments.adjacency_norm)
+        model = build_model(prepared)
         history = train(model, prepared.train, prepared.validation, training)
 
         result = evaluate_model(model, prepared.test)
@@ -154,7 +216,9 @@ def main() -> int:
     columns = ["rmse", "score", "r2", "asue"]
 
     print(f"\n{'=' * 72}")
-    print(f"{preprocessing.subset}, {arguments.graph} graph, {arguments.seeds} seed(s)")
+    print(f"{preprocessing.subset}, {preprocessing.graph} graph, "
+          f"{preprocessing.adjacency_normalization} normalisation, "
+          f"{arguments.seeds} seed(s), commit {commit}")
     print("=" * 72)
     print(table[["seed", "best_epoch", "validation_rmse", *columns]].to_string(
         index=False, float_format=lambda v: f"{v:.3f}"))
@@ -183,12 +247,27 @@ def main() -> int:
     # The node feature mode belongs in the name: two runs that differ only in
     # it are different experiments, and without it the second silently
     # overwrites the first.
+    # The commit and a timestamp go in the name, so a second run of the same
+    # configuration never silently overwrites the first.
+    #
+    # Every setting that changes the reported number and can be switched from
+    # the command line belongs here too. The timestamp already makes the name
+    # unique; what the rest buys is being able to tell two runs apart by
+    # reading them. Leaving `clip_test_labels` out once produced two
+    # directories differing only by timestamp, one capped and one not, whose
+    # RMSEs differ by 1.3 cycles -- see A-02. Non-default switches are marked;
+    # defaults stay silent so ordinary names stay short.
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     name = (
         f"{preprocessing.subset.lower()}"
-        f"_{arguments.graph}"
-        f"_{preprocessing.node_feature_mode}"
-        f"_{arguments.adjacency_norm}"
+        f"_{preprocessing.graph}"
+        f"_{preprocessing.adjacency_normalization}"
+        f"_{'cap' if preprocessing.clip_test_labels else 'uncap'}"
         f"_{arguments.seeds}seed"
+        f"_{'fixedsplit' if arguments.fixed_split else 'varsplit'}"
+        + ("_noearlystop" if arguments.no_early_stopping else "")
+        + ("" if arguments.lr_schedule == "exponential" else f"_{arguments.lr_schedule}")
+        + f"_{commit}_{stamp}"
     )
     output = arguments.output or (reports_dir() / name)
     output.mkdir(parents=True, exist_ok=True)
@@ -197,11 +276,14 @@ def main() -> int:
     (output / "summary.json").write_text(
         json.dumps(
             {
+                "commit": commit,
+                "finished_utc": stamp,
                 "subset": preprocessing.subset,
-                "graph": arguments.graph,
-                "node_feature_mode": preprocessing.node_feature_mode,
-                "adjacency_norm": arguments.adjacency_norm,
+                "graph": preprocessing.graph,
+                "adjacency_normalization": preprocessing.adjacency_normalization,
                 "seeds": arguments.seeds,
+                "split": "fixed" if arguments.fixed_split else "varies_with_seed",
+                "clip_test_labels": preprocessing.clip_test_labels,
                 "early_stopping": not arguments.no_early_stopping,
                 "lr_schedule": arguments.lr_schedule,
                 "mean": {c: float(table[c].mean()) for c in columns},

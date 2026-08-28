@@ -59,8 +59,9 @@ Dynamic: the same calculation at every cycle
 Equation 16 of the paper is Equation 15 applied to the window ending at each
 cycle in turn. An engine that ran for 220 cycles yields 191 windows at a window
 size of 30, so it yields 191 sets of 14 Shapley values --- a table of how the
-model's attention moved as the engine wore out. That is what the paper's
-Table 12 reports and its Fig. 10 draws.
+model's attention moved as the engine wore out. The paper's Table 12 and
+Fig. 10 have that shape, though F-08 shows Table 12's contents cannot be
+signed Shapley values satisfying the paper's own Equation 14.
 
 The one property to check
 -------------------------
@@ -364,8 +365,12 @@ def dynamic_shap(
         ``rul`` at that cycle, ``predicted``, ``baseline``, and one column per
         sensor holding its Shapley value in cycles.
 
-        The paper's Table 12 is this table for one engine, with the columns
-        labelled ``G1``, ``G2`` and so on instead of by cycle.
+        The paper's Table 12 has the same shape -- one engine, sensors down
+        the side, time steps across -- with its columns labelled ``G1``,
+        ``G2`` and so on instead of by cycle. **The contents are not
+        comparable**: the values here are signed and in cycles, and F-08
+        shows the paper's cannot be. Do not place the two side by side
+        without saying so.
     """
     selected = np.flatnonzero(dataset.units == unit)
     if selected.size == 0:
@@ -435,8 +440,14 @@ def shap_summary(
 
         ``mean_abs``
             Average size of the sensor's contribution, ignoring direction.
-            This is the usual measure of "importance", and it is what the
-            paper's Table 12 reports and what orders the rows of its Fig. 9.
+            This is the usual measure of "importance", and it is the order the
+            rows of the paper's Fig. 9 appear in, which is the convention for
+            a SHAP summary plot although the paper does not say so.
+
+            It is **not** established that this is what the paper's Table 12
+            reports. Finding F-08 shows that table cannot hold signed Shapley
+            values, so it is magnitudes of something, computed in a way the
+            paper never states.
         ``mean``
             Average signed contribution. A large negative value means the
             sensor consistently pulled the predicted life *down*.

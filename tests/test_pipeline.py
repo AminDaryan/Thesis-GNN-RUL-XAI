@@ -9,6 +9,7 @@ import pytest
 
 from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
 from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_COLUMNS
 
 
 @pytest.fixture(scope="module")
@@ -33,37 +34,56 @@ def test_training_and_validation_engines_never_overlap(prepared):
     assert train_engines.isdisjoint(validation_engines)
 
 
-def test_validation_engines_never_influence_the_scaling(prepared):
+def test_validation_engines_never_influence_the_scaling(raw_dir):
     """The scaler must be fitted on the training engines alone.
 
     If the statistics were learned before the validation engines were held
     out, a held-out engine could define a minimum or a maximum. The visible
-    consequence is this: with min-max scaling, the *training* windows span
-    exactly [0, 1] only when the extremes belong to training engines. If a
-    validation engine owned one of them, the training range would fall
-    strictly inside [0, 1].
+    consequence is this: with min-max scaling, the rows belonging to
+    *training* engines span exactly [0, 1] only when the extremes belong to
+    those engines. If a validation engine owned one, the training range would
+    fall strictly inside [0, 1].
+
+    Checked on the scaled frame rather than on the windowed features, because
+    a node carries only the last cycle of its window (A-07). Cycles 1 to
+    ``window_size - 1`` of every engine are therefore never a node feature,
+    so an extreme living in one of them would make this test fail for a
+    reason that has nothing to do with leakage.
 
     This is the validation-side counterpart of
     ``test_normalization.py::test_test_data_never_influences_the_scaling``.
     """
+    config = PreprocessingConfig(
+        window_size=20, validation_fraction=0.25, seed=7
+    )
+    prepared = run_preprocessing(config, data_dir=raw_dir, keep_frames=True)
+
     assert prepared.config.normalization.startswith("minmax")
     assert len(prepared.validation) > 0, "nothing is being held out"
+    assert prepared.frames is not None
+
+    frame = prepared.frames["train"]
+    training_engines = set(prepared.train.units.tolist())
+    rows = frame[frame["unit"].isin(training_engines)]
+    values = rows[list(PAPER_SENSOR_COLUMNS)].to_numpy(dtype=float)
 
     # Checked per sensor, not over the whole array. Globally the extremes of
     # one sensor mask another's, so a global range of [0, 1] would pass even
     # when a held-out engine owns a particular sensor's minimum.
-    features = prepared.train.features                    # (examples, sensors, cycles)
-    lowest = features.min(axis=(0, 2))
-    highest = features.max(axis=(0, 2))
-
     offenders = [
         (symbol, float(low), float(high))
-        for symbol, low, high in zip(prepared.sensor_symbols, lowest, highest, strict=True)
+        for symbol, low, high in zip(
+            prepared.sensor_symbols,
+            values.min(axis=0),
+            values.max(axis=0),
+            strict=True,
+        )
         if abs(low) > 1e-6 or abs(high - 1.0) > 1e-6
     ]
     assert not offenders, (
-        "These sensors do not span exactly [0, 1] across the training windows, "
-        "which means a validation engine defined their scale: " + str(offenders)
+        "These sensors do not span exactly [0, 1] across the training engines' "
+        "rows, which means a validation engine defined their scale: "
+        + str(offenders)
     )
 
 
@@ -175,11 +195,11 @@ def test_disabling_smoothing_changes_the_features(raw_dir):
     assert not np.allclose(smoothed.train.features, unsmoothed.train.features)
 
 
-def test_last_step_mode_produces_single_feature_nodes(raw_dir):
+def test_nodes_carry_exactly_one_feature(raw_dir):
+    """A-07: Table 4's input shape is [batch, 14, 1], and it is not optional."""
     prepared = run_preprocessing(
-        PreprocessingConfig(
-            window_size=20, node_feature_mode="last_step"
-        ),
+        PreprocessingConfig(window_size=20),
         data_dir=raw_dir,
     )
     assert prepared.train.features.shape[1:] == (14, 1)
+    assert prepared.test.features.shape[1:] == (14, 1)

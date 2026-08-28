@@ -12,14 +12,15 @@ Section 2.4 — the last computed exactly rather than by sampling. The
 per-sensor LSTM stage is deliberately omitted; see
 [section 12](#12-known-limitations).
 
-**Where that gets to.** On FD001, **RMSE 13.45 ± 0.20** across five seeds,
-against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation.
-[Section 8](#8-results-so-far) gives all four measures and says what that
-comparison does and does not establish.
+**Where that gets to.** On FD001, **RMSE 20.35 ± 0.75** across five seeds,
+against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation —
+on an architecture that matches the paper's Table 4 exactly, down to its
+61,729 parameters. [Section 8](#8-results-so-far) gives all four measures and
+says what that comparison does and does not establish.
 
-**Status.** 163 automated tests pass, 107 of them without PyTorch installed.
-Both notebooks have been executed end to end on the real FD001 files, and
-every check inside them passes.
+**Status.** The automated tests pass and ruff is clean. The notebooks predate
+the A-07 change of 2026-08-28 and need re-executing; their stored shapes still
+read `(…, 14, 30)`.
 
 ---
 
@@ -436,8 +437,10 @@ Five files in `data/processed/`:
 | `config.yaml` | The exact settings used |
 | `diagnostics.json` | What the pipeline observed while running |
 
-The feature array has shape `(examples, 14, 30)`: for each example, 14 sensors,
-each carrying its own 30-cycle history.
+The feature array has shape `(examples, 14, 1)`: for each example, 14 sensors,
+each carrying one number — the most recent reading of its 30-cycle window. That
+is the input shape `[batch, 14, 1]` printed in the paper's Table 4. See
+assumption A-07.
 
 ---
 
@@ -486,15 +489,28 @@ when it is given only one.
 
 | Configuration | RMSE | NASA score | R² | ASUE |
 |---------------|------|-----------|-----|------|
-| Physics graph, whole 30-cycle window (the default) | **13.45 ± 0.20** | 312 ± 11 | 0.887 ± 0.003 | 8.85 ± 0.36 |
-| Physics graph, last reading only | 19.76 ± 0.57 | 750 ± 64 | 0.757 ± 0.014 | 15.19 ± 0.97 |
-| Fully connected graph, whole window | 19.17 ± 0.45 | 743 ± 53 | 0.771 ± 0.011 | 13.44 ± 0.27 |
+| Physics graph, one reading per node (the default) | **20.35 ± 0.75** | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
+| Fully connected graph (A-19 ablation) | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
+
+The two differ by 0.044 cycles, paired `t = 0.12, p = 0.913` — **the physics
+prior makes no measurable difference in this configuration.** Finding F-04
+records that this reverses an earlier claim of a 5.7-cycle benefit, which was
+an artefact of the removed `window` mode.
 
 Reproduce the first row with:
 
 ```bash
 python scripts/train.py --seeds 5
 ```
+
+Two earlier rows have been withdrawn. They used a `window` node-feature mode in
+which each node carried all 30 cycles, which made the first weight matrix
+`(30, 32)` instead of the `(1, 32)` Table 4 prints — 928 parameters the paper's
+architecture does not have, computing a bank of linear filters over time. That
+is a temporal encoder, which A-11 exists to avoid. The mode was removed on
+2026-08-28; its numbers (13.45 ± 0.20 physics, 19.17 ± 0.45 complete) are
+reproducible at commit `cdcc827` and are recorded in F-06, but they are not
+this project's results and the A-19 ablation needs re-running.
 
 ### How that compares with the paper
 
@@ -508,25 +524,21 @@ python scripts/train.py --seeds 5
 **Only one of those numbers is comparable with this code.** The per-sensor LSTM
 is deliberately not implemented (see [section 12](#12-known-limitations) and
 assumption A-11), so the matching row is "w/o LSTM", and the comparison is
-13.45 ± 0.20 against 14.93. The paper's ablation table reports RMSE only, which
+20.35 ± 0.75 against 14.93 — a 5.4-cycle shortfall, worse than the paper's own
+"w/o GCN" row. The paper's ablation table reports RMSE only, which
 is why the other three columns are blank for it.
 
 ### What that comparison does and does not show
 
-This code comes out **1.5 cycles better** than the published figure. That is not
-a reproduction, and it should not be presented as one. Being better than the
-reference is itself evidence that something differs, and the differences are all
-written down rather than mysterious: the input rescaling is substituted from a
-different paper (A-03), early stopping is an addition (A-18), capping the test
-labels can only help (A-02), and the target scaling, weight initialisation and
-learning-rate schedule are all unstated by the paper (A-13, A-14, A-17).
-
-There is also a sharper result. Assumption A-07 records that with the LSTM
-removed there are exactly two defensible things to feed the graph layers, and
-both have now been run. **The paper's 14.93 falls between them:** 13.45 with the
-whole window, 19.76 with the last reading only. Both gaps are far larger than
-the seed-to-seed spread, so whatever the paper's ablation fed its graph layers,
-it was neither of the two things its own text supports.
+The architecture matches: input `[batch, 14, 1]`, `W(1) ∈ ℝ^(1×32)`, the same
+layer widths, and **61,729 parameters — Table 4's count exactly**, asserted by a
+test. The only thing removed is the LSTM, which is what "w/o LSTM" means. So the
+**5.4-cycle gap has no shape mismatch to hide behind**, and what is left to
+explain it is the documented assumptions: the input rescaling is substituted
+from a different paper (A-03), early stopping is an addition (A-18), the target
+scaling, weight initialisation and learning-rate schedule are all unstated
+(A-13, A-14, A-17), and capping the test labels moves the figure *favourably* by
+a measured 1.76 cycles (A-02), so the underlying gap is wider still.
 
 Finding F-06 in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records this in
 full, together with F-04 on the physics graph and F-05 on what SHAP says.
@@ -724,7 +736,7 @@ the layers above, so read them last and they will contain no surprises.
    shorter than the function and tells you what matters about it.
 4. **Follow the shapes.** Almost every step is a change of shape, and section 7
    lists them all. If you can say what shape the data has after each step —
-   `(20631, 26)` to `(17731, 14, 30)` to `(100,)` — you understand the pipeline,
+   `(20631, 26)` to `(17731, 14, 1)` to `(100,)` — you understand the pipeline,
    whatever the code looks like.
 
 **If you have one hour**, read notebook 01 end to end. **If you have two**, add
