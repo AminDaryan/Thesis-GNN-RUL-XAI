@@ -35,6 +35,7 @@ The paper's own procedure, with no validation set and a fixed 200 epochs::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import subprocess
@@ -257,7 +258,17 @@ def main() -> int:
     # directories differing only by timestamp, one capped and one not, whose
     # RMSEs differ by 1.3 cycles -- see A-02. Non-default switches are marked;
     # defaults stay silent so ordinary names stay short.
+    #
+    # Naming the fields that happen to matter today is not enough, because a
+    # setting reachable only from a YAML file -- the normalisation method, the
+    # smoothing parameter, the label ceiling -- changes the number just as
+    # much and would collide again. `cfg` is a digest of the whole
+    # preprocessing configuration, so two runs whose settings differ anywhere
+    # get different names whether or not anyone remembered to add the field.
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    config_digest = hashlib.sha256(
+        json.dumps(preprocessing.to_dict(), sort_keys=True, default=str).encode()
+    ).hexdigest()[:6]
     name = (
         f"{preprocessing.subset.lower()}"
         f"_{preprocessing.graph}"
@@ -267,7 +278,7 @@ def main() -> int:
         f"_{'fixedsplit' if arguments.fixed_split else 'varsplit'}"
         + ("_noearlystop" if arguments.no_early_stopping else "")
         + ("" if arguments.lr_schedule == "exponential" else f"_{arguments.lr_schedule}")
-        + f"_{commit}_{stamp}"
+        + f"_cfg{config_digest}_{commit}_{stamp}"
     )
     output = arguments.output or (reports_dir() / name)
     output.mkdir(parents=True, exist_ok=True)
@@ -277,6 +288,7 @@ def main() -> int:
         json.dumps(
             {
                 "commit": commit,
+                "config_digest": config_digest,
                 "finished_utc": stamp,
                 "subset": preprocessing.subset,
                 "graph": preprocessing.graph,

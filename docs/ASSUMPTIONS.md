@@ -24,7 +24,7 @@ identifier below.
 |----|-------|---------------------|------------------------|
 | A-01 | Label ceiling `RUL_max` | Defines it symbolically in Equation 19, never prints a value | 125 cycles |
 | A-02 | Ceiling on test labels | Not discussed | Applied, because the model's output layer cannot exceed the ceiling |
-| A-03 | Input rescaling | Not described at all | Per-condition min-max scaling to [0, 1], following Jin et al. (2025) |
+| A-03 | Input rescaling | Not described at all | Per-condition min-max scaling to [0, 1], following Jin et al. (2025) — **the largest measured assumption in the project; see F-10** |
 | A-04 | Smoothing strength | Self-contradictory sentence in Section 3.2.3 | Read as `alpha = 0.5` |
 | A-05 | Window stride | Not in the text; **Fig. 1 indicates one time step** | 1 cycle |
 | A-06 | Validation split | None; trains for a fixed 200 epochs | 20 % of engines held out |
@@ -149,9 +149,27 @@ there is only one operating condition, so the per-condition variant and the
 global variant give identical results; the distinction becomes important only
 when FD002 and FD004 are added.
 
-**How much it matters.** On FD001, little, as long as some sensible scaling is
-used. On FD002 and FD004 it is likely to be the single largest source of
-difference from the published numbers.
+**How much it matters — measured, and it is the largest effect in the project.**
+The claim that once stood here, "on FD001, little, as long as some sensible
+scaling is used", is wrong. Five seeds each, everything else identical
+(commit `09628fa`):
+
+| Scaling | RMSE on FD001 |
+|---------|---------------|
+| `minmax_per_condition` (the default, from Jin et al.) | 20.353 ± 0.752 |
+| `zscore` | **16.524 ± 0.339** |
+
+**3.83 cycles, paired t-test p = 0.0005.** That is 71 % of the entire gap to
+the paper's 14.93, and it is larger than every other assumption tested
+combined. See F-10 for the full sweep.
+
+This does not tell us what Wen et al. did — they describe no scaling at all —
+but it does mean **the substitution recorded in this entry is the single
+biggest reason a number from this code cannot be compared with a published
+one.** That sentence belongs beside any result quoted from this project.
+
+On FD002 and FD004, where the per-condition variant stops being equivalent to
+the global one, the effect is likely larger still.
 
 ---
 
@@ -1193,16 +1211,94 @@ identical except for their timestamps, whose RMSEs differ by 1.3 cycles. The
 timestamp made them unique, which is what the original fix promised, but a
 name you cannot read is not provenance. The name now carries the cap, and
 marks early stopping and the learning-rate schedule when they are not at their
-defaults:
+defaults.
+
+**And the first attempt at that fix was itself incomplete, which is the more
+useful half of this entry.** Naming the fields that happen to matter today
+covers command-line switches and nothing else. The assumption sweep of
+2026-08-28 varied the normalisation method and the smoothing parameter from
+YAML files, and produced two more directories differing only by timestamp
+whose RMSEs are 5.0 cycles apart. Enumerating fields cannot fix a problem
+whose cause is that someone has to remember to enumerate a field.
+
+The name therefore also carries `cfg<digest>`, the first six hex characters of
+a SHA-256 of the whole preprocessing configuration. Two runs whose settings
+differ *anywhere* get different names, whether or not anyone remembered:
 
 ```
-fd001_physics_symmetric_cap_5seed_varsplit_<commit>_<utc>
-fd001_physics_symmetric_uncap_5seed_varsplit_noearlystop_<commit>_<utc>
+fd001_physics_symmetric_cap_5seed_varsplit_cfge50b20_<commit>_<utc>
+fd001_physics_symmetric_cap_5seed_varsplit_cfgb8071d_<commit>_<utc>   (zscore)
+fd001_physics_symmetric_uncap_5seed_varsplit_noearlystop_cfg00375a_<commit>_<utc>
 ```
 
-The general point, which is the one worth keeping: **a naming scheme has to
-cover every switch that changes the number, not every switch that existed when
-it was written.** Adding a configuration option means extending the name.
+The digest is also written into `summary.json`. The readable fields stay,
+because a digest tells you two runs differ without telling you how.
+
+The general point, which is the one worth keeping: **make the identifier
+derive from the configuration, rather than from a list of the parts of the
+configuration someone thought of.** A list has to be maintained; a digest does
+not.
+
+---
+
+### F-10 — The input scaling the paper never describes accounts for most of the gap
+
+Finding F-06 records this project landing at 20.353 ± 0.752 on FD001 against
+the paper's 14.93 for "ESTGNN w/o LSTM" — a 5.42-cycle shortfall on an
+architecture that matches Table 4 exactly. This entry asks where those 5.42
+cycles are, and answers it by changing one assumption at a time.
+
+Five seeds each, commit `09628fa`, physics graph, symmetric normalisation,
+capped test labels, varying split. Every row differs from the baseline in
+exactly one respect. `p` is a paired t-test across seeds.
+
+| Configuration | RMSE | vs baseline | p | gap to 14.93 |
+|---|---|---|---|---|
+| **A-03: `zscore` scaling** | **16.524 ± 0.339** | **−3.828** | **0.0005** | **+1.59** |
+| A-18: no early stopping (the paper's fixed 200 epochs) | 20.177 ± 0.932 | −0.175 | 0.374 | +5.25 |
+| baseline (`fd001.yaml`) | 20.353 ± 0.752 | — | — | +5.42 |
+| A-17: constant learning rate | 20.518 ± 0.493 | +0.165 | 0.254 | +5.59 |
+| A-01: `rul_max = 130` | 20.822 ± 1.065 | +0.469 | 0.114 | +5.89 |
+| A-04: smoothing disabled | 21.572 ± 0.315 | +1.219 | 0.007 | +6.64 |
+
+**One assumption dominates, and it is the one the paper is silent about.**
+Switching the input scaling from per-condition min-max to z-score removes
+**3.83 of the 5.42 cycles — 71 % of the gap** — and it is the only change
+tested that is both large and significant. A-03 was already flagged as "the
+largest single unknown"; it is now the largest measured one.
+
+Combining it with the paper's own training procedure changes nothing further:
+z-score with early stopping disabled and a fixed 200 epochs gives
+**16.599 ± 0.275** (commit `09628fa-dirty`), statistically indistinguishable
+from z-score alone. So the deviation recorded in A-18 is not part of the story.
+
+**What this does and does not establish.**
+
+It does **not** show that Wen et al. used z-score scaling. They describe no
+scaling at all; Fig. 1 has a "Data Normalization" box and the text never
+returns to it. A-03's default follows Jin et al. (2025), a different paper on
+the same dataset, and that substitution is the single largest reason a number
+from this code is not comparable with a published one.
+
+It does show that **the paper's silence on preprocessing is worth more than
+every architectural detail it does print.** Table 4 specifies the network to
+the width of each weight matrix; Table 6 specifies the optimiser, the loss,
+the batch size, the epoch count and the learning-rate range. Following all of
+that exactly still leaves a 5.4-cycle gap, and one unstated preprocessing
+choice closes three quarters of it. For the thesis this is the more useful
+observation than any single number: **reproducibility here was lost in the
+step that was not described, not in the steps that were.**
+
+**Still unaccounted for: 1.59 cycles.** Candidates not yet separated, all
+documented and none measured: A-13 (how the sigmoid output maps back to
+cycles), A-14 (weight initialisation), A-05 (window stride), A-10 (the
+identity of the seventh dropped sensor), and A-02 in reverse — capping the
+test labels *helps* by a measured 1.311 cycles (see A-02), so an uncapped
+comparison would put the residual gap at roughly 2.9 rather than 1.59.
+
+**Do not read the ordering of the small rows as a result.** A-18, A-17 and
+A-01 all have p > 0.1 across five seeds; only their sign is suggestive, and
+A-04 (+1.219, p = 0.007) is the only other row that clears significance.
 
 ---
 
