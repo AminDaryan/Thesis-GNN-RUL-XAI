@@ -295,8 +295,6 @@ repetition of the experiment would show, because a repetition also draws a
 different set of validation engines — and with only 20 held out, which 20 they
 are matters.
 
-1
-
 ---
 
 ## A-07 — Each sensor node carries the last cycle of its window
@@ -998,11 +996,11 @@ sharper statement than the earlier framing of this finding, which presented
 the printed architecture and that smuggles in a linear temporal encoder — so
 it was never a candidate reproduction of the ablation, whatever its accuracy.
 
-What remains to explain the 4.8 cycles is the documented assumptions, in
+What remains to explain the 5.42 cycles is the documented assumptions, in
 roughly descending order of suspicion: A-03 (input scaling, substituted
 wholesale from Jin et al.), A-13/A-14/A-17 (target scaling, initialisation,
 learning-rate schedule), A-18 (early stopping, an addition), and A-02 (label
-capping, measured at 1.76 cycles and in the *favourable* direction, so the
+capping, measured at 1.311 cycles and in the *favourable* direction, so the
 underlying gap is larger still).
 
 #### What run A was, and why beating the paper was a warning sign
@@ -1174,8 +1172,11 @@ as printed:
 | 4. `phi` influences `T30`, `P30`, `Ps30`, then `htBleed`, `W31`, `W32` | six edges | **5 of 6** |
 | 5. cooling interdependencies | `W31`-`W32`, `W31`-`htBleed`, `W32`-`htBleed` | 3 of 3 |
 
-**Twenty-three of the twenty-four hold. The exception is `phi`-`W32`.** The
-text names it explicitly — "phi influencing T30, P30, Ps30 and subsequently
+**Twenty-two of the twenty-three checks hold. The exception is `phi`-`W32`.**
+Three pairs are required by two rules each — `P15`-`BPR` (rules 1 and 3b),
+`Nf`-`NRf` (rules 2 and 3b) and `W31`-`W32` (rules 1 and 5) — so counting
+distinct edges rather than checks gives **19 of 20**. Either way it is the same
+single edge that is absent. The text names it explicitly — "phi influencing T30, P30, Ps30 and subsequently
 affecting htBleed, W31, and W32" — and the matrix gives it as 0, in Table 3 and
 in the Fig. 3 colour grid alike.
 
@@ -1204,6 +1205,31 @@ report["articulation_points"]   # ['T24']
 report["distance_histogram"]    # {1: 41, 2: 25, 3: 21, 4: 4}
 pairs_beyond_reach(matrix, symbols, n_layers=3)
 # [('BPR', 'W32', 4), ('NRf', 'W32', 4), ('Nf', 'W32', 4), ('P15', 'W32', 4)]
+```
+
+So can the edge counts in the table above:
+
+```python
+from itertools import combinations
+from thesis_gnn_rul_xai.graph.adjacency import PHYSICS_ADJACENCY_ROWS
+from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS as S
+
+def edge(a, b):
+    return PHYSICS_ADJACENCY_ROWS[a][S.index(b)] == 1
+
+required = (
+    [("P30", "Ps30"), ("T30", "P30"), ("T30", "Ps30"), ("P15", "BPR"),
+     ("W31", "W32")]                                          # rule 1
+    + [("Nf", "NRf")]                                          # rule 2
+    + [("T24", "T30"), ("T30", "T50")]                         # rule 3a
+    + list(combinations(["P15", "Nf", "NRf", "BPR"], 2))       # rule 3b
+    + [("phi", x) for x in ("T30", "P30", "Ps30", "htBleed", "W31", "W32")]
+    + [("W31", "W32"), ("W31", "htBleed"), ("W32", "htBleed")] # rule 5
+)
+sum(edge(*p) for p in required), len(required)      # (22, 23)
+distinct = {frozenset(p) for p in required}
+sum(edge(*tuple(p)) for p in distinct), len(distinct)   # (19, 20)
+[p for p in required if not edge(*p)]                   # [('phi', 'W32')]
 ```
 
 **What it means for the thesis.** It is a small internal inconsistency, but it

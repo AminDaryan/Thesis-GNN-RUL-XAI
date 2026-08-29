@@ -547,7 +547,7 @@ explain it is the documented assumptions: the input rescaling is substituted
 from a different paper (A-03), early stopping is an addition (A-18), the target
 scaling, weight initialisation and learning-rate schedule are all unstated
 (A-13, A-14, A-17), and capping the test labels moves the figure *favourably* by
-a measured 1.76 cycles (A-02), so the underlying gap is wider still.
+a measured 1.311 cycles (A-02), so the underlying gap is wider still.
 
 Finding F-06 in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records this in
 full, together with F-04 on the physics graph and F-05 on what SHAP says.
