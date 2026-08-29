@@ -1,94 +1,7 @@
-"""
-Rescaling the sensor values (normalisation)
-===========================================
+"""Puts the 14 sensors on a comparable scale before the network sees them.
 
-Why rescaling is needed
------------------------
-The 14 sensors measure completely different physical quantities on completely
-different scales. A turbine outlet temperature is around 1400 degrees Rankine,
-a bypass ratio is around 8.4, and a coolant bleed flow is around 39 pounds per
-second. If these numbers are fed to a neural network unchanged, the large ones
-dominate the calculation simply because they are large, not because they are
-informative. Rescaling puts every sensor on a comparable footing.
-
-The three methods provided
---------------------------
-``minmax_global``
-    Each sensor is mapped so its smallest observed value becomes 0 and its
-    largest becomes 1::
-
-        scaled = (value - minimum) / (maximum - minimum)
-
-``minmax_per_condition``
-    The same formula, but with a separate minimum and maximum for each
-    *operating condition*. See the next section.
-
-``zscore``
-    Each sensor is shifted and stretched so that it has an average of 0 and a
-    standard deviation of 1::
-
-        scaled = (value - mean) / standard_deviation
-
-    Unlike min-max scaling, this does not bound the values to a fixed range,
-    which makes it more tolerant of outliers.
-
-What an operating condition is, and why it matters
---------------------------------------------------
-The three "operational setting" columns describe how the aircraft was being
-flown: its altitude, its speed (as a Mach number), and the throttle position.
-Flying higher or faster changes every sensor reading immediately and by a large
-amount, and that change has nothing to do with engine wear.
-
-In sub-datasets FD002 and FD004 the engines are flown under six different
-conditions, and the jumps between conditions are far larger than the slow drift
-caused by degradation. Scaling all six together leaves the wear signal buried.
-Scaling each condition separately removes the flight-related jumps and leaves
-the wear visible. FD001, which this project starts with, has only one operating
-condition, so per-condition scaling and global scaling give identical results
-there. Implementing the general version now means the code will already be
-correct when FD002 and FD004 are added later.
-
-Conditions are identified with **k-means clustering**, a standard algorithm
-that groups points into a chosen number of clusters by repeatedly assigning
-each point to the nearest cluster centre and then recomputing the centres
-(MacQueen, 1967). The three setting columns are clustered, and the resulting
-cluster number is used as the condition label. This follows Jin et al. (2025),
-who use the same approach on the same dataset.
-
-The rule that protects the experiment: fit on training data only
------------------------------------------------------------------
-All statistics -- minima, maxima, means, standard deviations, and the cluster
-centres themselves -- are computed from the **training** engines only, and then
-applied unchanged to the test engines. This is not a stylistic preference; it
-is what makes the evaluation valid.
-
-If the maximum were computed over training and test data together, information
-about the test engines would enter the training process. The model would then
-be evaluated on data it had partly seen, and the reported error would be
-smaller than the error the same model would produce on genuinely new engines.
-This mistake is called **data leakage** and is one of the most common causes of
-results that cannot be reproduced (Kapoor & Narayanan, 2023).
-
-What the source paper says about this
--------------------------------------
-Nothing. Wen et al. (2026) never describe how they scale their inputs, and
-never mention operating conditions in their preprocessing. The default used
-here follows Jin et al. (2025). This is a documented substitution, not a claim
-about what the original authors did; see ``docs/ASSUMPTIONS.md``.
-
-References
-----------
-Jin, Y., Meng, Z., Hu, Q., & Chen, D. (2025). Heterogeneous dynamic-aware GNN
-for RUL prediction of aeroengine. *IEEE Transactions on Instrumentation and
-Measurement*, 74, 3538014. https://doi.org/10.1109/TIM.2025.3569885
-
-Kapoor, S., & Narayanan, A. (2023). Leakage and the reproducibility crisis in
-machine-learning-based science. *Patterns*, 4(9), 100804.
-https://doi.org/10.1016/j.patter.2023.100804
-
-MacQueen, J. (1967). Some methods for classification and analysis of
-multivariate observations. *Proceedings of the Fifth Berkeley Symposium on
-Mathematical Statistics and Probability*, 1, 281-297.
+Read README.md in this folder. It explains the three methods on offer, what an
+operating condition is, and the rule that keeps the test engines out of it.
 """
 
 from __future__ import annotations
@@ -111,38 +24,20 @@ __all__ = [
 
 logger = get_logger(__name__)
 
-#: Name of the column that holds the operating-condition label.
+# The name of the column holding the operating condition.
 CONDITION_COL = "operating_condition"
 
-# Values whose range is smaller than this are treated as constant. Scaling a
+# A sensor whose readings span less than this counts as constant. Rescaling a
 # constant signal would mean dividing by zero.
 _ZERO_RANGE_TOLERANCE = 1e-12
 
 
 @dataclass
 class OperatingConditionEncoder:
-    """Assign an operating-condition label to every row.
+    """Works out how the aircraft was being flown at each row.
 
-    Parameters
-    ----------
-    n_conditions : int or None
-        Number of conditions to look for. ``None`` means "detect it from the
-        data" by counting how many distinct rounded setting combinations occur,
-        which recovers 1 for FD001 and FD003 and 6 for FD002 and FD004.
-    setting_columns : sequence of str
-        Which columns describe the flight condition.
-    round_decimals : int
-        Number of decimal places used when counting distinct combinations
-        during automatic detection. The raw settings carry small measurement
-        noise, so they must be rounded before distinct values are counted.
-    seed : int
-        Seed for k-means, which starts from randomly chosen centres.
-
-    Notes
-    -----
-    When only one condition is detected, k-means is skipped entirely and every
-    row is labelled 0. This avoids a pointless computation on FD001 and makes
-    the behaviour easy to verify.
+    README.md in this folder explains what an operating condition is and why
+    it matters. Leaving n_conditions as None detects the number from the data.
     """
 
     n_conditions: int | None = None
@@ -155,25 +50,19 @@ class OperatingConditionEncoder:
 
     @property
     def n_detected(self) -> int:
-        """How many conditions this encoder ended up using."""
+        """How many conditions this ended up using."""
         if self._n_detected is None:
             raise RuntimeError("The encoder must be fitted before use.")
         return self._n_detected
 
     def fit(self, frame: pd.DataFrame) -> OperatingConditionEncoder:
-        """Learn the conditions from the training data.
-
-        Parameters
-        ----------
-        frame : pandas.DataFrame
-            Training rows only. Never pass test data here.
-        """
+        """Learn the conditions. Pass training rows only, never test rows."""
         settings = frame[list(self.setting_columns)].to_numpy(dtype=float)
 
         if self.n_conditions is None:
             rounded = np.round(settings, self.round_decimals)
             detected = len(np.unique(rounded, axis=0))
-            # Guard against noise creating spurious groups.
+            # Stop measurement noise from inventing extra groups.
             detected = int(np.clip(detected, 1, 6))
             logger.info(
                 "Detected %d distinct operating condition(s) from the settings.",
@@ -195,14 +84,7 @@ class OperatingConditionEncoder:
         return self
 
     def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
-        """Add the operating-condition column to a frame.
-
-        Returns
-        -------
-        pandas.DataFrame
-            A copy of the input with one extra integer column, named by
-            :data:`CONDITION_COL`.
-        """
+        """Add the operating-condition column to a table."""
         if self._n_detected is None:
             raise RuntimeError("Call fit() before transform().")
 
@@ -215,32 +97,20 @@ class OperatingConditionEncoder:
         return frame
 
     def fit_transform(self, frame: pd.DataFrame) -> pd.DataFrame:
-        """Convenience method: :meth:`fit` followed by :meth:`transform`."""
+        """Do fit() and then transform(), in one call."""
         return self.fit(frame).transform(frame)
 
 
-# ASSUMPTION A-03: the paper never describes how its inputs are scaled, so the
-# whole of this class is a substitution from Jin et al. (2025), not a
-# reconstruction of what Wen et al. (2026) did.
+# ASSUMPTION A-03: everything in this class is a substitution. Wen et al.
+# (2026) never describe how they put their sensors on a comparable scale, so
+# this follows Jin et al. (2025) instead. It is not a reconstruction of what
+# the original authors did. Written up in docs/ASSUMPTIONS.md.
 @dataclass
 class SensorNormalizer:
-    """Rescale sensor columns using statistics learned from training data only.
+    """Rescales the sensors, using numbers measured on the training engines only.
 
-    Parameters
-    ----------
-    method : str
-        One of ``"minmax_per_condition"``, ``"minmax_global"``, ``"zscore"``.
-    columns : sequence of str
-        The sensor columns to rescale.
-    feature_range : tuple of float
-        Target range for the two min-max methods. The default ``(0.0, 1.0)``
-        matches Jin et al. (2025).
-
-    Attributes
-    ----------
-    statistics_ : pandas.DataFrame
-        The learned statistics, one row per (condition, sensor) pair. Exposed
-        so that they can be inspected, plotted, and saved alongside results.
+    README.md in this folder describes the three methods and the rule that
+    keeps the test engines out of the measurement.
     """
 
     method: str = "minmax_per_condition"
@@ -268,14 +138,10 @@ class SensorNormalizer:
     # -- fitting ----------------------------------------------------------
 
     def fit(self, frame: pd.DataFrame) -> SensorNormalizer:
-        """Learn the scaling statistics from training data.
+        """Measure the training engines. Pass training rows only.
 
-        Parameters
-        ----------
-        frame : pandas.DataFrame
-            Training rows only. For ``"minmax_per_condition"`` the frame must
-            already contain the operating-condition column produced by
-            :class:`OperatingConditionEncoder`.
+        For "minmax_per_condition" the table must already have been through
+        OperatingConditionEncoder above.
         """
         missing = [c for c in self.columns if c not in frame.columns]
         if missing:
@@ -318,14 +184,7 @@ class SensorNormalizer:
         return self
 
     def _warn_about_degenerate_columns(self) -> None:
-        """Report any sensor that is constant within a condition.
-
-        A constant sensor cannot be min-max scaled, because the formula would
-        divide by zero. Such columns are mapped to the bottom of the target
-        range instead. This is worth a warning rather than silence, because a
-        constant sensor in the retained set may mean the sensor selection needs
-        to be revisited.
-        """
+        """Warn about any sensor that never moves. It cannot be rescaled."""
         assert self.statistics_ is not None
         stats = self.statistics_
         if self.method == "zscore":
@@ -345,14 +204,7 @@ class SensorNormalizer:
     # -- applying ---------------------------------------------------------
 
     def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
-        """Apply the learned scaling to any frame, training or test.
-
-        Returns
-        -------
-        pandas.DataFrame
-            A copy of the input with the selected columns rescaled. All other
-            columns, including the label, are unchanged.
-        """
+        """Apply what was measured to any table. Only the sensors change."""
         if self.statistics_ is None:
             raise RuntimeError("Call fit() before transform().")
 
@@ -407,5 +259,5 @@ class SensorNormalizer:
         return frame
 
     def fit_transform(self, frame: pd.DataFrame) -> pd.DataFrame:
-        """Convenience method: :meth:`fit` followed by :meth:`transform`."""
+        """Do fit() and then transform(), in one call."""
         return self.fit(frame).transform(frame)

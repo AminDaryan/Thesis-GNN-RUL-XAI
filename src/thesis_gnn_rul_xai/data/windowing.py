@@ -1,76 +1,7 @@
-"""
-Turning histories into training examples (windowing)
-====================================================
+"""Cuts each engine's history into short fixed-length pieces, one per example.
 
-The idea
---------
-A model cannot be given a whole engine history at once, because histories have
-different lengths. Instead the history is cut into short, fixed-length pieces
-called **time windows**. One window is one training example.
-
-With a window size of 30, the first example covers cycles 1 to 30, the second
-covers cycles 2 to 31, and so on. The step between the start of one window and
-the start of the next is the **stride**; a stride of 1 produces the largest
-possible number of examples.
-
-The label of a window is the Remaining Useful Life at its **last** cycle. This
-matches how the model would be used in practice: an operator has the last 30
-cycles of readings available and wants to know the remaining life right now,
-not 30 cycles ago.
-
-Wen et al. (2026) give a window size of 30 in their Table 6. They do not state
-a stride; 1 is used here and recorded as an assumption.
-
-Shape of the result
--------------------
-The output is arranged for a Graph Neural Network, in which every sensor is a
-**node** of a graph. The array has three axes::
-
-    (number_of_examples, number_of_sensors, features_per_sensor)
-
-The third axis always has length 1: each sensor node carries the most recent
-reading of its window. That is the input shape ``[batch, 14, 1]`` printed in
-Table 4 of Wen et al. (2026), whose first graph layer has
-``W(1) in R^(1 x 32)``.
-
-The window is still what decides *which* cycles are eligible -- the first
-example of an engine ends at cycle ``window_size``, not at cycle 1 -- and it is
-what a temporal encoder would consume if one were added. It is simply not
-handed to the graph layer directly; see assumptions A-07 and A-11.
-
-How the test set is treated
----------------------------
-Test histories stop before failure, and the official label file gives one
-number per engine: the remaining life at the last recorded cycle. The
-evaluation therefore uses exactly **one window per test engine**, the final
-one. This gives 100 predictions on FD001, which matches the "number of testing
-samples" column in Table 5 of Wen et al. (2026).
-
-Splitting off a validation set, and why it must be done by engine
------------------------------------------------------------------
-A validation set is a portion of the training data that is held back and never
-used to update the model. It is used to decide when to stop training and to
-compare settings, so that those decisions are not made by looking at the test
-set.
-
-The split must be made **by engine, not by window**. Consecutive windows from
-the same engine overlap heavily: with a window size of 30 and a stride of 1,
-two neighbouring windows share 29 of their 30 cycles and have labels that
-differ by one cycle. If windows were split at random, nearly identical examples
-would end up on both sides of the split, and the validation error would be far
-too optimistic -- the model would effectively be tested on data it had already
-seen. Splitting whole engines keeps the two sets genuinely separate.
-
-Wen et al. (2026) describe no validation split at all; they report training for
-a fixed 200 epochs. Introducing one here is a deliberate improvement over the
-source, and is recorded as such in ``docs/ASSUMPTIONS.md``.
-
-References
-----------
-Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
-(2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
-enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
-168, 110875. https://doi.org/10.1016/j.ast.2025.110875
+Read README.md in this folder. It explains the shape of the result, what the
+test set gets, and why engines rather than windows are held back.
 """
 
 from __future__ import annotations
@@ -92,28 +23,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class WindowedDataset:
-    """A set of windowed examples, ready to be handed to a model.
-
-    Attributes
-    ----------
-    features : numpy.ndarray
-        Shape ``(n_examples, n_sensors, n_features_per_sensor)``, dtype
-        ``float32``.
-    targets : numpy.ndarray
-        Shape ``(n_examples,)``, dtype ``float32``. The Remaining Useful Life
-        at the last cycle of each window, in flight cycles.
-    units : numpy.ndarray
-        Shape ``(n_examples,)``, dtype ``int64``. Which engine each example
-        came from. Needed for grouping predictions by engine at evaluation time
-        and for checking that no engine appears in two splits.
-    end_cycles : numpy.ndarray
-        Shape ``(n_examples,)``, dtype ``int64``. The cycle number of the last
-        row in each window.
-    sensor_columns : tuple of str
-        Names of the sensor columns, in the order of the second axis. Keeping
-        these with the array prevents the sensor order from being lost, which
-        would silently misalign the data with the sensor graph.
-    """
+    """A set of examples ready for the network. README.md lists every field."""
 
     features: np.ndarray
     targets: np.ndarray
@@ -141,7 +51,7 @@ class WindowedDataset:
         )
 
     def subset_by_units(self, units: Sequence[int]) -> WindowedDataset:
-        """Return a new dataset containing only the given engines."""
+        """Return a copy holding only the engines listed."""
         mask = np.isin(self.units, np.asarray(list(units)))
         return WindowedDataset(
             features=self.features[mask],
@@ -160,17 +70,17 @@ def _extract_one_unit(
     last_only: bool,
     target_column: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Cut the history of a single engine into windows."""
+    """Cut one engine's history into windows."""
     values = history[list(sensor_columns)].to_numpy(dtype=np.float32)
     targets = history[target_column].to_numpy(dtype=np.float32)
     cycles = history[CYCLE_COL].to_numpy(dtype=np.int64)
     n_rows = values.shape[0]
 
     if n_rows < window_size:
-        # Too short for a full window. Rather than discard the engine, repeat
-        # its first reading backwards until the window is filled. The
-        # alternative -- dropping the engine -- would silently change the size
-        # of the test set and make results incomparable with published ones.
+        # This engine is too short for one full window. Rather than throw it
+        # away, repeat its first reading backwards until the window is full.
+        # Throwing it away would change the size of the test set and make the
+        # results incomparable with published ones.
         pad = window_size - n_rows
         values = np.vstack([np.repeat(values[:1], pad, axis=0), values])
         targets = np.concatenate([np.repeat(targets[:1], pad), targets])
@@ -192,14 +102,15 @@ def _extract_one_unit(
     window_targets = np.array([targets[s + window_size - 1] for s in starts], dtype=np.float32)
     window_cycles = np.array([cycles[s + window_size - 1] for s in starts], dtype=np.int64)
 
-    # Move the sensor axis in front of the time axis, so each sensor node owns
-    # a contiguous block of features: (n, W, S) -> (n, S, W)
+    # Put the sensors in front of the time steps, so each sensor owns one
+    # block of numbers: (n, W, S) becomes (n, S, W).
     windows = np.transpose(windows, (0, 2, 1))
 
-    # ASSUMPTION A-07: Table 4 gives the input to the first graph layer as
-    # [batch, 14, 1], one number per sensor. In the paper that number is the
-    # output of a per-sensor LSTM; with that stage omitted (A-11) it is the
-    # most recent reading of the window.
+    # ASSUMPTION A-07: give each sensor exactly one number, the most recent
+    # reading of its window. The paper's Table 4 prints one number per sensor
+    # going into the first layer. In the paper that number comes out of a stage
+    # we do not implement (A-11), so the latest reading stands in for it.
+    # Written up in docs/ASSUMPTIONS.md.
     windows = windows[:, :, -1:]
 
     return np.ascontiguousarray(windows), window_targets, window_cycles
@@ -264,10 +175,7 @@ def make_windows(
     stride: int = 1,
     target_column: str = "rul",
 ) -> WindowedDataset:
-    """Cut every engine history into overlapping windows.
-
-    Use this for training data, where all windows are wanted.
-    """
+    """Cut every engine's history into overlapping windows. Use for training."""
     return _build(
         frame,
         sensor_columns,
@@ -285,10 +193,9 @@ def make_last_windows(
     window_size: int = 30,
     target_column: str = "rul",
 ) -> WindowedDataset:
-    """Take only the final window of each engine history.
+    """Take only the last window of each engine. Use for test data.
 
-    Use this for test data, where the official label describes exactly one
-    moment per engine: the last recorded cycle.
+    The official test labels describe exactly one moment per engine.
     """
     return _build(
         frame,
@@ -306,31 +213,10 @@ def split_units_by_id(
     validation_fraction: float,
     seed: int = 42,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Split a list of engine numbers into a training part and a validation part.
+    """Split the engine numbers in two: the ones to train on, the ones to hold back.
 
-    Parameters
-    ----------
-    units : sequence of int
-        All engine numbers available for training.
-    validation_fraction : float
-        Fraction of engines to hold out, between 0 and 1. A value of 0 returns
-        an empty validation set.
-    seed : int
-        Seed controlling the shuffle, so the split is repeatable.
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        ``(training_units, validation_units)``, both sorted. The two arrays
-        never share an element.
-
-    Examples
-    --------
-    >>> train, val = split_units_by_id(range(1, 11), validation_fraction=0.2, seed=0)
-    >>> len(train), len(val)
-    (8, 2)
-    >>> set(train) & set(val)
-    set()
+    The two lists never share an engine. Splitting by engine, not by window,
+    is what stops the held-back data from leaking; README.md explains why.
     """
     unique = np.unique(np.asarray(list(units), dtype=np.int64))
     if not 0.0 <= validation_fraction < 1.0:

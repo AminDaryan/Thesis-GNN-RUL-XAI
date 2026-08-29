@@ -1,1 +1,4 @@
-"""Construction of the sensor graph used by the Graph Neural Network."""
+"""Builds the sensor graph the network passes messages over.
+
+Read README.md in this folder. It explains everything these files do.
+"""

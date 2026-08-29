@@ -1,11 +1,8 @@
-"""
-Training
-========
+"""Trains the network, and records the settings that were used.
 
-The loop that fits the network of Table 4 using the hyper-parameters of
-Table 6, together with the settings object that records them.
+Needs PyTorch: pip install -e ".[model]"
 
-Needs PyTorch; install it with the ``model`` extra (``pip install -e ".[model]"``).
+Read README.md in this folder. It explains everything these files do.
 """
 
 from .config import TrainingConfig, load_training_config

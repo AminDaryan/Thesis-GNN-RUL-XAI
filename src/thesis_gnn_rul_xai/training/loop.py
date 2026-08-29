@@ -1,78 +1,7 @@
-"""
-The training loop
-=================
+"""Trains the network, predicts with it, and scores it.
 
-What happens here
------------------
-One pass of this module trains the network of Table 4 on the windows produced
-by the preprocessing pipeline, using the hyper-parameters of Table 6, and
-returns a record of what happened at every epoch.
-
-The order of operations per epoch is the ordinary one: shuffle the training
-windows, take gradient steps in batches of 32, then measure the error on the
-validation engines without updating anything. The validation figure is what
-decides when to stop.
-
-Targets are scaled to [0, 1]; results are reported in cycles
-------------------------------------------------------------
-The network ends in a sigmoid, so its output can only lie in ``[0, 1]``. A
-label measured in flight cycles is out of reach for such a layer: no setting of
-the weights makes a sigmoid emit 40. Two conversions therefore bracket the
-model (assumption A-13). On the way in, ``_as_loader`` divides every target by
-``rul_max`` before the loss ever sees it; on the way out,
-``ESTGNN.predict_cycles`` multiplies the sigmoid back by the same constant, so
-``predict`` returns cycles.
-
-Worked example, for a single window whose true remaining life is 40 cycles,
-with the default ``rul_max = 125``::
-
-    label from the preprocessor   40                        cycles
-    target given to the loss      40 / 125 = 0.32           normalised
-    what the sigmoid emits        0.36                      normalised
-    what MSELoss sees             (0.36 - 0.32)^2 = 0.0016  normalised
-    prediction handed back        0.36 * 125 = 45           cycles
-    error a reader is shown       45 - 40 = 5               cycles
-
-Because the constant is the same for every window, the change of unit cannot
-change any comparison: an RMSE in cycles is exactly ``rul_max`` times the
-normalised RMSE. Each epoch of the history accordingly records both
-``validation_loss`` (mean squared error, normalised) and
-``validation_rmse_cycles`` (root mean squared error, in cycles), and
-``sqrt(validation_loss) * rul_max`` reproduces the second from the first. The
-two are kept apart for readability rather than arithmetic: 0.0016 is not a
-quantity anyone can judge, and "five cycles of remaining life" is.
-
-The distinction that matters most in this file
-----------------------------------------------
-The validation set here is **not** a stand-in for the test set, and its error
-must never be reported as though it were. The two weight their engines quite
-differently:
-
-* validation holds *every* window of the held-out engines, so on FD001 its 20
-  engines contribute between 108 and 240 windows each and a single unusual
-  engine can move the figure;
-* the test set holds *one* window per engine, so each of the 100 engines is
-  worth exactly one per cent.
-
-Neither is reliably the harder of the two, and the gap between them says
-nothing about the model. Validation error is the right signal for deciding when
-to stop training and for comparing settings, because those are relative
-judgements made against a fixed set. It is the wrong number to publish. See
-assumption A-06.
-
-What the paper does instead
----------------------------
-Wen et al. (2026) train for a fixed 200 epochs with no validation set and no
-early stopping described. Keeping early stopping here is a deliberate
-improvement (A-18); setting ``early_stopping_patience=None`` reproduces their
-procedure exactly.
-
-References
-----------
-Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
-(2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
-enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
-168, 110875. https://doi.org/10.1016/j.ast.2025.110875
+Read README.md in this folder. It explains everything this file does, and
+warns that the held-out error and the test error must never be swapped.
 """
 
 from __future__ import annotations
@@ -101,12 +30,7 @@ logger = get_logger(__name__)
 
 
 def resolve_device(preference: str = "auto") -> torch.device:
-    """Turn a device preference into a concrete :class:`torch.device`.
-
-    ``"auto"`` uses a CUDA device when one is available and the CPU otherwise,
-    and says which it chose, because a run that silently falls back to the CPU
-    and takes forty times as long is a confusing way to spend an afternoon.
-    """
+    """Decide whether to run on the graphics card or the processor, and say so."""
     if preference == "cuda" and not torch.cuda.is_available():
         raise RuntimeError(
             "device='cuda' was requested but PyTorch cannot see a CUDA device. "
@@ -125,24 +49,7 @@ def resolve_device(preference: str = "auto") -> torch.device:
 
 @dataclass
 class TrainingHistory:
-    """What happened during a run, and the weights it ended on.
-
-    Attributes
-    ----------
-    epochs : pandas.DataFrame
-        One row per epoch: the training loss, the validation loss, the
-        validation error in cycles, and the learning rate that was in force.
-    best_epoch : int
-        The epoch whose weights the model now holds (1-based).
-    best_validation_rmse : float
-        Validation error in cycles at that epoch.
-    stopped_early : bool
-        Whether patience ran out before ``epochs`` was reached.
-    seconds : float
-        Wall-clock duration of the run.
-    config : TrainingConfig
-        The settings used, saved so a result can be traced back to them.
-    """
+    """The record of one finished training run. README.md lists every field."""
 
     epochs: pd.DataFrame
     best_epoch: int
@@ -153,7 +60,7 @@ class TrainingHistory:
     _best_state: dict[str, torch.Tensor] = field(repr=False, default_factory=dict)
 
     def summary(self) -> str:
-        """A one-paragraph description, for printing at the end of a run."""
+        """One paragraph describing the run, to print when it finishes."""
         reason = "early stopping" if self.stopped_early else "the epoch limit"
         return (
             f"Trained for {len(self.epochs)} epoch(s) in {self.seconds:.1f}s, "
@@ -163,7 +70,7 @@ class TrainingHistory:
         )
 
     def save(self, directory: str | Path) -> Path:
-        """Write the per-epoch table and the settings to a directory."""
+        """Write the per-epoch table and the settings into a folder."""
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
         self.epochs.to_csv(directory / "training_history.csv", index=False)
@@ -175,7 +82,10 @@ class TrainingHistory:
 def _build_scheduler(
     optimiser: torch.optim.Optimizer, config: TrainingConfig
 ) -> torch.optim.lr_scheduler.LRScheduler | None:
-    """Create the learning-rate schedule described by A-17."""
+    """Build the rule that shrinks the learning rate over the run.
+
+    Which of the four rules to use is ASSUMPTION A-17; see config.py.
+    """
     span = config.final_learning_rate / config.learning_rate
     if config.lr_schedule == "constant" or config.epochs == 1:
         return None
@@ -205,10 +115,13 @@ def _as_loader(
     shuffle: bool,
     generator: torch.Generator | None = None,
 ) -> DataLoader:
-    """Wrap a windowed dataset as a PyTorch loader with normalised targets."""
+    """Hand the windows to PyTorch, with the labels scaled to lie in 0 to 1."""
     features = torch.from_numpy(np.ascontiguousarray(dataset.features)).float()
     targets = torch.from_numpy(np.ascontiguousarray(dataset.targets)).float()
-    targets = targets / float(rul_max)          # ASSUMPTION A-13
+    # ASSUMPTION A-13: divide the labels by rul_max so they fit the range the
+    # last layer can produce, and multiply predictions back afterwards. The
+    # paper never states this arithmetic. Written up in docs/ASSUMPTIONS.md.
+    targets = targets / float(rul_max)
     return DataLoader(
         TensorDataset(features, targets),
         batch_size=batch_size,
@@ -226,25 +139,7 @@ def predict(
     batch_size: int = 256,
     device: torch.device | str | None = None,
 ) -> np.ndarray:
-    """Predict remaining life **in flight cycles** for every window.
-
-    Parameters
-    ----------
-    model : ESTGNN
-        A trained (or untrained) network.
-    dataset : WindowedDataset
-        Windows to predict for, in their existing order.
-    batch_size : int
-        How many windows to push through at once. Larger is faster and uses
-        more memory; it has no effect on the numbers.
-    device : torch.device or str, optional
-        Where to run. Defaults to wherever the model already is.
-
-    Returns
-    -------
-    numpy.ndarray
-        One prediction per window, shaped ``(len(dataset),)``, in cycles.
-    """
+    """Predict remaining life in flight cycles, one number per window."""
     if device is None:
         device = next(model.parameters()).device
     device = torch.device(device)
@@ -264,25 +159,10 @@ def train(
     validation_set: WindowedDataset | None = None,
     config: TrainingConfig | None = None,
 ) -> TrainingHistory:
-    """Train the network and return a record of the run.
+    """Train the network and return the record of the run.
 
-    Parameters
-    ----------
-    model : ESTGNN
-        The network to train. It is modified in place, and on return it holds
-        the weights from the best epoch rather than the last one.
-    train_set, validation_set : WindowedDataset
-        The windows to learn from, and the ones to watch. ``validation_set``
-        may be ``None`` or empty, in which case there is nothing to stop early
-        on and the run lasts the full ``config.epochs``, which is what the
-        paper describes.
-    config : TrainingConfig, optional
-        Settings. Defaults to the values of Table 6.
-
-    Returns
-    -------
-    TrainingHistory
-        The per-epoch table, the best epoch, and the settings used.
+    The model is changed in place. Holding no engines back is allowed and is
+    what the paper does; README.md explains what changes when you do.
     """
     config = config or TrainingConfig()
     device = resolve_device(config.device)
@@ -416,10 +296,6 @@ def evaluate_model(
     *,
     device: torch.device | str | None = None,
 ) -> dict[str, float]:
-    """Score a trained model on a windowed dataset, in cycles.
-
-    A convenience wrapper that runs :func:`predict` and hands the result to
-    :func:`thesis_gnn_rul_xai.evaluation.metrics.evaluate`.
-    """
+    """Predict, then score. Returns the same dictionary as evaluate()."""
     predicted = predict(model, dataset, device=device)
     return evaluate(dataset.targets.astype(float), predicted)

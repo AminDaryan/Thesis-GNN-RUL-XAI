@@ -1,13 +1,7 @@
-"""
-Evaluation measures
-===================
+"""Scores a set of predictions with the paper's four measures.
 
-The four numbers Wen et al. (2026) report for every experiment: root mean
-squared error, the NASA challenge score, the coefficient of determination, and
-the Average Safe Underestimation Error.
-
-This subpackage works on NumPy arrays and does not need PyTorch, so a published
-figure copied out of a table can be scored the same way a model's output is.
+Read README.md in this folder. It explains what each measure is, what it can
+be compared with, and the two places where the paper contradicts itself.
 """
 
 from .metrics import (

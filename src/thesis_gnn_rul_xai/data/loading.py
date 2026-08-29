@@ -1,53 +1,7 @@
-"""
-Reading the raw C-MAPSS files
-=============================
+"""Reads the three raw C-MAPSS text files and works out a label for every row.
 
-File format
------------
-Each C-MAPSS sub-dataset consists of three plain text files:
-
-``train_FD001.txt``
-    Complete run-to-failure histories. Every engine is recorded from when it
-    was new until it failed. The last row for an engine is therefore the moment
-    of failure, and the Remaining Useful Life at that row is zero.
-
-``test_FD001.txt``
-    Partial histories. Recording stops at some point *before* failure, and the
-    task is to predict how much life is left at that point.
-
-``RUL_FD001.txt``
-    One number per test engine: the true Remaining Useful Life, in flight
-    cycles, at the last row that appears for that engine in the test file.
-
-The two history files have 26 columns separated by spaces, with no header row
-and a trailing space at the end of each line. The RUL file has a single column.
-
-Turning the labels into a value for every row
----------------------------------------------
-The training file needs no label file. Because each engine is recorded until it
-fails, the Remaining Useful Life at any cycle is simply how many cycles remain
-until the last recorded one::
-
-    RUL(t) = last_cycle_of_this_engine - t
-
-The test file needs the label file, because recording stopped early. If an
-engine's last recorded cycle is 150 and the label file says 47 cycles of life
-were left at that moment, then at cycle 130 the engine still had::
-
-    RUL(130) = (150 - 130) + 47 = 67
-
-In general::
-
-    RUL(t) = (last_recorded_cycle - t) + RUL_at_last_recorded_cycle
-
-Both cases are handled by :func:`attach_rul`.
-
-References
-----------
-Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
-modeling for aircraft engine run-to-failure simulation. *2008 International
-Conference on Prognostics and Health Management*, pp. 1-9. IEEE.
-https://doi.org/10.1109/PHM.2008.4711414
+Read README.md in this folder. It explains the file format, how the labels are
+worked out, and everything else this file does.
 """
 
 from __future__ import annotations
@@ -71,19 +25,17 @@ __all__ = [
 
 logger = get_logger(__name__)
 
-#: Where the official C-MAPSS files are distributed. It is quoted in the
-#: error a first-time user is most likely to hit, so the fix travels with
-#: the problem instead of living only in the README.
+# Where the official C-MAPSS files come from. Quoted in the error a first-time
+# user is most likely to hit, so the fix arrives with the problem.
 DOWNLOAD_URL = (
     "https://www.nasa.gov/intelligent-systems-division/"
     "discovery-and-systems-health/pcoe/pcoe-data-set-repository/"
 )
 
-#: Row and engine counts reported in the literature for each sub-dataset.
-#: These are used only as a sanity check when real data is loaded: a mismatch
-#: means the files are truncated, modified, or not the official release. The
-#: check produces a warning, never an error, because a legitimate variant of
-#: the files should not stop the pipeline.
+# How many rows and engines each subset should have, according to the
+# published descriptions. Checked when files are loaded; a mismatch means the
+# files are cut short, changed, or not the official ones. It warns rather than
+# stopping, because a legitimate variant should not halt the work.
 EXPECTED_SHAPES: dict[str, dict[str, int]] = {
     "FD001": {"train_rows": 20631, "train_units": 100, "test_units": 100},
     "FD002": {"train_rows": 53759, "train_units": 260, "test_units": 259},
@@ -93,21 +45,7 @@ EXPECTED_SHAPES: dict[str, dict[str, int]] = {
 
 
 class CMAPSSData:
-    """A loaded C-MAPSS sub-dataset with labels already attached.
-
-    Attributes
-    ----------
-    subset : str
-        Which sub-dataset this is, for example ``"FD001"``.
-    train : pandas.DataFrame
-        Training histories, with an added ``rul`` column.
-    test : pandas.DataFrame
-        Test histories, with an added ``rul`` column.
-    test_rul : pandas.Series
-        The official Remaining Useful Life at the last recorded cycle of each
-        test engine, indexed by engine number. Kept separately because it is
-        the quantity the final evaluation compares against.
-    """
+    """One loaded subset, with a label already worked out for every row."""
 
     def __init__(
         self,
@@ -129,11 +67,7 @@ class CMAPSSData:
         )
 
     def summary(self) -> pd.DataFrame:
-        """Return a small table describing the loaded data.
-
-        Useful in a notebook as a first check that the files were read
-        correctly.
-        """
+        """A small table describing what was loaded, to check it looks right."""
         def describe(frame: pd.DataFrame, name: str) -> dict[str, object]:
             lengths = frame.groupby(UNIT_COL)[CYCLE_COL].max()
             return {
@@ -151,27 +85,7 @@ class CMAPSSData:
 
 
 def read_cmapss_frame(path: str | Path) -> pd.DataFrame:
-    """Read one C-MAPSS history file into a data frame.
-
-    Parameters
-    ----------
-    path : str or Path
-        Path to ``train_FD00X.txt`` or ``test_FD00X.txt``.
-
-    Returns
-    -------
-    pandas.DataFrame
-        A frame with the 26 named columns of :data:`RAW_COLUMNS`, sorted by
-        engine and then by cycle.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the file does not exist. The message explains how to obtain the
-        dataset, because a missing file is the most common first-run problem.
-    ValueError
-        If the file does not have 26 columns.
-    """
+    """Read one history file into a table, sorted by engine and then by cycle."""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(
@@ -209,21 +123,7 @@ def read_cmapss_frame(path: str | Path) -> pd.DataFrame:
 
 
 def read_rul_file(path: str | Path) -> pd.Series:
-    """Read a ``RUL_FD00X.txt`` label file.
-
-    Parameters
-    ----------
-    path : str or Path
-        Path to the label file.
-
-    Returns
-    -------
-    pandas.Series
-        Remaining Useful Life at the last recorded cycle, indexed by engine
-        number starting at 1. Engine numbers are assigned by position: the
-        first line of the file belongs to engine 1, the second to engine 2, and
-        so on. This is how the dataset is defined.
-    """
+    """Read a RUL_FD00X.txt label file. Line 1 is engine 1, line 2 engine 2."""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(
@@ -249,27 +149,11 @@ def attach_rul(
     *,
     rul_at_last_cycle: pd.Series | None = None,
 ) -> pd.DataFrame:
-    """Add a ``rul`` column giving the Remaining Useful Life at every row.
+    """Add a rul column saying how much life is left at every row.
 
-    Parameters
-    ----------
-    frame : pandas.DataFrame
-        A loaded history frame.
-    rul_at_last_cycle : pandas.Series, optional
-        For test data, the official label for each engine, as returned by
-        :func:`read_rul_file`. For training data leave this as ``None``: the
-        histories run to failure, so the remaining life at the last row is zero
-        by definition.
-
-    Returns
-    -------
-    pandas.DataFrame
-        A copy of ``frame`` with one extra integer column, ``rul``.
-
-    Raises
-    ------
-    ValueError
-        If a label is missing for an engine that appears in the frame.
+    For training data leave rul_at_last_cycle as None: those engines are
+    recorded until they fail, so the last row is zero by definition. For test
+    data pass what read_rul_file() returned.
     """
     frame = frame.copy()
     last_cycle = frame.groupby(UNIT_COL)[CYCLE_COL].transform("max")
@@ -295,24 +179,7 @@ def load_subset(
     data_dir: str | Path,
     verify_expected_shape: bool = True,
 ) -> CMAPSSData:
-    """Load one complete C-MAPSS sub-dataset with labels attached.
-
-    Parameters
-    ----------
-    subset : str
-        One of ``"FD001"``, ``"FD002"``, ``"FD003"``, ``"FD004"``.
-    data_dir : str or Path
-        Directory containing the three text files for this sub-dataset.
-    verify_expected_shape : bool
-        When ``True``, compare the number of rows and engines against the
-        values published for the official release and warn on a mismatch.
-
-    Returns
-    -------
-    CMAPSSData
-        Training and test frames with a ``rul`` column, plus the official test
-        labels.
-    """
+    """Read all three files of one subset and attach the labels."""
     data_dir = Path(data_dir)
     logger.info("Loading %s from %s", subset, data_dir)
 

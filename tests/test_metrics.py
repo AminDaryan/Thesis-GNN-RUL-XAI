@@ -1,7 +1,7 @@
 """Tests for the four evaluation measures.
 
 The one that matters most is
-:func:`test_late_predictions_are_punished_harder_than_early_ones`. The paper's
+`test_late_predictions_are_punished_harder_than_early_ones`. The paper's
 Equations 20 and 21 contradict each other on the direction of the asymmetry
 (see A-15), so the property has to be pinned down by a test rather than trusted
 to a transcription.

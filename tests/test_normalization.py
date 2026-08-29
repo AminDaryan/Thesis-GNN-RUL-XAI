@@ -1,7 +1,7 @@
 """Tests for operating-condition detection and sensor rescaling.
 
 The most important test in this file is
-:func:`test_test_data_never_influences_the_scaling`. It checks the rule that
+`test_test_data_never_influences_the_scaling`. It checks the rule that
 keeps the whole evaluation valid: statistics are learned from training engines
 only.
 """

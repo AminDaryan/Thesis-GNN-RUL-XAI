@@ -363,8 +363,9 @@ number so that references to A-08 elsewhere remain valid.
 
 **Why it is still worth reading.** The order is safe on FD001 and only on
 FD001. On FD002 and FD004 the operating condition changes from one cycle to the
-next, and — as `data/normalization.py` explains — the jump between conditions is
-far larger than the drift caused by wear. Smoothing in raw physical units
+next, and — as `data/README.md` explains under "Rescaling, and what an
+operating condition is" — the jump between conditions is far larger than the
+drift caused by wear. Smoothing in raw physical units
 *before* the per-condition scaling has had a chance to remove those jumps blends
 readings taken under different flight conditions together.
 
@@ -1259,9 +1260,12 @@ Equation 14 is printed but is not satisfied by the table it licenses.
 **Three consequences for this project.**
 
 1. `dynamic_shap` returns **signed** values in cycles. Its output must not be
-   placed beside Table 12 without saying that the two quantities differ. The
-   docstrings in `explain/shap.py` now say so; they previously claimed the
-   opposite.
+   placed beside Table 12 without saying that the two quantities differ.
+   `explain/README.md` says so under "Trap: our table and the paper's Table 12
+   are not comparable", and `dynamic_shap` points at it. This warning first went
+   into the docstring of that function, which had previously claimed the
+   opposite; it moved to the README on 2026-08-29 when the explanation was
+   taken out of the code.
 2. The exact implementation here satisfies efficiency to about `1e-4` cycles,
    asserted by `test_shap.py::test_efficiency_holds_to_machine_precision` and
    again per time step by `test_dynamic_shap_rows_each_satisfy_efficiency`. So

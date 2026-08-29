@@ -478,11 +478,12 @@ arrays into a result:
 | 11 | Score | RMSE, the NASA score, R² and ASUE, on the 100 test engines | `evaluation/metrics.py` |
 | 12 | Explain | Exact Shapley values for the 14 sensors, recomputed at every cycle — the paper's Section 2.4 | `explain/shap.py` |
 
-Each module's docstring explains the reasoning behind its step in full. Start
-with `data/normalization.py` and `data/windowing.py`; those two contain the
-decisions that matter most for the validity of the results. For the graph,
-`adjacency_report()` computes every structural figure quoted above, so none of
-them has to be taken on trust.
+Every folder under `src/thesis_gnn_rul_xai/` has a `README.md` that explains
+its step in full — the reasoning, the traps, and what each function gives you
+back. Start with `data/README.md`, whose sections on rescaling and on windowing
+contain the decisions that matter most for the validity of the results. For the
+graph, `adjacency_report()` computes every structural figure quoted above, so
+none of them has to be taken on trust.
 
 ---
 
@@ -651,11 +652,13 @@ those needs the settings.
 They are not alternatives, and neither is a copy of the other. Take one step,
 the smoothing filter, and look at it in both places.
 
-**In `src/thesis_gnn_rul_xai/data/smoothing.py`** it is about 170 lines: the
-formula, an explanation of why each engine must be filtered separately from its
-neighbours, the errors raised for impossible settings, and a docstring giving a
-worked example. Eight tests in `tests/test_smoothing.py` check it, including
-one that confirms the filter never reads a value from later in the sequence.
+**In `src/thesis_gnn_rul_xai/data/smoothing.py`** it is 78 lines: the formula,
+the errors raised for impossible settings, and one line saying what each
+function does. The reasoning that used to sit alongside it — why each engine
+must be filtered separately from its neighbours, why the filter must never look
+forwards, where its one setting comes from — is in `data/README.md`. Eight
+tests in `tests/test_smoothing.py` check the code, including one that confirms
+the filter never reads a value from later in the sequence.
 
 **In the notebook** the same step is one line and a picture:
 
@@ -676,21 +679,32 @@ reproducible, and reproducibility is the whole point of the arrangement.
 
 ### How to read this code without reading all of it
 
-There is a lot of text in `src/`, and most of it is not code. Measured across
-the package and the two scripts:
+The explanation and the code are kept in separate places. Every folder under
+`src/thesis_gnn_rul_xai/` has a `README.md` holding the reasoning, the
+vocabulary, the traps and the meaning of every argument. The `.py` files
+alongside carry one line of description per function, plus the `ASSUMPTION`
+comments that mark each judgement call at the point where it is made.
+
+Counting a line as *code* when it is neither blank, nor a comment, nor part of
+a docstring, across the package and the two scripts:
 
 | | lines | share |
 |---|-------|-------|
-| executable code | 2 000 | 35 % |
-| explanation (docstrings and comments) | 2 785 | 49 % |
-| blank | 860 | 15 % |
+| executable code | 2 016 | 57 % |
+| explanation (docstrings and comments) | 962 | 27 % |
+| blank | 577 | 16 % |
 
-So the thing to be read is about **two thousand lines**, and it is spread thinly:
-the largest single file has 219 lines of code, and several of the most important
-have almost none. `data/smoothing.py` is 176 lines of which **30** are code.
-`data/labeling.py` is 132 lines of which **8** are code. The explanation is long
-because the *reasons* are what a thesis has to defend; the operations themselves
-are small.
+So the thing to be read is about **two thousand lines**, and it is spread
+thinly: the largest single file has 217 lines of code, and several of the most
+important have almost none. `data/smoothing.py` is 78 lines of which 44 are
+code; `data/labeling.py` is 41 lines of which 22 are code. The reasons those
+operations are what they are — which is what a thesis has to defend — fill
+1 985 further lines across the eight `README.md` files under `src/`.
+
+Those figures were measured with a token-based counter, not by eye, and they
+moved when the explanation was pulled out of the code: the same package
+previously measured 2 250 lines of explanation inside the `.py` files. The code
+itself did not change.
 
 **Do not read it in file order.** The package has three layers, and nothing in a
 layer depends on anything below it, so this order never requires you to hold an
@@ -732,10 +746,10 @@ the layers above, so read them last and they will contain no surprises.
 1. **Start with the notebooks, not with `src/`.** They run the whole chain on
    real data and show the numbers changing at every step. An hour there makes
    `src/` read like a reference rather than a puzzle.
-2. **Read every module's docstring first, and nothing else.** The docstring at
-   the top of each file says what the step does, why it is done that way, and
-   what the paper says about it. Reading only those — about forty minutes for
-   the whole package — gives you the entire argument without a line of code.
+2. **Read the folder READMEs first, and no code at all.** There are eight, one
+   per folder under `src/thesis_gnn_rul_xai/`. Each says what its step does,
+   why it is done that way, and what the paper says about it. Reading only
+   those gives you the entire argument without a line of code.
 3. **When you want to know what a function really does, read its test.** The
    tests are written as statements about behaviour:
    `test_the_filter_only_looks_backwards`,
@@ -748,11 +762,10 @@ the layers above, so read them last and they will contain no surprises.
    whatever the code looks like.
 
 **If you have one hour**, read notebook 01 end to end. **If you have two**, add
-notebook 02. **If you have three**,
-add the module docstrings of `data/normalization.py`, `data/windowing.py`,
-`graph/adjacency.py` and `models/estgnn.py`, in that order. **If you have a
-day**, add `docs/ASSUMPTIONS.md`, which is where every judgement call this
-project makes is defended.
+notebook 02. **If you have three**, add `src/thesis_gnn_rul_xai/data/README.md`
+and `models/README.md`, in that order. **If you have a day**, add
+`docs/ASSUMPTIONS.md`, which is where every judgement call this project makes
+is defended.
 
 ### Which file should I open?
 
@@ -761,6 +774,7 @@ project makes is defended.
 | Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
 | Understand the model, the training and the explanations | `notebooks/02_model_fd001.ipynb` |
 | Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
+| Know *why* a step is computed that way | the `README.md` in the same folder |
 | Know why a value was chosen when the paper is silent | `docs/ASSUMPTIONS.md` |
 | Run the whole thing without reading anything | `scripts/prepare_data.py`, then `scripts/train.py` |
 | Check that a step really does what it claims | the matching file in `tests/` |
@@ -773,13 +787,13 @@ project makes is defended.
 pytest                     # everything
 pytest -v                  # with the name of each test
 pytest tests/test_normalization.py
-pytest --doctest-modules src   # only the examples inside docstrings
+pytest tests/test_examples.py  # one worked example of each function
 ruff check .               # style, unused imports, dead code
 ```
 
 Every push also runs `ruff check` and `pytest` on GitHub Actions, against
 Python 3.10 and 3.13 — see `.github/workflows/checks.yml`. The runner has no
-NASA data, so 73 tests pass there and 42 skip themselves. A green run means
+NASA data, so 103 tests pass there and 64 skip themselves. A green run means
 nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
@@ -787,7 +801,12 @@ and has to be checked locally.
 The suite covers each preprocessing step, the sensor graph, the network, the
 training loop, the four measures, the Shapley values, and the pipeline end to
 end. The model, training and explanation tests need PyTorch; without it they
-are skipped rather than failed, and the remaining 107 still run.
+are skipped rather than failed, and the remaining 117 still run.
+
+`tests/test_examples.py` and `tests/test_examples_torch.py` hold one small
+worked example of each function — the kind of thing that would once have gone
+in a docstring. They are the quickest way to see what a function actually takes
+and returns.
 
 Some of the tests check properties rather than outputs, because a wrong
 answer in this domain still looks plausible. Seven deserve special mention:

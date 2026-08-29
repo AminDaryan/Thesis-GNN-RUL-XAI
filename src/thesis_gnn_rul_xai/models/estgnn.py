@@ -1,78 +1,14 @@
-"""
-The spatiotemporal graph network (ESTGNN, without the LSTM stage)
-=================================================================
+"""The whole network, built from the layers in layers.py.
 
-What this module builds
------------------------
-The network printed as Table 4 of Wen et al. (2026): three graph convolution
-layers, a flattening step, and two fully connected layers ending in a sigmoid.
-This is the part of their architecture that the paper specifies completely, so
-no value in the layer sizes below is a guess.
+ASSUMPTION A-11: the paper puts a small recurrent network in front of each
+sensor. This file leaves that stage out, because the paper never states its
+size, its depth, or how it turns a 30-cycle window into one number, so any
+version of it would be invention rather than reproduction. Results from this
+network therefore compare against the paper's own "ESTGNN w/o LSTM" row, never
+its headline figures. Written up in docs/ASSUMPTIONS.md.
 
-===========  ==================================  ==========================
-Layer        Shape in  ->  shape out             Activation
-===========  ==================================  ==========================
-GCN-1        ``(B, 14, F)``  ->  ``(B, 14, 32)``  ReLU
-GCN-2        ``(B, 14, 32)`` ->  ``(B, 14, 64)``  ReLU
-GCN-3        ``(B, 14, 64)`` ->  ``(B, 14, 32)``  ReLU
-Flatten      ``(B, 14, 32)`` ->  ``(B, 448)``     -
-FC-1         ``(B, 448)``    ->  ``(B, 128)``     ReLU
-FC-2         ``(B, 128)``    ->  ``(B, 1)``       Sigmoid
-===========  ==================================  ==========================
-
-What ``F`` is
--------------
-``F`` is 1, and only the first layer depends on it. Table 4 gives the input as
-``[batch, 14, 1]`` with ``W(1) in R^(1 x 32)``: one number per sensor. In the
-paper that number is the output of a per-sensor LSTM whose hidden size, depth
-and output projection are never stated. This project omits that stage rather
-than invent it (A-11) and passes the most recent reading of the window in its
-place (A-07), which keeps the printed architecture exactly.
-
-Note that only GCN-1 sees ``F``. GCN-2 takes ``[batch, 14, 32]`` and GCN-3
-takes ``[batch, 14, 64]``, both fixed by the previous layer's output width.
-
-The constructor still accepts any ``in_features``, because the model must not
-hard-code a number the data pipeline decides. Passing 30 would hand each node
-its whole window -- but that is not a temporal-encoder-free model: ``W(1)``
-would become ``(30, 32)``, which is 32 learned linear filters over the 30 time
-steps, shared across sensors. That is a temporal encoder, of the kind A-11
-declines to invent, folded into the graph layer where it would not be labelled
-as a choice. It is therefore not the configuration this project runs.
-
-**Results from this network must be compared against the paper's own
-"ESTGNN w/o LSTM" ablation, which is 14.93 RMSE on FD001 (their Table 11), not
-against the 11.78 of the full model.**
-
-What the sigmoid means
-----------------------
-The last layer produces a number between 0 and 1. The paper describes this as a
-"normalized RUL value", so the prediction in flight cycles is that number
-multiplied by the label ceiling ``RUL_max``. Two consequences follow, and both
-matter:
-
-* The model **cannot** predict a remaining life above the ceiling, whatever the
-  input. This is the reason assumption A-02 caps the test labels as well: not
-  doing so would charge the model for an error its own architecture forbids it
-  from avoiding.
-* Training targets must be divided by the same ceiling, so that they lie in
-  ``[0, 1]`` where the sigmoid can reach them. :meth:`ESTGNN.forward` returns
-  the normalised value, and :meth:`ESTGNN.predict_cycles` converts to cycles.
-
-Which graph the network uses
-----------------------------
-The adjacency matrix is supplied when the model is built and stored as a fixed
-buffer, not as a parameter: it is engineering knowledge, not something learned.
-Passing a different matrix is all that is needed for the paper's "without
-physics prior" ablation --- see
-:func:`thesis_gnn_rul_xai.graph.adjacency.build_fully_connected_adjacency`.
-
-References
-----------
-Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
-(2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
-enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
-168, 110875. https://doi.org/10.1016/j.ast.2025.110875
+Read README.md in this folder. It explains everything this file does, what
+these results may be compared with, and what the last layer rules out.
 """
 
 from __future__ import annotations
@@ -90,65 +26,18 @@ __all__ = ["ESTGNN"]
 
 logger = get_logger(__name__)
 
-#: Output width of each graph convolution layer, from Table 4 of the paper.
+# How wide each graph convolution layer is, from Table 4 of the paper.
 GCN_HIDDEN_SIZES: tuple[int, int, int] = (32, 64, 32)
 
-#: Width of the first fully connected layer, from Table 4.
+# How wide the first fully connected layer is, from Table 4.
 FC_HIDDEN_SIZE: int = 128
 
 
 class ESTGNN(nn.Module):
-    """Three graph convolutions and two dense layers, as in Table 4.
+    """Three graph convolutions, then two ordinary layers, as in Table 4.
 
-    Parameters
-    ----------
-    adjacency : array-like
-        The **normalised** adjacency matrix, shaped ``(nodes, nodes)``, as
-        returned by
-        :func:`thesis_gnn_rul_xai.graph.adjacency.normalize_adjacency`. Passing
-        the raw matrix instead is a silent error that degrades training, so the
-        constructor checks for the self-loops that normalisation adds and
-        refuses a matrix with a zero diagonal.
-    in_features : int
-        Numbers carried by each sensor node. Defaults to 1, which is Table 4's
-        printed input shape and what the pipeline produces. Other widths are
-        accepted so the model stays general, but see the note above before
-        using one.
-    rul_max : int
-        The label ceiling, used to convert the sigmoid output into cycles.
-    gcn_hidden : sequence of int
-        Output width of each graph convolution. The default is Table 4's
-        ``(32, 64, 32)``.
-    fc_hidden : int
-        Width of the first fully connected layer. Table 4 gives 128.
-    gcn_bias : bool
-        Whether the graph convolutions carry a bias. Equations 8 to 10 show
-        none, so this defaults to ``False``.
-
-    Attributes
-    ----------
-    adjacency : torch.Tensor
-        Registered as a buffer, so it moves with ``.to(device)`` and is saved
-        in the state dictionary, but is never updated by the optimiser.
-
-    Examples
-    --------
-    Build the network on the paper's own sensor graph and push one batch of
-    four examples through it:
-
-    >>> import numpy as np, torch
-    >>> from thesis_gnn_rul_xai.graph.adjacency import (
-    ...     build_physics_adjacency, normalize_adjacency)
-    >>> raw, symbols = build_physics_adjacency()
-    >>> model = ESTGNN(normalize_adjacency(raw))
-    >>> batch = torch.zeros(4, 14, 1)
-    >>> model(batch).shape
-    torch.Size([4])
-
-    The default width reproduces Table 4's parameter count exactly:
-
-    >>> sum(p.numel() for p in model.parameters())
-    61729
+    Pass the adjacency table through normalize_adjacency() before handing it
+    here; an unrescaled table is rejected.
     """
 
     def __init__(
@@ -213,19 +102,9 @@ class ESTGNN(nn.Module):
     # -- forward -----------------------------------------------------------
 
     def forward(self, features: Tensor) -> Tensor:
-        """Predict the **normalised** remaining life for a batch.
+        """Predict remaining life as a fraction between 0 and 1, not in cycles.
 
-        Parameters
-        ----------
-        features : torch.Tensor
-            Shaped ``(batch, nodes, in_features)``.
-
-        Returns
-        -------
-        torch.Tensor
-            Shaped ``(batch,)``, every element in ``[0, 1]``. Multiply by
-            :attr:`rul_max`, or call :meth:`predict_cycles`, to get flight
-            cycles.
+        Call predict_cycles() below if you want flight cycles.
         """
         hidden = features
         for layer in self.graph_layers:
@@ -236,19 +115,13 @@ class ESTGNN(nn.Module):
         return torch.sigmoid(self.fc2(dense)).squeeze(-1)
 
     def predict_cycles(self, features: Tensor) -> Tensor:
-        """Predict remaining life in flight cycles.
-
-        This is :meth:`forward` scaled by the ceiling. It is the quantity the
-        evaluation metrics compare against the official labels, and it can
-        never exceed :attr:`rul_max` --- see the module docstring and
-        assumption A-02.
-        """
+        """Predict remaining life in flight cycles. Can never exceed rul_max."""
         return self.forward(features) * float(self.rul_max)
 
     # -- introspection -----------------------------------------------------
 
     def count_parameters(self, trainable_only: bool = True) -> int:
-        """Number of parameters, for checking the build against Table 4."""
+        """How many numbers the network learns. Compare it with Table 4."""
         return sum(
             parameter.numel()
             for parameter in self.parameters()
@@ -256,16 +129,7 @@ class ESTGNN(nn.Module):
         )
 
     def layer_summary(self) -> list[dict[str, object]]:
-        """Describe each layer, in the same form as the paper's Table 4.
-
-        Returns
-        -------
-        list of dict
-            One entry per layer with its name, input and output shapes written
-            with ``B`` for the batch dimension, its parameter count, and its
-            activation. Printing this next to Table 4 is the quickest way to
-            confirm the architecture was transcribed correctly.
-        """
+        """List every layer in the same form as the paper's Table 4."""
         rows: list[dict[str, object]] = []
         width = self.in_features
         rows.append(

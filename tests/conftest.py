@@ -29,9 +29,9 @@ from thesis_gnn_rul_xai.config import PreprocessingConfig
 from thesis_gnn_rul_xai.data.loading import DOWNLOAD_URL, CMAPSSData, load_subset
 from thesis_gnn_rul_xai.utils.paths import raw_data_dir
 
-#: The sub-dataset the suite runs against. FD001 has a single operating
-#: condition and a single fault mode, which makes it the case where a
-#: disagreement between the code and the data has the fewest explanations.
+# The sub-dataset the suite runs against. FD001 has a single operating
+# condition and a single fault mode, which makes it the case where a
+# disagreement between the code and the data has the fewest explanations.
 SUBSET = "FD001"
 
 

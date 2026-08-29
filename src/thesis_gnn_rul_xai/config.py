@@ -1,22 +1,10 @@
-"""
-Configuration
-=============
+"""Every setting that controls the preparation of the data, in one object.
 
-Every number that controls the behaviour of the pipeline is collected here
-instead of being written directly into the code. There are two reasons for
-this, both of them about scientific honesty:
+It can be saved to and read back from a YAML file, so an experiment can be
+changed without editing any code.
 
-1. **Repeatability.** A single configuration file fully describes an
-   experiment. Saving that file next to the results means anyone can see
-   exactly which settings produced them.
-2. **Visibility of assumptions.** The source paper does not state every
-   setting. When a value had to be chosen by us, the choice appears here as a
-   named field with a comment, rather than being hidden somewhere inside a
-   function. Fields whose value is *not* taken from the paper are marked
-   ``ASSUMPTION`` in their description.
-
-The configuration is a plain Python dataclass, and can also be read from a YAML
-file so that an experiment can be changed without editing any code.
+Read README.md in this folder. It explains what every setting below means,
+what the defaults do, and which of them will catch you out.
 """
 
 from __future__ import annotations
@@ -36,163 +24,89 @@ __all__ = [
     "load_config",
 ]
 
-#: How sensor values are rescaled before they reach the model.
-#:
-#: ``"minmax_per_condition"``
-#:     Rescale each sensor to the range [0, 1] separately for each operating
-#:     condition. On datasets with several operating conditions (FD002, FD004)
-#:     this removes the large jumps caused by the aircraft flying at different
-#:     altitudes and speeds, which would otherwise hide the much smaller
-#:     changes caused by engine wear.
-#: ``"minmax_global"``
-#:     Rescale each sensor to [0, 1] using one minimum and one maximum for the
-#:     whole dataset. On FD001 there is only one operating condition, so this
-#:     gives the same result as the per-condition variant.
-#: ``"zscore"``
-#:     Subtract the mean and divide by the standard deviation, so each sensor
-#:     has mean 0 and standard deviation 1. Included so that the sensitivity of
-#:     the results to this choice can be measured.
+# The three ways of putting the sensors on a comparable scale. README.md.
 NormalizationMethod = Literal["minmax_per_condition", "minmax_global", "zscore"]
 
-#: Which sensor graph the model is given.
-#:
-#: ``"physics"``
-#:     The hand-designed matrix of Table 3 in Wen et al. (2026).
-#: ``"complete"``
-#:     Every sensor connected to every other, which is the paper's
-#:     "without physics prior" ablation. ASSUMPTION A-19: the paper names
-#:     that ablation but never says what replaces the matrix.
+# Which sensor graph to give the network: the paper's own, or one where every
+# sensor is connected to every other. ASSUMPTION A-19 covers the second, which
+# stands in for an experiment the paper names but never describes.
 SensorGraph = Literal["physics", "complete"]
 
-#: How the adjacency matrix is normalised before the graph layers use it.
-#: ASSUMPTION A-21: the paper describes the normalisation but never prints
-#: the formula, and two forms fit its description. See
-#: :func:`thesis_gnn_rul_xai.graph.adjacency.normalize_adjacency`.
+# The two ways of rescaling that graph before the network uses it.
+# ASSUMPTION A-21 covers the choice. Applied by normalize_adjacency() in
+# graph/adjacency.py.
 AdjacencyNormalization = Literal["symmetric", "row"]
 
 
 @dataclass
 class PreprocessingConfig:
-    """All settings used to turn raw C-MAPSS files into model-ready arrays.
+    """Every setting used to turn the raw NASA files into arrays for the model.
 
-    Attributes
-    ----------
-    subset : str
-        Which of the four C-MAPSS sub-datasets to use. This project starts with
-        ``"FD001"``: one operating condition and one fault mode, which is the
-        simplest case and therefore the right place to establish a correct
-        pipeline.
-    window_size : int
-        Number of consecutive flight cycles in one training example. Taken from
-        Table 6 of Wen et al. (2026), which gives 30 time steps.
-    window_stride : int
-        Step between the start of one window and the start of the next, in
-        cycles. A stride of 1 produces the largest number of training examples.
-        ASSUMPTION: not stated in the paper; 1 is the usual choice on C-MAPSS.
-    rul_max : int
-        Upper limit applied to the Remaining Useful Life label, in cycles. See
-        :mod:`thesis_gnn_rul_xai.data.labeling` for why this limit exists.
-        ASSUMPTION: the paper defines the limit symbolically in its Equation 19
-        but never prints its value. 125 is inferred from Section 4.2 of the
-        paper, which describes predictions holding "around 125" while an engine
-        is healthy, and it is the value used by the closely related work of Jin
-        et al. (2025) on the same dataset.
-    clip_test_labels : bool
-        Whether the same upper limit is applied to the test labels. This must
-        be ``True`` for the evaluation to be meaningful with the architecture
-        of Wen et al. (2026): their output layer is a sigmoid function, so the
-        model can never predict a value above ``rul_max``. Leaving the test
-        labels uncapped would charge the model for an error it is structurally
-        unable to avoid.
-    normalization : NormalizationMethod
-        Which rescaling to apply. ASSUMPTION: the paper never describes its
-        input scaling. The default follows Jin et al. (2025), who use
-        per-condition min-max scaling on the same dataset.
-    smoothing_alpha : float or None
-        Strength of the exponentially weighted moving average filter, between 0
-        and 1. Larger values follow the raw signal more closely; smaller values
-        smooth more strongly. ``None`` disables smoothing entirely.
-        ASSUMPTION: Section 3.2.3 of the paper is self-contradictory here. It
-        writes that "S(t-1) ... is equal to 0.5 in this study", attaching the
-        number 0.5 to the previous smoothed value rather than to the smoothing
-        parameter. Reading it as the smoothing parameter is the only
-        interpretation that makes the sentence meaningful, so 0.5 is used.
-    graph : SensorGraph
-        Which sensor graph to build. ASSUMPTION A-19 covers the meaning of
-        the ``"complete"`` option.
-    adjacency_normalization : AdjacencyNormalization
-        How that graph is normalised. ASSUMPTION A-21.
-
-        These last two describe the model rather than the data, but they
-        live here because this is the object that builds the matrix and
-        that gets saved beside a result. A setting that decides what the
-        model sees and is not written down is a setting that cannot be
-        reproduced.
-    validation_fraction : float
-        Fraction of *engine units* held out for validation. Splitting by engine
-        rather than by window is essential; see
-        :mod:`thesis_gnn_rul_xai.data.windowing` for the explanation.
-        ASSUMPTION: the paper describes no validation split at all.
-    seed : int
-        Random seed controlling the validation split.
+    README.md in this folder explains each field below, one at a time.
     """
 
     subset: str = "FD001"
 
-    # --- Windowing ---------------------------------------------------------
+    # --- Cutting the histories into examples --------------------------------
     window_size: int = 30
-    # ASSUMPTION A-05: the paper gives a 30-step window in Table 6 but never
-    # states the stride between consecutive windows.
+    # ASSUMPTION A-05: move the window on by one cycle at a time. The paper
+    # gives the window length in Table 6 but never says how far it moves.
+    # Written up in docs/ASSUMPTIONS.md.
     window_stride: int = 1
 
     # --- Labels ------------------------------------------------------------
-    # ASSUMPTION A-01: Equation 19 defines the ceiling symbolically and the
-    # value is never printed. 125 is read off the True RUL curve of Fig. 7.
+    # ASSUMPTION A-01: cap the label at 125 flight cycles. The paper's
+    # Equation 19 says there is a cap but never prints the number; 125 was
+    # measured off its Fig. 7. Written up in docs/ASSUMPTIONS.md.
     rul_max: int = 125
+    # ASSUMPTION A-02: put the same ceiling on the test labels. The paper does
+    # not say whether it does. The network's last layer cannot produce a number
+    # above the ceiling, so leaving the test labels uncapped would charge it for
+    # an error it is built to be unable to avoid. This can only move our
+    # reported numbers in our favour, so it must be stated whenever they are
+    # set beside published ones. Written up in docs/ASSUMPTIONS.md.
     clip_test_labels: bool = True
 
-    # --- Signal processing -------------------------------------------------
-    # ASSUMPTION A-03: the paper never describes its input scaling at all.
-    # Selected under the rule recorded in A-22; worth 3.83 cycles against the
-    # per-condition min-max of Jin et al. (2025). See F-10.
+    # --- Preparing the sensor readings --------------------------------------
+    # ASSUMPTION A-03: put the sensors on a comparable scale with z-scores. The
+    # paper never describes this step at all. Worth 3.83 cycles against the
+    # alternative, which is the largest measured effect of any choice in this
+    # project. Written up in docs/ASSUMPTIONS.md as A-03, A-22 and F-10.
     normalization: NormalizationMethod = "zscore"
-    # ASSUMPTION A-04: Section 3.2.3 attaches the value 0.5 to the previous
-    # smoothed value rather than to the smoothing parameter. Read as alpha.
+    # ASSUMPTION A-04: smooth with a strength of 0.5. The paper's Section 3.2.3
+    # attaches 0.5 to the wrong symbol, and this is the only reading that makes
+    # the sentence mean anything. Written up in docs/ASSUMPTIONS.md.
     smoothing_alpha: float | None = 0.5
 
     # --- The sensor graph --------------------------------------------------
-    # ASSUMPTION A-19: what the paper's "without physics prior" ablation
-    # replaces the hand-designed matrix with is never stated.
+    # ASSUMPTION A-19: when repeating the paper's experiment "without physics
+    # prior", stand in a graph where every sensor is joined to every other. The
+    # paper names that experiment but never says what it used. Written up in
+    # docs/ASSUMPTIONS.md. Leave this on "physics" for the paper's own graph.
     graph: SensorGraph = "physics"
-    # ASSUMPTION A-21: the paper never prints the normalisation formula.
-    # Row is 0.35 cycles closer than symmetric here (p = 0.047); see A-22.
+    # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
+    # formula and two forms fit what it says. Rows measured 0.35 cycles closer
+    # than the alternative (p = 0.047). Written up in docs/ASSUMPTIONS.md.
     adjacency_normalization: AdjacencyNormalization = "row"
 
-    # --- Data splitting ----------------------------------------------------
-    # ASSUMPTION A-06 / A-18: Table 6 states 200 epochs and describes no
-    # held-out set. Holding engines out and restoring the best-validation
-    # checkpoint is validation-based model selection, which the paper does not
-    # describe, so the reproduction holds nothing out. config/fd001_validated
-    # .yaml restores the split for comparing configurations. See A-22.
+    # --- Holding engines back ------------------------------------------------
+    # ASSUMPTION A-06 and A-18: hold nothing back, because the paper describes
+    # no held-out set. config/fd001_validated.yaml puts the split back for
+    # comparing one setting against another. Written up in docs/ASSUMPTIONS.md.
     validation_fraction: float = 0.0
     seed: int = 42
 
     # --- Bookkeeping -------------------------------------------------------
     notes: str = field(
         default=(
-            "Preprocessing configuration for the FD001 subset. Fields marked "
-            "ASSUMPTION in the class documentation are not specified by "
-            "Wen et al. (2026); see docs/ASSUMPTIONS.md."
+            "Settings for preparing the FD001 subset. The lines marked "
+            "ASSUMPTION in config.py are choices we made because Wen et al. "
+            "(2026) does not state them; see docs/ASSUMPTIONS.md."
         )
     )
 
     def __post_init__(self) -> None:
-        """Check that the settings are internally consistent.
-
-        Catching an impossible configuration here, before any data is touched,
-        gives a clear error message instead of a confusing failure deep inside
-        the pipeline.
-        """
+        """Reject any setting that is out of range or misspelled."""
         valid_subsets = {"FD001", "FD002", "FD003", "FD004"}
         if self.subset not in valid_subsets:
             raise ValueError(
@@ -242,25 +156,7 @@ class PreprocessingConfig:
 
 
 def load_config(path: str | Path) -> PreprocessingConfig:
-    """Read a :class:`PreprocessingConfig` from a YAML file.
-
-    Parameters
-    ----------
-    path : str or Path
-        Location of the YAML file.
-
-    Returns
-    -------
-    PreprocessingConfig
-        The parsed configuration, with all consistency checks applied.
-
-    Raises
-    ------
-    ValueError
-        If the file contains a key that is not a field of the configuration.
-        This is deliberately strict: a silently ignored typo in a settings file
-        is a common and hard-to-find source of wrong results.
-    """
+    """Read settings back from a YAML file. An unknown key is an error."""
     path = Path(path)
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 

@@ -1,14 +1,9 @@
-"""
-Explainability
-==============
+"""Works out how much each sensor moved a prediction, at every cycle.
 
-Dynamic SHAP: Shapley values for the 14 sensor nodes, recomputed at every
-cycle of an engine's life, as Section 2.4 of Wen et al. (2026) describes.
+Needs PyTorch: pip install -e ".[model]"
 
-With only 14 players the Shapley values can be enumerated exactly rather than
-sampled, so the numbers here are Equation 15 itself and not an estimate of it.
-
-Needs PyTorch; install it with the ``model`` extra (``pip install -e ".[model]"``).
+Read README.md in this folder. It explains what the numbers mean, how to read
+them, and what they must not be compared with.
 """
 
 from .shap import (

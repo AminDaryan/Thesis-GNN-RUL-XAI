@@ -1,62 +1,7 @@
-"""
-The complete preprocessing pipeline
-===================================
+"""Runs every preparation step in order and hands back arrays ready for training.
 
-This module runs every preprocessing step in the correct order and returns
-arrays that a model can consume directly. Having one function that performs the
-whole sequence, rather than a notebook that calls the steps by hand, means the
-experiment can be repeated exactly by anyone, including from a script or an
-automated test.
-
-Order of the steps
-------------------
-1. **Load** the three raw text files and attach a Remaining Useful Life value
-   to every row.
-2. **Diagnose** which sensors carry no information, and compare that with the
-   selection made by Wen et al. (2026). This step changes nothing; it only
-   reports.
-3. **Select** the 14 sensors used by the paper, in the exact order of its
-   Table 3, so that the sensor axis lines up with the sensor graph.
-4. **Cap** the labels at the ceiling, producing the piecewise-linear target.
-5. **Smooth** the sensor signals with an exponentially weighted moving average.
-6. **Split** the training engines into a training part and a validation part.
-7. **Identify operating conditions** and **rescale** the sensors, learning all
-   statistics from the training engines only.
-8. **Cut** the histories into fixed-length windows.
-9. **Apply** the split decided in step 6 to the windows.
-
-Why smoothing comes before rescaling
-------------------------------------
-Smoothing removes measurement noise and is most naturally expressed in the
-sensor's own physical units, where the noise actually occurs. Rescaling is the
-final preparation before the model and should therefore see the signal the
-model will use.
-
-This order is **taken from the paper**, not chosen here: Fig. 1 of Wen et al.
-(2026) shows the preprocessing chain as *feature selection, data smoothing,
-piece-wise RUL, data normalisation, train and test datasets*. See A-08 in
-``docs/ASSUMPTIONS.md``, and the caution recorded there about what this order
-does on the multi-condition subsets FD002 and FD004.
-
-Why the split comes before the scaling
---------------------------------------
-The validation engines are chosen in step 6, before any statistic is computed
-in step 7. Fitting the scaler on all training engines and only afterwards
-holding some of them out would let a held-out engine define a minimum or a
-maximum, which is the same kind of leak that keeping the test set separate is
-meant to prevent (Kapoor & Narayanan, 2023). The effect is smaller than test
-leakage, but it biases exactly the quantity a validation set exists to measure.
-
-Where the training and test paths differ, and where they must not
------------------------------------------------------------------
-Both splits pass through the same code. The only differences are deliberate
-and are exactly two:
-
-* All statistics -- cluster centres, minima, maxima, means, standard
-  deviations -- are learned from the training engines and then applied to the
-  validation and test engines unchanged.
-* Training engines produce every window; test engines produce only their final
-  window, because that is the single moment the official labels describe.
+Read README.md in this folder. It walks through the steps one at a time and
+explains why they are in this order.
 """
 
 from __future__ import annotations
@@ -101,27 +46,9 @@ logger = get_logger(__name__)
 
 @dataclass
 class PreparedData:
-    """Everything the modelling stage needs, and everything needed to audit it.
+    """Everything the training stage needs, plus everything needed to check it.
 
-    Attributes
-    ----------
-    config : PreprocessingConfig
-        The exact settings that produced this object.
-    train, validation, test : WindowedDataset
-        The three sets of windowed examples. ``validation`` may be empty if the
-        configured fraction is zero.
-    adjacency_raw, adjacency_normalized : numpy.ndarray
-        The sensor graph before and after the graph-convolution normalisation.
-    sensor_symbols : tuple of str
-        Sensor names in node order.
-    normalizer : SensorNormalizer
-        The fitted scaler, kept so its statistics can be inspected and saved.
-    condition_encoder : OperatingConditionEncoder
-        The fitted operating-condition model.
-    diagnostics : dict
-        Free-form record of what the pipeline observed: constant sensors,
-        graph properties, split sizes, and whether the paper's sensor selection
-        agrees with the data.
+    README.md in this folder lists every field.
     """
 
     config: PreprocessingConfig
@@ -138,7 +65,7 @@ class PreparedData:
     frames: dict[str, pd.DataFrame] | None = None
 
     def summary(self) -> pd.DataFrame:
-        """Return a small table of the three splits, for display."""
+        """A small table describing the three sets, to look at."""
         rows = []
         for name, dataset in (
             ("train", self.train),
@@ -158,22 +85,8 @@ class PreparedData:
         return pd.DataFrame(rows).set_index("split")
 
     def save(self, directory: str | Path | None = None) -> Path:
-        """Write the prepared arrays, the graph, the settings and the report.
-
-        Five files are written, so that a later stage never has to re-run the
-        preprocessing and so that the exact inputs of any experiment can be
-        recovered:
-
-        ``windows.npz``
-            The three splits as arrays.
-        ``adjacency.npz``
-            The raw and normalised sensor graphs, plus the node labels.
-        ``normalization_statistics.csv``
-            The learned scaling statistics, one row per sensor and condition.
-        ``config.yaml``
-            The settings used.
-        ``diagnostics.json``
-            What the pipeline observed while running.
+        """Write five files: the arrays, the graph, the scaling numbers, the
+        settings, and what was observed on the way. README.md names them all.
         """
         directory = Path(directory) if directory is not None else processed_data_dir()
         directory.mkdir(parents=True, exist_ok=True)
@@ -216,26 +129,10 @@ def run_preprocessing(
     data_dir: str | Path | None = None,
     keep_frames: bool = False,
 ) -> PreparedData:
-    """Run the whole preprocessing pipeline and return the result.
+    """Run every preparation step in order and return the result.
 
-    Parameters
-    ----------
-    config : PreprocessingConfig, optional
-        Settings to use. Defaults to :class:`PreprocessingConfig`, which is
-        configured for FD001.
-    data_dir : str or Path, optional
-        Directory holding the three C-MAPSS text files for this
-        sub-dataset. Defaults to ``data/raw``.
-    keep_frames : bool
-        When ``True``, the intermediate data frames are kept on the returned
-        object. This costs memory but is useful in a notebook, where the tables
-        and plots are the point.
-
-    Returns
-    -------
-    PreparedData
-        Windowed arrays, the sensor graph, the fitted transformers, and a
-        diagnostics record.
+    Set keep_frames=True to keep the intermediate tables as well, which costs
+    memory but is what a notebook wants.
     """
     config = config or PreprocessingConfig()
 
@@ -264,11 +161,11 @@ def run_preprocessing(
             kept_but_uninformative,
         )
 
-    # -- 3 & 4. select sensors and cap labels -----------------------------
-    # Fig. 1 of the paper puts the piecewise RUL *after* the smoothing; here
-    # it comes before. The two commute exactly: capping touches only the
-    # label column and smoothing touches only the sensor columns, so no row
-    # is read by both. The order below groups the label work together.
+    # -- 3 & 4. pick the sensors and cap the labels ------------------------
+    # Fig. 1 of the paper caps the labels after smoothing; here it happens
+    # before. That cannot change anything: capping touches only the label
+    # column and smoothing touches only the sensor columns, so neither reads
+    # what the other writes. Doing it here keeps the label work together.
     columns = list(PAPER_SENSOR_COLUMNS)
     train = apply_piecewise_rul(data.train, rul_max=config.rul_max)
     test = apply_piecewise_rul(
@@ -279,28 +176,28 @@ def run_preprocessing(
     train = apply_ewma(train, columns, alpha=config.smoothing_alpha)
     test = apply_ewma(test, columns, alpha=config.smoothing_alpha)
 
-    # -- 6. hold out the validation engines -------------------------------
-    # This happens BEFORE any statistic is learned. If the split were made
-    # later, the minima, maxima and cluster centres would be computed over
-    # engines that are about to be held out, and the validation error would
-    # be optimistic for exactly the reason the test set is kept separate.
+    # -- 6. hold some engines back ----------------------------------------
+    # This happens BEFORE anything is measured from the data. If it happened
+    # later, the held-back engines would help decide the minimum, maximum and
+    # so on, and their error would then look better than it really is -- the
+    # same problem that keeping the test engines separate exists to avoid.
     train_units, validation_units = split_units_by_id(
         np.unique(train[UNIT_COL].to_numpy()),
         validation_fraction=config.validation_fraction,
         seed=config.seed,
     )
 
-    # -- 7. operating conditions and rescaling ----------------------------
-    # Fitted on the training engines only; applied unchanged to the
-    # validation and test engines.
+    # -- 7. operating conditions, then rescaling ---------------------------
+    # Measured on the training engines only, then applied unchanged to the
+    # held-back and test engines.
     training_rows = train[UNIT_COL].isin(train_units)
     encoder = OperatingConditionEncoder(seed=config.seed).fit(train[training_rows])
     train = encoder.transform(train)
     test = encoder.transform(test)
     diagnostics["n_operating_conditions"] = encoder.n_detected
 
-    # Recomputed rather than reused: `train` was rebound above, so a mask
-    # captured before the rebind would be indexing a different frame.
+    # Worked out again rather than reused: `train` now points at a different
+    # table than it did above, so the old mask would line up with nothing.
     training_rows = train[UNIT_COL].isin(train_units)
     normalizer = SensorNormalizer(method=config.normalization, columns=columns).fit(
         train[training_rows]
@@ -321,7 +218,7 @@ def run_preprocessing(
         window_size=config.window_size,
     )
 
-    # -- 9. apply the split decided in step 6 -----------------------------
+    # -- 9. apply the split decided in step 6 ------------------------------
     validation_windows = train_windows.subset_by_units(validation_units)
     train_windows = train_windows.subset_by_units(train_units)
 
@@ -333,11 +230,10 @@ def run_preprocessing(
         )
 
     # -- the sensor graph -------------------------------------------------
-    # Which graph, and how it is normalised, are configuration rather than
-    # constants, so that the matrix saved beside a result is the one the
-    # model was actually given. Before this was so, a run with row
-    # normalisation still stored the symmetric matrix, and anything reading
-    # it afterwards saw a graph the model had never used.
+    # Which graph, and how it is rescaled, are settings rather than fixed
+    # values, so that the graph saved next to a result is the one the network
+    # was actually given. Before that was true, a run could store one graph
+    # and train on another, and nothing would say so.
     if config.graph == "physics":
         adjacency_raw, symbols = build_physics_adjacency()
     else:

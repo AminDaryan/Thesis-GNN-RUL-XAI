@@ -3,9 +3,9 @@
 The most important tests here are the two that check the architecture against
 the paper rather than against itself:
 
-- :func:`test_parameter_counts_match_table_4` compares every layer's parameter
+- `test_parameter_counts_match_table_4` compares every layer's parameter
   count with the weight shapes the paper prints.
-- :func:`test_three_layers_cannot_reach_four_hops` checks that message passing
+- `test_three_layers_cannot_reach_four_hops` checks that message passing
   respects the sensor graph, using a pair of sensors the graph places four
   edges apart.
 """

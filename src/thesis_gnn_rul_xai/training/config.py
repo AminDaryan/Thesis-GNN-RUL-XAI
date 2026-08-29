@@ -1,27 +1,7 @@
-"""
-Training settings
-=================
+"""The settings for one training run, with the paper's values as the defaults.
 
-Table 6 of Wen et al. (2026) lists six hyper-parameters, and every one of them
-appears here with the paper's value as its default:
-
-===================  =========================
-Table 6              Field
-===================  =========================
-Learning rate        ``learning_rate`` to ``final_learning_rate``
-Epochs               ``epochs``
-Batch size           ``batch_size``
-Time steps           (set in ``PreprocessingConfig.window_size``)
-Optimizer            ``optimizer``
-Loss function        ``loss``
-===================  =========================
-
-Two things Table 6 does not say are recorded as assumptions rather than hidden
-in the code: **how** the learning rate travels from one value to the other
-(A-17), and when to stop early (A-18). Both are marked below.
-
-As with :mod:`thesis_gnn_rul_xai.config`, one file fully describes one
-experiment, so the settings can be saved next to the results.
+Read README.md in this folder. It explains what every setting below means and
+which of them the paper does not state.
 """
 
 from __future__ import annotations
@@ -39,69 +19,14 @@ __all__ = [
     "load_training_config",
 ]
 
-#: How the learning rate moves from ``learning_rate`` to
-#: ``final_learning_rate``.
-#:
-#: ``"exponential"``
-#:     Multiply by a constant factor after every epoch, chosen so the final
-#:     epoch lands exactly on ``final_learning_rate``. This is the reading of
-#:     "beginning at 1e-3 and reducing to 1e-4" that arrives at the stated end
-#:     value, and it is the default.
-#: ``"cosine"``
-#:     Follow a cosine curve between the two values: slow at first, fastest in
-#:     the middle, slow again at the end.
-#: ``"plateau"``
-#:     Drop the rate by a factor of ten only when the validation loss stops
-#:     improving, never going below ``final_learning_rate``. This is what
-#:     "adaptive learning rate schedule" means in some of the literature, so it
-#:     is offered as the main alternative reading of the paper's sentence.
-#: ``"constant"``
-#:     Never change it. Included so the effect of the schedule can be measured.
+# The four ways the learning rate can travel from its first value to its last.
+# README.md in this folder describes each one.
 LearningRateSchedule = Literal["exponential", "cosine", "plateau", "constant"]
 
 
 @dataclass
 class TrainingConfig:
-    """Everything that controls one training run.
-
-    Attributes
-    ----------
-    epochs : int
-        Number of passes over the training set. Table 6 gives 200.
-    batch_size : int
-        Examples per gradient step. Table 6 gives 32.
-    learning_rate : float
-        Starting learning rate. Table 6 gives 1e-3.
-    final_learning_rate : float
-        Learning rate at the last epoch. Table 6 gives 1e-4.
-    lr_schedule : LearningRateSchedule
-        How to travel between the two. ASSUMPTION A-17: Table 6 gives both
-        endpoints and the words "adaptive learning rate schedule", but never
-        the mechanism.
-    optimizer : str
-        Currently only ``"adam"``, which is what Table 6 specifies.
-    loss : str
-        Currently only ``"mse"``, which is what Table 6 specifies.
-    early_stopping_patience : int or None
-        Stop when the validation error has not improved for this many epochs,
-        and restore the weights from the best epoch. ``None`` trains for the
-        full ``epochs`` regardless, which is what the paper describes.
-        ASSUMPTION A-18: the paper has no validation set and no early stopping;
-        this is a deliberate improvement, of a piece with A-06.
-    min_improvement : float
-        How much the validation error must fall, in cycles, to count as an
-        improvement worth resetting the patience counter for.
-    seed : int
-        Seed for weight initialisation and batch shuffling.
-    device : str
-        ``"auto"`` picks a CUDA device when one is present, otherwise the CPU.
-        ``"cpu"`` and ``"cuda"`` force the choice.
-    gradient_clip : float or None
-        Maximum gradient norm, or ``None`` to leave gradients untouched. Not
-        mentioned by the paper; ``None`` by default so the run matches it.
-    notes : str
-        Free text stored alongside the settings.
-    """
+    """Everything that controls one training run. README.md explains each field."""
 
     # --- from Table 6 ------------------------------------------------------
     epochs: int = 200
@@ -112,8 +37,14 @@ class TrainingConfig:
     loss: str = "mse"
 
     # --- not stated by the paper -------------------------------------------
-    lr_schedule: LearningRateSchedule = "exponential"  # ASSUMPTION A-17
-    early_stopping_patience: int | None = 20           # ASSUMPTION A-18
+    # ASSUMPTION A-17: shrink the learning rate by the same factor every epoch.
+    # The paper gives the first and last rate but never how it gets between
+    # them. Written up in docs/ASSUMPTIONS.md.
+    lr_schedule: LearningRateSchedule = "exponential"
+    # ASSUMPTION A-18: stop early once the held-out error stops improving. The
+    # paper holds nothing out and never stops early, so this is a departure
+    # from it, not a reconstruction. Written up in docs/ASSUMPTIONS.md.
+    early_stopping_patience: int | None = 20
     min_improvement: float = 1e-4
     gradient_clip: float | None = None
 
@@ -123,9 +54,10 @@ class TrainingConfig:
 
     notes: str = field(
         default=(
-            "Training configuration. Values under 'from Table 6' are taken from "
-            "Wen et al. (2026); lr_schedule and early_stopping_patience are "
-            "assumptions A-17 and A-18 in docs/ASSUMPTIONS.md."
+            "Training settings. The values under 'from Table 6' come from "
+            "Wen et al. (2026). lr_schedule and early_stopping_patience are "
+            "our own choices, written up as A-17 and A-18 in "
+            "docs/ASSUMPTIONS.md."
         )
     )
 
@@ -195,15 +127,7 @@ class TrainingConfig:
 
 
 def load_training_config(path: str | Path) -> TrainingConfig:
-    """Read a :class:`TrainingConfig` from a YAML file.
-
-    Raises
-    ------
-    ValueError
-        If the file contains a key that is not a field of the configuration.
-        A silently ignored typo in a settings file is a common and
-        hard-to-find source of wrong results, so this is deliberately strict.
-    """
+    """Read settings back from a YAML file. An unknown key is an error."""
     path = Path(path)
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 

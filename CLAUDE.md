@@ -102,6 +102,12 @@ If the paper does not specify something and you have to choose, add an entry to
 Then put the identifier in the code at the point of use, as a comment beginning
 `ASSUMPTION A-xx`. The header of that file promises this; keep it true.
 
+That comment must say **what the choice was, in words**, not just cite its
+number. `# ASSUMPTION A-17` tells a reader nothing; `# ASSUMPTION A-17: shrink
+the learning rate by the same factor every epoch. The paper gives the first and
+last rate but never how it gets between them.` tells them everything they need
+without leaving the file.
+
 Observations *about the paper* established from data are findings (`F-xx`), not
 assumptions. Keep the two apart: assumptions are our choices, findings are
 facts about the source.
@@ -140,19 +146,41 @@ substitutes something with the right shape.
 Make the changes, run the checks, report what changed, then stop. Committing is
 the author's decision, not yours.
 
+### 9. Explanation lives in the folder READMEs, not in the code
+
+Every folder under `src/thesis_gnn_rul_xai/` has a `README.md`, and that is
+where the reasoning, the traps, the vocabulary and the meaning of every
+argument belong. A `.py` file carries **one line** of description per module,
+class and function, plus the `ASSUMPTION` comments required by rule 4.
+
+Do not put the explanation back into the code. No `Parameters` / `Returns` /
+`Raises` / `Notes` / `Examples` sections, and no Sphinx cross-reference roles
+(`:class:`, `:func:`, `:meth:`, `:attr:`, `:data:`) — this project has no Sphinx
+build, so they render as noise to everyone who reads them.
+
+Write for someone who does not already know the project. Spell a term out the
+first time it appears rather than assuming it. Where a README has to name a
+class, say what it is: "a `TrainingHistory`, the record of a finished run", not
+just the name.
+
+Worked examples are tests, in `tests/test_examples.py` and
+`tests/test_examples_torch.py`, not doctests. When you add a function, add its
+example there.
+
 ---
 
 ## Before saying a task is done
 
 ```bash
 ruff check .          # must be clean
-pytest                # 163 tests; must all pass
+pytest                # 167 tests; must all pass
 ```
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
-data-dependent tests skip with a download link rather than failing. The model,
-training and explanation tests additionally need PyTorch; without it they skip
-and 107 still run.
+data-dependent tests skip with a download link rather than failing, leaving
+103 passing and 64 skipped. The model, training and explanation tests
+additionally need PyTorch; without it they are not collected and 117 still
+run.
 
 If a change touches a notebook, re-execute it before committing, so its stored
 outputs match its code:

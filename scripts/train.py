@@ -60,9 +60,9 @@ from thesis_gnn_rul_xai.training import (
 from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
 from thesis_gnn_rul_xai.utils.paths import reports_dir
 
-#: Published figures for FD001, for orientation while a run is in progress.
-#: These are not targets to tune towards; they are there so a result that is
-#: wildly out of range is noticed immediately.
+# Published figures for FD001, for orientation while a run is in progress.
+# These are not targets to tune towards; they are there so a result that is
+# wildly out of range is noticed immediately.
 PAPER_FD001 = {
     "ESTGNN (full, Table 8)": {"rmse": 11.78, "score": 278.6, "r2": 0.921, "asue": 8.312},
     "ESTGNN w/o LSTM (Table 11)": {"rmse": 14.93},

@@ -1,114 +1,6 @@
-"""
-The sensor graph and its adjacency matrix
-=========================================
+"""The table of which sensors are wired to which, and the tools to inspect it.
 
-What a graph is, in this context
---------------------------------
-A **graph** is a set of points, called **nodes**, together with a set of
-connections between them, called **edges**. In this project each of the 14
-retained sensors is one node. An edge between two sensors means "these two
-measurements are physically related, so the model is allowed to pass
-information directly between them".
-
-An **adjacency matrix** is the standard way to write a graph as a table of
-numbers. For a graph with 14 nodes it is a 14-by-14 table ``A`` where
-``A[i, j] = 1`` if there is an edge between node ``i`` and node ``j``, and
-``A[i, j] = 0`` otherwise. Because "sensor i is related to sensor j" means the
-same as "sensor j is related to sensor i", the matrix is **symmetric**: it
-equals its own mirror image across the diagonal.
-
-Why a Graph Neural Network needs this
--------------------------------------
-A Graph Neural Network (GNN) works by **message passing**: each node repeatedly
-collects the current feature vectors of its neighbours, combines them, and
-updates its own features (Kipf & Welling, 2017; Corso et al., 2024). The
-adjacency matrix is what defines "neighbour". Stacking three such layers, as
-Wen et al. (2026) do, lets information travel up to three edges away: the first
-layer reaches direct neighbours, the second reaches neighbours of neighbours,
-and the third reaches three steps out.
-
-Where this particular graph comes from
---------------------------------------
-Most work on this dataset builds the graph from the data, usually by connecting
-sensors whose readings are strongly correlated. Wen et al. (2026) instead
-design the graph by hand from engineering knowledge of how a turbofan engine
-works, and print the result as their Table 3. Their five stated rules are:
-
-1. Sensors at the same physical location in the engine are connected, because
-   they measure the same gas at the same point. Example: ``P30`` and ``Ps30``,
-   the total and static pressure at the high-pressure compressor outlet.
-2. A raw speed is connected to its corrected counterpart, because one is
-   computed from the other. Example: ``Nf`` and ``NRf``.
-3. Sensors are connected along the path the gas actually takes through the
-   engine. Example: the temperature chain ``T24`` to ``T30`` to ``T50``, which
-   follows the flow from the low-pressure compressor through the high-pressure
-   compressor to the low-pressure turbine.
-4. Fuel and control quantities are connected to what they influence. Example:
-   ``phi``, the ratio of fuel flow to static pressure, is connected to the
-   temperatures and pressures that burning more fuel changes.
-5. Cooling quantities are connected to each other, because they jointly manage
-   the temperature of the turbine section.
-
-This module reproduces their Table 3 exactly, as printed, and the
-transcription has been checked against both of the paper's own renderings of
-the matrix: the numbers in Table 3 and the colour grid in Fig. 3 agree with
-each other and with the array below, in all 196 cells.
-
-Two things about it are **not** fully specified, despite the matrix itself
-being printed twice:
-
-* The paper's own fourth rule says `phi` influences `htBleed`, `W31` **and
-  `W32`**, but the entry for `phi`-`W32` is 0 in Table 3 and in Fig. 3. The
-  matrix is followed here, because it is what the model consumes, and the
-  conflict is recorded as finding F-07.
-* The paper never prints the formula used to normalise the matrix. See
-  assumption A-21 and :func:`normalize_adjacency`.
-
-Normalising the matrix before use
----------------------------------
-A graph convolution layer does not use the raw matrix ``A``. It uses::
-
-    A_hat = D^(-1/2) * (A + I) * D^(-1/2)
-
-Two things happen in this formula, both from Kipf and Welling (2017):
-
-* Adding the identity matrix ``I`` puts a **self-loop** on every node. Without
-  it a node would be updated only from its neighbours and would forget its own
-  current value.
-* Dividing by the square roots of the **degrees** (the number of edges at each
-  node, stored on the diagonal of ``D``) stops well-connected nodes from
-  dominating. Without this scaling, repeatedly summing over neighbours makes
-  feature values grow layer after layer, and training becomes unstable.
-
-What this module can tell you about the graph
----------------------------------------------
-:func:`adjacency_report` describes it, and several of the things it reports
-bound what the model can express before any training happens:
-
-* the **diameter** is the largest number of edges between any two sensors. A
-  network with fewer graph convolution layers than the diameter cannot let
-  every pair of sensors influence each other, whatever it learns.
-* the **articulation points** are sensors whose removal would split the graph
-  in two. Every message between the halves passes through one of them.
-
-Those come from ``networkx`` rather than from code written here, because a
-breadth-first search written for one project is tested by that project alone,
-and these numbers appear in the thesis.
-
-References
-----------
-Corso, G., Stark, H., Jegelka, S., Jaakkola, T., & Barzilay, R. (2024). Graph
-neural networks. *Nature Reviews Methods Primers*, 4, 17.
-https://doi.org/10.1038/s43586-024-00294-7
-
-Kipf, T. N., & Welling, M. (2017). Semi-supervised classification with graph
-convolutional networks. *International Conference on Learning Representations
-(ICLR)*. https://arxiv.org/abs/1609.02907
-
-Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
-(2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
-enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
-168, 110875. https://doi.org/10.1016/j.ast.2025.110875
+Read README.md in this folder. It explains everything this file does.
 """
 
 from __future__ import annotations
@@ -137,26 +29,11 @@ __all__ = [
 
 logger = get_logger(__name__)
 
-#: How the adjacency matrix is normalised before a graph convolution uses it.
-#:
-#: ``"symmetric"``
-#:     ``D^(-1/2) (A + I) D^(-1/2)``, the form defined by Kipf and Welling
-#:     (2017). Each edge is divided by the geometric mean of the two degrees it
-#:     joins, so a message between two well-connected sensors is damped more
-#:     than one between two sparsely connected sensors.
-#: ``"row"``
-#:     ``D^(-1) (A + I)``, which simply averages over each node's own
-#:     neighbourhood. Rows sum to exactly 1, so every node receives the mean of
-#:     its neighbours regardless of how many it has.
-#:
-#: Both add self-loops and both "balance feature aggregation across different
-#: node degrees", which is all Wen et al. (2026) say about it. See A-21.
+# The two ways of rescaling the table before the network uses it. README.md.
 AdjacencyNormalization = Literal["symmetric", "row"]
 
-#: Table 3 of Wen et al. (2026), transcribed row by row. The keys and the order
-#: of the values both follow :data:`PAPER_SENSOR_SYMBOLS`. The matrix is checked
-#: for symmetry when this module is imported, which catches any transcription
-#: error immediately rather than letting it corrupt every later result.
+# Table 3 of Wen et al. (2026), copied out row by row. The row order is the
+# sensor order in PAPER_SENSOR_SYMBOLS and must not change.
 PHYSICS_ADJACENCY_ROWS: dict[str, tuple[int, ...]] = {
     #          T24 T30 T50 P15 P30  Nf  Nc Ps30 phi NRf BPR htB W31 W32
     "T24":     (0,  1,  0,  1,  1,  1,  0,  1,  0,  1,  1,  0,  0,  0),
@@ -177,15 +54,7 @@ PHYSICS_ADJACENCY_ROWS: dict[str, tuple[int, ...]] = {
 
 
 def build_physics_adjacency() -> tuple[np.ndarray, tuple[str, ...]]:
-    """Return the hand-designed sensor graph of Wen et al. (2026), Table 3.
-
-    Returns
-    -------
-    tuple
-        ``(adjacency, symbols)`` where ``adjacency`` is a 14-by-14 array of
-        zeros and ones with a zero diagonal, and ``symbols`` gives the sensor
-        symbol belonging to each row and column, in order.
-    """
+    """Return the paper's own sensor graph, and the sensor name of each row."""
     symbols = PAPER_SENSOR_SYMBOLS
     matrix = np.array(
         [PHYSICS_ADJACENCY_ROWS[symbol] for symbol in symbols],
@@ -197,17 +66,12 @@ def build_physics_adjacency() -> tuple[np.ndarray, tuple[str, ...]]:
 def build_fully_connected_adjacency(
     n_nodes: int = 14,
 ) -> tuple[np.ndarray, tuple[str, ...]]:
-    """Return a graph in which every sensor is connected to every other one.
+    """Return a graph where every sensor is connected to every other one.
 
-    This is the comparison graph for the ablation that Wen et al. (2026) call
-    "without physics prior": it removes all engineering knowledge while
-    keeping the rest of the architecture identical, so any change in accuracy
-    can be attributed to the graph structure alone.
-
-    ASSUMPTION A-19: the paper names that ablation but never says what
-    replaces the hand-designed matrix. A graph with no edges would ablate
-    message passing itself, which the paper reports separately as "w/o GCN",
-    so a complete graph is used here.
+    ASSUMPTION A-19: use this as the stand-in when the paper's experiment
+    "without physics prior" is repeated. The paper never says what it put in
+    place of its own graph there. Explained in README.md in this folder;
+    written up in docs/ASSUMPTIONS.md.
     """
     matrix = np.ones((n_nodes, n_nodes), dtype=np.float32)
     np.fill_diagonal(matrix, 0.0)
@@ -221,38 +85,7 @@ def build_correlation_adjacency(
     threshold: float = 0.5,
     symbols: Sequence[str] | None = None,
 ) -> tuple[np.ndarray, tuple[str, ...]]:
-    """Build a graph by connecting sensors whose readings move together.
-
-    Two sensors are connected when the absolute value of their Pearson
-    correlation coefficient is at least ``threshold``. The **Pearson
-    correlation coefficient** measures how closely two quantities follow a
-    straight-line relationship; it runs from -1 (one rises exactly as the other
-    falls) through 0 (no straight-line relationship) to +1 (they rise and fall
-    together). The absolute value is used because a strong inverse relationship
-    is just as informative as a strong direct one.
-
-    This is the data-driven alternative to the hand-designed graph, and is the
-    approach used by most other work on this dataset. It is provided so that
-    the two kinds of graph can be compared directly.
-
-    Parameters
-    ----------
-    frame : pandas.DataFrame
-        Data to compute the correlations from. This must be **training data
-        only**, for the same reason that scaling statistics come from training
-        data only: using test data here would leak information.
-    sensor_columns : sequence of str
-        Columns to correlate, in node order.
-    threshold : float
-        Minimum absolute correlation for an edge, between 0 and 1.
-    symbols : sequence of str, optional
-        Node labels. Defaults to the paper's 14 sensor symbols.
-
-    Returns
-    -------
-    tuple
-        ``(adjacency, symbols)``.
-    """
+    """Connect sensors whose readings move together. Pass training data only."""
     if not 0.0 <= threshold <= 1.0:
         raise ValueError(f"threshold must lie in [0, 1], got {threshold}.")
 
@@ -274,63 +107,11 @@ def normalize_adjacency(
     add_self_loops: bool = True,
     method: AdjacencyNormalization = "symmetric",
 ) -> np.ndarray:
-    """Apply the symmetric normalisation used by graph convolution layers.
+    """Rescale the table so the network can use it. Adds each sensor to itself.
 
-    Computes ``D^(-1/2) (A + I) D^(-1/2)`` as defined by Kipf and Welling
-    (2017). See the module docstring for what each part does and why.
-
-    ASSUMPTION A-21: Wen et al. (2026) never print this formula. Their
-    Equation 8 says only that "A denotes the normalized adjacency matrix
-    incorporating self-loops", and that the normalisation "ensures stable
-    gradient propagation and balanced feature aggregation across different
-    node degrees". Symmetric normalisation satisfies that description, and
-    so does the row normalisation ``D^(-1) (A + I)``. The symmetric form is
-    used because it is the one defined by the layer the paper cites.
-
-    Parameters
-    ----------
-    adjacency : numpy.ndarray
-        A square, symmetric matrix of edge indicators.
-    add_self_loops : bool
-        Whether to add the identity matrix before normalising. This should stay
-        ``True`` for graph convolution; the option exists so the effect can be
-        demonstrated.
-    method : str
-        ``"symmetric"`` for ``D^(-1/2) (A + I) D^(-1/2)``, or ``"row"`` for
-        ``D^(-1) (A + I)``. See :data:`AdjacencyNormalization` and assumption
-        A-21: the paper describes the normalisation but never prints it, and
-        both forms fit the description.
-
-    Returns
-    -------
-    numpy.ndarray
-        The normalised matrix, dtype ``float32``.
-
-    Raises
-    ------
-    ValueError
-        If the matrix is not square or not symmetric.
-
-    Examples
-    --------
-    Two nodes joined by one edge. After adding self-loops each node has degree
-    2, so every entry becomes ``1 / sqrt(2 * 2) = 0.5``:
-
-    >>> import numpy as np
-    >>> normalize_adjacency(np.array([[0.0, 1.0], [1.0, 0.0]]))
-    array([[0.5, 0.5],
-           [0.5, 0.5]], dtype=float32)
-
-    On that symmetric two-node graph the row form agrees, because both degrees
-    are equal. The two differ as soon as the degrees do:
-
-    >>> star = np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-    >>> rows = normalize_adjacency(star, method="row").sum(axis=1)
-    >>> [round(float(v), 6) for v in rows]
-    [1.0, 1.0, 1.0]
-    >>> symmetric = normalize_adjacency(star).sum(axis=1)
-    >>> [round(float(v), 3) for v in symmetric]
-    [1.15, 0.908, 0.908]
+    ASSUMPTION A-21: choose between the two rescaling formulas below. The paper
+    describes the step but never prints the formula, and both fit what it says.
+    Explained in README.md in this folder; written up in docs/ASSUMPTIONS.md.
     """
     matrix = np.asarray(adjacency, dtype=np.float64)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
@@ -369,21 +150,7 @@ def to_networkx(
     adjacency: np.ndarray,
     symbols: Sequence[str],
 ) -> nx.Graph:
-    """Return the graph as a :class:`networkx.Graph` labelled by sensor symbol.
-
-    Working through networkx rather than by hand means the properties below are
-    computed by a library that is tested far more heavily than this project
-    could test its own breadth-first search, and it makes the standard graph
-    vocabulary available for anything the thesis needs later.
-
-    Parameters
-    ----------
-    adjacency : numpy.ndarray
-        A square, symmetric matrix of edge indicators. Self-loops are ignored:
-        a node is never its own neighbour for the purpose of counting distance.
-    symbols : sequence of str
-        Node labels, in the order of the matrix rows.
-    """
+    """Hand the graph to the networkx library, with the sensors named."""
     matrix = np.asarray(adjacency, dtype=float).copy()
     np.fill_diagonal(matrix, 0.0)
     graph = nx.from_numpy_array(matrix)
@@ -394,54 +161,7 @@ def adjacency_report(
     adjacency: np.ndarray,
     symbols: Sequence[str],
 ) -> dict[str, object]:
-    """Describe a graph, and check that it is usable.
-
-    Returns
-    -------
-    dict
-        Basic structure:
-
-        ``n_nodes``, ``n_edges``, ``degrees``, ``isolated_nodes``
-            Counts and per-node degree.
-        ``density``
-            The fraction of all possible edges that are present.
-        ``is_symmetric``, ``has_self_loops``
-            Properties of the matrix as given.
-        ``is_connected``
-            Whether every node can be reached from every other one. A graph
-            that is not connected splits the sensors into groups that can never
-            exchange information, however many layers the network has.
-
-        How far information can travel, which bounds what the model can
-        express:
-
-        ``diameter``
-            The largest number of edges between any two sensors. A graph
-            convolution network with fewer layers than this cannot let every
-            pair of sensors influence each other, whatever it learns.
-        ``distance_histogram``
-            How many pairs sit at each distance, as ``{distance: pairs}``.
-        ``articulation_points``
-            Sensors whose removal would disconnect the graph. Every message
-            between the two halves passes through one of these, which makes
-            them the natural target of a graph-native explanation.
-        ``algebraic_connectivity``
-            The second-smallest eigenvalue of the Laplacian. Near zero means
-            the graph nearly falls into two pieces; larger means it is
-            well-knit. Reported as ``None`` for a disconnected graph, where it
-            is zero by definition and says nothing.
-
-    Examples
-    --------
-    The paper's own sensor graph:
-
-    >>> matrix, symbols = build_physics_adjacency()
-    >>> report = adjacency_report(matrix, symbols)
-    >>> report["n_edges"], report["diameter"]
-    (41, 4)
-    >>> report["articulation_points"]
-    ['T24']
-    """
+    """Measure the shape of a graph. Returns a dictionary; README.md lists it."""
     matrix = np.asarray(adjacency)
     n_nodes = matrix.shape[0]
     degrees = matrix.sum(axis=1).astype(int)
@@ -485,39 +205,7 @@ def pairs_beyond_reach(
     symbols: Sequence[str],
     n_layers: int,
 ) -> list[tuple[str, str, int]]:
-    """Sensor pairs that ``n_layers`` of graph convolution cannot connect.
-
-    One graph convolution layer moves information one edge. Two sensors more
-    than ``n_layers`` edges apart therefore cannot influence each other at all,
-    no matter what the network learns. This is a property of the graph and the
-    depth, fixed before training begins.
-
-    With the three layers of Table 4 on the paper's own graph, four pairs are
-    out of reach.
-
-    Parameters
-    ----------
-    adjacency : numpy.ndarray
-        A square, symmetric matrix of edge indicators.
-    symbols : sequence of str
-        Node labels, in matrix row order.
-    n_layers : int
-        Number of graph convolution layers.
-
-    Returns
-    -------
-    list of tuple
-        ``(symbol_a, symbol_b, distance)``, sorted by distance then by name.
-        Empty when every pair is within reach.
-
-    Examples
-    --------
-    >>> matrix, symbols = build_physics_adjacency()
-    >>> pairs_beyond_reach(matrix, symbols, n_layers=3)
-    [('BPR', 'W32', 4), ('NRf', 'W32', 4), ('Nf', 'W32', 4), ('P15', 'W32', 4)]
-    >>> pairs_beyond_reach(matrix, symbols, n_layers=4)
-    []
-    """
+    """Sensor pairs too far apart for this many layers to connect at all."""
     if n_layers < 1:
         raise ValueError(f"n_layers must be at least 1, got {n_layers}.")
 

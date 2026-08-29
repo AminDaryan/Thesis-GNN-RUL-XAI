@@ -19,4 +19,5 @@ except ImportError:  # pragma: no cover
         "tests/test_models.py",
         "tests/test_training.py",
         "tests/test_shap.py",
+        "tests/test_examples_torch.py",
     ]

@@ -8,11 +8,11 @@
 # give. PyTorch is installed, so the model, training and explanation tests do
 # run; only the data-dependent ones are skipped.
 #
-# That leaves 73 tests passing and 42 skipped. What survives is the part that
+# That leaves 103 tests passing and 64 skipped. What survives is the part that
 # can be checked without engines: the sensor graph and everything derived from
 # it, the four evaluation measures, the piecewise label, the configuration
-# objects, the Shapley properties on small synthetic graphs, and every
-# docstring example in the package.
+# objects, the Shapley properties on small synthetic graphs, and the worked
+# examples in tests/test_examples.py and tests/test_examples_torch.py.
 #
 # A green run here therefore means "nothing that can be checked without the
 # dataset is broken". It does not mean the pipeline still reproduces the
