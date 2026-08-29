@@ -54,7 +54,11 @@ def test_validation_engines_never_influence_the_scaling(raw_dir):
     ``test_normalization.py::test_test_data_never_influences_the_scaling``.
     """
     config = PreprocessingConfig(
-        window_size=20, validation_fraction=0.25, seed=7
+        window_size=20, validation_fraction=0.25, seed=7,
+        # Pinned rather than inherited: the [0, 1] span below is a property of
+        # min-max scaling specifically. The default is z-score (A-03), whose
+        # counterpart is checked by the next test.
+        normalization="minmax_per_condition",
     )
     prepared = run_preprocessing(config, data_dir=raw_dir, keep_frames=True)
 
@@ -84,6 +88,42 @@ def test_validation_engines_never_influence_the_scaling(raw_dir):
         "These sensors do not span exactly [0, 1] across the training engines' "
         "rows, which means a validation engine defined their scale: "
         + str(offenders)
+    )
+
+
+def test_validation_engines_never_influence_the_zscore_statistics(raw_dir):
+    """The same guarantee as above, for the scaling the project actually uses.
+
+    Under z-score the observable consequence differs: the rows belonging to
+    training engines must have mean 0 and standard deviation 1 exactly, because
+    those are the statistics the scaler was fitted on. A validation engine
+    contributing to either would move them off those values.
+    """
+    config = PreprocessingConfig(
+        window_size=20, validation_fraction=0.25, seed=7, normalization="zscore"
+    )
+    prepared = run_preprocessing(config, data_dir=raw_dir, keep_frames=True)
+    assert len(prepared.validation) > 0, "nothing is being held out"
+    assert prepared.frames is not None
+
+    frame = prepared.frames["train"]
+    training_engines = set(prepared.train.units.tolist())
+    rows = frame[frame["unit"].isin(training_engines)]
+    values = rows[list(PAPER_SENSOR_COLUMNS)].to_numpy(dtype=float)
+
+    offenders = [
+        (symbol, float(m), float(s))
+        for symbol, m, s in zip(
+            prepared.sensor_symbols, values.mean(axis=0), values.std(axis=0, ddof=0),
+            strict=True,
+        )
+        # A constant sensor is mapped to 0 and has no spread to normalise;
+        # P15 on FD001 is one, so its standard deviation is legitimately 0.
+        if abs(m) > 1e-6 or (abs(s - 1.0) > 1e-6 and abs(s) > 1e-6)
+    ]
+    assert not offenders, (
+        "These sensors are not standardised across the training engines' rows, "
+        "which means a validation engine entered the statistics: " + str(offenders)
     )
 
 

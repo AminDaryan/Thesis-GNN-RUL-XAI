@@ -153,8 +153,9 @@ class PreprocessingConfig:
 
     # --- Signal processing -------------------------------------------------
     # ASSUMPTION A-03: the paper never describes its input scaling at all.
-    # This follows Jin et al. (2025) on the same dataset.
-    normalization: NormalizationMethod = "minmax_per_condition"
+    # Selected under the rule recorded in A-22; worth 3.83 cycles against the
+    # per-condition min-max of Jin et al. (2025). See F-10.
+    normalization: NormalizationMethod = "zscore"
     # ASSUMPTION A-04: Section 3.2.3 attaches the value 0.5 to the previous
     # smoothed value rather than to the smoothing parameter. Read as alpha.
     smoothing_alpha: float | None = 0.5
@@ -164,10 +165,16 @@ class PreprocessingConfig:
     # replaces the hand-designed matrix with is never stated.
     graph: SensorGraph = "physics"
     # ASSUMPTION A-21: the paper never prints the normalisation formula.
-    adjacency_normalization: AdjacencyNormalization = "symmetric"
+    # Row is 0.35 cycles closer than symmetric here (p = 0.047); see A-22.
+    adjacency_normalization: AdjacencyNormalization = "row"
 
     # --- Data splitting ----------------------------------------------------
-    validation_fraction: float = 0.2
+    # ASSUMPTION A-06 / A-18: Table 6 states 200 epochs and describes no
+    # held-out set. Holding engines out and restoring the best-validation
+    # checkpoint is validation-based model selection, which the paper does not
+    # describe, so the reproduction holds nothing out. config/fd001_validated
+    # .yaml restores the split for comparing configurations. See A-22.
+    validation_fraction: float = 0.0
     seed: int = 42
 
     # --- Bookkeeping -------------------------------------------------------

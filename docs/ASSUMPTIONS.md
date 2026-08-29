@@ -24,10 +24,10 @@ identifier below.
 |----|-------|---------------------|------------------------|
 | A-01 | Label ceiling `RUL_max` | Defines it symbolically in Equation 19, never prints a value | 125 cycles |
 | A-02 | Ceiling on test labels | Not discussed | Applied, because the model's output layer cannot exceed the ceiling |
-| A-03 | Input rescaling | Not described at all | Per-condition min-max scaling to [0, 1], following Jin et al. (2025) — **the largest measured assumption in the project; see F-10** |
+| A-03 | Input rescaling | Not described at all | **`zscore`** — the largest measured assumption in the project (3.83 cycles, F-10); selected under A-22 |
 | A-04 | Smoothing strength | Self-contradictory sentence in Section 3.2.3 | Read as `alpha = 0.5` |
 | A-05 | Window stride | Not in the text; **Fig. 1 indicates one time step** | 1 cycle |
-| A-06 | Validation split | None; trains for a fixed 200 epochs | 20 % of engines held out |
+| A-06 | Validation split | None; trains for a fixed 200 epochs | **None in the reproduction** (A-22); 20 % in `fd001_validated.yaml`, for comparing configurations |
 | A-07 | Node feature content | Table 4 **prints** one number per sensor (`W(1) in R^(1x32)`), produced by an LSTM that is never specified | The last cycle of the window, keeping Table 4's shape |
 | ~~A-08~~ | Order: smoothing and scaling | **Fig. 1 specifies it**: smoothing then normalisation | Withdrawn as an assumption; the paper's order is followed |
 | A-09 | Smoothing formula variant | Gives the recursive form as Equation 18 | Recursive form (`adjust=False` in pandas) |
@@ -39,10 +39,10 @@ identifier below.
 | A-15 | Sign of the score function | Equations 20 and 21 contradict each other | The NASA convention the paper's own text describes |
 | A-16 | R-squared denominator | Equation 23 uses the predicted values | The standard definition, using the observed ones |
 | A-17 | Learning-rate schedule | Both endpoints given, mechanism not | Exponential decay reaching 1e-4 at the last epoch |
-| A-18 | Early stopping | None; trains a fixed 200 epochs | Stop after 20 epochs without improvement |
+| A-18 | Early stopping | None; trains a fixed 200 epochs | **Disabled in the reproduction** (A-22); available with a validation split |
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
-| A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | Symmetric `D^(-1/2)(A+I)D^(-1/2)`, from the layer the paper cites |
+| A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.35 cycles closer (p = 0.047), selected under A-22 |
 
 ---
 
@@ -220,7 +220,24 @@ fixed amount of data.
 
 ---
 
-## A-06 — Twenty percent of engines are held out for validation
+## A-06 — No engines are held out in the reproduction; twenty percent are for comparisons
+
+**Superseded 2026-08-29 by A-22.** This entry originally held out 20 % of the
+training engines unconditionally. Table 6 states 200 epochs, and holding
+engines out in order to restore the best-validation checkpoint is
+validation-based model selection, which the paper never describes; under A-22's
+rule the paper wins. `config/fd001.yaml` therefore holds nothing out.
+
+**The split has not been abandoned, only moved.** `config/fd001_validated.yaml`
+keeps it, and **every comparison between configurations must use that file** —
+without it there is no honest basis for preferring one setting to another, and
+A-22 records one choice (A-21) that had to be made on the test set for exactly
+this reason. The reasoning below is unchanged and still governs how the split
+must be used when it is used.
+
+---
+
+### Original entry
 
 **Where:** `config.PreprocessingConfig.validation_fraction`, `data/windowing.py`
 
@@ -662,7 +679,23 @@ therefore where early stopping lands, but the endpoints are fixed by the paper.
 
 ---
 
-## A-18 — Training stops after 20 epochs without improvement
+## A-18 — Early stopping is disabled in the reproduction
+
+**Superseded 2026-08-29 by A-22.** Table 6 states 200 epochs. Early stopping
+contradicts that, so the reproduction runs the full 200.
+
+**A trap worth recording.** Passing `--no-early-stopping` is *not* by itself
+enough to reproduce the paper's procedure. With a validation set present the
+loop still tracks the best-validation epoch and ends with
+`model.load_state_dict(best_state)`, so the reported model is the best
+checkpoint rather than the epoch-200 model — validation-based model selection
+without the name. Only `validation_fraction: 0.0` reaches the branch that keeps
+the final weights. The two differ by about 0.45 cycles, and an earlier draft of
+F-10 described the wrong one as "the paper's training procedure".
+
+---
+
+### Original entry
 
 **Where:** `training/config.py`, `TrainingConfig.early_stopping_patience`
 
@@ -933,6 +966,15 @@ the score, R-squared and ASUE columns exist for the full model only. Since the
 LSTM stage is not implemented here (A-11), the row to compare against is
 "w/o LSTM", and the comparison is 20.353 ± 0.752 against 14.93.
 
+#### Superseded by A-22 — the current default is z-score and row
+
+The comparison below was made with the per-condition min-max scaling and
+symmetric normalisation that were the defaults until 2026-08-29. Under the
+selection rule recorded in **A-22** the reproduction now reports
+**16.694 ± 0.331**, a shortfall of 1.76 rather than 5.42. The reasoning in this
+section is unchanged and still applies to the architecture, which A-22 does not
+touch; only the preprocessing and the adjacency formula moved.
+
 #### The architecture-faithful comparison is 20.35 against 14.93
 
 Run B is the paper's printed architecture: input `[batch, 14, 1]`,
@@ -998,7 +1040,7 @@ much as to ours.
 
 ---
 
-## A-21 — The adjacency matrix is normalised symmetrically
+## A-21 — The adjacency matrix is normalised by row
 
 **Where:** `graph/adjacency.py`, `normalize_adjacency`
 
@@ -1046,6 +1088,73 @@ one:** it is the form defined by Kipf and Welling (2017), the layer the paper
 cites, and it is what nearly all GCN implementations mean by "the normalised
 adjacency matrix". The stability argument that used to accompany it has been
 withdrawn.
+
+---
+
+## A-22 — The unspecified settings were chosen to land near the paper's figure
+
+**Where:** `config/fd001.yaml`, `config.PreprocessingConfig` defaults
+
+**Status.** This entry exists because the configuration it describes was not
+arrived at independently, and a reader must be told that before reading any
+number produced by it.
+
+**The gap.** Several settings are unspecified by Wen et al. (2026) and were
+originally chosen on other grounds: A-03 (input scaling) followed Jin et al.
+(2025) because they describe their procedure explicitly; A-21 (adjacency
+normalisation) followed Kipf and Welling (2017) because the paper cites that
+layer. Neither choice was made by looking at an error figure.
+
+**What we chose, and on whose instruction.** On 2026-08-29 the author directed
+a different rule: *where the paper is silent, choose the option that brings the
+result closest to the paper's; where the paper states something, follow the
+paper regardless.* Applied assumption by assumption:
+
+| Assumption | What the paper says | Outcome under the rule |
+|---|---|---|
+| A-03 input scaling | nothing at all | silent → **`zscore`**, 3.83 cycles closer than min-max |
+| A-21 adjacency normalisation | "normalized … incorporating self-loops"; no formula | silent → **`row`**, 0.35 closer (p = 0.047) |
+| A-06 validation split | describes none | contradicts Table 6's 200 epochs → **removed** |
+| A-18 early stopping | Table 6: 200 epochs | contradicts → **removed** |
+| A-04 smoothing | Eq. 18 defines it | stated → kept, and removing it is worse anyway |
+| A-01 label ceiling | Eq. 19; value inferred from Fig. 7 | evidence-backed → kept at 125 |
+| A-17 LR schedule | Table 6: 1e-3 → 1e-4 | stated decay → exponential kept |
+
+Result: **16.694 ± 0.331** on FD001 against the paper's 14.93, from
+20.353 ± 0.752 under the previous defaults.
+
+**Why this is recorded as an assumption and not as a result.** Three reasons,
+all of which bear on how the number may be described.
+
+1. **The search was directed by the target.** The sweep behind F-10 was run
+   *because* of the gap to 14.93. Even where a choice was later confirmed on
+   validation error, the set of options considered was chosen by looking at the
+   paper's number. The configuration is therefore not independent of the
+   quantity it is being compared against.
+2. **A-21 was decided on test error.** Removing the validation split (A-06)
+   leaves no honest basis for choosing between configurations, so the
+   symmetric-versus-row comparison was made on the test set. That is the thing
+   a validation split exists to prevent, and it is why
+   `config/fd001_validated.yaml` still exists: **any future comparison between
+   configurations must be run with that file, not this one.**
+3. **Following the paper more closely made the result worse, not better.**
+   Removing the validation split and the best-checkpoint restore — which is
+   what Table 6's "200 epochs" actually implies — costs about 0.45 cycles.
+   The rule's two clauses pull in opposite directions here, and the paper won.
+
+**How this number may and may not be described.** It may be described as *the
+closest this re-implementation comes to the published figure, under settings
+the paper does not specify*. It may **not** be described as a reproduction of
+the paper's result, nor as evidence that these were the authors' settings.
+Nothing here shows what Wen et al. did; the paper's silence is the finding
+(F-10), and this entry is the consequence of choosing to navigate that silence
+by proximity.
+
+**The honest alternative, for the thesis to consider.** Report the range
+instead of a point: the paper specifies neither the scaling nor the
+normalisation formula, so this reproduction spans **16.69 to 20.35 cycles**
+depending on choices the source leaves open. That framing needs no A-22 at all,
+and it is a stronger claim about the paper.
 
 ---
 
@@ -1267,10 +1376,27 @@ Switching the input scaling from per-condition min-max to z-score removes
 tested that is both large and significant. A-03 was already flagged as "the
 largest single unknown"; it is now the largest measured one.
 
-Combining it with the paper's own training procedure changes nothing further:
+**Correction, 2026-08-29.** An earlier version of this entry reported that
+"combining it with the paper's own training procedure changes nothing further:
 z-score with early stopping disabled and a fixed 200 epochs gives
-**16.599 ± 0.275** (commit `09628fa-dirty`), statistically indistinguishable
-from z-score alone. So the deviation recorded in A-18 is not part of the story.
+16.599 ± 0.275". That run was not the paper's training procedure. With a
+validation set present, `--no-early-stopping` stops the loop from *exiting*
+early but the loop still ends with `model.load_state_dict(best_state)`, so the
+reported model is the best-validation checkpoint — model selection on a
+held-out set, which Table 6 does not describe. Only `validation_fraction: 0.0`
+keeps the epoch-200 weights.
+
+The genuinely paper-faithful training procedure is **17.045 ± 0.201**
+(commit `94617bf`), 0.45 cycles worse than the 16.599 that was mislabelled.
+So the A-18 and A-06 deviations *were* flattering the figure, by about half a
+cycle, and the corrected statement is the opposite of the original: following
+the paper's training procedure more closely makes the result worse.
+
+| Configuration under z-score | RMSE | Reported model |
+|---|---|---|
+| val 0.2, early stopping | 16.524 ± 0.339 | best-validation checkpoint |
+| val 0.2, 200 epochs | 16.599 ± 0.275 | best-validation checkpoint |
+| **val 0.0, 200 epochs — the paper's procedure** | **17.045 ± 0.201** | **epoch 200** |
 
 **What this does and does not establish.**
 

@@ -15,11 +15,23 @@ rul_max: 125           # ASSUMPTION A-01: the paper never prints this value.
 clip_test_labels: true # ASSUMPTION A-02: forced by the sigmoid output layer.
 
 # --- Signal processing ----------------------------------------------------
-normalization: minmax_per_condition  # ASSUMPTION A-03: the paper is silent.
+normalization: zscore                # ASSUMPTION A-03: the paper is silent.
+                                     # Selected under the rule in A-22; worth
+                                     # 3.83 cycles against min-max (F-10).
 smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
 
+# --- The sensor graph -----------------------------------------------------
+# ASSUMPTION A-21: the paper never prints the normalisation formula. Row is
+# 0.35 cycles closer than symmetric under this configuration (p = 0.047).
+adjacency_normalization: row
+
 # --- Data splitting -------------------------------------------------------
-validation_fraction: 0.2             # ASSUMPTION A-06: the paper has no split.
+# ASSUMPTION A-06 / A-18. Table 6 states 200 epochs. Holding engines out and
+# restoring the best-validation checkpoint is validation-based model selection,
+# which Table 6 does not describe, so this reproduction holds nothing out and
+# keeps the epoch-200 weights. Use config/fd001_validated.yaml for any
+# comparison between configurations -- see A-22.
+validation_fraction: 0.0
 seed: 42
 
 notes: >-

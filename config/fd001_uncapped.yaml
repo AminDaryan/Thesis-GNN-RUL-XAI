@@ -18,13 +18,13 @@ window_stride: 1
 rul_max: 125
 clip_test_labels: false      # <-- the only difference from fd001.yaml
 
-normalization: minmax_per_condition
+normalization: zscore
 smoothing_alpha: 0.5
 
 graph: physics
-adjacency_normalization: symmetric
+adjacency_normalization: row
 
-validation_fraction: 0.2
+validation_fraction: 0.0
 seed: 42
 
 notes: >-

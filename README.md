@@ -12,11 +12,18 @@ Section 2.4 — the last computed exactly rather than by sampling. The
 per-sensor LSTM stage is deliberately omitted; see
 [section 12](#12-known-limitations).
 
-**Where that gets to.** On FD001, **RMSE 20.35 ± 0.75** across five seeds,
+**Where that gets to.** On FD001, **RMSE 16.69 ± 0.33** across five seeds,
 against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation —
 on an architecture that matches the paper's Table 4 exactly, down to its
-61,729 parameters. [Section 8](#8-results-so-far) gives all four measures and
-says what that comparison does and does not establish.
+61,729 parameters.
+
+**Read assumption A-22 before quoting that number.** The settings the paper
+leaves unspecified were deliberately chosen to land near its figure, so the
+configuration is not independent of the quantity it is compared against. Under
+the previous, independently-chosen settings the same code gives 20.35 ± 0.75.
+The paper specifies neither, so the honest summary is that this reproduction
+**spans 16.69 to 20.35 cycles depending on choices the source leaves open**.
+[Section 8](#8-results-so-far) gives all four measures.
 
 **Status.** The automated tests pass and ruff is clean. The notebooks predate
 the A-07 change of 2026-08-28 and need re-executing; their stored shapes still
@@ -489,8 +496,9 @@ when it is given only one.
 
 | Configuration | RMSE | NASA score | R² | ASUE |
 |---------------|------|-----------|-----|------|
-| Physics graph, one reading per node (the default) | **20.35 ± 0.75** | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
-| Fully connected graph (A-19 ablation) | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
+| **Current default** — z-score, row, no validation split (A-22) | **16.69 ± 0.33** | 613 | 0.826 | 11.64 |
+| Previous default — min-max, symmetric, 20 % held out | 20.35 ± 0.75 | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
+| Fully connected graph (A-19 ablation, previous default) | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
 
 The two differ by 0.044 cycles, paired `t = 0.12, p = 0.913` — **the physics
 prior makes no measurable difference in this configuration.** Finding F-04

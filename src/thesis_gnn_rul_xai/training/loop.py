@@ -13,14 +13,34 @@ windows, take gradient steps in batches of 32, then measure the error on the
 validation engines without updating anything. The validation figure is what
 decides when to stop.
 
-Targets are divided by the ceiling
-----------------------------------
-The network ends in a sigmoid, so its output lies in ``[0, 1]``. Labels
-measured in flight cycles cannot be reached by such a layer, so training
-targets are divided by ``rul_max`` and predictions are multiplied back
-(assumption A-13). The loss is therefore computed on normalised values, while
-every number reported to a human is in cycles, which is the only unit anyone
-can reason about.
+Targets are scaled to [0, 1]; results are reported in cycles
+------------------------------------------------------------
+The network ends in a sigmoid, so its output can only lie in ``[0, 1]``. A
+label measured in flight cycles is out of reach for such a layer: no setting of
+the weights makes a sigmoid emit 40. Two conversions therefore bracket the
+model (assumption A-13). On the way in, ``_as_loader`` divides every target by
+``rul_max`` before the loss ever sees it; on the way out,
+``ESTGNN.predict_cycles`` multiplies the sigmoid back by the same constant, so
+``predict`` returns cycles.
+
+Worked example, for a single window whose true remaining life is 40 cycles,
+with the default ``rul_max = 125``::
+
+    label from the preprocessor   40                        cycles
+    target given to the loss      40 / 125 = 0.32           normalised
+    what the sigmoid emits        0.36                      normalised
+    what MSELoss sees             (0.36 - 0.32)^2 = 0.0016  normalised
+    prediction handed back        0.36 * 125 = 45           cycles
+    error a reader is shown       45 - 40 = 5               cycles
+
+Because the constant is the same for every window, the change of unit cannot
+change any comparison: an RMSE in cycles is exactly ``rul_max`` times the
+normalised RMSE. Each epoch of the history accordingly records both
+``validation_loss`` (mean squared error, normalised) and
+``validation_rmse_cycles`` (root mean squared error, in cycles), and
+``sqrt(validation_loss) * rul_max`` reproduces the second from the first. The
+two are kept apart for readability rather than arithmetic: 0.0016 is not a
+quantity anyone can judge, and "five cycles of remaining life" is.
 
 The distinction that matters most in this file
 ----------------------------------------------
