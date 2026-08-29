@@ -85,8 +85,11 @@ class PreprocessingConfig:
     # docs/ASSUMPTIONS.md. Leave this on "physics" for the paper's own graph.
     graph: SensorGraph = "physics"
     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
-    # formula and two forms fit what it says. Rows measured 0.35 cycles closer
-    # than the alternative (p = 0.047). Written up in docs/ASSUMPTIONS.md.
+    # formula and two forms fit what it says. With nothing held back, as below,
+    # rows measured 0.35 cycles closer than the alternative over five seeds
+    # (paired p = 0.047). That advantage does not survive holding engines out,
+    # so it is a fact about this configuration only. Written up as A-21 in
+    # docs/ASSUMPTIONS.md, with the table of all four comparisons.
     adjacency_normalization: AdjacencyNormalization = "row"
 
     # --- Holding engines back ------------------------------------------------

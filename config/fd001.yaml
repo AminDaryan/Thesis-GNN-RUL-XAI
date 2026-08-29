@@ -21,8 +21,10 @@ normalization: zscore                # ASSUMPTION A-03: the paper is silent.
 smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
 
 # --- The sensor graph -----------------------------------------------------
-# ASSUMPTION A-21: the paper never prints the normalisation formula. Row is
-# 0.35 cycles closer than symmetric under this configuration (p = 0.047).
+# ASSUMPTION A-21: the paper never prints the normalisation formula. With
+# nothing held back, as below, row is 0.35 cycles closer than symmetric over
+# five seeds (paired p = 0.047, two-sided). That advantage does NOT survive
+# holding engines out -- see A-21's table before quoting it more widely.
 adjacency_normalization: row
 
 # --- Data splitting -------------------------------------------------------

@@ -42,7 +42,7 @@ identifier below.
 | A-18 | Early stopping | None; trains a fixed 200 epochs | **Disabled in the reproduction** (A-22); available with a validation split |
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
-| A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.35 cycles closer (p = 0.047), selected under A-22 |
+| A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.35 cycles closer *with nothing held back* (p = 0.047), selected under A-22 |
 
 ---
 
@@ -1050,43 +1050,83 @@ balanced feature aggregation across different node degrees". The formula itself
 is never printed. Searching the paper for `D`, "degree matrix" or any symmetric
 normalisation returns nothing.
 
-**What we chose.** The symmetric form of Kipf and Welling (2017),
-`D^(-1/2) (A + I) D^(-1/2)`.
+**What we chose.** The **row** form, `D^(-1)(A + I)`, selected under A-22.
 
-**Why.** Two forms fit the paper's description equally well. The symmetric one
-above, and the row-normalised `D^(-1) (A + I)`, which also adds self-loops and
-also balances across node degrees — it simply averages over each node's
-neighbourhood instead of taking a geometric mean of the two degrees. The
-symmetric form is chosen because it is the one defined by the layer the paper
-cites, and because it is what nearly all GCN implementations mean by "the
-normalised adjacency matrix".
+Note where that choice lives. `normalize_adjacency` still *defaults* to the
+symmetric form, because that is the one Kipf and Welling define and the
+function is a general tool. The project's default is set in
+`config.PreprocessingConfig.adjacency_normalization` and in the YAML files, and
+it is `row`.
 
-**How much it matters — re-measured 2026-08-28, and both earlier grounds have
-gone.** Five seeds of each form under the current architecture, everything else
-identical (`scripts/train.py --seeds 5 --adjacency-norm symmetric|row`),
-commit `cdcc827-dirty`:
+**Why.** Two forms fit the paper's description equally well. The symmetric
+`D^(-1/2)(A + I)D^(-1/2)`, and the row-normalised `D^(-1)(A + I)`, which also
+adds self-loops and also balances across node degrees — it simply averages over
+each node's neighbourhood instead of taking a geometric mean of the two
+degrees. The paper favours neither, so the choice falls to A-22's rule: where
+the paper is silent, take the option that lands closest to the paper's own
+figure. Under the configuration this project reports, that is row.
 
-| Normalisation | RMSE | NASA score | R-squared | ASUE |
-|---------------|------|-----------|-----------|------|
-| symmetric `D^(-1/2)(A+I)D^(-1/2)` (default) | 20.353 ± 0.752 | 827 ± 85 | 0.742 | 15.67 |
-| row `D^(-1)(A+I)` | **19.992 ± 0.416** | 797 ± 84 | 0.751 | 15.52 |
+**How much it matters — and it depends entirely on the configuration.** Five
+seeds of each form, everything else identical, paired by seed on test RMSE:
 
-Row is **better** by 0.360 cycles, paired **t = −2.16, p = 0.097** — still not
-significant at the 5 % level, but marginal, and pointing the *other way* from
-before. And the stability argument has inverted outright: **symmetric is now
-the more variable of the two**, sd 0.752 against 0.416, a ratio of 1.81.
+| Configuration | row | symmetric | better | paired t | p (two-sided) |
+|---|---|---|---|---|---|
+| **current default** — z-score, nothing held back | **16.694 ± 0.331** | 17.045 ± 0.201 | **row by 0.352** | −2.830 | **0.047** |
+| z-score, 20 % held back, early stopping | 16.616 ± 0.289 | 16.524 ± 0.339 | symmetric by 0.091 | +0.550 | 0.611 |
+| z-score, 20 % held back, no early stopping | 16.616 ± 0.289 | 16.599 ± 0.275 | symmetric by 0.017 | +0.094 | 0.930 |
+| superseded — min-max, 20 % held back (`cdcc827-dirty`) | 19.992 ± 0.416 | 20.353 ± 0.752 | row by 0.360 | −2.160 | 0.097 |
 
-Under the removed `window` mode this entry recorded the opposite on both
-counts: symmetric better by 0.29 cycles (p = 0.20) and 6.7 times more stable.
-Neither of those survives the A-07 correction. What that really shows is that
-**this comparison is not robust to the rest of the architecture**, so neither
-result should be quoted as a general fact about the two formulas.
+**What that table says.** Row's advantage exists **only when nothing is held
+back**, which is the configuration the project reports, and it is marginal even
+there. Hold 20 % of the engines back and the difference vanishes into noise and
+changes sign, whether or not early stopping is on. The superseded min-max row
+points the same way as the default but does not reach significance.
 
-**Symmetric is kept as the default on one ground only, and it is the right
-one:** it is the form defined by Kipf and Welling (2017), the layer the paper
-cites, and it is what nearly all GCN implementations mean by "the normalised
-adjacency matrix". The stability argument that used to accompany it has been
-withdrawn.
+So: row is selected under A-22 for the configuration in `config/fd001.yaml`,
+and **that selection must not be quoted as a general fact about the two
+formulas.** It is a fact about one configuration, which is what working rule 3
+requires be said. The earlier claim that symmetric was the more *stable* of the
+two has been withdrawn outright — under min-max the ratio was 1.81 the other
+way, and under z-score symmetric is the tighter of the two (0.201 against
+0.331) while being the worse of the two.
+
+**A correction to the audit of 2026-08-29.** Its item 3 reported that
+`p = 0.047` "is not reproducible: two-sided 0.0968, one-sided 0.0484", and that
+under z-score "the sign reverses — symmetric better by 0.091, p = 0.611". Both
+halves compare the wrong runs. The 0.0968 is the **min-max** comparison, the
+last row of the table above, which is what this entry's own body used to
+describe. The 0.091 at p = 0.611 is the **20 %-held-back** configuration, the
+second row — not the default that `config/fd001.yaml` describes and that the
+disputed comment sits in. Recomputed from the stored runs, `p = 0.047` is
+exactly reproducible for the default: 0.0473, two-sided, no one-sided test
+needed. The audit's conclusion that A-22's rule now selects symmetric does not
+follow.
+
+What the audit was right about is that `config/fd001_validated.yaml` carried
+the same comment, and there it *was* wrong: that file holds engines back, so
+"under this configuration" the figures are the second row, not the first. That
+comment has been corrected.
+
+All four rows are reproducible from the stored runs:
+
+```python
+import pandas as pd, yaml
+from scipy import stats
+
+def compare(row_dir, symmetric_dir):
+    r = pd.read_csv(f"reports/{row_dir}/results.csv")
+    s = pd.read_csv(f"reports/{symmetric_dir}/results.csv")
+    m = r.merge(s, on="seed", suffixes=("_r", "_s"))
+    return (m["rmse_r"] - m["rmse_s"]).mean(), *stats.ttest_rel(m["rmse_r"], m["rmse_s"])
+
+compare("fd001_physics_row_cap_5seed_varsplit_cfgee5482_6a7af8c_20260829T125025Z",
+        "fd001_physics_symmetric_cap_5seed_varsplit_noearlystop_cfgb017ba_94617bf_20260828T164621Z")
+# (-0.352, -2.830, 0.0473)
+```
+
+The row run above is the clean `6a7af8c` one whose five results are
+bit-identical to the `94617bf-dirty` run of the same settings, so nothing here
+rests on an unidentifiable tree.
 
 ---
 
@@ -1112,7 +1152,7 @@ paper regardless.* Applied assumption by assumption:
 | Assumption | What the paper says | Outcome under the rule |
 |---|---|---|
 | A-03 input scaling | nothing at all | silent → **`zscore`**, 3.83 cycles closer than min-max |
-| A-21 adjacency normalisation | "normalized … incorporating self-loops"; no formula | silent → **`row`**, 0.35 closer (p = 0.047) |
+| A-21 adjacency normalisation | "normalized … incorporating self-loops"; no formula | silent → **`row`**, 0.35 closer with nothing held back (p = 0.047) |
 | A-06 validation split | describes none | contradicts Table 6's 200 epochs → **removed** |
 | A-18 early stopping | Table 6: 200 epochs | contradicts → **removed** |
 | A-04 smoothing | Eq. 18 defines it | stated → kept, and removing it is worse anyway |
