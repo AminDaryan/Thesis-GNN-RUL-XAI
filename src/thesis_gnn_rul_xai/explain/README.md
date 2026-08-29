@@ -76,11 +76,19 @@ by an uninformative stand-in, and the choice of stand-in decides what the
 resulting numbers mean.
 
 The paper does not say what stand-in it uses. We replace an absent sensor's
-whole 30-cycle window with the average window of that sensor across the
-training set, so the model sees "this sensor is behaving typically" rather than
-"this sensor reads zero". Zero is not neutral: after the min-max rescaling it
-is the lowest value that sensor ever recorded, which is a strong and misleading
-signal. That choice is recorded as A-20 in `docs/ASSUMPTIONS.md`.
+reading with that sensor's average across the training windows, so the model
+sees "this sensor is behaving typically" rather than some arbitrary value. That
+choice is recorded as A-20 in `docs/ASSUMPTIONS.md`.
+
+**Two cautions about A-20's write-up as it currently stands.** It describes the
+stand-in as replacing "an absent sensor's whole 30-cycle window". Since the A-07
+correction each node carries a single number, so it replaces one value, not
+thirty. And its argument for preferring the average over zero — that zero is
+"a strong and misleading signal, the lowest value that sensor ever recorded" —
+is a statement about **min-max** rescaling. The default is now z-score, where
+zero *is* the training mean and is therefore close to harmless. The choice of
+stand-in still stands; the reason given for it does not, under the current
+default. A-20 has not been re-measured since the scaling changed.
 
 So a Shapley value here answers a specific question: *how much did knowing this
 sensor's actual readings, rather than a typical engine's, change the

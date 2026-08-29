@@ -173,12 +173,12 @@ example there.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 167 tests; must all pass
+pytest                # 169 tests; must all pass
 ```
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing, leaving
-103 passing and 64 skipped. The model, training and explanation tests
+103 passing and 66 skipped. The model, training and explanation tests
 additionally need PyTorch; without it they are not collected and 117 still
 run.
 

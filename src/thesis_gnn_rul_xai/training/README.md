@@ -190,9 +190,13 @@ how the rate travels between them. `lr_schedule` offers four ways:
   epoch, chosen so the final epoch lands exactly on `final_learning_rate`.
 - `"cosine"` — follow a cosine curve between the two values: slow at first,
   fastest in the middle, slow again at the end.
-- `"plateau"` — drop the rate by a factor of ten only when the validation score
-  stops improving, never going below `final_learning_rate`. This needs a
-  validation set; without one, nothing ever triggers it.
+- `"plateau"` — drop the rate by a factor of ten only when the held-out error
+  stops improving, never going below `final_learning_rate`. Unlike the other
+  three it reacts to a measurement rather than to the epoch number, so it needs
+  something to measure. **With nothing held back it never fires at all**, and
+  the run finishes at its starting rate of 1e-3 instead of the 1e-4 Table 6
+  gives. Since the default configuration holds nothing back, the loop warns
+  when you ask for this combination rather than letting the run look normal.
 - `"constant"` — never change it. Included so the effect of the schedule can be
   measured.
 

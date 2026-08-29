@@ -6,6 +6,8 @@ check that the machinery is correct rather than that the model is good.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 
@@ -210,3 +212,32 @@ def test_evaluate_model_returns_the_four_measures(prepared):
     result = evaluate_model(model, prepared.test)
     assert {"rmse", "score", "r2", "asue"} <= set(result)
     assert result["n_engines"] == len(prepared.test)
+
+
+# --- the plateau schedule needs something to watch ----------------------
+
+
+def test_plateau_without_a_held_out_set_leaves_the_learning_rate_alone(prepared):
+    """The plateau schedule only moves when handed a held-out error.
+
+    With nothing held back it never steps, so the run finishes at its starting
+    rate instead of the 1e-4 Table 6 gives. That is worth knowing about, so the
+    loop warns rather than letting it pass in silence.
+    """
+    model = _model(prepared)
+    config = TrainingConfig(epochs=3, lr_schedule="plateau", device="cpu")
+
+    history = train(model, prepared.train, None, config)
+
+    rates = history.epochs["learning_rate"].tolist()
+    assert rates == [config.learning_rate] * 3
+
+
+def test_the_loop_warns_when_plateau_can_never_fire(prepared, caplog):
+    model = _model(prepared)
+    config = TrainingConfig(epochs=2, lr_schedule="plateau", device="cpu")
+
+    with caplog.at_level(logging.WARNING):
+        train(model, prepared.train, None, config)
+
+    assert any("never reach" in record.getMessage() for record in caplog.records)

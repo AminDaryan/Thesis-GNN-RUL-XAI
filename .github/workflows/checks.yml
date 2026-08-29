@@ -8,7 +8,7 @@
 # give. PyTorch is installed, so the model, training and explanation tests do
 # run; only the data-dependent ones are skipped.
 #
-# That leaves 103 tests passing and 64 skipped. What survives is the part that
+# That leaves 103 tests passing and 66 skipped. What survives is the part that
 # can be checked without engines: the sensor graph and everything derived from
 # it, the four evaluation measures, the piecewise label, the configuration
 # objects, the Shapley properties on small synthetic graphs, and the worked

@@ -211,6 +211,20 @@ def train(
     scheduler = _build_scheduler(optimiser, config)
     is_plateau = isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
 
+    # The plateau schedule only moves when it is handed a held-out error, and
+    # below there is nothing to hand it. Without this warning the run finishes
+    # at its starting learning rate, never reaching the final rate Table 6
+    # gives, and nothing in the output or the run directory name says so.
+    if is_plateau and not has_validation:
+        logger.warning(
+            "lr_schedule='plateau' reacts to the held-out error, and nothing is "
+            "held out. The learning rate will stay at %.1e for the whole run and "
+            "never reach the %.1e of Table 6. Use 'exponential' or 'cosine' to "
+            "decay without a held-out set, or hold engines back.",
+            config.learning_rate,
+            config.final_learning_rate,
+        )
+
     rows: list[dict[str, float]] = []
     best_rmse = math.inf
     best_epoch = 0

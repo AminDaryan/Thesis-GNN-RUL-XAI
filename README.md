@@ -793,7 +793,7 @@ ruff check .               # style, unused imports, dead code
 
 Every push also runs `ruff check` and `pytest` on GitHub Actions, against
 Python 3.10 and 3.13 — see `.github/workflows/checks.yml`. The runner has no
-NASA data, so 103 tests pass there and 64 skip themselves. A green run means
+NASA data, so 103 tests pass there and 66 skip themselves. A green run means
 nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
