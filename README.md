@@ -474,7 +474,7 @@ arrays into a result:
 | # | Stage | What happens | Where |
 |---|-------|--------------|-------|
 | 9 | Build the network | Three graph convolution layers of widths 32, 64 and 32, then two fully connected layers ending in a sigmoid — the paper's Table 4, transcribed layer by layer | `models/estgnn.py` |
-| 10 | Train | Adam, 200 epochs, batch size 32, learning rate 1e-3 decaying to 1e-4, mean squared error — the paper's Table 6 | `training/loop.py` |
+| 10 | Train | Adam, 200 epochs, batch size 32, learning rate 1e-3 decaying to 1e-4, mean squared error — the paper's Table 6 | `training/run.py` |
 | 11 | Score | RMSE, the NASA score, R² and ASUE, on the 100 test engines | `evaluation/metrics.py` |
 | 12 | Explain | Exact Shapley values for the 14 sensors, recomputed at every cycle — the paper's Section 2.4 | `explain/shap.py` |
 
@@ -639,7 +639,7 @@ importable and lists which names are public.
 | `data/` | How do raw text files become model input? | `smoothing.py`, the noise filter |
 | `graph/` | Which sensors are connected to which? | `adjacency.py`, the paper's Table 3 |
 | `models/` | What is the network? | `estgnn.py`, the paper's Table 4 |
-| `training/` | How is the network fitted to the data? | `loop.py`, the paper's Table 6 |
+| `training/` | How is the network fitted to the data? | `run.py`, the paper's Table 6 |
 | `evaluation/` | How good is the result? | `metrics.py`, the four measures |
 | `explain/` | Which sensor drove this prediction? | `shap.py`, exact Shapley values |
 | `utils/` | Housekeeping the others share | `paths.py`, `seeding.py` |
@@ -738,7 +738,7 @@ the layers above, so read them last and they will contain no surprises.
 | File | What it is |
 |------|------------|
 | `data/pipeline.py` | the eight preprocessing steps in order |
-| `training/loop.py` | the training loop |
+| `training/run.py` | the training loop |
 | `explain/shap.py` | the Shapley values |
 
 **Four shortcuts that save more time than they cost.**

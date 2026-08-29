@@ -22,7 +22,7 @@ pip install -e ".[model]"
 | File | What it is |
 |------|------------|
 | `config.py` | `TrainingConfig`, the dataclass holding every setting for one run, plus `load_training_config` for reading one back from YAML. |
-| `loop.py` | The training loop (`train`), the prediction helper (`predict`), the scoring wrapper (`evaluate_model`), the device chooser (`resolve_device`), and `TrainingHistory`, the record of a finished run. |
+| `run.py` | Everything involved in running the model: the training loop (`train`), the prediction helper (`predict`), the scoring wrapper (`evaluate_model`), the device chooser (`resolve_device`), and `TrainingHistory`, the record of a finished run. |
 | `__init__.py` | Re-exports the names above. |
 
 ## What one run does
@@ -49,7 +49,8 @@ and `train` is called with no validation set. When that happens:
 - nothing is scored between epochs;
 - nothing can stop early — every epoch in `epochs` runs;
 - the weights you get back are the **last epoch's**;
-- the recorded best validation error is `nan`, because there was none.
+- the recorded best validation error is `nan`, because there was none, and
+  `summary()` says so in words rather than printing `nan` at you.
 
 The loop logs a warning when it is in this state, because with no held-out data
 there is no honest way to choose between two settings.
@@ -116,6 +117,69 @@ squared error, normalised) and `validation_rmse_cycles` (root mean squared
 error, in cycles) — and `sqrt(validation_loss) * rul_max` reproduces the second
 from the first. They are kept apart for readability, not arithmetic: 0.0016 is
 not a quantity anyone can judge, and "five cycles of remaining life" is.
+
+## Getting the examples into PyTorch: `_as_loader`
+
+This is the small private function that sits between the preprocessing half of
+the project and the training loop. It is worth a section because it does three
+unrelated jobs in six lines, and because one of them is a judgement call.
+
+The preprocessing gives you a `WindowedDataset`, which is plain NumPy arrays.
+The training loop needs batches of PyTorch tensors, with labels the network can
+actually produce. `_as_loader` bridges the two.
+
+**One — convert the arrays into tensors.**
+
+```python
+features = torch.from_numpy(np.ascontiguousarray(dataset.features)).float()
+```
+
+`torch.from_numpy` wraps a NumPy array as a tensor, sharing the same memory
+rather than copying it where it can. It can only do that when the array is one
+unbroken run of memory, and slicing an array does not guarantee that:
+`subset_by_units`, which is how the held-back engines are separated, leaves
+behind a view whose rows are scattered. `np.ascontiguousarray` compacts such an
+array into a fresh contiguous one, and does nothing at all when the array is
+already contiguous. `.float()` then pins the type to 32-bit floating point,
+which is what the network's weights are.
+
+**Two — shrink the labels to fit the last layer.**
+
+```python
+targets = targets / float(rul_max)
+```
+
+The labels arrive in flight cycles, from 0 to 125. The network ends in a
+sigmoid, which can only ever emit a number between 0 and 1, so no setting of
+the weights could make it produce 40. Dividing by the ceiling puts the labels
+where the output can reach them. `ESTGNN.predict_cycles` multiplies by the same
+constant on the way back out, so everything a reader sees is in cycles again.
+
+The constant is the same for every window, so this cannot change any
+comparison. It is nonetheless a decision, because the paper never states it:
+**A-13** in `docs/ASSUMPTIONS.md`.
+
+**Three — pair each window with its label, and hand out batches.**
+
+```python
+DataLoader(TensorDataset(features, targets), batch_size=..., shuffle=..., ...)
+```
+
+`TensorDataset` zips the two together so that item *i* is window *i* with label
+*i*, and they can never drift apart. `DataLoader` is what the training loop
+iterates over; it slices that pairing into batches. Three of its settings
+matter here:
+
+- **`shuffle`** is `True` for training, so the examples arrive in a different
+  order every epoch and the network cannot learn anything from the order
+  itself. It is `False` everywhere else, where the order is wanted intact.
+- **`generator`** is the seeded source of randomness used for that shuffling.
+  Passing it is what makes the batch order repeatable from one run to the next.
+- **`drop_last=False`** keeps the final short batch. With 1 000 examples and a
+  batch size of 32 the last batch holds 8, not 32; the usual alternative,
+  `drop_last=True`, would throw those 8 away every epoch. Discarding real
+  training data to keep the batches a tidy shape is not a trade this project
+  makes.
 
 ## The learning-rate schedule
 
@@ -224,7 +288,10 @@ hard-to-find cause of wrong results.
 | `seconds` | How long it took. |
 | `config` | The settings used, so a result can be traced back to them. |
 
-`summary()` returns one paragraph describing the run. `save(directory)` writes
+`summary()` returns one paragraph describing the run, worded differently
+depending on whether any engines were held back — with none, there is no best
+epoch to report, because no epoch was chosen over any other. `save(directory)`
+writes
 `training_history.csv` and `training_config.yaml` into that folder.
 
 ### The four functions

@@ -24,7 +24,13 @@ from ..models.estgnn import ESTGNN
 from ..utils.logging_setup import get_logger
 from .config import TrainingConfig
 
-__all__ = ["TrainingHistory", "predict", "resolve_device", "train"]
+__all__ = [
+    "TrainingHistory",
+    "evaluate_model",
+    "predict",
+    "resolve_device",
+    "train",
+]
 
 logger = get_logger(__name__)
 
@@ -62,11 +68,20 @@ class TrainingHistory:
     def summary(self) -> str:
         """One paragraph describing the run, to print when it finishes."""
         reason = "early stopping" if self.stopped_early else "the epoch limit"
-        return (
+        opening = (
             f"Trained for {len(self.epochs)} epoch(s) in {self.seconds:.1f}s, "
-            f"ending on {reason}. Best validation error {self.best_validation_rmse:.3f} "
-            f"cycles at epoch {self.best_epoch}. The model holds the weights "
-            f"from that epoch."
+            f"ending on {reason}."
+        )
+        if math.isnan(self.best_validation_rmse):
+            return (
+                f"{opening} No engines were held back, so nothing was measured "
+                f"between epochs and no epoch was chosen over any other. The "
+                f"model holds the weights from the last one."
+            )
+        return (
+            f"{opening} At its best, epoch {self.best_epoch}, the model was out "
+            f"by {self.best_validation_rmse:.3f} flight cycles on the engines "
+            f"held back from training. It holds the weights from that epoch."
         )
 
     def save(self, directory: str | Path) -> Path:
@@ -115,7 +130,12 @@ def _as_loader(
     shuffle: bool,
     generator: torch.Generator | None = None,
 ) -> DataLoader:
-    """Hand the windows to PyTorch, with the labels scaled to lie in 0 to 1."""
+    """Repackage the examples as something PyTorch can hand out in batches.
+
+    Three separate jobs: convert the arrays to tensors, shrink the labels into
+    the range the last layer can reach, and pair each window with its label.
+    README.md in this folder walks through all three.
+    """
     features = torch.from_numpy(np.ascontiguousarray(dataset.features)).float()
     targets = torch.from_numpy(np.ascontiguousarray(dataset.targets)).float()
     # ASSUMPTION A-13: divide the labels by rul_max so they fit the range the

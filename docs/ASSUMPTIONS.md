@@ -550,7 +550,7 @@ so the difference can be measured rather than argued about.
 
 ## A-13 — Targets are divided by the label ceiling for training
 
-**Where:** `training/loop.py`, `_as_loader` divides the targets;
+**Where:** `training/run.py`, `_as_loader` divides the targets;
 `models/estgnn.py`, `ESTGNN.predict_cycles` multiplies the prediction back.
 
 **The gap.** The paper's final layer is a sigmoid, and the text says it

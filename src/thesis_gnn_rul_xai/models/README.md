@@ -143,7 +143,7 @@ Two things follow, and both matter:
    measured in cycles could never reach a label of 40, let alone 125. The
    division is not a preference; it is the only scaling that puts the targets
    where the output layer can reach them. That decision is recorded as **A-13**
-   in `docs/ASSUMPTIONS.md`. The division happens in `training/loop.py`; the
+   in `docs/ASSUMPTIONS.md`. The division happens in `training/run.py`; the
    multiplication back into cycles happens here, in `ESTGNN.predict_cycles`.
 
 2. **The model can never predict a remaining life above `rul_max`, for any

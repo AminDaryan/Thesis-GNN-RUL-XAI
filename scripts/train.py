@@ -216,13 +216,26 @@ def main() -> int:
     table = pd.DataFrame(runs)
     columns = ["rmse", "score", "r2", "asue"]
 
+    # With no engines held back -- the default -- nothing was measured between
+    # epochs, so validation_rmse is NaN for every seed and best_epoch is just
+    # the epoch limit repeated. Both columns stay in results.csv, where NaN
+    # honestly means "not measured", but printing them invites the reader to
+    # compare numbers that were never computed.
+    held_back = table["validation_rmse"].notna().any()
+    shown = ["seed"] + (["best_epoch", "validation_rmse"] if held_back else []) + columns
+
     print(f"\n{'=' * 72}")
     print(f"{preprocessing.subset}, {preprocessing.graph} graph, "
           f"{preprocessing.adjacency_normalization} normalisation, "
           f"{arguments.seeds} seed(s), commit {commit}")
     print("=" * 72)
-    print(table[["seed", "best_epoch", "validation_rmse", *columns]].to_string(
-        index=False, float_format=lambda v: f"{v:.3f}"))
+    print(table[shown].to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    if not held_back:
+        print(
+            "\nNo engines were held back, so no epoch was chosen over any other "
+            "and\nthere is no validation error to report. Every run above is the "
+            "state of\nthe model at the epoch limit."
+        )
 
     if arguments.seeds > 1:
         print("\nmean +/- standard deviation across seeds:")
