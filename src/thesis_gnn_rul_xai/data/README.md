@@ -421,9 +421,12 @@ reasoning.
   reported error favourably, so it must be stated whenever a number from this
   project is compared with a published one. Recorded as **A-02**.
 - **How the sensors are rescaled.** The paper never describes how it scales its
-  inputs and never mentions operating conditions in its preprocessing. The whole
-  of `SensorNormalizer` is a substitution taken from Jin et al. (2025), not a
-  reconstruction of what Wen et al. did. Recorded as **A-03**.
+  inputs and never mentions operating conditions in its preprocessing, so
+  nothing in `SensorNormalizer` reconstructs what Wen et al. did. The default
+  is the **z-score**, chosen under the rule in A-22; the per-condition min-max
+  option follows Jin et al. (2025) and was the default until 2026-08-29. The
+  difference between the two is 3.83 cycles, the largest measured effect of any
+  choice in this project. Recorded as **A-03**, measured in **F-10**.
 - **The smoothing parameter is 0.5.** Section 3.2.3 of the paper contradicts
   itself here. It states that "S(t-1) … is equal to 0.5 in this study", which
   attaches 0.5 to the previous smoothed value rather than to `alpha`. A fixed

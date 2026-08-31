@@ -101,10 +101,13 @@ class OperatingConditionEncoder:
         return self.fit(frame).transform(frame)
 
 
-# ASSUMPTION A-03: everything in this class is a substitution. Wen et al.
+# ASSUMPTION A-03: everything in this class is our own choice. Wen et al.
 # (2026) never describe how they put their sensors on a comparable scale, so
-# this follows Jin et al. (2025) instead. It is not a reconstruction of what
-# the original authors did. Written up in docs/ASSUMPTIONS.md.
+# nothing here reconstructs what they did. The default is the z-score, picked
+# under the rule in A-22; the per-condition min-max option follows Jin et al.
+# (2025) and was the default until 2026-08-29. Written up in
+# docs/ASSUMPTIONS.md, where it is measured as the largest single effect in
+# the project.
 @dataclass
 class SensorNormalizer:
     """Rescales the sensors, using numbers measured on the training engines only.

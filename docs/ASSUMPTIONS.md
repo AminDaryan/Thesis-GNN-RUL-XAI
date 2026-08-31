@@ -122,7 +122,7 @@ must be re-measured whenever the architecture changes.)
 
 ---
 
-## A-03 — Sensor values are rescaled with per-condition min-max scaling
+## A-03 — Sensor values are rescaled with z-scores
 
 **Where:** `config.PreprocessingConfig.normalization`, `data/normalization.py`
 
@@ -131,23 +131,43 @@ words "normalisation", "min-max" and "standardisation" do not appear in
 connection with the inputs, and operating conditions are never mentioned in the
 preprocessing section.
 
-**What we chose.** Min-max scaling to the interval [0, 1], computed separately
-for each operating condition, with all statistics learned from the training
-engines only.
+**What we chose.** The **z-score**: subtract the mean and divide by the
+standard deviation, with both learned from the training engines only. Selected
+under A-22 on 2026-08-29.
+
+**What was chosen before, and why it changed.** Until then this entry recorded
+min-max scaling to the interval [0, 1], computed separately for each operating
+condition, taken from Jin et al. (2025). The argument for it was that it fits a
+sigmoid output layer, which already assumes targets in [0, 1]. That argument is
+about the *targets*, which are scaled separately under A-13, and it never
+applied to the inputs. When the two were finally measured against each other
+the z-score won by 3.83 cycles — the largest effect of any choice in this
+project — and A-22's rule selected it. The measurement is below; the reasoning
+in the rest of this entry is unchanged, because the *gap* it describes and the
+honesty note both apply whichever option is taken.
+
+`minmax_per_condition` remains available and remains the right choice to reach
+for on FD002 and FD004, where several operating conditions coexist. See the
+note at the end.
 
 **Why.** Some form of rescaling is unavoidable: the 14 sensors differ by three
 orders of magnitude, and a neural network trained on unscaled inputs of that
-kind does not converge usefully. Among the possible choices, this one is taken
-from Jin et al. (2025), who study the same dataset with a comparable
-graph-based architecture and describe their procedure explicitly. Min-max
-scaling to [0, 1] is also the choice that fits the rest of the architecture:
-the sigmoid output layer already assumes targets in [0, 1].
+kind does not converge usefully. The paper offers nothing to reconstruct, so
+the choice falls to A-22's rule — take the option that lands closest to the
+paper's own figure — and that rule selects the z-score by a wide margin. The
+z-score also has the property that it does not bound the values, so a test
+reading outside the training range is represented faithfully instead of being
+flattened onto 0 or 1.
 
-**Honesty note.** This is a *substitution from a related paper*, not a
-reconstruction of what Wen et al. did. Their procedure is unknown. On FD001
-there is only one operating condition, so the per-condition variant and the
-global variant give identical results; the distinction becomes important only
-when FD002 and FD004 are added.
+**Honesty note.** Whichever option is in force, this is *our choice*, not a
+reconstruction of what Wen et al. did. Their procedure is unknown. Until
+2026-08-29 the choice was at least borrowed from a paper on the same dataset;
+now it is selected by A-22's rule against the paper's own reported figure,
+which is a weaker provenance, not a stronger one — see A-22's caveats.
+
+On FD001 there is only one operating condition, so the per-condition min-max
+variant and the global one give identical results; the distinction becomes
+important only when FD002 and FD004 are added.
 
 **How much it matters — measured, and it is the largest effect in the project.**
 The claim that once stood here, "on FD001, little, as long as some sensible
@@ -156,17 +176,16 @@ scaling is used", is wrong. Five seeds each, everything else identical
 
 | Scaling | RMSE on FD001 |
 |---------|---------------|
-| `minmax_per_condition` (the default, from Jin et al.) | 20.353 ± 0.752 |
-| `zscore` | **16.524 ± 0.339** |
+| `minmax_per_condition` (from Jin et al., the default until 2026-08-29) | 20.353 ± 0.752 |
+| `zscore` (**the default now**) | **16.524 ± 0.339** |
 
 **3.83 cycles, paired t-test p = 0.0005.** That is 71 % of the entire gap to
 the paper's 14.93, and it is larger than every other assumption tested
 combined. See F-10 for the full sweep.
 
 This does not tell us what Wen et al. did — they describe no scaling at all —
-but it does mean **the substitution recorded in this entry is the single
-biggest reason a number from this code cannot be compared with a published
-one.** That sentence belongs beside any result quoted from this project.
+but it does mean **the choice recorded in this entry is the single biggest
+reason a number from this code cannot be compared with a published one.** That sentence belongs beside any result quoted from this project.
 
 On FD002 and FD004, where the per-condition variant stops being equivalent to
 the global one, the effect is likely larger still.
@@ -997,8 +1016,8 @@ the printed architecture and that smuggles in a linear temporal encoder — so
 it was never a candidate reproduction of the ablation, whatever its accuracy.
 
 What remains to explain the 5.42 cycles is the documented assumptions, in
-roughly descending order of suspicion: A-03 (input scaling, substituted
-wholesale from Jin et al.), A-13/A-14/A-17 (target scaling, initialisation,
+roughly descending order of suspicion: A-03 (input scaling, which the paper
+never describes at all), A-13/A-14/A-17 (target scaling, initialisation,
 learning-rate schedule), A-18 (early stopping, an addition), and A-02 (label
 capping, measured at 1.311 cycles and in the *favourable* direction, so the
 underlying gap is larger still).
@@ -1472,9 +1491,9 @@ the paper's training procedure more closely makes the result worse.
 
 It does **not** show that Wen et al. used z-score scaling. They describe no
 scaling at all; Fig. 1 has a "Data Normalization" box and the text never
-returns to it. A-03's default follows Jin et al. (2025), a different paper on
-the same dataset, and that substitution is the single largest reason a number
-from this code is not comparable with a published one.
+returns to it. A-03's default is now the z-score, selected by A-22's rule
+rather than borrowed from anywhere, and that choice is the single largest
+reason a number from this code is not comparable with a published one.
 
 It does show that **the paper's silence on preprocessing is worth more than
 every architectural detail it does print.** Table 4 specifies the network to
