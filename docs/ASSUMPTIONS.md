@@ -386,13 +386,28 @@ drift caused by wear. Smoothing in raw physical units
 *before* the per-condition scaling has had a chance to remove those jumps blends
 readings taken under different flight conditions together.
 
-Measured on a six-condition signal built with a known wear curve:
+**Measured on the real FD002 engines**, which have six operating conditions.
+For each of the 14 sensors, the absolute Pearson correlation between its
+processed values and the remaining-life label, averaged over the 14. Regenerate
+with `python scripts/verify_claims.py --only ordering`:
 
-| Order | correlation of the scaled signal with true wear |
-|-------|--------------------------------------------------|
-| smoothing → scaling (the paper's order, Fig. 1) | **0.045** |
-| scaling → smoothing (condition-aware) | **0.997** |
-| scaling only, no smoothing | 0.993 |
+| Order | mean \|correlation\| with remaining life |
+|-------|------------------------------------------|
+| smoothing → scaling (the paper's order, Fig. 1) | **0.054** |
+| scaling → smoothing (condition-aware) | **0.591** |
+| scaling only, no smoothing | 0.485 |
+
+Smoothing first costs **more than a factor of ten**. It also shows that the
+smoothing is worth having once it is applied in the right place: 0.591 against
+0.485 without it.
+
+**An earlier version of this measurement used a constructed six-condition
+signal with a known wear curve**, and reported 0.045 / 0.997 / 0.993. Those
+figures are not reproducible here and are not quoted as a result, because
+working rule 7 forbids synthetic data in this project — a pipeline that appears
+to work on invented signals says nothing about whether it works on engines. The
+real-data measurement above reaches the same conclusion by a wider margin than
+is comfortable, and it is the one to cite.
 
 This is a property of the published method, not a defect introduced here, and
 it is a candidate explanation for the paper's much weaker multi-condition

@@ -176,6 +176,18 @@ ruff check .          # must be clean
 pytest                # 169 tests; must all pass
 ```
 
+If the change touches `docs/ASSUMPTIONS.md`, a default in `config/`, or
+anything the log quotes a number from, also run:
+
+```bash
+python scripts/verify_claims.py --fast
+```
+
+That recomputes every figure in the log that needs no trained model and fails
+if one disagrees with what is written. `--fast` takes seconds; without it, two
+more checks train a network and it takes minutes. This exists because the log
+has drifted from the code more than once — see the header of that script.
+
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing, leaving
 103 passing and 66 skipped. The model, training and explanation tests

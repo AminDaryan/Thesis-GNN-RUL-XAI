@@ -798,6 +798,26 @@ pytest tests/test_examples.py  # one worked example of each function
 ruff check .               # style, unused imports, dead code
 ```
 
+The tests check that the code does what it claims. A separate script checks
+that **`docs/ASSUMPTIONS.md` still describes the code**, which is a different
+kind of rot and the one this project has actually suffered from:
+
+```bash
+python scripts/verify_claims.py --fast
+```
+
+It recomputes the figures the assumptions log quotes — the sensor graph's edge
+counts, `P15`'s two levels, how many test labels the ceiling touches, the
+preprocessing-order measurement on FD002 — prints each beside the recorded
+value, and exits non-zero on a disagreement. That is **30 claims** in seconds.
+Dropping `--fast` adds two checks that train a network to regenerate the SHAP
+tables of A-20 and F-05, bringing it to **48 claims** in a few minutes. Every
+run writes its results and its commit into `reports/`, so a verification is
+itself reproducible.
+
+All 48 pass at the time of writing. They did not before this script existed:
+five of the entries it checks had drifted from the code.
+
 Every push also runs `ruff check` and `pytest` on GitHub Actions, against
 Python 3.10 and 3.13 — see `.github/workflows/checks.yml`. The runner has no
 NASA data, so 103 tests pass there and 66 skip themselves. A green run means

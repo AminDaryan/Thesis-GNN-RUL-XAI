@@ -58,6 +58,12 @@ jobs:
       - name: Tests
         run: pytest -q
 
+      - name: The assumptions log still describes the code
+        # Without the NASA files most groups skip themselves; the sensor-graph
+        # checks need no data and run here, so a transcription error in Table 3
+        # or a drift in F-07's counts fails the build.
+        run: python scripts/verify_claims.py --fast --quiet
+
       - name: Type hints (mypy)
         # Not blocking. The hints are checked so that they stay meaningful, but
         # pandas' type stubs disagree with correct pandas code often enough
