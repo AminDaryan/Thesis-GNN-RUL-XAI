@@ -80,15 +80,21 @@ reading with that sensor's average across the training windows, so the model
 sees "this sensor is behaving typically" rather than some arbitrary value. That
 choice is recorded as A-20 in `docs/ASSUMPTIONS.md`.
 
-**Two cautions about A-20's write-up as it currently stands.** It describes the
-stand-in as replacing "an absent sensor's whole 30-cycle window". Since the A-07
-correction each node carries a single number, so it replaces one value, not
-thirty. And its argument for preferring the average over zero — that zero is
-"a strong and misleading signal, the lowest value that sensor ever recorded" —
-is a statement about **min-max** rescaling. The default is now z-score, where
-zero *is* the training mean and is therefore close to harmless. The choice of
-stand-in still stands; the reason given for it does not, under the current
-default. A-20 has not been re-measured since the scaling changed.
+**Why zero would be the obvious alternative, and why that is a trap.** The
+temptation is to feed a sensor 0 when it is left out. Whether that is safe
+depends entirely on the rescaling, not on the baseline:
+
+- Under the **min-max** scaling that was the default until 2026-08-29, zero was
+  a sensor's lowest ever reading. Substituting it produced a ranking unrelated
+  to the mean-window one (Spearman −0.16) and promoted `P15`, the least
+  informative sensor, to first place.
+- Under the **z-score** default now in force, zero *is* the training mean, so
+  it agrees with the mean window almost exactly (Spearman +0.996).
+
+A-20 records both measurements. The point it draws from them is that a SHAP
+baseline cannot be justified on its own — only against the scaling in force —
+and the mean window is kept because it is the one choice defensible under
+either. Wen et al. state neither their baseline nor their scaling.
 
 So a Shapley value here answers a specific question: *how much did knowing this
 sensor's actual readings, rather than a typical engine's, change the

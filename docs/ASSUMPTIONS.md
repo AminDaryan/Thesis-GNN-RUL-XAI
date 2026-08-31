@@ -832,14 +832,16 @@ decides what the resulting numbers mean. The paper does not say what it uses.
 **What we chose.** The average window of that sensor across the training set,
 so the model is shown "this sensor is behaving typically".
 
-**Why.** The obvious alternative, substituting zero, is much worse than it
-looks. After the min-max rescaling of A-03, zero is not a neutral value: it is
-the lowest reading that sensor ever recorded in training. Feeding it would tell
-the model something strong and false rather than nothing, and every Shapley
-value would be measured against that fiction.
+**Why.** Two reasons, and only the second one survives a change of scaling.
 
-Using the training mean also keeps the explanation honest in the same sense
-the scaling is: nothing from the validation or test engines enters it.
+The training mean keeps the explanation honest in the same sense the scaling
+is: nothing from the test engines enters it. That holds whatever the inputs
+look like, and it is the reason the choice stands.
+
+The reason originally given was different — that substituting zero would be
+actively misleading. That argument was true, but only of the scaling in force
+at the time, and it is recorded below because the way it failed is the useful
+part of this entry.
 
 **What the numbers then mean.** A Shapley value here answers: *how much did
 knowing this sensor's actual readings, rather than a typical engine's, change
@@ -847,26 +849,52 @@ the prediction?* It is measured in flight cycles, and by the efficiency
 property the fourteen values plus the baseline prediction reconstruct the
 actual prediction exactly.
 
-**How much it matters.** A great deal, and it has been measured rather than
-asserted. Computing the Shapley values of the same trained model on the same
-20 test windows under three baselines:
+**How much it matters — re-measured 2026-08-31 under the current default, and
+the answer reverses.** The same trained model, the same 20 test windows, three
+baselines. Commit `f150570`, `config/fd001.yaml` (z-score, row, nothing held
+back):
 
-| Baseline | Four most important sensors | Rank correlation with the mean window |
-|----------|-----------------------------|---------------------------------------|
-| mean window (used here) | T24, Nf, phi, P30 | — |
-| median window | T24, Nf, phi, P30 | **0.97** |
+| Baseline | Four most important sensors | mean \|φ\| | Spearman with the mean window |
+|---|---|---|---|
+| mean window (used here) | T50, Nc, W31, T24 | 3.244 | — |
+| median window | T50, T24, W31, Nc | 2.950 | **+0.952** |
+| all zeros | T50, Nc, W31, T24 | 3.032 | **+0.996** |
+
+**Under z-score the zero baseline is very nearly the same as the mean window,**
+which is exactly what it should be: the z-score puts each sensor's training
+mean at zero, so "substitute zero" and "substitute the mean" are the same
+instruction written two ways. The 0.004 that separates them is the difference
+between the mean of the training *rows*, which the scaler centres, and the
+mean of the training *windows*, which the baseline averages.
+
+**Under the previous min-max default the same comparison said the opposite.**
+Preserved from before the A-22 rework, measured under `minmax_per_condition`:
+
+| Baseline | Four most important sensors | Spearman with the mean window |
+|---|---|---|
+| mean window | T24, Nf, phi, P30 | — |
+| median window | T24, Nf, phi, P30 | 0.97 |
 | all zeros | **P15**, phi, W31, P30 | **−0.16** |
 
-Between the two sensible baselines the ranking is essentially unchanged
-(Spearman 0.97) and the average magnitude moves from 5.9 to 5.5 cycles. The
-all-zeros baseline produces an *unrelated* ranking, and promotes `P15` — the
-sensor with the least information in the whole set, see F-01 — to first
-place. That is the argument of the paragraph above, confirmed: under min-max
-scaling, zero is a sensor's lowest recorded reading, so substituting it
-manufactures a large fictitious signal for exactly the sensors whose real
-range is smallest.
+There, zero was a sensor's *lowest recorded reading*, not its mean. Feeding it
+told the model something strong and false, produced an unrelated ranking, and
+promoted `P15` — the least informative sensor in the set, see F-01 — to first
+place.
 
-Any figure quoted from this analysis must say which baseline produced it.
+**The finding, which is more general than either measurement.** *The safety of
+a baseline is a property of the scaling, not of the baseline.* Zero is
+catastrophic under min-max and almost exactly right under z-score, and nothing
+about the choice of stand-in changed in between. So a SHAP baseline cannot be
+justified on its own; it has to be justified against the rescaling in force,
+and any paper that names one without naming the other has not said enough to be
+reproduced. Wen et al. name neither.
+
+The mean window is kept because it is the one choice that is defensible under
+both: it is the neutral value by construction, whatever the scaling maps
+neutral onto.
+
+Any figure quoted from this analysis must say which baseline **and which
+scaling** produced it.
 
 ---
 
@@ -878,30 +906,46 @@ importance. Exact Shapley values, computed over the full life of three held-out
 engines, show that the prediction is half right in a way that turns out to be
 more useful than if it had simply been correct.
 
-**The ranking prediction holds.** `P15` comes last of the fourteen on every
-engine tested:
+**Re-measured 2026-08-31** under the current default (z-score, row, nothing
+held back), commit `f150570`, over every window of three engines. Because
+nothing is held back now, these three are training engines rather than held-out
+ones; the same three are used so the two measurements can be compared.
 
-| Engine | Windows | `P15` rank | mean \|φ\| for `P15` | mean \|φ\| for the top sensor |
-|--------|---------|-----------|---------------------|-----------------------------|
-| 5  | 240 | 14 of 14 | 4.15 cycles | 11.80 (`T24`) |
-| 25 | 201 | 14 of 14 | 0.15 cycles | 11.64 (`T24`) |
-| 82 | 185 | 14 of 14 | 6.29 cycles | 11.13 (`T24`) |
+**The ranking prediction holds, and holds more strongly than before.** `P15`
+comes last of the fourteen on every engine tested:
+
+| Engine | Windows | `P15` rank | mean \|φ\| for `P15` | median \|φ\| | max \|φ\| | top sensor |
+|---|---|---|---|---|---|---|
+| 5  | 240 | 14 of 14 | 0.706 | 0.260 | 9.449 | 11.749 (`T24`) |
+| 25 | 201 | 14 of 14 | 0.474 | 0.466 | 1.769 | 9.523 (`Nc`) |
+| 82 | 185 | 14 of 14 | 0.677 | 0.255 | 9.526 | 14.927 (`Nc`) |
 
 That agrees with the paper's own Fig. 9, which also places `P15` at the bottom,
 and it is a point of genuine agreement between this re-implementation and the
-original.
+original. It is the one part of this entry that has survived every change to
+the architecture and the scaling.
 
-**The magnitude prediction does not hold, and the failure is engine-specific.**
-On engine 25 the attribution really is negligible: a median of 0.15 cycles and
-a maximum of 0.4 over 201 windows. On engines 5 and 82 it is not: medians of
-1.5 and 4.1 cycles, maxima of 19.1 and 25.8, and roughly half of all windows
-above one cycle. A sensor carrying no information should not be worth twenty
-cycles on any window of any engine.
+**The magnitudes fell by roughly a factor of six**, and the shape of the
+failure changed with them. Under min-max the same three engines gave mean
+\|φ\| of 4.15, 0.15 and 6.29; they now give 0.706, 0.474 and 0.677. The
+superseded table is preserved at the end of this entry.
 
-**The mechanism is measurement quantisation, amplified by the rescaling.**
-`P15`'s two raw levels are 21.60 and 21.61 psia, 0.01 apart, which is the
-resolution of the recording rather than anything physical. Engines differ in
-how often the reading crosses between them:
+**The engine-specific pattern half survives, and the half that does is the
+one that matters.** Under min-max, engine 25 was the negligible case and
+engines 5 and 82 were the loud ones, cleanly separated on every statistic.
+Under z-score the *medians* no longer separate — engine 25's median (0.466) is
+now the **highest** of the three, and engines 5 and 82 sit at 0.260 and 0.255.
+But the *maxima* still separate sharply: 9.449 and 9.526 against 1.769.
+
+That is the mechanism claim, and it still holds. Engine 25's `P15` never
+changes level at all; engines 5 and 82 change 34 and 20 times. A quantisation
+step falling inside a window is still worth several cycles of attribution, and
+where no step can fall, nothing above 1.8 cycles ever appears.
+
+**The mechanism is measurement quantisation.** `P15`'s two raw levels are 21.60
+and 21.61 psia, 0.01 apart, which is the resolution of the recording rather
+than anything physical. Engines differ in how often the reading crosses between
+them — these counts are of the raw file and are unaffected by any scaling:
 
 | Engine | Distinct `P15` values | Times the level changes |
 |--------|----------------------|-------------------------|
@@ -910,32 +954,71 @@ how often the reading crosses between them:
 | 82 | 2 | 20 |
 
 Across all 100 training engines the level changes a median of 2 times, never
-for 38 of them, and up to 34 times. Engine 25 — the one whose attribution is
-negligible — is one of the 38 that never change.
+for 38 of them, and up to 34 times. Engine 25 is one of the 38 that never
+change, and it is the one engine of the three on which `P15` never reaches 2
+cycles.
 
-So `P15` earns a large Shapley value exactly when a quantisation step falls
-inside the 30-cycle window, and none when it does not. The rescaling is what
-makes those steps loud: min-max scaling maps the 0.01 psia gap onto the full
-`[0, 1]` range, giving `P15` a standard deviation of 0.083 on the scaled
-training windows against 0.081 for `Nc`. A sensor with nothing to say arrives
-at the model with the same amplitude as one that has.
+**The rescaling still makes those steps loud, and the original entry predicted
+exactly this.** Its second consequence read: "Min-max rescaling is unsafe for a
+sensor whose real variation is at the resolution limit... **Standardising by
+the standard deviation would do the same.**" That prediction is now measured.
+Standard deviations over the training windows under the current z-score
+scaling:
+
+| Sensor | sd on the scaled windows |
+|---|---|
+| `Nc` | 1.053 |
+| `T50` | 1.002 |
+| `T24` | 1.000 |
+| **`P15`** | **0.862** |
+
+A sensor with two distinct readings arrives at the model at 82 % of the
+amplitude of one that tracks the whole degradation. It is quieter than under
+min-max, where it was marginally the *louder* of the pair (0.083 against `Nc`'s
+0.081), but it is nowhere near the silence its information content deserves.
+Changing the scaling moved the number and did not fix the problem, which is
+what the original entry said would happen.
 
 **Consequences worth stating in the thesis.**
 
 1. F-01's check should be stated as a *ranking* claim, not a magnitude one.
-   "`P15` should rank last" is confirmed on every engine tested. "`P15`'s
-   attribution should be near zero" is true only for the engines whose reading
-   never crosses between its two levels.
-2. Min-max rescaling is unsafe for a sensor whose real variation is at the
-   resolution limit, because it maps quantisation onto the same range as
-   genuine signal. Standardising by the standard deviation would do the same.
-   Only dropping the sensor, or scaling by a fixed physical range, avoids it.
-   The pipeline keeps `P15` because the paper's adjacency matrix is defined
-   over its fixed 14-sensor set, so this is a limitation to report rather than
-   to correct.
-3. This is a concrete case of an explanation exposing a **preprocessing**
+   "`P15` should rank last" is confirmed on every engine tested, under both
+   scalings and both architectures — it is the most durable result in this
+   file. "`P15`'s attribution should be near zero" is not confirmed: under
+   z-score its worst window still reaches 9.5 cycles on the engines whose
+   reading crosses between its two levels.
+2. **Rescaling by any per-sensor statistic is unsafe for a sensor whose real
+   variation sits at the resolution limit**, because it maps quantisation onto
+   the same range as genuine signal. This was written as a prediction about
+   min-max, with the aside that standardising by the standard deviation "would
+   do the same". Changing the default to z-score tested that prediction and
+   confirmed it: `P15` still arrives at 0.86 against roughly 1.0 for the
+   sensors that track degradation. Only dropping the sensor, or scaling by a
+   fixed physical range, avoids it. The pipeline keeps `P15` because the
+   paper's adjacency matrix is defined over its fixed 14-sensor set, so this is
+   a limitation to report rather than to correct.
+3. **The size of an attribution is not comparable across preprocessing
+   choices, but its rank is.** The same sensor on the same engines moved by a
+   factor of six when only the scaling changed, while its position never moved
+   at all. Any SHAP magnitude quoted from this project — or from the paper —
+   is meaningless without the scaling that produced it, which is the same
+   conclusion A-20 reaches from the baseline side.
+4. This is a concrete case of an explanation exposing a **preprocessing**
    defect rather than a model defect, which is a useful thing for a thesis on
    explainability to be able to demonstrate.
+
+**Superseded measurements, kept for the record** (min-max scaling, removed
+`window` node-feature mode, reproducible only at commit `cdcc827`):
+
+> | Engine | Windows | `P15` rank | mean \|φ\| for `P15` | top sensor |
+> |---|---|---|---|---|
+> | 5  | 240 | 14 of 14 | 4.15 | 11.80 (`T24`) |
+> | 25 | 201 | 14 of 14 | 0.15 | 11.64 (`T24`) |
+> | 82 | 185 | 14 of 14 | 6.29 | 11.13 (`T24`) |
+>
+> Medians of 1.5 and 4.1 cycles on engines 5 and 82, maxima of 19.1 and 25.8,
+> and roughly half of all windows above one cycle. Engine 25: median 0.15,
+> maximum 0.4. Scaled standard deviations `P15` 0.083 against `Nc` 0.081.
 
 **A caution about this entry.** Its first version was written from fourteen
 sampled windows out of 240, and reported that `P15`'s contribution "collapses
