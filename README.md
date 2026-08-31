@@ -498,20 +498,25 @@ when it is given only one.
 | Configuration | RMSE | NASA score | R² | ASUE |
 |---------------|------|-----------|-----|------|
 | **Current default** — z-score, row, no validation split (A-22) | **16.69 ± 0.33** | 613 ± 35 | 0.826 ± 0.007 | 11.64 ± 0.47 |
+| Fully connected graph (A-19 ablation, current default) | 19.21 ± 0.06 | 780 ± 11 | 0.770 ± 0.001 | 13.60 ± 0.20 |
 | Previous default — min-max, symmetric, 20 % held out | 20.35 ± 0.75 | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
 | Fully connected graph (A-19 ablation, previous default) | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
 
-**Rows two and three** differ by 0.044 cycles, paired `t = 0.12, p = 0.913` —
-so in *that* configuration the physics prior makes no measurable difference.
-Finding F-04 records that this reverses an earlier claim of a 5.7-cycle
-benefit, which was an artefact of the removed `window` mode.
+**The physics prior is worth 2.52 cycles under the current default** — rows one
+and two, paired `t = 17.9, p = 0.000057`, with every one of the five seeds
+worse without it. Under the previous default — rows three and four — the same
+ablation was worth 0.044 cycles at `p = 0.913`, indistinguishable from zero.
 
-Note what those two rows are not: they are the **previous** default, and the
-ablation has never been re-run over five seeds against row one. A single seed
-under the current default puts the gap at 2.37 cycles, which is neither
-evidence nor consistent with 0.044. Working rule 3 applies — a comparison is a
-fact about one architecture — so **what the physics prior is worth under the
-current default is at present unmeasured.**
+**That is the same ablation, on the same data, giving opposite answers under
+settings the paper does not specify**, and it is one of this project's more
+useful results. Finding F-04 has now reversed twice and records all three
+measurements, including a withdrawn 5.7-cycle figure that was an artefact of
+the removed `window` mode. The paper reports 0.56 cycles for this ablation; our
+three attempts bracket it without reproducing it.
+
+Two changes separate rows one-and-two from rows three-and-four — the input
+scaling and the split — so these runs do not isolate which caused the reversal.
+F-04 says so rather than guessing.
 
 Reproduce the first row with:
 

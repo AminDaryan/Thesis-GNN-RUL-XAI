@@ -389,10 +389,13 @@ def _commit_stamp() -> str:
             return ""
 
     commit = git("rev-parse", "--short", "HEAD") or "unknown"
-    # Untracked files do not change what the code computes, so they do not
-    # make a run unreproducible and are not counted as dirty here.
-    modified = git("status", "--porcelain", "--untracked-files=no")
-    return commit + ("-dirty" if modified else "")
+    # Untracked files count, the same way scripts/train.py counts them. An
+    # untracked file under src/ is a module the commit does not describe, so
+    # the package on disk is not the package the commit names. This is
+    # deliberately conservative: it produces false alarms for a stray file in
+    # docs/, which is a cheaper mistake than quoting a number from a tree
+    # nobody can reconstruct.
+    return commit + ("-dirty" if git("status", "--porcelain") else "")
 
 
 def main(argv: list[str] | None = None) -> int:

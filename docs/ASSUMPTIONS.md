@@ -773,27 +773,84 @@ graph would add a mechanism the paper does not describe.
 
 ---
 
-### F-04 — WITHDRAWN AND REVERSED: the physics graph is worth nothing measurable here
+### F-04 — What the physics graph is worth has now been measured three times, with three answers
 
-**Status.** This entry claimed the opposite of what it now reports. The
-original claim was an artefact of the removed `window` node-feature mode
-(A-07), and re-running under the corrected architecture reverses it. The
-original text is preserved at the bottom because a corrected record is worth
-more than a clean one (working rule 6).
+**Status.** This entry has reversed twice. It first claimed the physics prior
+was worth 5.7 cycles, was withdrawn and reversed to "worth nothing
+measurable", and now measures 2.5 cycles at `p = 0.000057`. Nothing about the
+graph changed between those measurements. What changed was the preprocessing
+and the split — choices the paper does not specify.
 
-**What it says now.** Five seeds of each variant on FD001, one feature per
-node, identical in every other respect
-(`cdcc827-dirty`, 2026-08-28, varying split):
+That instability is the finding. The individual numbers are less interesting
+than the fact that an ablation result moved from *decisive*, to *zero*, to
+*decisive again* under settings the source leaves open.
 
-| Sensor graph | RMSE | NASA score | R-squared | ASUE |
-|--------------|------|-----------|-----------|------|
-| Physics (their Table 3) | 20.353 +/- 0.752 | 827 +/- 85 | 0.742 +/- 0.019 | 15.67 +/- 2.05 |
-| Fully connected (A-19) | 20.397 +/- 0.395 | 896 +/- 113 | 0.741 +/- 0.010 | 14.96 +/- 1.65 |
+**All three measurements, five seeds each, paired by seed on test RMSE:**
 
-Removing the physics prior costs **0.044 cycles of RMSE**. Paired across
-seeds, **t = 0.12, p = 0.913** — indistinguishable from zero. Per-seed
-differences are `[+0.35, +0.56, +0.60, +0.16, -1.45]`: the complete graph is
-*better* on one of the five seeds.
+| Configuration | physics | fully connected | cost of removing it | p |
+|---|---|---|---|---|
+| **current default** — z-score, row, nothing held back (`9548104`) | **16.694 ± 0.331** | 19.213 ± 0.056 | **+2.520** | **0.000057** |
+| min-max, symmetric, 20 % held back (`cdcc827-dirty`) | 20.353 ± 0.752 | 20.397 ± 0.395 | +0.044 | 0.913 |
+| superseded `window` mode (`cdcc827`) | 13.45 ± 0.20 | 19.17 ± 0.45 | +5.7 | — |
+
+**The current measurement is unambiguous within its own configuration.** Every
+one of the five seeds is worse without the physics prior — the per-seed costs
+are `[2.367, 2.747, 2.442, 2.124, 2.918]` — and all four measures agree:
+
+| Measure | physics | fully connected | difference | paired t | p |
+|---|---|---|---|---|---|
+| RMSE | 16.694 ± 0.331 | 19.213 ± 0.056 | +2.520 | +17.92 | 0.000057 |
+| NASA score | 613.4 ± 34.5 | 779.9 ± 10.7 | +166.4 | +10.90 | 0.000402 |
+| R-squared | 0.826 ± 0.007 | 0.770 ± 0.001 | −0.056 | −19.34 | 0.000042 |
+| ASUE | 11.638 ± 0.468 | 13.598 ± 0.195 | +1.961 | +9.73 | 0.000625 |
+
+**What cannot be concluded from the reversal.** Two things changed between the
+zero result and this one — the input scaling (min-max to z-score) and the split
+(20 % held back to nothing held back) — so these runs do not isolate which
+caused it. No stored run varies only one. Saying "the z-score revealed the
+prior's value" would be a guess, and this file does not make those.
+
+**How this compares with the paper.** Wen et al. report the same ablation
+costing **0.56** cycles on FD001 (12.34 against 11.78) and call it the smallest
+of the three components they test. This project has now measured 0.044, and
+2.520, for the same ablation on the same sub-dataset. The paper's figure sits
+between the two. Every one of the three is a defensible measurement of its own
+configuration, and none of them reproduces the paper's.
+
+**What this means for the thesis, and it is the useful part.** An ablation is
+usually reported as a property of an architecture: *the physics prior is worth
+X*. These measurements say it is not that. It is a property of the architecture
+**and** the preprocessing **and** the split, and the paper specifies only the
+first. A reader cannot tell from the paper whether its 0.56 would survive a
+different input scaling, because the paper never says what its input scaling
+was (A-03).
+
+This is a stronger result than either individual number. It is direct evidence
+that the paper's silence on preprocessing is not a cosmetic omission: it makes
+the paper's own ablation table unreproducible in principle, not merely in
+practice. It is the same conclusion F-10 reaches from the accuracy side and
+A-20 reaches from the explanation side, arrived at independently.
+
+**Reproduce with:**
+
+```bash
+python scripts/train.py --seeds 5                    # physics
+python scripts/train.py --graph complete --seeds 5   # fully connected
+```
+
+The stored runs are
+`fd001_physics_row_cap_5seed_varsplit_cfg722cd2_9548104_20260831T121451Z` and
+`fd001_complete_row_cap_5seed_varsplit_cfgd20b12_9548104-dirty_20260831T123001Z`.
+Their saved configurations differ in exactly one key, `graph`. The `-dirty`
+on the second is a false positive: three untracked files unrelated to this
+project's code appeared in the working tree between the two runs, and
+`git status --porcelain --untracked-files=no` was empty throughout. The
+physics arm reproduced the earlier `6a7af8c` run bit-identically on all five
+seeds, which is direct evidence the code was unchanged.
+
+---
+
+**Superseded accounts, kept for the record.**
 
 **How the old number arose.** Under `window` mode each node carried 30
 features, so the first graph layer mixed 14 nodes x 30 features. A complete
