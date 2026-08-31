@@ -271,6 +271,16 @@ evaluation, explain, utils — not alphabetically. A reader following the method
 wants `data` first and `evaluation` after `training`, and alphabetical order
 gives neither.
 
+**The menu sections fold, and two of them start open.** There are thirty
+documents. Listed flat they run together and a reader cannot see where one
+group ends, so each section is a block that folds shut, showing its title and
+how many documents it holds. **Learn** and **Explore** start open because that
+is where someone new begins; the long reference lists start shut. Whatever the
+reader folds is remembered in their own browser, so the menu opens the way they
+left it — except that navigating to a page inside a folded section always
+unfolds it, since a menu that hides the page you are reading is worse than one
+that ignores your preference.
+
 **"About n minutes" is a word count, not a promise.** It divides the prose word
 count by 220 words a minute. It is there to warn you that the assumptions log
 is an hour's reading, not to be accurate about you.

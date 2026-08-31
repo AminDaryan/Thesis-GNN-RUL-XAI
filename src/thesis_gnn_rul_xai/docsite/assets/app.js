@@ -126,20 +126,63 @@
 
   // ------------------------------------------------------------- sidebar
 
+  // Which sections the reader has folded away. Kept per browser so the menu
+  // opens the way they left it; a browser that refuses storage just gets the
+  // default, which is what openByDefault decides.
+  function foldedSections() {
+    try {
+      return JSON.parse(localStorage.getItem("docsite-folded") || "{}") || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function rememberFold(key, folded) {
+    var state = foldedSections();
+    state[key] = folded;
+    try { localStorage.setItem("docsite-folded", JSON.stringify(state)); } catch (e) { /* private mode */ }
+  }
+
   function buildSidebar() {
+    var folded = foldedSections();
     sidebar.innerHTML = "";
     sidebar.appendChild(el("a", {
-      class: "nav-link", href: "#/",
+      class: "nav-link nav-home", href: "#/",
       html: "<strong>Home</strong><span class='nav-blurb-inline'>What this is, and where to start</span>"
     }));
+
     catalog.sections.forEach(function (section) {
-      var group = el("div", { class: "nav-section" });
-      group.appendChild(el("div", { class: "nav-title", text: section.title }));
-      group.appendChild(el("div", { class: "nav-blurb", text: section.blurb }));
+      // Learn and Explore are where a new reader starts, so they open by
+      // default. The long reference lists stay folded until asked for.
+      var openByDefault = section.key === "learn" || section.key === "explore";
+      var open = folded[section.key] === undefined ? openByDefault : !folded[section.key];
+
+      var group = el("section", { class: "nav-section", "data-section": section.key });
+
+      var toggle = el("button", {
+        class: "nav-toggle",
+        type: "button",
+        "aria-expanded": String(open),
+        "aria-controls": "nav-body-" + section.key,
+        html:
+          '<svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true">' +
+          '<path d="M4 2.5 L8 6 L4 9.5" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+          "<span class='nav-toggle-title'>" + escapeHtml(section.title) + "</span>" +
+          "<span class='nav-count'>" + section.documents.length + "</span>"
+      });
+
+      var body = el("div", {
+        class: "nav-body",
+        id: "nav-body-" + section.key,
+        hidden: open ? null : "hidden"
+      });
+      body.appendChild(el("div", { class: "nav-blurb", text: section.blurb }));
+
       section.documents.forEach(function (doc) {
         var meta = doc.kind === "notebook" || doc.kind === "explore"
           ? "" : "<span class='nav-meta'>" + doc.minutes + " min</span>";
-        group.appendChild(el("a", {
+        body.appendChild(el("a", {
           class: "nav-link",
           href: routeFor(doc),
           "data-path": doc.path,
@@ -147,8 +190,38 @@
                 (doc.blurb ? "<span class='nav-blurb-inline'>" + escapeHtml(doc.blurb) + "</span>" : "")
         }));
       });
+
+      toggle.addEventListener("click", function () {
+        var nowOpen = toggle.getAttribute("aria-expanded") !== "true";
+        toggle.setAttribute("aria-expanded", String(nowOpen));
+        body.hidden = !nowOpen;
+        rememberFold(section.key, !nowOpen);
+      });
+
+      group.appendChild(toggle);
+      group.appendChild(body);
       sidebar.appendChild(group);
     });
+  }
+
+  // A page the reader has navigated to must be visible in the menu, even if
+  // they had folded the section it lives in.
+  function revealSection(path) {
+    var link = sidebar.querySelector('.nav-link[data-path="' + cssEscape(path) + '"]');
+    if (!link) { return; }
+    var group = link.closest(".nav-section");
+    if (!group) { return; }
+    var toggle = group.querySelector(".nav-toggle");
+    var body = group.querySelector(".nav-body");
+    if (toggle && body && body.hidden) {
+      toggle.setAttribute("aria-expanded", "true");
+      body.hidden = false;
+      rememberFold(group.dataset.section, false);
+    }
+  }
+
+  function cssEscape(value) {
+    return window.CSS && CSS.escape ? CSS.escape(value) : value.replace(/["\\]/g, "\\$&");
   }
 
   function routeFor(doc) {
@@ -162,6 +235,11 @@
       if (link.dataset.path === path) { link.setAttribute("aria-current", "page"); }
       else { link.removeAttribute("aria-current"); }
     });
+    Array.prototype.forEach.call(sidebar.querySelectorAll(".nav-section"), function (group) {
+      var holdsCurrent = !!group.querySelector('.nav-link[aria-current="page"]');
+      group.classList.toggle("nav-section--current", holdsCurrent);
+    });
+    if (path) { revealSection(path); }
   }
 
   // ----------------------------------------------------------------- TOC

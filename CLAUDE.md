@@ -192,6 +192,53 @@ Worked examples are tests, in `tests/test_examples.py` and
 `tests/test_examples_torch.py`, not doctests. When you add a function, add its
 example there.
 
+### 10. Explanation style
+
+Rule 9 says where explanation lives. This says how to write it. **It governs
+answers given in conversation as much as files in the repository** — a reply in
+chat is subject to the same standard as a README, because it is where most
+explaining actually happens.
+
+Prioritise understanding over brevity.
+
+- Assume the reader may not know the intermediate concepts, even when they know
+  the general topic.
+- Do not open with the implementation, the equation or the jargon. Start with
+  the intuition and the problem the concept solves.
+- Explain the mechanism step by step, and do not skip intermediate steps.
+- Explain **why** each step works, not only what happens.
+- If a concept depends on another, explain that prerequisite first, briefly.
+- Explicitly separate concepts that are easy to confuse. Name both and say what
+  distinguishes them.
+- Use small concrete numerical examples wherever one is possible.
+- When an equation appears, say what every symbol in it is and what the whole
+  thing is doing.
+- Finish with a short example of the concept in use.
+- Do not assume that fluency with a term implies fluency with the mathematics
+  under it.
+- Avoid "simply", "obviously" and "as you know" unless the thing really has been
+  established earlier in the same explanation.
+- If a question has more than one reading, name the readings and say which one
+  is being answered.
+- Aim at one clear mental model, not a list of definitions.
+
+**A metaphor is not an explanation.** "PyTorch has to find the layers", "a
+busy node would shout over a quiet one", "put a pulse on A" — each of those was
+written here and each had to be replaced by output showing the thing happening.
+Show the broken case beside the working one and print both.
+
+**For anything about a model, explain in this order.** Skipping a step is what
+makes an explanation feel like it started in the middle:
+
+1. The data, and what the model receives.
+2. What the model computes from it.
+3. What the loss represents.
+4. What quantity is being differentiated, and with respect to what.
+5. How the gradient is obtained.
+6. How the optimiser uses it.
+7. The mathematical notation, once the above is in place.
+8. The connection to the actual code in this repository.
+
 ---
 
 ## Before saying a task is done
