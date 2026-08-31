@@ -341,14 +341,29 @@ A model cannot take a whole engine history at once, because histories have
 different lengths. Instead each history is cut into short, fixed-length pieces
 called **time windows**. One window is one training example.
 
-With a window size of 30, the first example covers cycles 1–30, the second
-covers 2–31, and so on. The gap between the start of one window and the start of
-the next is the **stride**; a stride of 1 gives the largest possible number of
-examples.
+**The window is 30 cycles long, and that comes from the paper.** Its Table 6
+lists `Time steps | 30`, its Section 3.4 says "the temporal window size is set
+to 30-time steps", and its Equation 7 writes the window out as
+`[x(t−w+1), x(t−w+2), … , x(t)]` with `w` the window size.
 
-The label of a window is the RUL at its **last** cycle. That matches how the
-model would really be used: an operator has the last 30 cycles of readings and
-wants to know the remaining life *now*, not 30 cycles ago.
+**How far the window moves between one example and the next does not come from
+the paper.** That gap is called the **stride**, and the words "stride",
+"sliding", "overlap", "step size" and "non-overlapping" appear **nowhere** in
+the paper — checked against the PDF, not remembered. We use a stride of 1, so
+the first example covers cycles 1 to 30, the second covers 2 to 31, and so on.
+A stride of 1 yields the most examples a history can give. That choice is
+**A-05** in `docs/ASSUMPTIONS.md`.
+
+The difference matters when reading the two sentences above: the first is a
+fact about the paper, the second is a decision of ours that the paper leaves
+open, and this file tries never to let one wear the clothes of the other.
+
+**The label of a window is the remaining life at its *last* cycle**, and this is
+the paper's too: Equation 7 ends the window at time `t`, and Section 2.1
+states the objective as predicting "the remaining useful life y at the current
+time step". It also matches how the model would really be used — an operator has the
+last 30 cycles of readings and wants to know the remaining life *now*, not 30
+cycles ago.
 
 ### The shape of the output, and why the third axis is 1
 
