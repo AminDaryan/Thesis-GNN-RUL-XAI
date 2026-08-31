@@ -978,14 +978,25 @@
     });
   }
 
-  function openLab(url, notebookPath) {
-    var target = url;
-    if (notebookPath) {
-      var separator = url.indexOf("?") >= 0 ? url.split("?") : [url, ""];
-      target = separator[0].replace(/\/$/, "") + "/lab/tree/" + notebookPath +
-               (separator[1] ? "?" + separator[1] : "");
+  // JupyterLab reports itself as ".../lab?token=...". To open one notebook the
+  // address has to become ".../lab/tree/<path>?token=...", keeping the token:
+  // without it JupyterLab asks for a password nobody has been told.
+  // The path is rebuilt rather than appended to, because appending to an
+  // address that already ends in /lab produced /lab/lab/tree/... and a 404.
+  function labAddress(url, notebookPath) {
+    if (!notebookPath) { return url; }
+    try {
+      var parsed = new URL(url);
+      var base = parsed.pathname.replace(/\/lab\/?$/, "").replace(/\/$/, "");
+      parsed.pathname = base + "/lab/tree/" + notebookPath;
+      return parsed.toString();
+    } catch (e) {
+      return url;
     }
-    window.open(target, "jupyterlab");
+  }
+
+  function openLab(url, notebookPath) {
+    window.open(labAddress(url, notebookPath), "jupyterlab");
   }
 
   // ----------------------------------------------------------------- boot

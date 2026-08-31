@@ -39,3 +39,6 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Scratch files. A commit message written here once got committed itself.
+*.tmp

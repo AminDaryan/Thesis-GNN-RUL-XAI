@@ -222,6 +222,29 @@ pip install -e .[notebook]
 Only one JupyterLab is ever started. Asking again returns the address of the
 one already running, and it is shut down when the documentation server stops.
 
+### A trap: the address of one notebook is not the address plus a path
+
+JupyterLab announces itself as `http://localhost:8899/lab?token=...`. To open a
+particular notebook the address has to become
+
+```text
+http://localhost:8899/lab/tree/notebooks/01_preprocessing_fd001.ipynb?token=...
+```
+
+Two things are easy to get wrong there, and the first version of this code got
+both.
+
+**The token must survive.** It is a one-time password JupyterLab generates for
+itself at startup. Drop it and JupyterLab shows a login page asking for a
+password nobody has been told.
+
+**The path is rebuilt, not appended to.** The announced address already ends in
+`/lab`, so gluing `/lab/tree/...` onto the end produces `/lab/lab/tree/...`,
+which is a page that does not exist. `labAddress()` in `app.js` therefore
+strips a trailing `/lab` before adding the rest. That bug survived until
+JupyterLab was first installed on a machine here, because until then the code
+that builds the address had never run with a real address to build from.
+
 ### A trap: nbconvert's stylesheet is not scoped
 
 `nbconvert` returns a stylesheet along with the HTML, and that stylesheet
