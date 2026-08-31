@@ -1297,6 +1297,18 @@ intent and the matrix is the artefact, then the matrix was not generated from
 the rules programmatically — it was written out by hand, and one cell was
 missed. That is worth one sentence when describing how the prior was built.
 
+A second, independent sign points the same way. **Table 6 carries Table 2's
+caption.** Both are printed as "Characteristic description of C-MAPSS
+sensors." — Table 2 on page 5, where it is correct and heads the sensor list,
+and Table 6 on page 9, where the body beneath it is a hyperparameter table
+(`Hyperparameter | Value`, giving the 200 epochs, batch size 32 and learning
+rates this project takes from it). A caption duplicated onto the wrong table is
+not evidence about the adjacency matrix specifically, but it is evidence that
+the tables were assembled and proofed by hand rather than generated, which is
+the assumption the paragraph above rests on. Verified against the PDF: the
+twelve table captions were extracted and compared, and 2 and 6 are the only
+pair that match.
+
 ---
 
 ### F-08 — The paper's Table 12 cannot hold signed Shapley values
@@ -1514,6 +1526,63 @@ comparison would put the residual gap at roughly 2.9 rather than 1.59.
 **Do not read the ordering of the small rows as a result.** A-18, A-17 and
 A-01 all have p > 0.1 across five seeds; only their sign is suggestive, and
 A-04 (+1.219, p = 0.007) is the only other row that clears significance.
+
+### F-11 — The Conclusions claim a "highest R²" the paper's own Table 9 refutes
+
+**Where:** the paper, Conclusions, item (1); its Table 9; its Section 4.1
+
+Conclusion (1) on the paper's final page reads:
+
+> "The developed ESTGNN framework achieves superior performances with the
+> lowest average SF of 1023.0, the best RMSE of 14.75, and the highest R² of
+> 0.742."
+
+Two of those three superlatives hold. Checked against the tables they refer to:
+
+| Claim | Table | Best in that table | Verdict |
+|---|---|---|---|
+| lowest average SF, 1023.0 | 7 | ESTGNN 1023.0, then Transformer 1238.8 | **holds** |
+| best RMSE, 14.75 | 8 | ESTGNN 14.75, then Transformer 16.62 | **holds** |
+| highest R², 0.742 | 9 | **Transformer 0.759**, DCNN 0.757 | **fails** |
+
+Table 9's average R² column, transcribed in full: SVR 0.551, CNN 0.655, DCNN
+0.757, LSTM 0.718, TCN 0.704, Transformer **0.759**, GRU 0.703, Bi-LSTM 0.742,
+ESTGNN 0.742. ESTGNN ties Bi-LSTM for **third place of nine**; two methods in
+the paper's own comparison score higher.
+
+**The paper concedes this in its own Section 4.1**, four pages earlier:
+
+> "ESTGNN achieves competitive performance with an average R² value of 0.742,
+> tied with Bi-LSTM. While the Transformer method demonstrates slightly
+> superior average R² performance (0.759), ESTGNN maintains competitive
+> variance explanation capability while excelling in other critical metrics."
+
+That is an accurate description of Table 9. The Conclusions then restate it as
+"the highest R²", which it is not.
+
+**Why this is worth recording.** It is the second independent case in this
+paper of the prose outrunning the tables — F-08 shows that Table 12 cannot hold
+the signed Shapley values its own Equation 14 defines. Unlike F-08, this one
+needs no assumption of ours and no reconstruction: it is a comparison between
+two statements the paper makes about itself, one of which is checkable against
+a table printed in the same paper.
+
+It bears on how the source should be read. Where the paper's narrative and its
+numbers disagree, this project follows the numbers — the same rule applied in
+F-07 (the matrix over the construction text) and in A-15 and A-16 (the prose
+over the misprinted equations, because there the prose was the coherent half).
+The rule is not "prefer one or the other" but "prefer whichever survives being
+checked".
+
+**What it does not mean.** ESTGNN's R² is not bad, and the paper's headline
+claims about SF and RMSE are unaffected — both were verified above. The defect
+is one word in a summary, not a result. It should be quoted in the thesis as
+evidence about the paper's editing rather than about its method.
+
+**Verified from the PDF**, not from memory: Table 6 through Table 10 are on
+pages 9 and 10, and the Conclusions list is on page 15.
+
+---
 
 ---
 
