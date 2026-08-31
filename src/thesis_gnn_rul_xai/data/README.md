@@ -53,7 +53,7 @@ Technology 168, 110875.
 |---|---|
 | `loading.py` | Reads the three text files, checks their shape, and adds a `rul` column to every row. |
 | `sensors.py` | Names all 21 sensors, fixes the 14 the paper keeps and their order, and offers a diagnostic that finds sensors carrying no information. |
-| `labeling.py` | Caps the RUL label at a ceiling, producing the piecewise-linear target. |
+| `labeling.py` | Stops the label counting above 125. A healthy engine is labelled "125" rather than "191 cycles left", because nothing in the sensors can tell those apart. |
 | `smoothing.py` | Exponentially weighted moving average over each engine's sensor signals. |
 | `normalization.py` | Groups rows into operating conditions with k-means, then rescales the sensor columns. |
 | `windowing.py` | Cuts histories into fixed-length windows, and splits engines into a training and a validation set. |
@@ -69,39 +69,115 @@ so the remaining life at any cycle is just how many cycles are left:
 RUL(t) = last_cycle_of_this_engine - t
 ```
 
-The test file does need the label file, because recording stopped early. If an
-engine's last recorded cycle is 150 and the label file says 47 cycles of life
-remained at that moment, then at cycle 130 the engine still had
-`(150 - 130) + 47 = 67` cycles left. In general:
+**The test file is different, and this is the part worth reading slowly.**
+Recording stops early there — the engine is still running fine when the file
+ends. Test engine 1 of FD001 has 31 rows, cycles 1 to 31, and then nothing.
+
+So the training trick does not work. Subtracting from the last row you can see
+would claim the engine died at cycle 31, and it did not.
+
+That is what the label file is for. Line 1 of `RUL_FD001.txt` reads **112**,
+meaning *at cycle 31, this engine had 112 cycles of life left*. It tells you
+about one moment only — not about cycle 1, not about cycle 20.
+
+But it is enough, because it tells you **where the end is**:
+
+```
+the cycle it failed at  =  31  +  112  =  143
+```
+
+Now the engine is no different from a training engine: you know when it broke,
+so every row is the same subtraction as before.
+
+| cycle | 143 − cycle | label |
+|---|---|---|
+| 1 | 143 − 1 | 142 |
+| 10 | 143 − 10 | 133 |
+| 20 | 143 − 20 | 123 |
+| 31 | 143 − 31 | 112 ← matches the label file, as it must |
+
+`attach_rul` in `loading.py` writes it the other way round, adding two counts
+instead of subtracting from the end:
 
 ```
 RUL(t) = (last_recorded_cycle - t) + RUL_at_last_recorded_cycle
 ```
 
-Both cases are handled by `attach_rul` in `loading.py`. Engine numbers in the
-label file are assigned by position: the first line belongs to engine 1, the
-second to engine 2, and so on. That is how the dataset is defined.
+Read that as *"how many more rows of this engine are still in the file, plus
+how much life it had after the file stops"*. Both of those lie ahead of cycle
+`t`, which is why they add. At cycle 20 it is `(31 - 20) + 112 = 11 + 112 =
+123`, the same 123 as the table above — the two forms are the same arithmetic
+rearranged.
 
-### The label is then capped
+Engine numbers in the label file are assigned by position: the first line
+belongs to engine 1, the second to engine 2, and so on. That is how the dataset
+is defined.
 
-Raw "cycles until failure" makes a bad target. A brand-new engine in a long
-history would carry a label of 300 or more, and a new engine gives the model no
-way to tell 300 from 280 — the sensors of a healthy engine look the same either
-way, because almost no wear has happened. Asking a model to tell them apart
-forces it to guess, and the guessing shows up as noise in every prediction.
+### The label is then stopped at 125, and here is why
 
-The standard fix, from Heimes (2008), is a **piecewise-linear** target: hold the
-label at a ceiling while the engine is healthy, and let it fall only once real
-degradation starts.
+"Cycles until failure" looks like the obvious thing to predict. It is a bad
+target, and the reason can be measured rather than argued.
+
+Training engine 1 ran 192 cycles, so its raw labels count down 191, 190, … , 0.
+Look at what one of its sensors was doing while that happened. `T50` is the
+temperature at the turbine outlet, one of the informative ones:
+
+| cycle | raw label | `T50` reading |
+|---|---|---|
+| 1 | 191 | 1400.60 |
+| 20 | 172 | 1405.23 |
+| 40 | 152 | 1401.77 |
+| 60 | 132 | 1403.07 |
+| 150 | 42 | 1409.22 |
+| 180 | 12 | 1417.14 |
+| 192 | 0 | 1427.20 |
+
+Over the first 60 cycles the label falls from 191 to 132, while `T50` just
+wobbles around 1400 to 1405 with no trend at all. Its correlation with the
+label over that stretch is **−0.083**, which is nothing. Over the last 43
+cycles the label falls from 42 to 0, `T50` climbs steadily, and the correlation
+is **−0.715**.
+
+So for the healthy part of the engine's life you are asking the model: *"this
+window has 191 cycles left and that one has 132 — tell them apart."* The
+sensors do not distinguish them, because hardly any wear has happened yet. The
+model can only guess, and that guessing leaks into every prediction it makes,
+including the ones it could have got right.
+
+**The fix, from Heimes (2008), is to stop the label counting above a fixed
+number.** Everything above 125 is simply relabelled 125:
 
 ```
-RUL(t) = min(cycles_until_failure(t), RUL_max)
+label(t) = the smaller of (cycles until failure) and 125
 ```
 
-Plotted against time this is a flat line followed by a straight decline. The
-corner between them is often called the *change point*. Heimes reported that
-any ceiling between roughly 120 and 130 cycles works well on this dataset, and
-125 has become the common choice.
+On engine 1:
+
+| cycle | raw | after the cap |
+|---|---|---|
+| 1 | 191 | **125** |
+| 30 | 162 | **125** |
+| 60 | 132 | **125** |
+| 67 | 125 | 125 |
+| 68 | 124 | 124 ← from here on the cap does nothing |
+| 100 | 92 | 92 |
+| 192 | 0 | 0 |
+
+The label sits flat at 125 for engine 1's first 67 cycles, then counts down
+normally. The question the model is being asked has changed to *"while it looks
+healthy, just say 125; start counting only once wear shows"*, and that one is
+answerable.
+
+Drawn against time the label is now two straight pieces — a flat line, then a
+slope down to zero. That shape is what the literature calls a
+**piecewise-linear** target: "piecewise" meaning in pieces, "linear" meaning
+each piece is straight. The corner where they meet is often called the *change
+point*.
+
+Heimes reported that any value between roughly 120 and 130 works well on this
+dataset. Which one this project uses, and why 125, is assumption **A-01** in
+`docs/ASSUMPTIONS.md` — the paper states the formula but never prints the
+number.
 
 ## Sensors: only 14 of the 21, and the order matters
 
