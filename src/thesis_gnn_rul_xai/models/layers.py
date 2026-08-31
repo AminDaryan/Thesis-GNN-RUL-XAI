@@ -48,8 +48,11 @@ class GraphConvolution(nn.Module):
     def reset_parameters(self) -> None:
         """Set the starting values of the weights, before any training.
 
-        ASSUMPTION A-14: start from Glorot (Xavier) uniform values. The paper
-        never says what it starts from. Explained in README.md in this folder;
+        ASSUMPTION A-14: pick the starting weights at random from the range the
+        Glorot rule gives, which is set by how many numbers enter and leave the
+        layer. The paper never says what it starts from. PyTorch spells the
+        same rule xavier_uniform_, after Xavier Glorot, who proposed it — the
+        two names mean one method. Explained in README.md in this folder;
         written up in docs/ASSUMPTIONS.md.
         """
         nn.init.xavier_uniform_(self.weight)
@@ -80,8 +83,9 @@ class GraphConvolution(nn.Module):
                 f"got {features.shape[2]}."
             )
 
-        # A_hat @ H, then @ W. The adjacency is the same for every example, so
-        # it broadcasts across the batch dimension.
+        # A_hat @ H, then @ W, in the order the paper's Equation 8 prints it.
+        # One graph serves the whole batch: the same 14x14 matrix is applied to
+        # every example in it, so it needs no copy per example.
         mixed = adjacency @ features
         output = mixed @ self.weight
         if self.bias is not None:

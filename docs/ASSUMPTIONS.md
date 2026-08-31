@@ -357,6 +357,26 @@ wide margin — which is precisely why it needed removing rather than keeping:
 those 928 extra parameters bought their accuracy by doing the temporal
 filtering A-11 declines to invent.
 
+**Where this choice sits in its field — and it does not sit comfortably.**
+**F-12** read the twelve other papers filed alongside the source. Not one of
+them puts a single number on a graph node: every one either hands the graph the
+raw window or runs a temporal encoder first and passes its **output vector**,
+the smallest of which is thirty numbers wide. Neither the last reading nor the
+mean appears anywhere in that corpus. So the choice made here is not the
+field's default — it is a consequence of refusing to depart from the shape
+Table 4 prints, and the honest way to describe it is "unusual, and adopted for
+a stated reason", not "natural". The nearest comparable design, HAGCN, gives
+each of the same fourteen sensor nodes thirty numbers and lets its recurrent
+stage widen them to sixty; the source paper's stage has to narrow thirty to
+one.
+
+**The mean has still never been measured.** The figures above compare this
+choice against the removed `window` mode, not against the other option that
+keeps Table 4 intact. Averaging the window instead of taking its last cycle
+leaves `W(1) in R^(1 x 32)` and the parameter count untouched, so it is a
+one-line change and a five-seed run. Until it is run, "how much it matters"
+answers a different question from the one this entry poses.
+
 **Note on what `window_size` still does.** It is not inert. It decides which
 cycles are eligible — an engine's first example ends at cycle `window_size`,
 so cycles 1 to 29 are never a prediction point — and it is what a temporal
@@ -1736,6 +1756,133 @@ evidence about the paper's editing rather than about its method.
 
 **Verified from the PDF**, not from memory: Table 6 through Table 10 are on
 pages 9 and 10, and the Conclusions list is on page 15.
+
+---
+
+### F-12 — No other paper in the surrounding literature gives a graph node one number
+
+**Where:** twelve papers alongside the source in
+`D:\Main\University\Thesis\Papers\Predictive Maintanace Papers\GNN\GNN Predictive Maintenance\RUL\MAPSS\`
+
+A-07 had to invent a stand-in for the node feature, because the paper never
+says what the "ESTGNN w/o LSTM" ablation feeds its graph. This entry asks a
+narrower question that *can* be answered from sources: **what does everyone
+else put on a node?**
+
+Every PDF in that folder was read — full text extracted from all thirteen, and
+the deciding tables and figures rendered and read as images.
+
+**The corpus.** Ten method papers report on C-MAPSS FD001–FD004; one is a 2025
+survey; one (`MAGF-SPA`) uses only N-CMAPSS and is excluded from every count
+below; the thirteenth is the source paper itself.
+
+**What each one puts on a node:**
+
+| Paper | Node is | What the node carries into the graph layers | Page |
+|---|---|---|---|
+| GLSTGN (ESWA 2025) | sensor | output of a gated temporal convolution | 1, 3 |
+| IMTSO-GCN (QRE 2025) | sensor | raw values over a sliding window; size tuned, 20 in the reported run | 10, 11 |
+| DVGTformer (MSSP 2024) | sensor | the sensor's whole window, `Xw in R^(Tw x N)` | 6 |
+| Zheng et al. (Adv. Eng. Inf. 2026) | sensor | per-sensor LSTM output, `R^(1 x F)`, **F = 30** | 4, 7 |
+| HAGCN (RESS 2021) | sensor | the raw 30-cycle window | 5, 6 |
+| HierCorrPool (IEEE) | sensor | 1-D CNN output over sub-windows | 3 |
+| ADFG (IEEE TIM) | sensor | multiscale-CNN output, same length as the window | 1, 8 |
+| GCN + Graph Transformer (2025) | sensor x time step | 1D-CNN features plus positional encoding | 3 |
+| THGNN (IEEE TNNLS 2025) | sensor, continuous time | per-event features | 2 |
+| AGCTE (Aerospace 2024) | sensor | the raw 1-D series itself; the GCN runs *first* | 3, 4 |
+| **ESTGNN (the source)** | sensor | **one number** | Table 4, p. 7 |
+
+Two families, and no third. Either the raw window goes straight in, or a
+temporal encoder runs first and its **output vector** becomes the node feature.
+The smallest node feature found anywhere in the corpus is 30 numbers.
+
+**Nobody uses the last reading, and nobody uses the mean.** All thirteen texts
+were searched for every phrasing of both — "last time step", "final time step",
+"mean over", "average over time", "single value", "one value per", "current
+reading". Twelve papers returned nothing. The two hits in HierCorrPool are a
+sentence about averaging *inference times* and a reference title. **Both of the
+options A-07 was choosing between are absent from the literature.**
+
+**The closest structural analogue is HAGCN**, and it is worth quoting because
+it is the same benchmark at the same window length. Its Table 4, read off page
+6, opens:
+
+```
+1   Input     14 x 30 x 256
+2   BiLSTM    14 x 60 x 256
+3   HGRL_1    14 x 64 x 256
+```
+
+and its page 6 text states the input is "number of nodes x feature length x
+batch size". So: fourteen sensor nodes, each carrying **thirty** numbers, and
+its recurrent stage **widens** them to sixty before any graph layer runs.
+ESTGNN's Table 4 requires the mirror image — a recurrent stage that narrows
+thirty cycles to **one**. That is the unstated output projection A-11 declines
+to invent, and this is direct evidence that it is an unusual thing to ask of an
+LSTM rather than a routine one.
+
+**Three independent sources choose a different fourteen, and the one sensor
+they swap is P15.** Every C-MAPSS study reduces the 21 sensors to 14 by
+dropping seven that do not vary. Three of the sources here name their seven,
+and all three agree with each other and disagree with the source paper:
+
+| Source | Page | The fourteen kept |
+|---|---|---|
+| HAGCN (RESS 2021) | 5 | 2, 3, 4, 7, 8, 9, 11, 12, 13, **14**, 15, 17, 20, 21 |
+| AGCTE (Aerospace 2024) | 6 | 2, 3, 4, 7, 8, 9, 11, 12, 13, **14**, 15, 17, 20, 21 |
+| Survey (MSSP 2025) | 19 | the same, stated as removing 1, 5, **6**, 10, 16, 18, 19 |
+| **ESTGNN (the source)**, Table 3 | 5 | 2, 3, 4, **6**, 7, 8, 9, 11, 12, 13, 15, 17, 20, 21 |
+
+Thirteen sensors are shared by all four. The disagreement is a single swap:
+the field keeps `NRc` (column 14) and discards `P15` (column 6) as
+constant-valued; the source paper does the exact opposite.
+
+The survey's wording is the pointed part — it removes column 6 among "sensors
+with constant values". **F-01** measured `P15` in FD001 and found it takes two
+distinct values across the whole sub-dataset — 21.60 and 21.61 in 20 631 rows
+— and **F-05** found it ranked last of the fourteen on every engine tested. Three independent groups reached by inspection the
+conclusion this project reached by measurement: `P15` carries almost nothing.
+The source paper nevertheless admits it to the graph and gives it four edges.
+
+This also bears on **A-10**, which deduced `NRc` as the source's seventh
+dropped sensor from its Table 3. That deduction stands — but it is now clear
+that dropping `NRc` is the source's own departure from its field, not a
+convention it inherited.
+
+**How the field orders the computation.** The survey (MSSP 2025, page 13)
+splits the literature into *spatial-first* — the graph runs on the raw data and
+a temporal encoder follows — and *temporal-first*, and states:
+
+> "Most of the existing works adopt the spatial-first approach."
+
+The source paper is temporal-first. That is the minority arrangement, and it is
+the only one in which removing the temporal stage leaves a hole where the node
+feature used to be. In a spatial-first design there is nothing to remove: the
+graph was always reading the window directly.
+
+The survey also defines node features loosely (page 3) — they "could be the raw
+signals themselves or features extracted through some preprocessing or feature
+engineering methods" — and THGNN (page 2) argues *against* what the source
+does, criticising methods that compress "MTS data from a time window into a
+single 'flat' graph, often leading to the loss of critical temporal
+information".
+
+**What this does and does not settle.** It does not overturn A-07. The
+reasoning there — keep the architecture Table 4 prints, delete only the named
+component — still stands, and no paper here faced the same question, because
+none of them removes a temporal stage and reports the result. What it does is
+locate A-07 honestly: **its choice is outside the practice of its field**, the
+alternative it rejected is also outside that practice, and the option the field
+would reach for is the one this project removed on 2026-08-28 for re-introducing
+a temporal encoder. A-07 should say so rather than leave the impression that
+the last reading is a natural default. It is not; it is a consequence of
+insisting on Table 4's printed shape.
+
+**Method, so this can be checked.** Text was extracted from all thirteen PDFs
+with `pypdfium2`; every quotation above carries the page it came from; the
+tables and figures cited (HAGCN Table 4, the survey's Figs. 4 and 6, DVGTformer
+Fig. 4, AGCTE Fig. 2) were rendered as page images and read, not inferred from
+the text layer, because two-column extraction interleaves table rows.
 
 ---
 

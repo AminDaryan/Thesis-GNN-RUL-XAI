@@ -88,8 +88,10 @@ depends entirely on the rescaling, not on the baseline:
   a sensor's lowest ever reading. Substituting it produced a ranking unrelated
   to the mean-window one (Spearman −0.16) and promoted `P15`, the least
   informative sensor, to first place.
-- Under the **z-score** default now in force, zero *is* the training mean, so
-  it agrees with the mean window almost exactly (Spearman +0.996).
+- Under the **z-score** default now in force — every sensor rescaled to say how
+  many standard deviations it sits from its own training average, so that zero
+  means "exactly average" — the number zero is the training mean, and the zero
+  baseline agrees with the mean window almost exactly (Spearman +0.996).
 
 A-20 records both measurements. The point it draws from them is that a SHAP
 baseline cannot be justified on its own — only against the scaling in force —

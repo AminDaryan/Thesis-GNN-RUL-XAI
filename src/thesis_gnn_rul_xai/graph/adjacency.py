@@ -131,7 +131,8 @@ def normalize_adjacency(
         isolated = np.where(degrees <= 0)[0].tolist()
         raise ValueError(
             f"Node(s) {isolated} have no connections at all, so the "
-            "normalisation would divide by zero. Add self-loops or edges."
+            "rescaling would divide by zero. Give them an edge, or a "
+            "self-loop, meaning a connection from the node to itself."
         )
 
     if method == "symmetric":

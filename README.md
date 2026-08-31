@@ -77,6 +77,11 @@ explainable — is the subject of the thesis.
 Short definitions of every technical term used in this repository. Each one
 points to a source where it is defined properly.
 
+> If you would rather have these built up in order, with figures, than
+> defined in a list, read `docs/learn/` instead — eight short pages covering
+> the same ground for a reader who has never met any of it. They are best read
+> in a browser: `python scripts/docs_ui.py`.
+
 **RUL — Remaining Useful Life.** The number of flight cycles an engine will
 still run before it fails. This is the quantity being predicted. One *flight
 cycle* is one complete take-off, flight, and landing; it is the unit of time
@@ -380,7 +385,35 @@ The same applies to `run_preprocessing(config, data_dir=...)` in Python.
 
 ## 6. Running the pipeline
 
-### From the notebooks (start here)
+### From the documentation site (start here)
+
+```bash
+python scripts/docs_ui.py
+```
+
+This opens a browser showing everything written in this repository — this file,
+the eight folder READMEs, the assumptions log, the audits and both notebooks —
+together with eight taught pages that build the method from nothing for a
+reader who has never seen it, and twelve figures.
+
+It is not a copy. Every page is rendered from the file on disk at the moment
+you ask for it, and every figure is **computed** rather than drawn: the sensor
+graph is laid out from the transcribed Table 3 and measured with the same
+`adjacency_report()` the tests use, and the network diagram is produced by
+building a real `ESTGNN` and reading its layers back. The three figures that
+need the NASA files say so when the files are absent rather than drawing an
+invented signal.
+
+The site also shows every run in `reports/` with the commit that produced it,
+and turns `docs/ASSUMPTIONS.md` into cards you can scan. It serves on
+`127.0.0.1` only and publishes nothing. See
+[`src/thesis_gnn_rul_xai/docsite/README.md`](src/thesis_gnn_rul_xai/docsite/README.md).
+
+Notebooks can be **read** on the site with the outputs they were saved with,
+which needs nothing extra. To **run** them, the site's JupyterLab button starts
+JupyterLab for you, which needs `pip install -e .[notebook]`.
+
+### From the notebooks
 
 ```bash
 jupyter lab notebooks/
@@ -586,7 +619,8 @@ Thesis GNN RUL XAI/
 │
 ├── docs/
 │   ├── ASSUMPTIONS.md            Every choice not taken from the paper
-│   └── REFERENCES.md             Full citations
+│   ├── REFERENCES.md             Full citations
+│   └── learn/                    Eight taught pages, for a reader new to this
 │
 ├── notebooks/
 │   ├── 01_preprocessing_fd001.ipynb
@@ -594,7 +628,8 @@ Thesis GNN RUL XAI/
 │
 ├── scripts/
 │   ├── prepare_data.py           Check or preprocess the raw data
-│   └── train.py                  Train, score, and average over seeds
+│   ├── train.py                  Train, score, and average over seeds
+│   └── docs_ui.py                Open all of this in a browser
 │
 ├── src/
 │   └── thesis_gnn_rul_xai/       All the computation lives here
@@ -605,9 +640,10 @@ Thesis GNN RUL XAI/
 │       ├── training/
 │       ├── evaluation/
 │       ├── explain/
-│       └── utils/
+│       ├── utils/
+│       └── docsite/              The documentation website (computes nothing)
 │
-└── tests/                        163 tests
+└── tests/                        203 tests
 ```
 
 ### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
@@ -783,6 +819,8 @@ is defended.
 
 | If you want to... | Open |
 |-------------------|------|
+| Read all of this in a browser, with figures | `python scripts/docs_ui.py` |
+| Understand the method from nothing, in eight short pages | `docs/learn/`, or the **Learn** section of that site |
 | Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
 | Understand the model, the training and the explanations | `notebooks/02_model_fd001.ipynb` |
 | Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
@@ -825,7 +863,7 @@ five of the entries it checks had drifted from the code.
 
 Every push also runs `ruff check` and `pytest` on GitHub Actions, against
 Python 3.10 and 3.13 — see `.github/workflows/checks.yml`. The runner has no
-NASA data, so 103 tests pass there and 66 skip themselves. A green run means
+NASA data, so 137 tests pass there and 66 skip themselves. A green run means
 nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
@@ -833,7 +871,7 @@ and has to be checked locally.
 The suite covers each preprocessing step, the sensor graph, the network, the
 training loop, the four measures, the Shapley values, and the pipeline end to
 end. The model, training and explanation tests need PyTorch; without it they
-are skipped rather than failed, and the remaining 117 still run.
+are skipped rather than failed, and the remaining 150 still run.
 
 `tests/test_examples.py` and `tests/test_examples_torch.py` hold one small
 worked example of each function — the kind of thing that would once have gone

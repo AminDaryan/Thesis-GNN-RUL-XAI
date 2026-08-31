@@ -88,24 +88,38 @@ adds the self-loops that let a node see its own value. Handing over the raw
 matrix would train quietly and badly, so the constructor checks the diagonal
 and raises if it finds a zero there.
 
-### The adjacency matrix is a buffer, not a parameter
+### Training never changes the adjacency matrix
 
-It is registered as a PyTorch buffer. That means it moves with `.to(device)`
-and is saved in the state dictionary, but the optimiser never touches it. To
-run the paper's "without physics prior" ablation you simply build the model
-with a different matrix — `build_fully_connected_adjacency()` in
+A PyTorch model holds two kinds of numbers. **Parameters** are the ones
+training is allowed to change — every weight in this network is one. **Buffers**
+are numbers the model carries around but training never touches. Both are
+written to disk when the model is saved, and both move together onto a graphics
+card. The only difference is whether training may edit them.
+
+The adjacency matrix is stored as a buffer. That is deliberate: the graph is
+engineering knowledge transcribed from the paper's Table 3, not something to be
+discovered from data. If training could edit it, then after 200 passes over the
+data you would no longer have the paper's graph but whatever the fitting
+procedure happened to prefer — and the comparison between "with the physics
+graph" and "without" would be measuring two things that had both drifted.
+
+To run the paper's "without physics prior" experiment you build the model with a
+different matrix instead — `build_fully_connected_adjacency()` in
 `thesis_gnn_rul_xai.graph.adjacency`.
 
-`GraphConvolution` does not store the adjacency matrix at all; it is passed to
-`forward()` on every call. That is why one matrix can be shared by all three
-layers and swapped without rebuilding the network.
+One layer on its own, a `GraphConvolution`, does not store the matrix at all: it
+is handed in as an argument every time the layer runs. That is why all three
+layers can share a single copy, and why a different graph needs no new layers.
 
 ### The shape checks are deliberate
 
-`GraphConvolution.forward()` validates every dimension before doing anything.
-A dimension that broadcasts silently here would connect the wrong sensors to
-each other and still return a plausible-looking number, which is the worst kind
-of bug to have in this code.
+`GraphConvolution.forward()` checks the size of every input before doing
+anything. Left to itself, PyTorch will sometimes stretch a mismatched array to
+fit rather than complain — it is called *broadcasting*, and it is usually
+convenient. Here it would be a disaster: the layer would quietly pair up the
+wrong sensors and still return a number that looked entirely reasonable. A
+wrong answer that looks plausible is the worst kind of bug this code could
+have, so the sizes are checked and a mismatch is named rather than absorbed.
 
 ### One number per sensor, and why 30 would be wrong
 
@@ -177,12 +191,17 @@ code given.
   biases where it means them, so the omission reads as deliberate. We follow
   the equations as printed. `GraphConvolution` takes `bias=True` so the
   difference can be measured rather than argued about. This is **A-12**.
-- **Weights are initialised with Glorot (Xavier) uniform sampling.** The paper
-  never says how any weight matrix is initialised. Glorot is what Kipf and
-  Welling (2017) use for this exact layer, and it keeps the variance of the
-  activations roughly steady as they pass through the three stacked layers,
-  which is what makes a deep stack trainable at all. The dense layers keep
-  PyTorch's own default. This is **A-14**.
+- **The starting weights are drawn using the Glorot rule.** Training has to
+  begin from somewhere, and the weights start as random numbers. The Glorot
+  rule sets how wide a range to draw them from, based on how many numbers enter
+  and leave each layer. Its point is to keep the numbers flowing through the
+  network at a steady size: start them too large and they grow layer after
+  layer until they overflow, too small and they shrink towards nothing and the
+  network learns nothing. The paper never says how it starts. Glorot is what
+  Kipf and Welling (2017) use for this exact layer, so it is what is used here.
+  PyTorch calls the same rule `xavier_uniform_`, after Xavier Glorot who
+  proposed it — the two names refer to one method, not two. The dense layers
+  keep PyTorch's own default instead. This is **A-14**.
 - **The LSTM stage is omitted** (**A-11**) and **each node carries the last
   cycle of its window** (**A-07**) — both explained above.
 - **Targets are divided by the label ceiling** (**A-13**) and **test labels are
@@ -221,8 +240,11 @@ enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
 | `count_parameters()` | How many numbers the network learns. Compare it with Table 4. |
 | `layer_summary()` | One dictionary per layer — its name, the shape going in and out, how many weights it holds, and its activation — in the same form as Table 4. |
 
-`adjacency` is stored as a PyTorch *buffer*, which is why it travels with
-`.to(device)` and is saved with the weights but is never trained.
+`adjacency` is stored as a **buffer** — a number the model carries but training
+never changes, explained under
+[Training never changes the adjacency matrix](#training-never-changes-the-adjacency-matrix)
+above. It is saved alongside the weights and moves with them onto a graphics
+card, but no amount of training will alter it.
 
 ### `GraphConvolution(in_features, out_features, bias=False)`
 

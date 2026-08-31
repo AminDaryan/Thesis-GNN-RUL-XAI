@@ -121,7 +121,9 @@ def test_the_graph_is_not_a_learned_parameter(adjacency):
 def test_an_unnormalised_adjacency_is_rejected(adjacency):
     """A zero diagonal means normalize_adjacency() was not called."""
     raw, _ = build_physics_adjacency()
-    with pytest.raises(ValueError, match="has not been normalised"):
+    # Match the condition, not the wording of the explanation: the message is
+    # prose and gets rewritten, the zero diagonal is what the check is about.
+    with pytest.raises(ValueError, match="zero on its diagonal"):
         ESTGNN(raw, in_features=30)
 
 

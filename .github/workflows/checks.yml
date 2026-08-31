@@ -58,6 +58,14 @@ jobs:
       - name: Tests
         run: pytest -q
 
+      - name: Documentation explains the words it borrows
+        # Rule 9 says every term is spelled out the first time it appears. That
+        # rule was broken twice while written down, so it is a check now: this
+        # fails if a borrowed word - buffer, broadcast, self-loop, ablation -
+        # is used for the first time in a document with nothing to say what it
+        # means. It needs no data and no PyTorch.
+        run: python scripts/check_prose.py
+
       - name: The assumptions log still describes the code
         # Without the NASA files most groups skip themselves; the sensor-graph
         # checks need no data and run here, so a transcription error in Table 3

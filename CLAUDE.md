@@ -163,6 +163,31 @@ first time it appears rather than assuming it. Where a README has to name a
 class, say what it is: "a `TrainingHistory`, the record of a finished run", not
 just the name.
 
+#### The check, which is not the same as the rule
+
+The paragraph above has been in this file from the start and was broken anyway,
+twice. Stating the rule again does not work. Before calling any document,
+comment or explanation finished, **run this check**:
+
+> Re-read every sentence as one specific person: they know Python, they have
+> never used PyTorch, and they have never read the paper. Any word that person
+> would have to look up gets replaced, or explained in the same sentence.
+
+The words that fail are the ones that feel ordinary from inside the code
+because they were borrowed from PyTorch or from graph theory: *buffer*,
+*broadcast*, *state dictionary*, *logits*, *self-loop*, *ablation*,
+*hyperparameter*, *epoch*, *z-score*, *Glorot*. Invented words are worse still
+— "an unrescaled table is rejected" survived here for weeks and means nothing
+to anyone. `python scripts/check_prose.py` catches this specific list; it
+cannot judge whether writing is clear, so it is a floor and not a substitute
+for the check above.
+
+Second half of the check: **a claim about how something works needs a worked
+example with real numbers.** "A column of the weight matrix is a list of
+multipliers" explains nothing on its own. Load the real data, print the actual
+values, do the arithmetic term by term, and show the code producing the same
+answer. Placeholders like `x1 ... x32` are not an example.
+
 Worked examples are tests, in `tests/test_examples.py` and
 `tests/test_examples_torch.py`, not doctests. When you add a function, add its
 example there.
@@ -173,8 +198,16 @@ example there.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 169 tests; must all pass
+pytest                # 203 tests; must all pass
+python scripts/check_prose.py   # borrowed words must be explained where used
 ```
+
+`check_prose.py` is the floor under rule 9, not the ceiling. It knows a fixed
+list of words — *buffer*, *broadcast*, *self-loop*, *ablation* and the rest —
+and fails if one is used for the first time in a document with no explanation
+beside it. It cannot tell whether a sentence is clear, so a green run means
+"none of the known traps", not "this reads well". The check in rule 9 is still
+yours to run.
 
 If the change touches `docs/ASSUMPTIONS.md`, a default in `config/`, or
 anything the log quotes a number from, also run:
@@ -190,8 +223,8 @@ has drifted from the code more than once — see the header of that script.
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing, leaving
-103 passing and 66 skipped. The model, training and explanation tests
-additionally need PyTorch; without it they are not collected and 117 still
+137 passing and 66 skipped. The model, training and explanation tests
+additionally need PyTorch; without it they are not collected and 150 still
 run.
 
 If a change touches a notebook, re-execute it before committing, so its stored

@@ -64,8 +64,9 @@ def _masked_batch(
     features: np.ndarray, baseline: np.ndarray, masks: np.ndarray
 ) -> np.ndarray:
     """Build one input per group: keep the chosen sensors, replace the rest."""
-    # masks: (n_masks, nodes) of bool. Broadcasting over the window axis keeps
-    # or replaces a sensor's whole history, never part of it.
+    # masks: (n_masks, nodes) of true/false, one entry per sensor and none per
+    # cycle. Having no time axis is the point: one decision covers a sensor's
+    # whole window, so it is kept entirely or replaced entirely, never in part.
     keep = masks[:, :, None]
     return np.where(keep, features[None, :, :], baseline[None, :, :])
 

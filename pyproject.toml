@@ -24,6 +24,12 @@ dependencies = [
 # The preprocessing half of the package needs none of these.
 model = ["torch>=2.0"]
 notebook = ["jupyterlab>=4.0", "ipykernel>=6.25", "seaborn>=0.13"]
+# The documentation website, `python scripts/docs_ui.py`. The server itself is
+# Python's own http.server and needs nothing. These three convert what it
+# serves: Markdown to HTML, code to coloured code, and notebooks to pages.
+# All three already arrive with nbconvert; they are named here so that the
+# website does not silently depend on another package's dependencies.
+docs = ["mistune>=3.0", "Pygments>=2.15", "nbconvert>=7.9", "nbformat>=5.9"]
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
@@ -36,6 +42,12 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The documentation website's page, stylesheet and script are not Python, so
+# they would be left behind by an ordinary install and the site would serve a
+# blank page from an installed copy.
+[tool.setuptools.package-data]
+"thesis_gnn_rul_xai.docsite" = ["assets/*"]
 
 [tool.ruff]
 # Static checks. Run with:  ruff check .      (and `ruff check --fix .` to apply)

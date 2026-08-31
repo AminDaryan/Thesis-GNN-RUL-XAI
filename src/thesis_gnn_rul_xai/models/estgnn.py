@@ -36,8 +36,9 @@ FC_HIDDEN_SIZE: int = 128
 class ESTGNN(nn.Module):
     """Three graph convolutions, then two ordinary layers, as in Table 4.
 
-    Pass the adjacency table through normalize_adjacency() before handing it
-    here; an unrescaled table is rejected.
+    Pass the sensor graph through normalize_adjacency() before handing it here.
+    A graph that has not been through that step is refused, because it lacks
+    the self-connections that let a sensor see its own reading.
     """
 
     def __init__(
@@ -60,9 +61,10 @@ class ESTGNN(nn.Module):
         if bool((torch.diagonal(matrix) == 0).any()):
             raise ValueError(
                 "The adjacency matrix has a zero on its diagonal, so it has not "
-                "been normalised. Pass the output of normalize_adjacency(), "
-                "which adds the self-loops the graph convolution needs; giving "
-                "the raw matrix would stop every node from seeing its own value."
+                "been rescaled yet. Pass the output of normalize_adjacency(), "
+                "which joins every sensor to itself — a self-loop — so that a "
+                "sensor keeps its own reading when it mixes with its "
+                "neighbours. Given the raw matrix, no sensor could see itself."
             )
         if in_features < 1:
             raise ValueError(f"in_features must be at least 1, got {in_features}.")
