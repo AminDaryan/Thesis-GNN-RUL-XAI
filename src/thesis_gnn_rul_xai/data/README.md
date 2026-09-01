@@ -145,7 +145,12 @@ model can only guess, and that guessing leaks into every prediction it makes,
 including the ones it could have got right.
 
 **The fix, from Heimes (2008), is to stop the label counting above a fixed
-number.** Everything above 125 is simply relabelled 125:
+number.** This project uses **125**, and it is worth knowing straight away
+where that came from: the paper gives the formula as its Equation 19 but never
+prints the number it used, so 125 is *our* reading, recorded as assumption
+**A-01**. The reasoning is at the end of this section.
+
+Everything above 125 is then relabelled 125:
 
 ```
 label(t) = the smaller of (cycles until failure) and 125
@@ -174,10 +179,13 @@ slope down to zero. That shape is what the literature calls a
 each piece is straight. The corner where they meet is often called the *change
 point*.
 
-Heimes reported that any value between roughly 120 and 130 works well on this
-dataset. Which one this project uses, and why 125, is assumption **A-01** in
-`docs/ASSUMPTIONS.md` — the paper states the formula but never prints the
-number.
+**Where 125 comes from.** Heimes reported that any value between roughly 120
+and 130 works well on this dataset. The paper gives the formula as its Equation
+19, and Section 4.2 describes predicted life holding "around 125" while an
+engine is healthy, but the number itself is never printed. It was settled here
+by measuring the plateau of the paper's own Fig. 7 against that figure's axis
+ticks, which puts it at 125.2. The full argument, including a figure that
+appears to disagree, is assumption **A-01** in `docs/ASSUMPTIONS.md`.
 
 ## Sensors: only 14 of the 21, and the order matters
 
