@@ -128,6 +128,79 @@ takes two values, 21.60 and 21.61. Our own measurement is the more precise one.
 
 ---
 
+## A-17, A-18, A-19 and A-13, read on 2026-09-01
+
+These were listed below as "candidates not yet read closely enough to quote".
+They have now been read. Three gained a basis. One did not, and the evidence
+points away from the current choice.
+
+### A-17 — the learning rate schedule. **No paper decays it exponentially.**
+
+The paper gives 1e-3 and 1e-4 as the first and last rates and never says how it
+travels between them. This project chose to shrink it by the same factor every
+epoch. Three C-MAPSS papers state a schedule, and **none of them does that**:
+
+| Paper | What it does |
+|---|---|
+| Zhang, Liu, Xie & Liu (2025), Table 4 | `Learning rate decay stepLR: 40` — a **step** every 40 iterations |
+| Li, Zhao, Sun, Yan & Chen (2021), p6 | "learning rate decay is adopted, which decreases the learning rate by **multiplying 0.1 in epochs 120 and 160**" |
+| Li & Dong (2026), p10 | "**When the loss is not reduced**, the learning rate is reduced at a rate of 0.1 times" |
+
+Two use a step decay at fixed epochs; one reduces on a plateau. Exponential
+decay is not among them.
+
+**And there is a reason to prefer a step here.** The paper's two endpoints,
+1e-3 and 1e-4, are **exactly one factor of ten apart** — precisely one `×0.1`
+step of the kind Li et al. (2021) describe. An exponential curve reaches 1e-4
+only at the final epoch and spends the whole run at values the paper never
+mentions; a single `×0.1` step reaches it exactly and holds it. The step
+reading requires the paper to have omitted *when* the step happens; the
+exponential reading requires it to have omitted the mechanism entirely.
+
+The project already implements `"plateau"`, which matches Li and Dong (2026),
+and `"constant"`. It does not implement a step schedule. **A-17 should either
+gain a step option and be re-measured, or state that exponential decay was
+chosen despite no C-MAPSS paper using it.** Right now it does neither.
+
+### A-18 — early stopping. **Two papers do it; one gives a patience.**
+
+- Dida, Cheriet & Belhadj, p7: "an early stopping mechanism is implemented,
+  which halts the training process once the model begins to overfit the
+  training data."
+- Wen, Fang, Wei, Liu, Chen & Wu (2025), p7: "We set the training epochs to 50
+  for both datasets, **incorporating an early stopping mechanism with a
+  patience level of 10.**" (A different Wen from the paper being reproduced.)
+
+This project uses a patience of 20. The practice is established; the particular
+value is still ours, and A-18 can now cite both.
+
+### A-19 — the fully connected comparison. **A survey says it is the default.**
+
+Wen et al. name an ablation "without physics prior" and never say what replaces
+the hand-designed matrix. Wang, Wu, Li, Xie and Chen (2025), a survey of graph
+networks for this exact task, reports on its page 8:
+
+> "most works simply constructed **fully-connected graphs**, where every node is
+> connected to every other node, resulting in dense adjacency matrices."
+
+So a complete graph is what the field reaches for when it has no structure to
+impose. That is direct support for the substitution A-19 makes.
+
+### A-13 — dividing the targets by the ceiling. **Supported.**
+
+The same survey, page 20, describing its own preprocessing: "The **maximum RUL
+is set to 88 to normalize the RUL labels**, and max–min normalization is used
+to normalize the data." Dividing the labels by a chosen maximum is the practice
+A-13 follows; only the constant differs, because it follows the ceiling.
+
+### A-06 — holding engines out. **Nothing usable found.**
+
+The hits were surveys counting how often train/test splits appear in the field,
+not C-MAPSS papers describing their own validation engines. A-06 stays in the
+"no precedent found" class until something better turns up.
+
+---
+
 ## Where the rest of the list stands
 
 Of the numbered entries in `docs/ASSUMPTIONS.md`, roughly two in five cite a
@@ -174,8 +247,9 @@ the paper itself is not in the library and has not been read.
 1. Decide A-23 — exclude, following Dida et al., or keep padding and say why.
 2. Add the Dida et al. citation to A-05, and to A-01 alongside the two it has.
 3. Add the corroboration to F-01 and A-10.
-4. Read the candidate papers behind A-17, A-18 and A-19 and quote them or
-   record that nothing usable was found.
+4. ~~Read the candidate papers behind A-17, A-18 and A-19.~~ **Done above.**
+   A-18, A-19 and A-13 gained a basis; A-06 did not; **A-17 turned up evidence
+   against the current choice** and needs a decision of its own.
 5. Obtain Shi et al. (2024) and settle A-04 and A-09.
 6. For every entry where a search found nothing, say so in the entry, naming
    the search, rather than leaving the silence unexplained.
@@ -187,9 +261,30 @@ Attention-LSTM Neural Network of Aircraft Engines.* International Journal of
 Prognostics and Health Management. Read from
 `Papers/All papers in one/Remaining Useful Life Prediction Using Attention-LSTM Neural.pdf`.
 
+Li, T., Zhao, Z., Sun, C., Yan, R., & Chen, X. (2021). *Hierarchical attention
+graph convolutional network to fuse multi-sensor signals for remaining useful
+life prediction.* Reliability Engineering and System Safety, 215, 107878.
+
+Li, T., & Dong, J. (2026). *Multi-level attention graph feature fusion smooth
+prognostics approach for aircraft engines remaining useful life prediction.*
+Journal of Control and Decision, 13(2), 399–415.
+
+Wang, Y., Wu, M., Li, X., Xie, L., & Chen, Z. (2025). *A survey on graph neural
+networks for remaining useful life prediction: methodologies, evaluation and
+future trends.* Mechanical Systems and Signal Processing, 229, 112449.
+
+Wen, Z., Fang, Y., Wei, P., Liu, F., Chen, Z., & Wu, M. (2025). *Temporal and
+heterogeneous graph neural network for remaining useful life prediction.* IEEE
+Transactions on Neural Networks and Learning Systems, 36(11). **Not** the Wen
+et al. this project reproduces.
+
+Zhang, Q., Liu, J., Xie, K., & Liu, Q. (2025). *A dynamic spatio-temporal graph
+neural network with global and local perception for remaining useful life
+prediction.* Huazhong University of Science and Technology.
+
 Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
 (2026). *Explainable spatiotemporal graph neutral network with dynamic SHAP
 enhancement for aeroengine RUL prediction.* Aerospace Science and Technology,
-168, 110875.
+168, 110875. The paper being reproduced.
 
 Full citations for everything else named above are in `docs/REFERENCES.md`.
