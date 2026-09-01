@@ -19,9 +19,11 @@ __all__ = [
     "load_training_config",
 ]
 
-# The four ways the learning rate can travel from its first value to its last.
+# The five ways the learning rate can travel from its first value to its last.
 # README.md in this folder describes each one.
-LearningRateSchedule = Literal["exponential", "cosine", "plateau", "constant"]
+LearningRateSchedule = Literal[
+    "step", "exponential", "cosine", "plateau", "constant"
+]
 
 
 @dataclass
@@ -37,10 +39,17 @@ class TrainingConfig:
     loss: str = "mse"
 
     # --- not stated by the paper -------------------------------------------
-    # ASSUMPTION A-17: shrink the learning rate by the same factor every epoch.
-    # The paper gives the first and last rate but never how it gets between
-    # them. Written up in docs/ASSUMPTIONS.md.
-    lr_schedule: LearningRateSchedule = "exponential"
+    # ASSUMPTION A-17: drop the learning rate once, by a single factor, at the
+    # halfway point. The paper gives the first and last rate but never how it
+    # gets between them. Its two rates are exactly one factor of ten apart,
+    # which is one step of the kind Li, Zhao, Sun, Yan and Chen (2021) use
+    # ("multiplying 0.1 in epochs 120 and 160"); no C-MAPSS paper found decays
+    # exponentially. Where the step falls is not stated either, so the halfway
+    # point is used: it spends equal time at each of the two rates the paper
+    # does state. Written up in docs/ASSUMPTIONS.md and docs/LITERATURE_BASIS.md.
+    lr_schedule: LearningRateSchedule = "step"
+    # Which epoch the step happens on. None means halfway through the run.
+    lr_step_epoch: int | None = None
     # ASSUMPTION A-18: stop early once the held-out error stops improving. The
     # paper holds nothing out and never stops early, so this is a departure
     # from it, not a reconstruction. Written up in docs/ASSUMPTIONS.md.
@@ -91,7 +100,12 @@ class TrainingConfig:
                 f"Only 'mse' is implemented, which is what Table 6 of the paper "
                 f"specifies. Got {self.loss!r}."
             )
-        valid_schedules = ("exponential", "cosine", "plateau", "constant")
+        if self.lr_step_epoch is not None and not 1 <= self.lr_step_epoch <= self.epochs:
+            raise ValueError(
+                "lr_step_epoch must fall inside the run, between 1 and "
+                f"{self.epochs}, or be None for halfway. Got {self.lr_step_epoch}."
+            )
+        valid_schedules = ("step", "exponential", "cosine", "plateau", "constant")
         if self.lr_schedule not in valid_schedules:
             raise ValueError(
                 f"lr_schedule must be one of {list(valid_schedules)}, got "

@@ -186,8 +186,17 @@ matter here:
 The paper gives a starting rate of 1e-3 and a final rate of 1e-4 but never says
 how the rate travels between them. `lr_schedule` offers four ways:
 
-- `"exponential"` (the default) — multiply by a constant factor after every
-  epoch, chosen so the final epoch lands exactly on `final_learning_rate`.
+- `"step"` (the default) — hold the starting rate, then drop straight to
+  `final_learning_rate` in one move, halfway through the run unless
+  `lr_step_epoch` says otherwise. The run therefore only ever uses the two
+  rates Table 6 actually prints, which happen to be exactly one factor of ten
+  apart. This is the closest thing to a published practice: Li, Zhao, Sun, Yan
+  and Chen (2021) decay "by multiplying 0.1 in epochs 120 and 160", and no
+  C-MAPSS paper found decays exponentially. See **A-17** and
+  `docs/LITERATURE_BASIS.md`.
+- `"exponential"` — multiply by a constant factor after every epoch, chosen so
+  the final epoch lands exactly on `final_learning_rate`. This was the default
+  until 2026-09-01, when the literature search found nothing supporting it.
 - `"cosine"` — follow a cosine curve between the two values: slow at first,
   fastest in the middle, slow again at the end.
 - `"plateau"` — drop the rate by a factor of ten only when the held-out error

@@ -12,7 +12,7 @@ Section 2.4 — the last computed exactly rather than by sampling. The
 per-sensor LSTM stage is deliberately omitted; see
 [section 12](#12-known-limitations).
 
-**Where that gets to.** On FD001, **RMSE 16.69 ± 0.33** across five seeds,
+**Where that gets to.** On FD001, **RMSE 16.82 ± 0.16** across five seeds,
 against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation —
 on an architecture that matches the paper's Table 4 exactly, down to the
 61,729 parameters its printed shapes imply.
@@ -22,7 +22,7 @@ leaves unspecified were deliberately chosen to land near its figure, so the
 configuration is not independent of the quantity it is compared against. Under
 the previous, independently-chosen settings the same code gives 20.35 ± 0.75.
 The paper specifies neither, so the honest summary is that this reproduction
-**spans 16.69 to 20.35 cycles depending on choices the source leaves open**.
+**spans 16.82 to 20.35 cycles depending on choices the source leaves open**.
 [Section 8](#8-results-so-far) gives all four measures.
 
 **Status.** The automated tests pass and ruff is clean. The notebooks predate
@@ -530,13 +530,13 @@ when it is given only one.
 
 | Configuration | RMSE | NASA score | R² | ASUE |
 |---------------|------|-----------|-----|------|
-| **Current default** — z-score, row, no validation split (A-22) | **16.69 ± 0.33** | 613 ± 35 | 0.826 ± 0.007 | 11.64 ± 0.47 |
-| Fully connected graph (A-19 ablation, current default) | 19.21 ± 0.06 | 780 ± 11 | 0.770 ± 0.001 | 13.60 ± 0.20 |
+| **Current default** — z-score, row, no validation split (A-22) | **16.82 ± 0.16** | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
+| Fully connected graph (A-19 ablation, current default) | 19.21 ± 0.06 | 782 ± 9 | 0.770 ± 0.001 | 13.94 ± 0.15 |
 | Previous default — min-max, symmetric, 20 % held out | 20.35 ± 0.75 | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
 | Fully connected graph (A-19 ablation, previous default) | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
 
-**The physics prior is worth 2.52 cycles under the current default** — rows one
-and two, paired `t = 17.9, p = 0.000057`, with every one of the five seeds
+**The physics prior is worth 2.40 cycles under the current default** — rows one
+and two, paired `t = 41.6, p = 0.000002`, with every one of the five seeds
 worse without it. Under the previous default — rows three and four — the same
 ablation was worth 0.044 cycles at `p = 0.913`, indistinguishable from zero.
 

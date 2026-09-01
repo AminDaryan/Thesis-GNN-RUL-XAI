@@ -144,7 +144,7 @@ answers**:
 
 | Configuration | With the physics graph | Fully connected | Cost of removing it |
 |---|---|---|---|
-| Current default — z-score, row normalisation, nothing held back | 16.694 ± 0.331 | 19.213 ± 0.056 | **+2.520** (*p* = 0.000057) |
+| Current default — z-score, row normalisation, nothing held back | 16.818 ± 0.157 | 19.214 ± 0.056 | **+2.396** (*p* = 0.000002) |
 | Min-max scaling, symmetric normalisation, 20 % held back | 20.353 ± 0.752 | 20.397 ± 0.395 | +0.044 (*p* = 0.913) |
 | A since-removed node-feature mode | 13.45 ± 0.20 | 19.17 ± 0.45 | +5.7 |
 
@@ -182,7 +182,7 @@ configuration whenever you quote one, and re-run it whenever anything moves.
 - The `Â` in the formula carries **self-loops** and a **degree normalisation**,
   and which normalisation to use was a choice (A-21).
 - What the physics graph is worth has been measured **three times with three
-  answers** — 5.7, 0.044 and 2.520 cycles — under settings the paper leaves
+  answers** — 5.7, 0.044 and 2.396 cycles — under settings the paper leaves
   open. That instability is finding F-04.
 
 Next: how to make the model explain itself.

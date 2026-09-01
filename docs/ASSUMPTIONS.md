@@ -38,11 +38,11 @@ identifier below.
 | A-14 | Weight initialisation | Not stated | Glorot uniform, following Kipf & Welling (2017) |
 | A-15 | Sign of the score function | Equations 20 and 21 contradict each other | The NASA convention the paper's own text describes |
 | A-16 | R-squared denominator | Equation 23 uses the predicted values | The standard definition, using the observed ones |
-| A-17 | Learning-rate schedule | Both endpoints given, mechanism not | Exponential decay reaching 1e-4 at the last epoch |
+| A-17 | Learning-rate schedule | Both endpoints given, mechanism not | **One drop of x0.1 at the halfway epoch**, so only the two printed rates are used; indistinguishable from exponential (p = 0.39) |
 | A-18 | Early stopping | None; trains a fixed 200 epochs | **Disabled in the reproduction** (A-22); available with a validation split |
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
-| A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.35 cycles closer *with nothing held back* (p = 0.047), selected under A-22 |
+| A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.25 cycles closer *with nothing held back* under the step schedule (p = 0.068, **no longer significant**), selected under A-22 |
 | A-23 | Engines shorter than the window | Not discussed; 17 test engines across FD002 and FD004 are affected | Left out, following the only published treatment found; no FD001 engine is affected |
 | A-24 | What `phi_0` is in Equation 14 | Calls it "the average value of target variable across all samples" | The prediction at the average window, forced by A-20; **10.719 cycles** from the paper's wording |
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
@@ -712,7 +712,7 @@ error.
 
 ---
 
-## A-17 — The learning rate decays exponentially to its final value
+## A-17 — The learning rate drops once, by a factor of ten, at the halfway epoch
 
 **Where:** `training/config.py`, `TrainingConfig.lr_schedule`
 
@@ -721,17 +721,67 @@ learning rate schedule". The mechanism is never stated: the sentence is
 consistent with a smooth decay, a step at a fixed epoch, or a reduction
 triggered by a plateau in the loss.
 
-**What we chose.** Exponential decay, with the factor chosen so the last epoch
-lands exactly on `1e-4`.
+**What we chose.** One drop, multiplying the rate by `0.1` at the halfway
+epoch — epoch 100 of the paper's 200. The run spends its first half at `1e-3`
+and its second half at `1e-4`, and uses no other value at any point.
 
-**Why.** It is the reading that reaches both stated endpoints and passes
-through everything between them, and it needs no further invented constants —
-a step schedule would require inventing the epoch to step at. The `"plateau"`
-option implements the main alternative reading, and `"cosine"` and
-`"constant"` are provided so the sensitivity to this choice can be measured.
+**Why.** The paper's two rates are exactly one factor of ten apart, which is
+precisely one `x0.1` step. A single step reaches `1e-4` and holds it there; an
+exponential curve reaches it only on the very last epoch and spends the whole
+run at values the paper never mentions. Reading the paper as stepping requires
+it to have omitted *when* the step happens. Reading it as decaying smoothly
+requires it to have omitted the mechanism entirely.
 
-**How much it matters.** Moderate. It changes the trajectory of a run and
-therefore where early stopping lands, but the endpoints are fixed by the paper.
+And no paper on this benchmark decays it exponentially. Of three C-MAPSS papers
+that state a schedule at all, two step at fixed epochs and one reduces when the
+loss stops falling; all three are quoted with page numbers in
+`docs/LITERATURE_BASIS.md`. Li, Zhao, Sun, Yan and Chen (2021) write on their
+page 6 that "learning rate decay is adopted, which decreases the learning rate
+by **multiplying 0.1 in epochs 120 and 160**".
+
+Where the step falls is still ours to choose, and the paper says nothing about
+it. The halfway point gives equal time to each of the two rates the paper does
+print, which adds the least on top of what is stated. `lr_step_epoch` moves it
+for anyone who wants to measure that choice separately.
+
+**How much it matters — measured, and the answer is: not measurably.** Five
+seeds of each schedule, everything else identical, paired by seed. FD001,
+physics graph, row normalisation, z-score, capped test labels, commit
+`989f3d8-dirty`:
+
+| Measure | step | exponential | difference | paired t | p (two-sided) |
+|---|---|---|---|---|---|
+| **RMSE** | **16.818 ± 0.157** | **16.694 ± 0.331** | +0.124 | +0.96 | **0.393** |
+| NASA score | 609.8 ± 25.5 | 613.4 ± 34.5 | −3.6 | −0.19 | 0.860 |
+| R-squared | 0.824 ± 0.003 | 0.826 ± 0.007 | −0.003 | −0.95 | 0.397 |
+| ASUE | 12.333 ± 0.598 | 11.638 ± 0.468 | +0.695 | +2.36 | 0.078 |
+
+On the measure this project reports, the two cannot be told apart: 0.124 cycles
+against a seed-to-seed spread of 0.331. The score and R-squared agree. **The
+choice therefore rests on the argument above and not on the result** — and the
+step schedule is the slightly *worse* of the two on RMSE, so it is plainly not
+being adopted because it flatters the reproduction.
+
+**The one measure that is not silent.** ASUE differs by 0.695, larger than
+either standard deviation, at `p = 0.078`. That does not reach significance at
+five seeds, and it is the only one of the four to come close. It is recorded
+rather than rounded away: it is weak evidence that the step schedule is a
+little worse at the late-prediction penalty, and anyone relying on ASUE
+specifically should measure it with more seeds first.
+
+**What this replaced, and why it changed.** Until 2026-09-01 this entry chose
+exponential decay, arguing that it reaches both stated endpoints and needs no
+invented constant, where a step needs an invented epoch. Half of that still
+holds — the step epoch *is* invented. What it missed is that the exponential
+reading invents more, not less: an entire trajectory through rates the paper
+never names. The audit of 2026-08-31 then found that no C-MAPSS paper decays
+exponentially, and the entry was rewritten to follow the evidence rather than
+the earlier reasoning.
+
+**What moved downstream.** Because this is a default, every figure measured
+under the old one was re-measured at the new one. F-04 keeps its direction and
+its strength; A-21 keeps its direction but **no longer reaches significance**.
+Both tables below carry a row for each schedule.
 
 ---
 
@@ -800,7 +850,7 @@ graph would add a mechanism the paper does not describe.
 
 **Status.** This entry has reversed twice. It first claimed the physics prior
 was worth 5.7 cycles, was withdrawn and reversed to "worth nothing
-measurable", and now measures 2.5 cycles at `p = 0.000057`. Nothing about the
+measurable", and now measures 2.4 cycles at `p = 0.000002`. Nothing about the
 graph changed between those measurements. What changed was the preprocessing
 and the split — choices the paper does not specify.
 
@@ -808,24 +858,28 @@ That instability is the finding. The individual numbers are less interesting
 than the fact that an ablation result moved from *decisive*, to *zero*, to
 *decisive again* under settings the source leaves open.
 
-**All three measurements, five seeds each, paired by seed on test RMSE:**
+**All four measurements, five seeds each, paired by seed on test RMSE.** The
+first two rows differ only in the learning-rate schedule of A-17 and agree
+with each other, which is the useful part: the instability below came from
+the preprocessing, not from every setting the paper leaves open.
 
 | Configuration | physics | fully connected | cost of removing it | p |
 |---|---|---|---|---|
-| **current default** — z-score, row, nothing held back (`9548104`) | **16.694 ± 0.331** | 19.213 ± 0.056 | **+2.520** | **0.000057** |
+| **current default** — z-score, row, nothing held back, **step** schedule (`bc20edd-dirty`) | **16.818 ± 0.157** | 19.214 ± 0.056 | **+2.396** | **0.000002** |
+| the same under the superseded **exponential** schedule (`9548104`) | 16.694 ± 0.331 | 19.213 ± 0.056 | +2.520 | 0.000057 |
 | min-max, symmetric, 20 % held back (`cdcc827-dirty`) | 20.353 ± 0.752 | 20.397 ± 0.395 | +0.044 | 0.913 |
 | superseded `window` mode (`cdcc827`) | 13.45 ± 0.20 | 19.17 ± 0.45 | +5.7 | — |
 
 **The current measurement is unambiguous within its own configuration.** Every
 one of the five seeds is worse without the physics prior — the per-seed costs
-are `[2.367, 2.747, 2.442, 2.124, 2.918]` — and all four measures agree:
+are `[2.569, 2.387, 2.244, 2.309, 2.470]` — and all four measures agree:
 
 | Measure | physics | fully connected | difference | paired t | p |
 |---|---|---|---|---|---|
-| RMSE | 16.694 ± 0.331 | 19.213 ± 0.056 | +2.520 | +17.92 | 0.000057 |
-| NASA score | 613.4 ± 34.5 | 779.9 ± 10.7 | +166.4 | +10.90 | 0.000402 |
-| R-squared | 0.826 ± 0.007 | 0.770 ± 0.001 | −0.056 | −19.34 | 0.000042 |
-| ASUE | 11.638 ± 0.468 | 13.598 ± 0.195 | +1.961 | +9.73 | 0.000625 |
+| RMSE | 16.818 ± 0.157 | 19.214 ± 0.056 | +2.396 | +41.65 | 0.000002 |
+| NASA score | 609.8 ± 25.5 | 781.7 ± 9.0 | +171.8 | +19.79 | 0.000038 |
+| R-squared | 0.824 ± 0.003 | 0.770 ± 0.001 | −0.054 | −45.63 | 0.000001 |
+| ASUE | 12.333 ± 0.598 | 13.941 ± 0.148 | +1.608 | +6.70 | 0.002576 |
 
 **What cannot be concluded from the reversal.** Two things changed between the
 zero result and this one — the input scaling (min-max to z-score) and the split
@@ -836,7 +890,7 @@ prior's value" would be a guess, and this file does not make those.
 **How this compares with the paper.** Wen et al. report the same ablation
 costing **0.56** cycles on FD001 (12.34 against 11.78) and call it the smallest
 of the three components they test. This project has now measured 0.044, and
-2.520, for the same ablation on the same sub-dataset. The paper's figure sits
+2.396, for the same ablation on the same sub-dataset. The paper's figure sits
 between the two. Every one of the three is a defensible measurement of its own
 configuration, and none of them reproduces the paper's.
 
@@ -1167,7 +1221,7 @@ LSTM stage is not implemented here (A-11), the row to compare against is
 The comparison below was made with the per-condition min-max scaling and
 symmetric normalisation that were the defaults until 2026-08-29. Under the
 selection rule recorded in **A-22** the reproduction now reports
-**16.694 ± 0.331**, a shortfall of 1.76 rather than 5.42. The reasoning in this
+**16.818 ± 0.157**, a shortfall of 1.89 rather than 5.42. The reasoning in this
 section is unchanged and still applies to the architecture, which A-22 does not
 touch; only the preprocessing and the adjacency formula moved.
 
@@ -1268,7 +1322,8 @@ seeds of each form, everything else identical, paired by seed on test RMSE:
 
 | Configuration | row | symmetric | better | paired t | p (two-sided) |
 |---|---|---|---|---|---|
-| **current default** — z-score, nothing held back | **16.694 ± 0.331** | 17.045 ± 0.201 | **row by 0.352** | −2.830 | **0.047** |
+| **current default** — z-score, nothing held back, **step** schedule | **16.818 ± 0.157** | 17.071 ± 0.325 | **row by 0.253** | −2.478 | 0.068 |
+| the same under the superseded **exponential** schedule | 16.694 ± 0.331 | 17.045 ± 0.201 | row by 0.352 | −2.830 | 0.047 |
 | z-score, 20 % held back, early stopping | 16.616 ± 0.289 | 16.524 ± 0.339 | symmetric by 0.091 | +0.550 | 0.611 |
 | z-score, 20 % held back, no early stopping | 16.616 ± 0.289 | 16.599 ± 0.275 | symmetric by 0.017 | +0.094 | 0.930 |
 | superseded — min-max, 20 % held back (`cdcc827-dirty`) | 19.992 ± 0.416 | 20.353 ± 0.752 | row by 0.360 | −2.160 | 0.097 |
@@ -1354,9 +1409,9 @@ paper regardless.* Applied assumption by assumption:
 | A-18 early stopping | Table 6: 200 epochs | contradicts → **removed** |
 | A-04 smoothing | Eq. 18 defines it | stated → kept, and removing it is worse anyway |
 | A-01 label ceiling | Eq. 19; value inferred from Fig. 7 | evidence-backed → kept at 125 |
-| A-17 LR schedule | Table 6: 1e-3 → 1e-4 | stated decay → exponential kept |
+| A-17 LR schedule | Table 6: 1e-3 → 1e-4 | mechanism silent → **one x0.1 step**, the only form any C-MAPSS paper uses |
 
-Result: **16.694 ± 0.331** on FD001 against the paper's 14.93, from
+Result: **16.818 ± 0.157** on FD001 against the paper's 14.93, from
 20.353 ± 0.752 under the previous defaults.
 
 **Why this is recorded as an assumption and not as a result.** Three reasons,
@@ -1388,7 +1443,7 @@ by proximity.
 
 **The honest alternative, for the thesis to consider.** Report the range
 instead of a point: the paper specifies neither the scaling nor the
-normalisation formula, so this reproduction spans **16.69 to 20.35 cycles**
+normalisation formula, so this reproduction spans **16.82 to 20.35 cycles**
 depending on choices the source leaves open. That framing needs no A-22 at all,
 and it is a stronger claim about the paper.
 
@@ -1989,7 +2044,8 @@ equation by a different route.
 
 **How much it matters — measured 2026-08-31**, on a model trained at seed 42
 under `config/fd001.yaml` (test RMSE 16.68, in line with the five-seed
-16.694 ± 0.331), over the 17 731 training windows:
+16.694 ± 0.331 of the exponential schedule then in force — see A-17), over the
+17 731 training windows:
 
 | Candidate for `phi_0` | value, in cycles |
 |---|---|

@@ -138,8 +138,12 @@ epochs, batches of 32, mean squared error as the loss, and a learning rate
 starting at 1e-3 and ending at 1e-4.
 
 The paper gives both ends of that rate and never says how it gets between them.
-This project shrinks it by the same factor every epoch — exponential decay
-reaching 1e-4 at the last epoch — which is assumption A-17. Two further silences
+This project holds 1e-3 for the first half of the run and then drops straight
+to 1e-4 for the second half, so the run only ever uses the two rates the paper
+actually prints — which is assumption A-17. Those two rates are exactly one
+factor of ten apart, and a single drop of that size is what the nearest
+published practice does; no paper on this dataset was found decaying the rate
+exponentially, which is what this project did until 2026-09-01. Two further silences
 are filled here too: the starting values of the weights (A-14, Glorot uniform,
 following the paper that introduced this layer type) and whether to stop early
 (A-18, no — the paper states a fixed 200 epochs).

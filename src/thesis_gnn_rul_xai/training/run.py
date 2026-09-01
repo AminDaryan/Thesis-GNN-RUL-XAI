@@ -99,11 +99,19 @@ def _build_scheduler(
 ) -> torch.optim.lr_scheduler.LRScheduler | None:
     """Build the rule that shrinks the learning rate over the run.
 
-    Which of the four rules to use is ASSUMPTION A-17; see config.py.
+    Which of the five rules to use is ASSUMPTION A-17; see config.py.
     """
     span = config.final_learning_rate / config.learning_rate
     if config.lr_schedule == "constant" or config.epochs == 1:
         return None
+    if config.lr_schedule == "step":
+        # One drop, straight from the first rate to the last, so the run only
+        # ever uses the two values Table 6 actually prints. Halfway unless the
+        # caller says otherwise, which spends equal time at each.
+        when = config.lr_step_epoch or max(1, config.epochs // 2)
+        return torch.optim.lr_scheduler.MultiStepLR(
+            optimiser, milestones=[when], gamma=span
+        )
     if config.lr_schedule == "exponential":
         # Chosen so that the last epoch lands exactly on final_learning_rate.
         gamma = span ** (1.0 / (config.epochs - 1))

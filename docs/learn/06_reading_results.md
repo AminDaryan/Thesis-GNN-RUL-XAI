@@ -95,7 +95,7 @@ default the reproduction gives:
 
 | | RMSE | NASA score | R² | ASUE |
 |---|---|---|---|---|
-| Current default, 5 seeds | 16.69 ± 0.33 | 613 ± 35 | 0.826 ± 0.007 | 11.64 ± 0.47 |
+| Current default, 5 seeds | 16.82 ± 0.16 | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
 
 That ± is not decoration. It is what tells you whether a difference between two
 configurations means anything.
@@ -123,7 +123,7 @@ answer is "barely".
 **The physics graph, F-04.** This one has now been measured three times and has
 reversed twice. It first read 5.7 cycles, was withdrawn and re-measured as
 **0.044 cycles** (*p* = 0.913 — indistinguishable from zero), and now reads
-**2.520 cycles** (*p* = 0.000057, with every one of the five seeds agreeing).
+**2.396 cycles** (*p* = 0.000002, with every one of the five seeds agreeing).
 
 Nothing about the graph changed between those measurements. The preprocessing
 and the split changed — and the paper specifies neither. Two things moved
@@ -175,7 +175,7 @@ And even that comparison needs three warnings attached:
    own figure — which means the configuration is not independent of the
    quantity it is being compared against. Under the previously chosen settings
    the same code gives 20.35 ± 0.75. The paper specifies neither, so the honest
-   summary is that this reproduction **spans 16.69 to 20.35 cycles depending on
+   summary is that this reproduction **spans 16.82 to 20.35 cycles depending on
    choices the source leaves open**. This is assumption A-22, and it should be
    read before quoting any single number.
 2. **Capping the test labels flatters the result** by a measured amount, so the

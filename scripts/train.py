@@ -140,8 +140,9 @@ def main() -> int:
                              "includes split variance as well as "
                              "initialisation and batch order")
     parser.add_argument("--lr-schedule",
-                        choices=("exponential", "cosine", "plateau", "constant"),
-                        default="exponential", help="See assumption A-17")
+                        choices=("step", "exponential", "cosine", "plateau",
+                                 "constant"),
+                        default="step", help="See assumption A-17")
     parser.add_argument("--no-early-stopping", action="store_true",
                         help="Train the full epoch count, as the paper describes")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
@@ -290,7 +291,7 @@ def main() -> int:
         f"_{arguments.seeds}seed"
         f"_{'fixedsplit' if arguments.fixed_split else 'varsplit'}"
         + ("_noearlystop" if arguments.no_early_stopping else "")
-        + ("" if arguments.lr_schedule == "exponential" else f"_{arguments.lr_schedule}")
+        + ("" if arguments.lr_schedule == "step" else f"_{arguments.lr_schedule}")
         + f"_cfg{config_digest}_{commit}_{stamp}"
     )
     output = arguments.output or (reports_dir() / name)
