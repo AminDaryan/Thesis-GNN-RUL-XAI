@@ -14,8 +14,8 @@ per-sensor LSTM stage is deliberately omitted; see
 
 **Where that gets to.** On FD001, **RMSE 16.69 ± 0.33** across five seeds,
 against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation —
-on an architecture that matches the paper's Table 4 exactly, down to its
-61,729 parameters.
+on an architecture that matches the paper's Table 4 exactly, down to the
+61,729 parameters its printed shapes imply.
 
 **Read assumption A-22 before quoting that number.** The settings the paper
 leaves unspecified were deliberately chosen to land near its figure, so the
@@ -585,8 +585,9 @@ is why the other three columns are blank for it.
 ### What that comparison does and does not show
 
 The architecture matches: input `[batch, 14, 1]`, `W(1) ∈ ℝ^(1×32)`, the same
-layer widths, and **61,729 parameters — Table 4's count exactly**, asserted by a
-test. The only thing removed is the LSTM, which is what "w/o LSTM" means. So the
+layer widths, and **61,729 parameters — exactly what Table 4's printed shapes
+imply**, asserted by a test. Table 4 prints no total; see A-07 for the
+arithmetic. The only thing removed is the LSTM, which is what "w/o LSTM" means. So the
 **5.4-cycle gap has no shape mismatch to hide behind**, and what is left to
 explain it is the documented assumptions: the input rescaling is substituted
 from a different paper (A-03), early stopping is an addition (A-18), the target
@@ -620,6 +621,8 @@ Thesis GNN RUL XAI/
 ├── docs/
 │   ├── ASSUMPTIONS.md            Every choice not taken from the paper
 │   ├── REFERENCES.md             Full citations
+│   ├── AUDIT_*.md                The paper checked against the code
+│   ├── REVIEW_*.md               Outside reviews of this repository
 │   └── learn/                    Eight taught pages, for a reader new to this
 │
 ├── notebooks/
@@ -643,7 +646,7 @@ Thesis GNN RUL XAI/
 │       ├── utils/
 │       └── docsite/              The documentation website (computes nothing)
 │
-└── tests/                        203 tests
+└── tests/                        207 tests
 ```
 
 ### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
@@ -852,18 +855,26 @@ python scripts/verify_claims.py --fast
 It recomputes the figures the assumptions log quotes — the sensor graph's edge
 counts, `P15`'s two levels, how many test labels the ceiling touches, the
 preprocessing-order measurement on FD002 — prints each beside the recorded
-value, and exits non-zero on a disagreement. That is **30 claims** in seconds.
+value, and exits non-zero on a disagreement. That is **41 claims** in seconds.
 Dropping `--fast` adds two checks that train a network to regenerate the SHAP
-tables of A-20 and F-05, bringing it to **48 claims** in a few minutes. Every
+tables of A-20 and F-05, bringing it to **59 claims** in a few minutes. Every
 run writes its results and its commit into `reports/`, so a verification is
 itself reproducible.
 
-All 48 pass at the time of writing. They did not before this script existed:
-five of the entries it checks had drifted from the code.
+All 59 pass at the time of writing. They did not before this script existed:
+five of the entries it checks had drifted from the code. The eleven newest come
+from the audit of 2026-08-31 — see
+[`docs/AUDIT_2026-08-31_paper_against_code.md`](docs/AUDIT_2026-08-31_paper_against_code.md),
+which checked every equation, table and figure of the paper against this code
+and records the agreements as well as the six new entries it produced.
 
 Every push also runs `ruff check` and `pytest` on GitHub Actions, against
-Python 3.10 and 3.13 — see `.github/workflows/checks.yml`. The runner has no
-NASA data, so 137 tests pass there and 66 skip themselves. A green run means
+Python 3.10 and 3.13 — see `.github/workflows/checks.yml`. The runner starts
+from a fresh clone, so it has **neither** the NASA data **nor** any stored run
+in `reports/` — both are deliberately outside git — and **134 tests pass there
+while 73 skip themselves**. That is six more skips than a developer machine
+without the data alone, which gets 140 and 67: the extra six are the tests
+about stored runs, which skip when there are none. A green run means
 nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
@@ -871,7 +882,9 @@ and has to be checked locally.
 The suite covers each preprocessing step, the sensor graph, the network, the
 training loop, the four measures, the Shapley values, and the pipeline end to
 end. The model, training and explanation tests need PyTorch; without it they
-are skipped rather than failed, and the remaining 150 still run.
+are not collected at all rather than failing, which leaves 155 of the 207 —
+154 of those pass and one skips, the figure test that prints the model's real
+parameter count.
 
 `tests/test_examples.py` and `tests/test_examples_torch.py` hold one small
 worked example of each function — the kind of thing that would once have gone
