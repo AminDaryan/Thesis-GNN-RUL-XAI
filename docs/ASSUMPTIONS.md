@@ -43,7 +43,7 @@ identifier below.
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
 | A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.35 cycles closer *with nothing held back* (p = 0.047), selected under A-22 |
-| A-23 | Engines shorter than the window | Not discussed; 17 test engines in FD002 and FD004 are affected | Pad by repeating the first reading; no FD001 engine needs it |
+| A-23 | Engines shorter than the window | Not discussed; 17 test engines across FD002 and FD004 are affected | Left out, following the only published treatment found; no FD001 engine is affected |
 | A-24 | What `phi_0` is in Equation 14 | Calls it "the average value of target variable across all samples" | The prediction at the average window, forced by A-20; **10.719 cycles** from the paper's wording |
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
 
@@ -1889,45 +1889,71 @@ the text layer, because two-column extraction interleaves table rows.
 
 ---
 
-## A-23 — An engine shorter than the window is padded by repeating its first reading
+## A-23 — An engine shorter than the window is left out, not padded
 
 **Where:** `data/windowing.py`, `_extract_one_unit`
 
 **The gap.** Table 6 fixes the window at 30 time steps, and the paper reports
 results on all four sub-datasets. Some test engines are shorter than 30 cycles,
-so a window cannot be cut from them at all. The paper never says what happens
-to those engines.
+so no window can be cut from them at all. The paper never says what happens to
+those engines.
 
-**What we chose.** Keep the engine, and fill the missing rows by repeating its
-**first** reading backwards until the window is full.
+**What we chose.** Leave the engine out. It yields no window and no prediction,
+and the run writes a warning naming the engine and its length. If *every*
+engine in a table is too short, the code raises rather than returning an empty
+result.
 
-**Why.** The alternative is to drop the engine, and dropping it changes the size
-of the test set. The published tables score FD002 on 259 engines and FD004 on
-248 — the full counts of Table 5 — so any result that scored fewer engines
-would not be comparable with them. Repeating the first reading keeps the count
-right and holds the sensor at a value it genuinely took, rather than inventing
-one; and because the filter and the scaler have already run, the repeated rows
-carry the same units as the rest of the window. Repeating the *first* reading
-rather than the last means the padding sits at the old end of the window, where
-the engine was healthier, which is also where the label is least sensitive.
+**Why.** Padding invents readings. Filling the missing rows by repeating the
+engine's first reading puts sensor values into the record that the engine never
+produced, and then asks a model to predict from them — which is what working
+rule 7 forbids, and the reason this project contains no generated data
+anywhere else either.
+
+It is also the only published practice found. Dida, Cheriet and Belhadj,
+*Remaining Useful Life Prediction Using Attention-LSTM Neural Network of
+Aircraft Engines*, write on their page 6, working at the same window length on
+the same dataset:
+
+> "Engines in sub-datasets FD002 and FD004 that contained fewer than 30 samples
+> were excluded from the study."
+
+A search of 25 papers on this benchmark found no other treatment of short
+engines at all, and none that pads. See `docs/LITERATURE_BASIS.md`.
+
+**What this costs, and the cost is real.** The NASA score is a **sum** over
+engines, not a mean. Leave an engine out and the score falls because there is
+one term fewer, not because the model improved, so a score computed this way
+cannot be set beside a published FD002 or FD004 figure. Root mean squared error
+is an average and survives better, but its denominator changes too. Dida et al.
+accepted that cost; a reproduction that wants to sit beside published numbers
+for those two sub-datasets may not be able to. **Anyone extending this pipeline
+to FD002 or FD004 inherits this and must say so beside any number they quote.**
 
 **How much it matters — measured.** Counted from the real files, the number of
 **test** engines with fewer than 30 cycles:
 
-| Sub-dataset | shortest test history | test engines under 30 cycles |
-|---|---|---|
-| FD001 | 31 | **0** |
-| FD002 | 21 | **6** |
-| FD003 | 38 | **0** |
-| FD004 | 19 | **11** |
+| Sub-dataset | shortest test history | test engines under 30 cycles | test engines |
+|---|---|---|---|
+| FD001 | 31 | **0** | 100 |
+| FD002 | 21 | **6** | 259 |
+| FD003 | 38 | **0** | 100 |
+| FD004 | 19 | **11** | 248 |
 
 So this choice **cannot touch any number this project currently reports**,
-because FD001 is the only sub-dataset run and no FD001 engine needs padding —
-that is finding F-03, and it is why the entry did not exist until the audit of
-2026-08-31. It is recorded now because the paper reports FD002 and FD004, where
-17 test engines between them cannot yield a window without some rule of this
-kind, and the paper states none. Anyone extending this pipeline to those
-sub-datasets inherits the choice and should measure it.
+because FD001 is the only sub-dataset run and no FD001 engine is short enough
+to be affected — that is finding F-03. It becomes live the moment FD002 or
+FD004 is run, where 17 test engines between them cannot yield a window.
+
+**What this entry said until 2026-09-01, and why it changed.** It said the
+opposite: keep the engine and repeat its first reading backwards. The argument
+was that dropping an engine changes the size of the test set and breaks
+comparability with the published tables — which is true, and is recorded above
+rather than dropped. What that argument missed is that the alternative breaks a
+rule this project treats as absolute: padding is generated data. The audit of
+2026-08-31 found no published support for padding and one clear precedent for
+exclusion, and the entry was rewritten to follow the evidence. Both the choice
+and the cost it carries are now stated, which the earlier entry did not do for
+the option it rejected.
 
 ---
 

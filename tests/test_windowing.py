@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_COLUMNS
@@ -72,12 +73,29 @@ def test_test_split_yields_exactly_one_window_per_engine(loaded):
     assert len(np.unique(dataset.units)) == len(dataset)
 
 
-def test_a_short_history_is_padded_rather_than_dropped(loaded):
-    """An engine shorter than the window must still produce one example."""
+def test_a_short_history_is_dropped_rather_than_padded(loaded):
+    """An engine shorter than the window is left out, not filled in.
+
+    ASSUMPTION A-23. Padding it would put readings into the record that the
+    engine never produced. Dida, Cheriet and Belhadj exclude such engines too.
+    """
     short = loaded.test[loaded.test["unit"] == 1].head(5).copy()
-    dataset = make_last_windows(short, COLUMNS, window_size=20)
+    with pytest.raises(ValueError, match="left out under A-23"):
+        make_last_windows(short, COLUMNS, window_size=20)
+
+
+def test_a_short_engine_is_dropped_while_the_others_survive(loaded):
+    """Only the too-short engine goes; the rest of the frame is untouched."""
+    two = loaded.test[loaded.test["unit"].isin([1, 2])].copy()
+    trimmed = pd.concat([
+        two[two["unit"] == 1].head(5),      # 5 rows, below the window
+        two[two["unit"] == 2],              # full history
+    ])
+
+    dataset = make_last_windows(trimmed, COLUMNS, window_size=20)
+
+    assert set(np.unique(dataset.units)) == {2}
     assert len(dataset) == 1
-    assert dataset.features.shape[2] == 1
 
 
 def test_engine_split_is_disjoint_and_complete():

@@ -77,20 +77,28 @@ def _extract_one_unit(
     n_rows = values.shape[0]
 
     if n_rows < window_size:
-        # This engine is too short for one full window. Rather than throw it
-        # away, repeat its first reading backwards until the window is full.
-        # Throwing it away would change the size of the test set and make the
-        # results incomparable with published ones.
-        pad = window_size - n_rows
-        values = np.vstack([np.repeat(values[:1], pad, axis=0), values])
-        targets = np.concatenate([np.repeat(targets[:1], pad), targets])
-        cycles = np.concatenate([np.repeat(cycles[:1], pad), cycles])
-        n_rows = window_size
+        # ASSUMPTION A-23: an engine with fewer rows than the window is left
+        # out entirely. The paper never says what it does with such an engine.
+        # The alternative is to invent the missing rows -- repeat the first
+        # reading backwards until the window is full -- which puts sensor
+        # values into the record that the engine never produced and then asks
+        # a model to predict from them. Dida, Cheriet and Belhadj do the same
+        # as this: "Engines in sub-datasets FD002 and FD004 that contained
+        # fewer than 30 samples were excluded from the study." No FD001 engine
+        # is affected (its shortest test history is 31 cycles, see F-03), but
+        # 6 FD002 and 11 FD004 test engines are, and dropping a test engine
+        # changes the NASA score, which is a sum. Written up in
+        # docs/ASSUMPTIONS.md and docs/LITERATURE_BASIS.md.
         logger.warning(
-            "Engine %s has fewer rows than the window size (%d); its first "
-            "reading was repeated %d time(s) to fill the window.",
-            history[UNIT_COL].iloc[0], window_size, pad,
+            "Engine %s has %d row(s), fewer than the window size of %d, so it "
+            "is left out. Its readings are not padded: that would invent data. "
+            "Any score computed from what remains covers fewer engines.",
+            history[UNIT_COL].iloc[0], n_rows, window_size,
         )
+        empty_windows = np.empty((0, len(sensor_columns), 1), dtype=np.float32)
+        return (empty_windows,
+                np.empty(0, dtype=np.float32),
+                np.empty(0, dtype=np.int64))
 
     starts = (
         [n_rows - window_size]
@@ -125,6 +133,7 @@ def _build(
     last_only: bool,
     target_column: str,
 ) -> WindowedDataset:
+    """Cut every engine in the table into windows and stack them into one dataset."""
     missing = [c for c in sensor_columns if c not in frame.columns]
     if missing:
         raise KeyError(f"Sensor columns not present in the frame: {missing}.")
@@ -146,10 +155,19 @@ def _build(
             last_only,
             target_column,
         )
+        if windows.shape[0] == 0:      # left out by A-23
+            continue
         feature_blocks.append(windows)
         target_blocks.append(targets)
         cycle_blocks.append(cycles)
         unit_blocks.append(np.full(windows.shape[0], int(unit), dtype=np.int64))
+
+    if not feature_blocks:
+        raise ValueError(
+            f"No engine has at least {window_size} rows, so every one was left "
+            "out under A-23 and there is nothing to return. The window is "
+            "longer than the longest history in this frame."
+        )
 
     dataset = WindowedDataset(
         features=np.concatenate(feature_blocks).astype(np.float32),

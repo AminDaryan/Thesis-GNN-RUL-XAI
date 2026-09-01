@@ -391,12 +391,26 @@ engine ends at cycle `window_size`, not at cycle 1 — and it is what a temporal
 encoder would consume if one were added. It is simply not handed to the graph
 layer directly.
 
-### Engines shorter than the window are padded, not dropped
+### Engines shorter than the window are left out, not padded
 
-If an engine has fewer rows than the window size, its first reading is repeated
-backwards until the window is full. Dropping the engine instead would silently
-change the size of the test set and make the results incomparable with
-published ones.
+If an engine has fewer rows than the window size, no window can be cut from it,
+and it is left out. The run writes a warning naming the engine and how many
+rows it had, so the omission is on the record rather than silent. If every
+engine in a table is too short, the code raises instead of returning nothing.
+
+The alternative is to keep the engine and repeat its first reading backwards
+until the window is full. That was this project's behaviour until 2026-09-01,
+and it was wrong for a plain reason: those repeated rows are sensor values the
+engine never produced, and asking a model to predict from them is generated
+data, which this project does not allow anywhere.
+
+**The cost is real and has to be stated.** Leaving an engine out changes the
+size of the test set. The NASA score is a sum over engines, so it falls simply
+because there is one term fewer — not because the model improved — and it stops
+being comparable with a published score. No FD001 engine is affected, so no
+number this project reports today moves; 6 test engines in FD002 and 11 in
+FD004 are. This is **A-23**, and `docs/LITERATURE_BASIS.md` quotes the one
+published treatment of the same situation, which also excludes them.
 
 ### The test set gets exactly one window per engine
 

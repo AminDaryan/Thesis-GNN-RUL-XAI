@@ -10,7 +10,7 @@
 # tests/test_docsite.py are written to give. PyTorch is installed, so the
 # model, training and explanation tests do run.
 #
-# That leaves 134 tests passing and 72 skipped. What survives is the part that
+# That leaves 134 tests passing and 73 skipped. What survives is the part that
 # can be checked without engines: the sensor graph and everything derived from
 # it, the four evaluation measures, the piecewise label, the configuration
 # objects, the Shapley properties on small synthetic graphs, and the worked
