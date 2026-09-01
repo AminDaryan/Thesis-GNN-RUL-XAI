@@ -140,14 +140,29 @@ def _describe(root: Path, relative: str, blurb: str, kind: str) -> Document | No
 
 
 def _reviews(root: Path) -> list[Document]:
-    """Every dated audit in docs/, newest first."""
+    """Every dated audit in docs/, newest first.
+
+    Two naming conventions live here and both are wanted. A REVIEW_ file is an
+    outside review *of this repository*; an AUDIT_ file is a check *of the
+    paper* against the code, which runs in the other direction.
+    """
+    blurbs = {
+        "REVIEW": "An outside review of this repository, and what became of "
+        "each item it raised",
+        "AUDIT": "Every equation, table and figure of the paper checked "
+        "against the code, agreements included",
+    }
+    paths = sorted(
+        [*(root / "docs").glob("REVIEW_*.md"), *(root / "docs").glob("AUDIT_*.md")],
+        key=lambda p: p.name.split("_", 1)[-1],
+        reverse=True,
+    )
     found: list[Document] = []
-    for path in sorted((root / "docs").glob("REVIEW_*.md"), reverse=True):
+    for path in paths:
         doc = _describe(
             root,
             f"docs/{path.name}",
-            "A full audit of the repository against the paper, and what "
-            "became of each item it raised",
+            blurbs.get(path.name.split("_", 1)[0], "A dated audit"),
             "reference",
         )
         if doc is not None:

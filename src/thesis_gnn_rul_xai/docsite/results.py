@@ -31,8 +31,11 @@ _ENTRY_HEADING = re.compile(
 # The line inside an entry that names the code the choice is made in.
 _WHERE = re.compile(r"^\*\*Where:\*\*\s*(.+?)$", re.MULTILINE)
 
-_WITHDRAWN = re.compile(r"withdrawn", re.IGNORECASE)
-_REVERSED = re.compile(r"revers", re.IGNORECASE)
+# The log marks a retired entry by opening its title with a capitalised status
+# word, as in "WITHDRAWN: the paper does state the order". Matching the word
+# anywhere in the title instead would catch ordinary prose: A-25's title says
+# an order "reverses" and that entry is perfectly current.
+_RETIRED = re.compile(r"^\s*(WITHDRAWN(\s+AND\s+REVERSED)?|REVERSED|SUPERSEDED)\b")
 
 
 @dataclass(frozen=True)
@@ -174,14 +177,16 @@ def latest_verification(root: Path | None = None) -> Verification | None:
 
 
 def _status_of(identifier: str, heading: str, body: str) -> str:
-    """Whether an entry still stands, was withdrawn, or reversed a claim."""
-    head = heading.lower()
-    if _WITHDRAWN.search(head):
-        return "withdrawn"
-    if _REVERSED.search(head):
-        return "reversed"
-    opening = body[:600].lower()
-    if "superseded" in opening:
+    """Whether an entry still stands, was withdrawn, or was superseded."""
+    retired = _RETIRED.match(heading)
+    if retired:
+        word = retired.group(1).upper()
+        if word.startswith("WITHDRAWN"):
+            return "withdrawn"
+        return "reversed" if word == "REVERSED" else "superseded"
+    # A-06 and A-18 carry their status in the body instead, as a bold
+    # "Superseded <date> by A-22." line at the top of the entry.
+    if re.match(r"\s*\*\*Superseded\b", body):
         return "superseded"
     return "active"
 

@@ -3,12 +3,14 @@
 # What this can and cannot verify
 # -------------------------------
 # The NASA C-MAPSS files are not in this repository, so the runner has no data.
-# Every test that needs the real measurements skips itself with a message
-# rather than failing, which is the behaviour tests/conftest.py is written to
-# give. PyTorch is installed, so the model, training and explanation tests do
-# run; only the data-dependent ones are skipped.
+# Neither is any stored training run: `reports/*` is ignored because a run
+# directory is written per run and they accumulate. Every test that needs
+# either skips itself with a message rather than failing, which is the
+# behaviour tests/conftest.py and the `stored_runs` fixture in
+# tests/test_docsite.py are written to give. PyTorch is installed, so the
+# model, training and explanation tests do run.
 #
-# That leaves 103 tests passing and 66 skipped. What survives is the part that
+# That leaves 134 tests passing and 72 skipped. What survives is the part that
 # can be checked without engines: the sensor graph and everything derived from
 # it, the four evaluation measures, the piecewise label, the configuration
 # objects, the Shapley properties on small synthetic graphs, and the worked

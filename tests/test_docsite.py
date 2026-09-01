@@ -21,6 +21,25 @@ def site_catalog(root: Path) -> catalog.Catalog:
     return catalog.build_catalog(root)
 
 
+@pytest.fixture()
+def stored_runs(root: Path) -> list[results.Run]:
+    """Every training run in reports/, or skip the test if there are none.
+
+    `reports/*` is deliberately not committed -- a run directory is written per
+    training run and they accumulate -- so a fresh clone has none, and neither
+    does the CI runner. Tests about stored runs therefore skip there for the
+    same reason the data-dependent tests do: the artefact is absent, not wrong.
+    """
+    runs = results.load_runs(root)
+    if not runs:
+        pytest.skip(
+            f"No training runs are stored in {root / 'reports'}. They are not "
+            "committed (see .gitignore), so a fresh clone has none. Produce "
+            "one with `python scripts/train.py --seeds 5`."
+        )
+    return runs
+
+
 # -- the markup renderer ---------------------------------------------------
 
 
@@ -163,38 +182,60 @@ def test_a_withdrawn_entry_is_not_reported_as_active(root: Path):
     assert entries["A-08"].status == "withdrawn"
 
 
-def test_every_stored_run_names_the_commit_that_produced_it(root: Path):
-    runs = results.load_runs(root)
-    assert runs, "reports/ holds no runs"
-    for run in runs:
+def test_an_entry_superseded_in_its_body_is_picked_up(root: Path):
+    # A-06 and A-18 carry no status word in the title; they open with a bold
+    # "Superseded ... by A-22." line instead.
+    entries = {entry.identifier: entry for entry in results.load_entries(root)}
+    assert entries["A-06"].status == "superseded"
+    assert entries["A-18"].status == "superseded"
+
+
+def test_a_status_word_in_ordinary_prose_does_not_retire_an_entry(root: Path):
+    # A-25's title says the order "reverses" the paper's Fig. 1, and an earlier
+    # version of the parser read that as the entry having been reversed.
+    entries = {entry.identifier: entry for entry in results.load_entries(root)}
+    assert entries["A-25"].status == "active"
+    assert "reverses" in entries["A-25"].title
+
+
+def test_only_the_entries_that_say_so_are_retired(root: Path):
+    retired = {
+        entry.identifier
+        for entry in results.load_entries(root)
+        if entry.status != "active"
+    }
+    assert retired == {"A-06", "A-08", "A-18"}
+
+
+def test_every_stored_run_names_the_commit_that_produced_it(stored_runs):
+    for run in stored_runs:
         assert run.commit and run.commit != "unknown", run.directory
         assert run.dirty == run.commit.endswith("-dirty")
 
 
-def test_a_single_seed_run_keeps_its_missing_spread_as_missing(root: Path):
-    for run in results.load_runs(root):
+def test_a_single_seed_run_keeps_its_missing_spread_as_missing(stored_runs):
+    for run in stored_runs:
         if run.seeds == 1:
             assert run.std.get("rmse") is None
             return
     pytest.skip("no single-seed run is stored")
 
 
-def test_the_directory_name_of_every_run_carries_its_commit(root: Path):
-    for run in results.load_runs(root):
+def test_the_directory_name_of_every_run_carries_its_commit(stored_runs):
+    for run in stored_runs:
         assert run.commit in run.directory, run.directory
 
 
-def test_a_verification_report_is_not_listed_as_a_training_run(root: Path):
+def test_a_verification_report_is_not_listed_as_a_training_run(stored_runs):
     # scripts/verify_claims.py writes into reports/ too, with no scores in it.
     # Listing one as a run would show a row of dashes that reads like a
     # training run that failed.
-    directories = {run.directory for run in results.load_runs(root)}
-    assert directories, "reports/ holds no training runs"
+    directories = {run.directory for run in stored_runs}
     assert not any(name.startswith("verification_") for name in directories)
 
 
-def test_every_listed_run_has_the_four_measures(root: Path):
-    for run in results.load_runs(root):
+def test_every_listed_run_has_the_four_measures(stored_runs):
+    for run in stored_runs:
         assert set(run.mean) >= {"rmse", "score", "r2", "asue"}, run.directory
         assert run.mean["rmse"] is not None, run.directory
 
