@@ -43,6 +43,9 @@ identifier below.
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
 | A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.35 cycles closer *with nothing held back* (p = 0.047), selected under A-22 |
+| A-23 | Engines shorter than the window | Not discussed; 17 test engines in FD002 and FD004 are affected | Pad by repeating the first reading; no FD001 engine needs it |
+| A-24 | What `phi_0` is in Equation 14 | Calls it "the average value of target variable across all samples" | The prediction at the average window, forced by A-20; **10.719 cycles** from the paper's wording |
+| A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
 
 ---
 
@@ -1885,6 +1888,150 @@ Fig. 4, AGCTE Fig. 2) were rendered as page images and read, not inferred from
 the text layer, because two-column extraction interleaves table rows.
 
 ---
+
+## A-23 — An engine shorter than the window is padded by repeating its first reading
+
+**Where:** `data/windowing.py`, `_extract_one_unit`
+
+**The gap.** Table 6 fixes the window at 30 time steps, and the paper reports
+results on all four sub-datasets. Some test engines are shorter than 30 cycles,
+so a window cannot be cut from them at all. The paper never says what happens
+to those engines.
+
+**What we chose.** Keep the engine, and fill the missing rows by repeating its
+**first** reading backwards until the window is full.
+
+**Why.** The alternative is to drop the engine, and dropping it changes the size
+of the test set. The published tables score FD002 on 259 engines and FD004 on
+248 — the full counts of Table 5 — so any result that scored fewer engines
+would not be comparable with them. Repeating the first reading keeps the count
+right and holds the sensor at a value it genuinely took, rather than inventing
+one; and because the filter and the scaler have already run, the repeated rows
+carry the same units as the rest of the window. Repeating the *first* reading
+rather than the last means the padding sits at the old end of the window, where
+the engine was healthier, which is also where the label is least sensitive.
+
+**How much it matters — measured.** Counted from the real files, the number of
+**test** engines with fewer than 30 cycles:
+
+| Sub-dataset | shortest test history | test engines under 30 cycles |
+|---|---|---|
+| FD001 | 31 | **0** |
+| FD002 | 21 | **6** |
+| FD003 | 38 | **0** |
+| FD004 | 19 | **11** |
+
+So this choice **cannot touch any number this project currently reports**,
+because FD001 is the only sub-dataset run and no FD001 engine needs padding —
+that is finding F-03, and it is why the entry did not exist until the audit of
+2026-08-31. It is recorded now because the paper reports FD002 and FD004, where
+17 test engines between them cannot yield a window without some rule of this
+kind, and the paper states none. Anyone extending this pipeline to those
+sub-datasets inherits the choice and should measure it.
+
+---
+
+## A-24 — The attributions are measured against the prediction at the average window, not the average label
+
+**Where:** `explain/shap.py`, `shap_values` and `efficiency_error`
+
+**The gap.** Equation 14 reads
+
+```
+g(z) = phi_0 + sum_i phi_i
+```
+
+and defines `phi_0` as "the average value of target variable across all
+samples" — the mean of the **labels**. The usual definition in the SHAP
+literature is the mean of the model's **predictions**, and neither is the same
+as the model's prediction at an average input. The paper prints one of the
+three and uses none of them explicitly.
+
+**What we chose.** `phi_0 = f(baseline)`, the model's prediction on the average
+training window. This is forced by A-20: a sensor left out of a group is
+replaced by its average training reading, so the group containing no sensors at
+all *is* the average window, and its prediction is what the fourteen
+contributions are measured from. Choosing anything else for `phi_0` would break
+the adding-up property, because the marginal contributions are already defined
+relative to that substitution.
+
+**Why it cannot simply follow the paper.** Equation 14 with the mean label
+requires `sum_i phi_i = f(x) - mean(y)`, and no Shapley calculation built on a
+substitution baseline satisfies that except by coincidence. The paper's own
+Table 12 does not satisfy it either — that is F-08, reached from the same
+equation by a different route.
+
+**How much it matters — measured 2026-08-31**, on a model trained at seed 42
+under `config/fd001.yaml` (test RMSE 16.68, in line with the five-seed
+16.694 ± 0.331), over the 17 731 training windows:
+
+| Candidate for `phi_0` | value, in cycles |
+|---|---|
+| `f(average training window)` — used here, forced by A-20 | **91.357** |
+| mean prediction `E[f(x)]` — the usual SHAP definition | 80.223 |
+| mean label `E[y]` — the paper's Equation 14 wording | 80.638 |
+
+The choice made here sits **10.719 cycles** from the paper's wording. That is
+8.6 % of the 125-cycle label range and about two thirds of the model's whole
+RMSE, so it is not a rounding matter.
+
+Two things are worth reading off that table. The paper's `E[y]` and the usual
+`E[f(x)]` agree to 0.4 cycles, because the trained model is nearly unbiased on
+average; the outlier is the third row, and the reason is that the network is
+not linear, so the prediction at the average input is not the average
+prediction. And because every attribution is measured from `phi_0`, the whole
+table this project produces is offset from the paper's definition by that
+constant — **rankings by magnitude are unaffected, individual values are not.**
+
+Reproduce with the script recorded in this entry's commit message.
+
+---
+
+## A-25 — The scaling is fitted after the split, which reverses the order the paper's Fig. 1 prints
+
+**Where:** `data/pipeline.py`, steps 6 and 7
+
+**The gap.** Fig. 1 prints the preprocessing chain as
+
+> feature selection → data smoothing → piece-wise RUL → **data normalisation**
+> → **train and test datasets**
+
+with normalisation *before* the train and test datasets are formed. It never
+says which engines the scaling statistics are fitted on. Those are two
+different silences and both matter: the order in the diagram, and the fitting
+set the diagram does not name.
+
+**What we chose.** The opposite order. Engines are divided first — step 6, and
+before any statistic is computed from the data — and the mean and standard
+deviation are then fitted on the **training engines only** and applied unchanged
+to the held-back and test engines.
+
+**Why.** A statistic computed over engines that will later be scored is
+information from those engines reaching the model, which is the ordinary
+definition of leakage. It flatters the reported figures and cannot be detected
+by looking at them. Two tests hold the line —
+`test_normalization.py::test_test_data_never_influences_the_scaling` and
+`test_pipeline.py::test_validation_engines_never_influence_the_scaling` — and
+working rule 1 of `README.md` section 11 states it.
+
+**What this is not.** It is not a claim that the paper leaks. C-MAPSS ships its
+training and test engines as separate files, so an implementation reading that
+diagram could still fit on the training file alone and match both the diagram
+and good practice. The diagram is simply not specific enough to tell, and this
+entry exists so that a reader comparing the two orders is not left thinking the
+difference was overlooked.
+
+**How much it matters.** Unmeasured, and deliberately so: measuring it would
+mean building the leaking variant and reporting a number from it, which is not
+a number this project wants in its history. The direction is not in doubt —
+fitting on the test engines can only improve the reported figures — so the
+comparison would tell us the size of an advantage this project declines to
+take. A-08 covers the *other* ordering question in Fig. 1, between smoothing
+and scaling, and is withdrawn because there the paper's order is the one
+followed here.
+
+---
+
 
 ---
 

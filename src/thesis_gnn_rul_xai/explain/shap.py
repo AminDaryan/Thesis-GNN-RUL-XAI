@@ -151,7 +151,14 @@ def efficiency_error(
     *,
     device: torch.device | str | None = None,
 ) -> float:
-    """Check the numbers add up. Anything above rounding noise means a bug."""
+    """Check the numbers add up. Anything above rounding noise means a bug.
+
+    ASSUMPTION A-24: the fourteen values are measured from the prediction on
+    the average window, not from the average label. Equation 14 of the paper
+    calls its constant "the average value of target variable across all
+    samples"; the two differ by 10.7 cycles on a trained model. Written up in
+    docs/ASSUMPTIONS.md.
+    """
     single = features.ndim == 2
     batch = features[None, ...] if single else features
     contributions = np.atleast_2d(values)

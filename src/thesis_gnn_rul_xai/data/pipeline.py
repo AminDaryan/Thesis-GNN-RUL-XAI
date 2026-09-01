@@ -177,10 +177,15 @@ def run_preprocessing(
     test = apply_ewma(test, columns, alpha=config.smoothing_alpha)
 
     # -- 6. hold some engines back ----------------------------------------
-    # This happens BEFORE anything is measured from the data. If it happened
-    # later, the held-back engines would help decide the minimum, maximum and
-    # so on, and their error would then look better than it really is -- the
-    # same problem that keeping the test engines separate exists to avoid.
+    # ASSUMPTION A-25: split first, then fit the scaling on the training
+    # engines only. Fig. 1 of the paper prints the reverse order -- data
+    # normalisation, then train and test datasets -- and never says which
+    # engines the statistics are fitted on. This happens BEFORE anything is
+    # measured from the data: if it happened later, the held-back engines
+    # would help decide the mean, the standard deviation and so on, and their
+    # error would then look better than it really is -- the same problem that
+    # keeping the test engines separate exists to avoid. Written up in
+    # docs/ASSUMPTIONS.md.
     train_units, validation_units = split_units_by_id(
         np.unique(train[UNIT_COL].to_numpy()),
         validation_fraction=config.validation_fraction,
