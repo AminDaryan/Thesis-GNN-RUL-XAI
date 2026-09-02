@@ -41,7 +41,9 @@ the number of sensors, which is fixed by the paper's sensor list.
 | FC-2 | `(B, 128)` → `(B, 1)` | Sigmoid |
 
 Built with those defaults the model has 61,729 trainable parameters, which is
-the count Table 4 gives. `ESTGNN.count_parameters()` returns that number and
+the count Table 4's printed shapes imply. Table 4 lists no total of its own:
+its five weight matrices come to 61,600, and the remaining 129 are the two
+biases Equations 12 and 13 print for the dense layers. `ESTGNN.count_parameters()` returns that number and
 `ESTGNN.layer_summary()` returns one dictionary per layer in the same form as
 Table 4, so the transcription can be checked line by line.
 

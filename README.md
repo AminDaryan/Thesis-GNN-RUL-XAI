@@ -487,18 +487,19 @@ assumption A-07.
 ## 7. What the pipeline does, step by step
 
 Paths in the "Where" column are relative to `src/thesis_gnn_rul_xai/`, so
-`data/loading.py` means `src/thesis_gnn_rul_xai/data/loading.py`.
+`data/loading/` means `src/thesis_gnn_rul_xai/data/loading/`, whose code is
+its `__init__.py` and whose explanation is its `README.md`.
 
 | # | Step | What happens | Where |
 |---|------|--------------|-------|
-| 1 | Load | Read the three text files; work out the Remaining Useful Life at every row | `data/loading.py` |
-| 2 | Diagnose | Find sensors that never change, and compare with the paper's selection | `data/sensors.py` |
-| 3 | Select | Keep the paper's 14 sensors, in the order its adjacency matrix expects | `data/sensors.py` |
-| 4 | Cap labels | Hold the label at 125 while the engine is healthy | `data/labeling.py` |
-| 5 | Smooth | Remove measurement noise with a backward-looking filter | `data/smoothing.py` |
-| 6 | Split | Hold out 20 % of engines for validation, **before any statistic is learned** | `data/windowing.py` |
-| 7 | Rescale | Put all sensors on a comparable scale, using training engines only | `data/normalization.py` |
-| 8 | Window | Cut histories into 30-cycle examples | `data/windowing.py` |
+| 1 | Load | Read the three text files; work out the Remaining Useful Life at every row | `data/loading/` |
+| 2 | Diagnose | Find sensors that never change, and compare with the paper's selection | `data/sensors/` |
+| 3 | Select | Keep the paper's 14 sensors, in the order its adjacency matrix expects | `data/sensors/` |
+| 4 | Cap labels | Hold the label at 125 while the engine is healthy | `data/labeling/` |
+| 5 | Smooth | Remove measurement noise with a backward-looking filter | `data/smoothing/` |
+| 6 | Split | Hold out 20 % of engines for validation, **before any statistic is learned** | `data/windowing/` |
+| 7 | Rescale | Put all sensors on a comparable scale, using training engines only | `data/normalization/` |
+| 8 | Window | Cut histories into 30-cycle examples | `data/windowing/` |
 | — | Graph | Build the 14-node sensor graph from the paper's Table 3, and describe it: 41 edges, diameter 4, `T24` its only articulation point | `graph/adjacency.py` |
 
 Those eight steps turn the raw files into arrays. Four more stages turn the
@@ -672,8 +673,8 @@ from thesis_gnn_rul_xai.data.smoothing import apply_ewma
 ```
 
 That line is a path through the tree: the folder `src/thesis_gnn_rul_xai/`,
-then the folder `data/`, then the file `smoothing.py`, then the function
-`apply_ewma` defined inside it. The link between "the code is in `src/`" and
+then the folder `data/`, then the folder `smoothing/` whose code is its
+`__init__.py`, then the function `apply_ewma` defined inside it. The link between "the code is in `src/`" and
 "you import it as `thesis_gnn_rul_xai`" is declared once, in `pyproject.toml`:
 
 ```toml
@@ -681,13 +682,15 @@ then the folder `data/`, then the file `smoothing.py`, then the function
 where = ["src"]
 ```
 
-**Every folder inside is one job**, and holds one `.py` file per task. Each
-also holds a file called `__init__.py`, which is what marks a folder as
-importable and lists which names are public.
+**Every folder inside is one job.** Most hold one `.py` file per task, plus a
+file called `__init__.py`, which is what marks a folder as importable and lists
+which names are public. Under `data/` each task has gone one step further: it
+is its own folder, holding its code as that folder's `__init__.py` and its own
+`README.md` beside it.
 
 | Folder | The question it answers | An example file inside |
 |--------|-------------------------|------------------------|
-| `data/` | How do raw text files become model input? | `smoothing.py`, the noise filter |
+| `data/` | How do raw text files become model input? | `smoothing/`, the noise filter |
 | `graph/` | Which sensors are connected to which? | `adjacency.py`, the paper's Table 3 |
 | `models/` | What is the network? | `estgnn.py`, the paper's Table 4 |
 | `training/` | How is the network fitted to the data? | `run.py`, the paper's Table 6 |
@@ -703,11 +706,12 @@ those needs the settings.
 They are not alternatives, and neither is a copy of the other. Take one step,
 the smoothing filter, and look at it in both places.
 
-**In `src/thesis_gnn_rul_xai/data/smoothing.py`** it is 78 lines: the formula,
+**In `src/thesis_gnn_rul_xai/data/smoothing/__init__.py`** it is 78 lines: the formula,
 the errors raised for impossible settings, and one line saying what each
 function does. The reasoning that used to sit alongside it — why each engine
 must be filtered separately from its neighbours, why the filter must never look
-forwards, where its one setting comes from — is in `data/README.md`. Eight
+forwards, where its one setting comes from — is in
+`data/smoothing/README.md`. Eight
 tests in `tests/test_smoothing.py` check the code, including one that confirms
 the filter never reads a value from later in the sequence.
 
@@ -747,10 +751,11 @@ a docstring, across the package and the two scripts:
 
 So the thing to be read is about **two thousand lines**, and it is spread
 thinly: the largest single file has 217 lines of code, and several of the most
-important have almost none. `data/smoothing.py` is 78 lines of which 44 are
-code; `data/labeling.py` is 41 lines of which 22 are code. The reasons those
+important have almost none. `data/smoothing/` is 78 lines of which 44 are
+code; `data/labeling/` is 41 lines of which 22 are code. The reasons those
 operations are what they are — which is what a thesis has to defend — fill
-1 985 further lines across the eight `README.md` files under `src/`.
+5 374 further lines across the fifteen `README.md` files under `src/`: one per
+folder, and one for each of the seven files under `data/`.
 
 Those figures were measured with a token-based counter, not by eye, and they
 moved when the explanation was pulled out of the code: the same package
@@ -766,8 +771,8 @@ unexplained name in your head:
 | File | What it is |
 |------|------------|
 | `config.py` | every setting, with the reason for each value |
-| `data/sensors.py` | the 21 sensors, and which 14 the paper keeps |
-| `data/labeling.py` | the piecewise-linear target (8 lines of code) |
+| `data/sensors/` | the 21 sensors, and which 14 the paper keeps |
+| `data/labeling/` | the piecewise-linear target (8 lines of code) |
 | `models/layers.py` | one graph convolution (43 lines of code) |
 | `utils/` | paths, seeding, logging — housekeeping, read only if curious |
 
@@ -775,10 +780,10 @@ unexplained name in your head:
 
 | File | What it is |
 |------|------------|
-| `data/loading.py` | the three text files become one table |
-| `data/smoothing.py` | the noise filter (30 lines of code) |
-| `data/normalization.py` | operating conditions and rescaling |
-| `data/windowing.py` | histories become fixed-size examples |
+| `data/loading/` | the three text files become one table |
+| `data/smoothing/` | the noise filter (30 lines of code) |
+| `data/normalization/` | operating conditions and rescaling |
+| `data/windowing/` | histories become fixed-size examples |
 | `graph/adjacency.py` | the sensor graph and its normalisation |
 | `models/estgnn.py` | the network of Table 4 |
 | `evaluation/metrics.py` | the four measures |
@@ -788,7 +793,7 @@ the layers above, so read them last and they will contain no surprises.
 
 | File | What it is |
 |------|------------|
-| `data/pipeline.py` | the eight preprocessing steps in order |
+| `data/pipeline/` | the eight preprocessing steps in order |
 | `training/run.py` | the training loop |
 | `explain/shap.py` | the Shapley values |
 

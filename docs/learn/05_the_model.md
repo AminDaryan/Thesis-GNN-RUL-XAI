@@ -10,8 +10,8 @@ every shape and every parameter count on it is what the code actually has.
 
 ## The shape of it
 
-Six layers, and the whole thing has **61 729 trainable parameters** — the exact
-count the paper's Table 4 prints, which a test asserts on every run.
+Six layers, and the whole thing has **61 729 trainable parameters**, which is
+exactly what the paper's Table 4 implies. A test asserts it on every run.
 
 | Layer | In | Out | Parameters | Activation |
 |---|---|---|---|---|
@@ -153,7 +153,8 @@ following the paper that introduced this layer type) and whether to stop early
 ## What you now know
 
 - The network is **three graph layers, a flatten and two dense layers**, with
-  **61 729 parameters** matching Table 4 exactly.
+  **61 729 parameters** — what Table 4's printed shapes imply, once the two
+  dense-layer biases are added and the graph layers are given none (A-12).
 - Over **93 %** of those parameters are in the first dense layer, not in the
   graph part.
 - The **sigmoid output makes predictions above 125 impossible**, which forces

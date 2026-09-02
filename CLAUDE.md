@@ -765,7 +765,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 207 tests; must all pass
+pytest                # 208 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -790,14 +790,14 @@ has drifted from the code more than once — see the header of that script.
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing, leaving
-140 passing and 67 skipped. The model, training and explanation tests
-additionally need PyTorch; without it they are not collected at all, so 155
-of the 207 are collected, 154 pass, and one skips — the figure test that
+141 passing and 67 skipped. The model, training and explanation tests
+additionally need PyTorch; without it they are not collected at all, so 156
+of the 208 are collected, 155 pass, and one skips — the figure test that
 prints the model's real parameter count.
 
 Both of those counts assume the training runs stored in `reports/`, which are
 not committed. A clone that has none also skips the tests about them: with no
-data and no stored runs, which is what the CI runner has, it is 134 passing
+data and no stored runs, which is what the CI runner has, it is 135 passing
 and 73 skipped.
 
 If a change touches a notebook, re-execute it before committing, so its stored

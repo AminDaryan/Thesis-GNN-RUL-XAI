@@ -1,8 +1,9 @@
 # `docsite` — the documentation, in a browser
 
 This folder holds a small website that shows everything written in this
-repository: the top-level README, the eight folder READMEs, the assumptions
-log, the audits, both notebooks, and a set of figures. It runs on your own
+repository: the top-level README, one page per folder of the code plus one
+per file under `data/`, the assumptions log, the audits, both notebooks, and a
+set of figures. It runs on your own
 machine, reads the files from disk as you ask for them, and publishes nothing.
 
 Start it with:

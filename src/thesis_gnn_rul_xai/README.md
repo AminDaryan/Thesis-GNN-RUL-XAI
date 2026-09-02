@@ -107,7 +107,7 @@ comparing one configuration against another.
 
 **When there *is* a split, it is split by engine unit, not by window.** Windows
 from the same engine overlap heavily, so splitting by window would leak
-training data into validation. `data/windowing.py` explains this.
+training data into validation. `data/windowing/README.md` explains this.
 
 **`clip_test_labels` should stay `True`.** The paper's output layer is a
 sigmoid, so the model can never predict a value above the label ceiling

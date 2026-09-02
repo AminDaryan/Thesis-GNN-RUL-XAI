@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..utils.logging_setup import get_logger
-from .sensors import CYCLE_COL, RAW_COLUMNS, UNIT_COL
+from ...utils.logging_setup import get_logger
+from ..sensors import CYCLE_COL, RAW_COLUMNS, UNIT_COL
 
 __all__ = [
     "DOWNLOAD_URL",

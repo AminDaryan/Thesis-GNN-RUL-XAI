@@ -131,6 +131,25 @@ def test_the_catalog_finds_one_readme_for_every_source_folder(
     assert folders == listed
 
 
+def test_the_catalog_lists_every_per_file_page_under_data(
+    site_catalog: catalog.Catalog, root: Path
+):
+    """Each file under data/ keeps its own page beside its code, and the
+    website's menu is written by hand, so a new page can be added to the folder
+    and forgotten here. This compares the two."""
+    on_disk = {
+        path.parent.name
+        for path in (root / "src" / "thesis_gnn_rul_xai" / "data").glob("*/README.md")
+    }
+    listed = {
+        doc.path.split("/")[-2]
+        for doc in site_catalog.by_path.values()
+        if doc.path.startswith("src/thesis_gnn_rul_xai/data/")
+        and doc.path.count("/") == 4
+    }
+    assert on_disk == listed
+
+
 def test_reading_a_file_outside_the_project_is_refused(root: Path):
     with pytest.raises(ValueError, match="outside the project"):
         catalog.read_document("../../../etc/passwd", root)

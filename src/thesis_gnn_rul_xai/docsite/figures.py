@@ -58,7 +58,7 @@ _HEIGHT = 520.0
 
 # The eight sensors of the engine core and the four of the bypass side, used
 # only to colour the graph figure. The grouping is read from the station field
-# of the sensor table in data/sensors.py, never invented here.
+# of the sensor table in data/sensors/, never invented here.
 _STATION_HUE: dict[str, str] = {
     "Fan inlet": "var(--fig-fan, #2f7fd1)",
     "Bypass duct": "var(--fig-fan, #2f7fd1)",

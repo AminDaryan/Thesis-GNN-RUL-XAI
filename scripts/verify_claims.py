@@ -70,6 +70,7 @@ from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
 from thesis_gnn_rul_xai.data.sensors import (
     CYCLE_COL,
     PAPER_SENSOR_COLUMNS,
+    SENSORS,
     UNIT_COL,
     detect_uninformative_sensors,
     symbol_to_column,
@@ -176,6 +177,17 @@ def check_sensors() -> list[Claim]:
     detected = detect_uninformative_sensors(train)
 
     named_by_the_paper = ["T2", "P2", "epr", "farB", "Nf_dmd", "PCNfR_dmd"]
+
+    # The paper's stated selection rule, run against the data. Among the
+    # sensors that are not constant, which pairs reach its 0.95 threshold?
+    varying = [s.symbol for s in SENSORS if train[s.column].nunique() > 1]
+    correlations = train[[symbol_to_column(s) for s in varying]].corr().to_numpy()
+    redundant = [
+        (varying[i], varying[j], float(correlations[i, j]))
+        for i, j in combinations(range(len(varying)), 2)
+        if abs(correlations[i, j]) >= 0.95
+    ]
+
     return [
         Claim("F-01", "training rows", 20631, len(train)),
         Claim("F-01", "distinct P15 values", 2, int(p15.nunique())),
@@ -191,7 +203,35 @@ def check_sensors() -> list[Claim]:
               str(sorted(named_by_the_paper)), str(detected["constant"])),
         Claim("A-10", "NRc is constant", False, int(nrc.nunique()) <= 1),
         Claim("A-10", "distinct NRc values", 6078, int(nrc.nunique())),
+        # A-10's strongest evidence: the paper's own stated criterion -- drop a
+        # sensor that is constant, or one of a pair correlated above 0.95 --
+        # applied to FD001 leaves exactly one redundant pair, and it names NRc.
+        Claim("A-10", "non-constant pairs with |r| >= 0.95", 1, len(redundant)),
+        Claim("A-10", "the one redundant pair", "('Nc', 'NRc')",
+              str(redundant[0][:2]) if redundant else "none"),
+        Claim("A-10", "correlation of that pair", 0.9632,
+              redundant[0][2] if redundant else 0.0, tolerance=1e-3),
     ]
+
+
+def check_windows() -> list[Claim]:
+    """A-23 on the engines too short to fill a window, across all four subsets."""
+    claims: list[Claim] = []
+    recorded = {"FD001": (31, 0), "FD002": (21, 6), "FD003": (38, 0), "FD004": (19, 11)}
+    for subset, (shortest, under) in recorded.items():
+        try:
+            test = load_subset(subset, data_dir=raw_data_dir()).test
+        except FileNotFoundError:
+            continue
+        lengths = test.groupby("unit")["cycle"].max()
+        claims.append(
+            Claim("A-23", f"{subset} shortest test history", shortest, int(lengths.min()))
+        )
+        claims.append(
+            Claim("A-23", f"{subset} test engines under 30 cycles", under,
+                  int((lengths < 30).sum()))
+        )
+    return claims
 
 
 def check_labels() -> list[Claim]:
@@ -372,6 +412,7 @@ CHECKS = [
     Check("graph", "F-07", False, False, check_graph),
     Check("sensors", "F-01, A-10", True, False, check_sensors),
     Check("labels", "F-02, F-03", True, False, check_labels),
+    Check("windows", "A-23", True, False, check_windows),
     Check("ordering", "A-08", True, False, check_ordering),
     Check("baselines", "A-20", True, True, check_baselines),
     Check("p15", "F-05", True, True, check_p15),

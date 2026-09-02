@@ -5,15 +5,40 @@ picks the sensors, builds the labels, smooths and rescales the signals, cuts
 each engine history into fixed-length windows, and hands back plain NumPy
 arrays.
 
-If you only want the end result, call `run_preprocessing()` from `pipeline.py`.
-Everything else in this folder is one step of what that function does.
+If you only want the end result, call `run_preprocessing()` from
+[`pipeline`](pipeline/README.md). Everything else here is one step of what that
+function does.
 
-> **The `.py` files here carry one line of description each, and nothing more.**
-> All of the explanation lives in this file. The section
-> [What each name means](#what-each-name-means) at the end lists every function
-> and value the folder offers, and what it gives you back.
+> **Each file in this folder has its own folder, holding its code and its own
+> page.** This page carries only what they share: what the dataset is, what the
+> chain looks like end to end, and the two rules that span more than one file.
+> The step-by-step detail — every function, its real input, what happens to that
+> input line by line, and its real output — lives on the seven pages linked
+> below.
 
-## Background you need before reading the code
+---
+
+## The seven files, and where to read about each
+
+| Folder | What it does | Page |
+|---|---|---|
+| `loading/` | Reads the three text files, checks their shape, and works out a label for every row. | [read](loading/README.md) |
+| `sensors/` | Names all 21 sensors, fixes the 14 the paper keeps and their order, and offers a diagnostic that finds sensors carrying no information. | [read](sensors/README.md) |
+| `labeling/` | Stops the label counting above a ceiling. A healthy engine is labelled "125" rather than "191 flights left", because nothing in the sensors can tell those apart. | [read](labeling/README.md) |
+| `smoothing/` | Damps the flight-to-flight jitter in each engine's sensor signals. | [read](smoothing/README.md) |
+| `normalization/` | Groups rows into operating conditions, then rescales the sensor columns — measuring on training engines only. | [read](normalization/README.md) |
+| `windowing/` | Cuts histories into fixed-length windows, and splits engines into a training and a validation set. | [read](windowing/README.md) |
+| `pipeline/` | Runs all of the above in order and returns arrays plus a record of what it observed. | [read](pipeline/README.md) |
+
+`__init__.py` at this level is a package marker and imports nothing.
+
+Each of those folders holds its code as `__init__.py`, so the import paths are
+unchanged: `from thesis_gnn_rul_xai.data.loading import load_subset` works
+exactly as before.
+
+---
+
+## Background you need before reading any of it
 
 **C-MAPSS** is a NASA simulator of a large turbofan aircraft engine. NASA used
 it to generate a public benchmark dataset in which simulated engines run until
@@ -34,11 +59,10 @@ Each sub-dataset (`FD001` … `FD004`) comes as three plain text files:
 | `RUL_FD001.txt` | One number per test engine: the true remaining life at the last row that engine has in the test file. |
 
 The two history files have 26 columns separated by spaces, no header row, and a
-trailing space at the end of every line (which would otherwise be read as an
-empty 27th column). The RUL file has a single column. Column 1 is the engine
-number, column 2 is the cycle count, columns 3–5 are three operational settings
-(altitude, Mach number, throttle resolver angle), and columns 6–26 are the 21
-sensor measurements.
+trailing space at the end of every line. The RUL file has a single column.
+Column 1 is the engine number, column 2 is the cycle count, columns 3–5 are
+three operational settings (altitude, Mach number, throttle resolver angle), and
+columns 6–26 are the 21 sensor measurements.
 
 The dataset is described in Saxena, Goebel, Simon & Eklund (2008), *Damage
 propagation modeling for aircraft engine run-to-failure simulation*, IEEE PHM
@@ -47,629 +71,128 @@ Li & Keshtegar (2026), *Explainable spatiotemporal graph neutral network with
 dynamic SHAP enhancement for aeroengine RUL prediction*, Aerospace Science and
 Technology 168, 110875.
 
-## The files
+---
 
-| File | What it does |
-|---|---|
-| `loading.py` | Reads the three text files, checks their shape, and adds a `rul` column to every row. |
-| `sensors.py` | Names all 21 sensors, fixes the 14 the paper keeps and their order, and offers a diagnostic that finds sensors carrying no information. |
-| `labeling.py` | Stops the label counting above 125. A healthy engine is labelled "125" rather than "191 cycles left", because nothing in the sensors can tell those apart. |
-| `smoothing.py` | Exponentially weighted moving average over each engine's sensor signals. |
-| `normalization.py` | Groups rows into operating conditions with k-means, then rescales the sensor columns. |
-| `windowing.py` | Cuts histories into fixed-length windows, and splits engines into a training and a validation set. |
-| `pipeline.py` | Runs all of the above in order and returns arrays plus a diagnostics record. |
-| `__init__.py` | Package marker; imports nothing. |
-
-## How the labels are built
-
-The training file needs no label file. Each engine is recorded until it fails,
-so the remaining life at any cycle is just how many cycles are left:
+## The chain, end to end
 
 ```
-RUL(t) = last_cycle_of_this_engine - t
+  three .txt files
+        |
+        v
+  loading         read, check the shape, attach a label to every row
+        |
+        v
+  sensors         diagnose the 21; select the paper's 14, in Table 3 order
+        |
+        v
+  labeling        stop the label counting above the ceiling
+        |
+        v
+  smoothing       damp the jitter, one engine at a time
+        |
+        v
+  SPLIT           decide which engines are held back  (before anything is measured)
+        |
+        v
+  normalization   operating conditions, then rescaling, fitted on training engines only
+        |
+        v
+  windowing       cut into fixed-length examples; apply the split
+        |
+        v
+  PreparedData    arrays, the sensor graph, the fitted scaling, and a diagnostics record
 ```
 
-**The test file is different, and this is the part worth reading slowly.**
-Recording stops early there — the engine is still running fine when the file
-ends. Test engine 1 of FD001 has 31 rows, cycles 1 to 31, and then nothing.
-
-So the training trick does not work. Subtracting from the last row you can see
-would claim the engine died at cycle 31, and it did not.
-
-That is what the label file is for. Line 1 of `RUL_FD001.txt` reads **112**,
-meaning *at cycle 31, this engine had 112 cycles of life left*. It tells you
-about one moment only — not about cycle 1, not about cycle 20.
-
-But it is enough, because it tells you **where the end is**:
-
-```
-the cycle it failed at  =  31  +  112  =  143
-```
-
-Now the engine is no different from a training engine: you know when it broke,
-so every row is the same subtraction as before.
-
-| cycle | 143 − cycle | label |
-|---|---|---|
-| 1 | 143 − 1 | 142 |
-| 10 | 143 − 10 | 133 |
-| 20 | 143 − 20 | 123 |
-| 31 | 143 − 31 | 112 ← matches the label file, as it must |
-
-`attach_rul` in `loading.py` writes it the other way round, adding two counts
-instead of subtracting from the end:
-
-```
-RUL(t) = (last_recorded_cycle - t) + RUL_at_last_recorded_cycle
-```
-
-Read that as *"how many more rows of this engine are still in the file, plus
-how much life it had after the file stops"*. Both of those lie ahead of cycle
-`t`, which is why they add. At cycle 20 it is `(31 - 20) + 112 = 11 + 112 =
-123`, the same 123 as the table above — the two forms are the same arithmetic
-rearranged.
-
-Engine numbers in the label file are assigned by position: the first line
-belongs to engine 1, the second to engine 2, and so on. That is how the dataset
-is defined.
-
-### The label is then stopped at 125, and here is why
-
-"Cycles until failure" looks like the obvious thing to predict. It is a bad
-target, and the reason can be measured rather than argued.
-
-Training engine 1 ran 192 cycles, so its raw labels count down 191, 190, … , 0.
-Look at what one of its sensors was doing while that happened. `T50` is the
-temperature at the turbine outlet, one of the informative ones:
-
-| cycle | raw label | `T50` reading |
-|---|---|---|
-| 1 | 191 | 1400.60 |
-| 20 | 172 | 1405.23 |
-| 40 | 152 | 1401.77 |
-| 60 | 132 | 1403.07 |
-| 150 | 42 | 1409.22 |
-| 180 | 12 | 1417.14 |
-| 192 | 0 | 1427.20 |
-
-Over the first 60 cycles the label falls from 191 to 132, while `T50` just
-wobbles around 1400 to 1405 with no trend at all. Its correlation with the
-label over that stretch is **−0.083**, which is nothing. Over the last 43
-cycles the label falls from 42 to 0, `T50` climbs steadily, and the correlation
-is **−0.715**.
-
-So for the healthy part of the engine's life you are asking the model: *"this
-window has 191 cycles left and that one has 132 — tell them apart."* The
-sensors do not distinguish them, because hardly any wear has happened yet. The
-model can only guess, and that guessing leaks into every prediction it makes,
-including the ones it could have got right.
-
-**The fix, from Heimes (2008), is to stop the label counting above a fixed
-number.** This project uses **125**, and it is worth knowing straight away
-where that came from: the paper gives the formula as its Equation 19 but never
-prints the number it used, so 125 is *our* reading, recorded as assumption
-**A-01**. The reasoning is at the end of this section.
-
-Everything above 125 is then relabelled 125:
-
-```
-label(t) = the smaller of (cycles until failure) and 125
-```
-
-On engine 1:
-
-| cycle | raw | after the cap |
-|---|---|---|
-| 1 | 191 | **125** |
-| 30 | 162 | **125** |
-| 60 | 132 | **125** |
-| 67 | 125 | 125 |
-| 68 | 124 | 124 ← from here on the cap does nothing |
-| 100 | 92 | 92 |
-| 192 | 0 | 0 |
-
-The label sits flat at 125 for engine 1's first 67 cycles, then counts down
-normally. The question the model is being asked has changed to *"while it looks
-healthy, just say 125; start counting only once wear shows"*, and that one is
-answerable.
-
-Drawn against time the label is now two straight pieces — a flat line, then a
-slope down to zero. That shape is what the literature calls a
-**piecewise-linear** target: "piecewise" meaning in pieces, "linear" meaning
-each piece is straight. The corner where they meet is often called the *change
-point*.
-
-**Where 125 comes from.** Heimes reported that any value between roughly 120
-and 130 works well on this dataset. The paper gives the formula as its Equation
-19, and Section 4.2 describes predicted life holding "around 125" while an
-engine is healthy, but the number itself is never printed. It was settled here
-by measuring the plateau of the paper's own Fig. 7 against that figure's axis
-ticks, which puts it at 125.2. The full argument, including a figure that
-appears to disagree, is assumption **A-01** in `docs/ASSUMPTIONS.md`.
-
-## Sensors: only 14 of the 21, and the order matters
-
-Some of the 21 sensors never change over an engine's whole life, or move
-between only a few fixed levels. A flat signal says nothing about degradation.
-Dropping such signals is standard practice on this dataset.
-
-Wen et al. keep 14 sensors. Their Table 3 prints the adjacency matrix of the
-sensor graph over exactly those 14 sensors, in a specific order.
-
-**That order is load-bearing.** The adjacency matrix is indexed by position, so
-reordering the sensor columns would silently wire the graph to the wrong
-sensors — no error, just wrong results. The order is therefore frozen in
-`PAPER_SENSOR_SYMBOLS` in `sensors.py` and checked by assertions that run when
-the module is imported. Do not reorder that tuple.
-
-`WindowedDataset` in `windowing.py` carries the sensor column names alongside
-the array for the same reason: it stops the order from being lost between the
-data and the graph.
-
-### Two things we found out about the paper's selection
-
-Both came from running `detect_uninformative_sensors` on the real FD001
-training data. Both are recorded in `docs/ASSUMPTIONS.md`.
-
-**The unnamed seventh dropped sensor is NRc.** Section 3.2.2 of the paper says
-"seven sensors are removed" and then names only six: T2, P2, epr, farB, Nfdmd
-and PCNRdmd. Measured on the data, exactly those six are perfectly constant.
-The seventh sensor missing from Table 3 is NRc, the corrected core speed — and
-it is *not* constant: it takes 6078 distinct values across 20 631 training
-rows. So it must have been dropped for some other reason, most plausibly
-redundancy, since corrected core speed is derived from the physical core speed
-Nc, which the paper keeps.
-
-**P15 is kept but carries almost no information.** The bypass-duct pressure P15
-is one of the 14 sensors in the paper's graph, yet on FD001 it takes only *two*
-distinct values in the entire training set (21.60 and 21.61). It cannot
-represent gradual degradation. We keep it anyway, because the adjacency matrix
-is defined over the paper's fixed 14-sensor set and removing a node would change
-the graph. The observation is reported rather than quietly corrected.
-
-### `detect_uninformative_sensors` is a diagnostic, not a filter
-
-The pipeline always uses the paper's fixed 14-sensor list. The function exists
-so we can check, from the data itself, whether the paper's choice agrees with
-what the measurements show. A disagreement is a finding worth reporting.
-
-It applies two criteria to each of the 21 sensor columns:
-
-1. **Constant** — the difference between the largest and smallest value is
-   essentially zero. Because sensors have wildly different magnitudes, the test
-   is relative: a range of 0.01 is negligible for a temperature near 1400 degR
-   but large for a ratio near 0.03.
-2. **Few distinct values** — the sensor only ever takes a handful of discrete
-   levels, usually because the quantity is rounded coarsely.
-
-Counting *distinct values* is the right second criterion, and range is not. On
-the real FD001 training data the fan speed `Nf` has a relative range of 2.8e-4
-across 53 distinct levels and is genuinely informative, while the bypass-duct
-pressure `P15` has a slightly larger relative range of 4.6e-4 spread over only
-2 levels and is not. A range test would keep the wrong one of the two.
-
-## Smoothing
-
-Sensor readings carry measurement noise: small, fast fluctuations unrelated to
-wear. Wear itself is slow. Removing the fast wobble makes the slow trend easier
-to see.
-
-The filter is an **exponentially weighted moving average**, which replaces each
-reading with a blend of that reading and the previous smoothed value:
-
-```
-S(t) = alpha * X(t) + (1 - alpha) * S(t-1)
-```
-
-`X(t)` is the raw reading at cycle `t`, `S(t)` is the smoothed value, and
-`alpha` is between 0 and 1. An `alpha` near 1 barely smooths at all; an `alpha`
-near 0 smooths hard but reacts late to a real change. The name comes from
-expanding the formula: every past reading contributes, with a weight that
-shrinks exponentially the further back it lies.
-
-**The filter only looks backwards.** `S(t)` depends on `X(t)` and earlier
-values, never on later ones. This matters for the honesty of the experiment: a
-filter that averaged over future readings would leak the future into the
-present, and the model would appear to predict failure better than it really
-can. The filter is also applied to each engine separately, so no reading from
-one engine can influence another.
-
-One implementation detail that is not cosmetic: pandas `ewm` has two modes.
-With `adjust=True` (its default) it applies a correction to the first few
-values; with `adjust=False` it uses the plain recursive formula above. This
-folder uses `adjust=False`, because that is the formula printed as Equation 18
-in the paper. The two modes give visibly different values at the start of a
-series.
-
-## Rescaling, and what an operating condition is
-
-The 14 sensors measure completely different physical quantities on completely
-different scales — a turbine outlet temperature around 1400 degrees Rankine, a
-bypass ratio around 8.4, a coolant bleed flow around 39 pounds per second. Fed
-to a neural network unchanged, the large numbers dominate simply because they
-are large. Rescaling puts every sensor on comparable footing.
-
-`SensorNormalizer` offers three methods:
-
-- `minmax_global` — map each sensor's smallest observed value to 0 and its
-  largest to 1: `scaled = (value - minimum) / (maximum - minimum)`.
-- `minmax_per_condition` — the same formula, but with a separate minimum and
-  maximum per operating condition.
-- `zscore` — shift and stretch each sensor to mean 0 and standard deviation 1:
-  `scaled = (value - mean) / standard_deviation`. Unlike min-max this does not
-  bound the values, which makes it more tolerant of outliers.
-
-An **operating condition** is a flight regime. The three "operational setting"
-columns describe how the aircraft was being flown: altitude, speed as a Mach
-number, and throttle position. Flying higher or faster changes every sensor
-reading immediately and by a lot, and that change has nothing to do with wear.
-
-In FD002 and FD004 the engines are flown under six different conditions, and
-the jumps between conditions are far larger than the slow drift caused by
-degradation, so scaling all six together buries the wear signal. Scaling each
-condition separately removes the flight-related jumps and leaves the wear
-visible. FD001, which this project starts with, has only one condition, so
-per-condition and global scaling give identical results there. The general
-version is implemented now so the code is already correct when FD002 and FD004
-are added.
-
-Conditions are found with **k-means clustering** (MacQueen, 1967), which groups
-points into a chosen number of clusters by repeatedly assigning each point to
-the nearest cluster centre and recomputing the centres. `OperatingConditionEncoder`
-clusters the three setting columns and uses the cluster number as the condition
-label. When it detects only one condition it skips k-means entirely and labels
-every row 0. This follows Jin, Meng, Hu & Chen (2025), *Heterogeneous
-dynamic-aware GNN for RUL prediction of aeroengine*, IEEE TIM 74, 3538014, who
-use the same approach on the same dataset.
-
-A sensor that is constant within a condition cannot be min-max scaled — the
-formula would divide by zero. Such columns are mapped to the bottom of the
-target range instead, and a warning is logged rather than passed over in
-silence, because a constant sensor inside the retained set may mean the sensor
-selection needs revisiting.
-
-### The rule that protects the experiment: fit on training data only
-
-Every statistic — minima, maxima, means, standard deviations, and the k-means
-cluster centres themselves — is computed from the **training** engines only and
-then applied unchanged to the validation and test engines.
-
-This is not a style preference. If the maximum were computed over training and
-test data together, information about the test engines would enter the training
-process. The model would then be evaluated on data it had partly seen, and the
-reported error would be smaller than the error the same model would produce on
-genuinely new engines. This mistake is called **data leakage**, and it is one of
-the most common causes of results that cannot be reproduced (Kapoor &
-Narayanan, 2023, *Leakage and the reproducibility crisis in machine-learning-based
-science*, Patterns 4(9), 100804).
-
-## Windowing
-
-A model cannot take a whole engine history at once, because histories have
-different lengths. Instead each history is cut into short, fixed-length pieces
-called **time windows**. One window is one training example.
-
-**The window is 30 cycles long, and that comes from the paper.** Its Table 6
-lists `Time steps | 30`, its Section 3.4 says "the temporal window size is set
-to 30-time steps", and its Equation 7 writes the window out as
-`[x(t−w+1), x(t−w+2), … , x(t)]` with `w` the window size.
-
-**How far the window moves between one example and the next does not come from
-the paper.** That gap is called the **stride**, and the words "stride",
-"sliding", "overlap", "step size" and "non-overlapping" appear **nowhere** in
-the paper — checked against the PDF, not remembered. We use a stride of 1, so
-the first example covers cycles 1 to 30, the second covers 2 to 31, and so on.
-A stride of 1 yields the most examples a history can give. That choice is
-**A-05** in `docs/ASSUMPTIONS.md`.
-
-The difference matters when reading the two sentences above: the first is a
-fact about the paper, the second is a decision of ours that the paper leaves
-open, and this file tries never to let one wear the clothes of the other.
-
-**The label of a window is the remaining life at its *last* cycle**, and this is
-the paper's too: Equation 7 ends the window at time `t`, and Section 2.1
-states the objective as predicting "the remaining useful life y at the current
-time step". It also matches how the model would really be used — an operator has the
-last 30 cycles of readings and wants to know the remaining life *now*, not 30
-cycles ago.
-
-### The shape of the output, and why the third axis is 1
-
-The output is arranged for a graph neural network in which every sensor is a
-**node** of a graph. The array has three axes:
-
-```
-(number_of_examples, number_of_sensors, features_per_sensor)
-```
-
-The third axis always has length 1: each sensor node carries the most recent
-reading of its window. That is the input shape `[batch, 14, 1]` printed in
-Table 4 of the paper, whose first graph layer has `W(1)` in `R^(1 x 32)`.
-
-The window still decides *which* cycles are eligible — the first example of an
-engine ends at cycle `window_size`, not at cycle 1 — and it is what a temporal
-encoder would consume if one were added. It is simply not handed to the graph
-layer directly.
-
-### Engines shorter than the window are left out, not padded
-
-If an engine has fewer rows than the window size, no window can be cut from it,
-and it is left out. The run writes a warning naming the engine and how many
-rows it had, so the omission is on the record rather than silent. If every
-engine in a table is too short, the code raises instead of returning nothing.
-
-The alternative is to keep the engine and repeat its first reading backwards
-until the window is full. That was this project's behaviour until 2026-09-01,
-and it was wrong for a plain reason: those repeated rows are sensor values the
-engine never produced, and asking a model to predict from them is generated
-data, which this project does not allow anywhere.
-
-**The cost is real and has to be stated.** Leaving an engine out changes the
-size of the test set. The NASA score is a sum over engines, so it falls simply
-because there is one term fewer — not because the model improved — and it stops
-being comparable with a published score. No FD001 engine is affected, so no
-number this project reports today moves; 6 test engines in FD002 and 11 in
-FD004 are. This is **A-23**, and `docs/LITERATURE_BASIS.md` quotes the one
-published treatment of the same situation, which also excludes them.
-
-### The test set gets exactly one window per engine
-
-Test histories stop before failure, and the official label file gives one number
-per engine: the remaining life at the last recorded cycle. Evaluation therefore
-uses only the final window of each test engine. On FD001 that is 100
-predictions, which matches the "number of testing samples" column in Table 5 of
-the paper.
-
-### The validation split must be made by engine, not by window
-
-This is the single most important trap in this folder.
-
-A validation set is a slice of the training data that is held back and never
-used to update the model. It exists so that decisions — when to stop training,
-which settings to prefer — are not made by looking at the test set.
-
-Consecutive windows from the same engine overlap heavily. With a window size of
-30 and a stride of 1, two neighbouring windows share 29 of their 30 cycles and
-their labels differ by one cycle. If windows were split at random, nearly
-identical examples would land on both sides of the split, and the validation
-error would come out far too optimistic — the model would effectively be tested
-on data it had already trained on. Splitting whole engines keeps the two sets
-genuinely separate. That is what `split_units_by_id` does, and the pipeline
-asserts afterwards that no engine appears in both splits.
-
-The paper describes no validation split at all; it reports training for a fixed
-200 epochs. Introducing one here is a deliberate improvement over the source.
-
-## The pipeline, step by step
-
-`run_preprocessing()` in `pipeline.py` runs the whole sequence. Having one
-function do it, rather than a notebook calling the steps by hand, means the
-experiment can be repeated exactly, from a script or a test.
-
-1. **Load** the three raw text files and attach a RUL value to every row.
-2. **Diagnose** which sensors carry no information and compare that with the
-   paper's selection. This step changes nothing; it only reports.
-3. **Select** the paper's 14 sensors, in the exact order of its Table 3, so the
-   sensor axis lines up with the sensor graph.
-4. **Cap** the labels at the ceiling, producing the piecewise-linear target.
-5. **Smooth** the sensor signals with the exponentially weighted moving average.
-6. **Split** the training engines into a training part and a validation part.
-7. **Identify operating conditions** and **rescale** the sensors, learning every
-   statistic from the training engines only.
-8. **Cut** the histories into fixed-length windows.
-9. **Apply** the split decided in step 6 to those windows.
-
-Steps 3 and 4 are grouped together in the code, which puts the label cap before
-the smoothing while the paper's Figure 1 puts it after. The two commute exactly:
-capping touches only the label column and smoothing touches only the sensor
-columns, so no value is read by both.
-
-**Why smoothing comes before rescaling.** Smoothing removes measurement noise
-and is most naturally expressed in the sensor's own physical units, where the
-noise actually occurs. Rescaling is the last preparation before the model and
-should therefore see the signal the model will use. This order is *taken from
-the paper*, not chosen here: Figure 1 shows the chain as feature selection →
-data smoothing → piece-wise RUL → data normalisation → train and test datasets.
-
-**Why the split comes before the scaling.** The validation engines are chosen in
-step 6, before any statistic is computed in step 7. Fitting the scaler on all
-training engines and only afterwards holding some of them out would let a
-held-out engine define a minimum or a maximum — the same kind of leak that
-keeping the test set separate is meant to prevent. The effect is smaller than
-test leakage, but it biases exactly the quantity a validation set exists to
-measure.
+[`pipeline`](pipeline/README.md) walks every one of those steps on a real run,
+with the shapes at each stage and the log the run actually produced.
 
 **Where the training and test paths differ.** Both go through the same code.
 There are exactly two deliberate differences:
 
-- All statistics — cluster centres, minima, maxima, means, standard deviations
-  — are learned from the training engines and applied to the validation and test
+- Every measured quantity — cluster centres, minimums, maximums, means, spreads
+  — is learned from the training engines and applied to the validation and test
   engines unchanged.
-- Training engines produce every window; test engines produce only their final
-  window, because that is the single moment the official labels describe.
+- Training engines produce **every** window; test engines produce only their
+  **final** window, because that is the single moment the official labels
+  describe.
 
-### Sanity checks and outputs
+---
 
-`load_subset` compares the number of rows and engines against the counts
-published for the official release (`EXPECTED_SHAPES` in `loading.py`) and logs
-a **warning**, never an error, on a mismatch. A mismatch means the files are
-truncated, modified, or not the official release — investigate it before
-reporting any result computed from them. A legitimate variant of the files
-should not stop the pipeline, which is why it is only a warning.
+## The two rules that span more than one file
 
-The NASA files are not in this repository, because they are redistributed under
-NASA's own terms. When a file is missing, the error message quotes the download
-URL, so the fix travels with the problem instead of living only in the README.
+Everything else is local to a step. These two are not, and both exist to stop a
+failure that produces plausible wrong numbers rather than an error.
 
-`PreparedData.save()` writes five files, so a later stage never has to re-run
-preprocessing and the exact inputs of any experiment can be recovered:
+### 1. Nothing is measured on data the model is not entitled to see
 
-- `windows.npz` — the three splits as arrays.
-- `adjacency.npz` — the raw and normalised sensor graphs, plus the node labels.
-- `normalization_statistics.csv` — the learned scaling statistics, one row per
-  sensor and condition.
-- `config.yaml` — the settings used.
-- `diagnostics.json` — what the pipeline observed while running.
+Averages, spreads, minimums, maximums and cluster centres are all computed on
+the **training engines only**, then applied unchanged to the held-back and test
+engines. The split into training and held-back engines therefore happens
+*before* any of them is computed.
 
-Which sensor graph is used, and how it is normalised, are configuration rather
-than constants, so the matrix saved beside a result is the one the model was
-actually given. Before that was so, a run using row normalisation still stored
-the symmetric matrix, and anything reading it afterwards saw a graph the model
-had never used.
+This is why [`normalization`](normalization/README.md) splits `fit` from
+`transform` rather than offering one function, and why the split lives in
+[`pipeline`](pipeline/README.md) at step 6 rather than step 9. The measured
+consequences of getting it wrong are on the normalization page.
+
+The related rule inside [`windowing`](windowing/README.md) is that the split is
+made **by engine, never by window**: with a stride of one flight, two
+neighbouring windows share 29 of their 30 cycles, so splitting windows at random
+would put near-copies on both sides.
+
+### 2. The order of the 14 sensors is load-bearing
+
+The sensor graph is a plain 14-by-14 grid of numbers indexed by **position**.
+Nothing in it records which sensor is which — that is
+`PAPER_SENSOR_SYMBOLS` in [`sensors`](sensors/README.md), and reordering it
+would silently wire the model to the wrong sensors with no error of any kind.
+The sensors page demonstrates that failure on the real matrix.
+
+Two things defend against it: assertions that run when the module is imported,
+and `WindowedDataset` carrying the sensor names alongside the array so the order
+travels with the data.
+
+---
 
 ## The judgement calls made in this folder
 
 Each of these is a place where the paper does not say what it did, so we had to
-choose. Every one has a numbered entry in `docs/ASSUMPTIONS.md` with the full
-reasoning.
+choose. Every one has a numbered entry in
+[`docs/ASSUMPTIONS.md`](../../../docs/ASSUMPTIONS.md) with the full reasoning,
+and each is explained in plain terms on the page of the file it lives in.
 
-- **The label ceiling is 125 cycles.** The paper gives the piecewise-linear
-  formula as its Equation 19 but never prints the ceiling it used. Section 4.2
-  describes predicted life holding "around 125" while an engine is healthy, and
-  Jin et al. (2025) use 125 on the same dataset. Recorded as **A-01**.
-- **The ceiling is applied to the test labels too.** The paper does not say
-  whether the official test labels are capped before the error is computed. We
-  cap them, because the model's sigmoid output cannot exceed the ceiling in the
-  first place. This is controlled by `clip_test_labels`. It can only move the
-  reported error favourably, so it must be stated whenever a number from this
-  project is compared with a published one. Recorded as **A-02**.
-- **How the sensors are rescaled.** The paper never describes how it scales its
-  inputs and never mentions operating conditions in its preprocessing, so
-  nothing in `SensorNormalizer` reconstructs what Wen et al. did. The default
-  is the **z-score**, chosen under the rule in A-22; the per-condition min-max
-  option follows Jin et al. (2025) and was the default until 2026-08-29. The
-  difference between the two is 3.83 cycles, the largest measured effect of any
-  choice in this project. Recorded as **A-03**, measured in **F-10**.
-- **The smoothing parameter is 0.5.** Section 3.2.3 of the paper contradicts
-  itself here. It states that "S(t-1) … is equal to 0.5 in this study", which
-  attaches 0.5 to the previous smoothed value rather than to `alpha`. A fixed
-  previous value makes no sense in a recursive formula, so we read the sentence
-  as `alpha = 0.5`. Recorded as **A-04**.
-- **Windows are taken one cycle apart.** The paper gives a window size of 30 in
-  its Table 6 but never states a stride. We use 1. Recorded as **A-05**.
-- **A validation set is held out at all.** The paper describes no validation
-  split and trains for a fixed 200 epochs; holding engines out is our addition.
-  Recorded as **A-06**.
-- **Each sensor node carries the last cycle of its window.** Table 4 gives the
-  input to the first graph layer as `[batch, 14, 1]`, one number per sensor. In
-  the paper that number is the output of a per-sensor LSTM; with that stage
-  omitted, it is the most recent reading of the window. Recorded as **A-07**,
-  and the omission of the LSTM stage itself as **A-11**.
-- **The order of the preprocessing steps.** This one turned out *not* to be a
-  choice: Figure 1 of the paper prints the chain explicitly, so we follow it.
-  The entry is kept under its original number, **A-08**, and now records why it
-  is not an assumption — plus a measured caution about what that order does on
-  the multi-condition subsets FD002 and FD004. Read it before running this
-  pipeline on those two.
-- **The recursive form of the smoothing filter.** pandas offers two conventions
-  that differ in how they weight the first few values of a series;
-  `adjust=False` is the plain recursive form, which is exactly Equation 18 of
-  the paper. Recorded as **A-09**.
-- **The seventh dropped sensor is NRc.** Section 3.2.2 says seven sensors are
-  removed and then names only six. NRc is identified as the seventh: it is the
-  one sensor of Table 2 absent from Table 3 without being named in that
-  sentence. Recorded as **A-10**.
+| ID | The choice | Where it lives |
+|---|---|---|
+| **A-01** | The label ceiling is 125 cycles. Equation 19 gives the formula; the number is never printed. | [labeling](labeling/README.md) |
+| **A-02** | The ceiling is applied to the test labels too. This can only move reported error favourably, and must be stated whenever a number from here is compared with a published one. | [labeling](labeling/README.md) |
+| **A-03** | How the sensors are rescaled. The paper describes no scaling at all. **The largest measured effect in the project.** | [normalization](normalization/README.md) |
+| **A-04** | The smoothing strength is 0.5. Section 3.2.3 contradicts itself. | [smoothing](smoothing/README.md) |
+| **A-05** | Windows are taken one cycle apart. Table 6 gives the size, never a stride. | [windowing](windowing/README.md) |
+| **A-06** | A validation set is held out at all. The paper describes none. Validation error and test error are **not** comparable here. | [windowing](windowing/README.md) |
+| **A-07** | Each sensor node carries the last cycle of its window, standing in for the omitted recurrent stage (**A-11**). | [windowing](windowing/README.md) |
+| **A-08** | The order of the steps — which turned out **not** to be a choice: Figure 1 prints the chain. | [pipeline](pipeline/README.md) |
+| **A-09** | The recursive form of the smoothing filter, matching Equation 18. | [smoothing](smoothing/README.md) |
+| **A-10** | The seventh dropped sensor is NRc. Section 3.2.2 says seven and names six. | [sensors](sensors/README.md) |
+| **A-23** | An engine shorter than the window is left out, not padded. | [windowing](windowing/README.md) |
+| **A-25** | The split is decided before the scaling is fitted. | [pipeline](pipeline/README.md) |
 
-## What each name means
+Two observations about the paper, established from data rather than chosen, are
+findings rather than assumptions: **F-03**, that the shortest FD001 test history
+is 31 cycles and so no FD001 engine is affected by A-23, and the fact that
+**P15** is one of the paper's 14 while carrying only two distinct values in the
+whole FD001 training set — reported on every run rather than quietly corrected.
 
-Everything the folder offers, file by file. Anything not listed is internal
-and starts with an underscore.
+---
 
-### `loading.py`
+## Getting the data
 
-| Name | What it is |
-|---|---|
-| `load_subset(subset, data_dir=...)` | Reads all three files of one subset, attaches the labels, and returns a `CMAPSSData`. This is the only one of these you normally call. |
-| `read_cmapss_frame(path)` | Reads one history file into a table with the 26 named columns, sorted by engine and then by cycle. Raises if the file is missing (the message quotes the download link) or does not have 26 columns. |
-| `read_rul_file(path)` | Reads a `RUL_FD00X.txt` file. Returns one number per engine, numbered from 1 by line position. |
-| `attach_rul(frame, rul_at_last_cycle=None)` | Adds the `rul` column. Leave the second argument out for training data; pass what `read_rul_file` returned for test data. |
-| `CMAPSSData` | Holds one loaded subset: `subset` (which one), `train` and `test` (the tables, each with a `rul` column), and `test_rul` (the official label at each test engine's last cycle). Its `summary()` returns a small table to eyeball. |
-| `EXPECTED_SHAPES` | How many rows and engines each subset should have. Used for the warning described above. |
-| `DOWNLOAD_URL` | Where the NASA files come from. Quoted in the missing-file error. |
+The NASA files are not in this repository, because they are redistributed under
+NASA's own terms. Put `train_FD00X.txt`, `test_FD00X.txt` and `RUL_FD00X.txt`
+into `data/raw/`. When a file is missing, the error quotes the download link, so
+the fix arrives with the problem — see
+[`loading`](loading/README.md).
 
-### `sensors.py`
-
-| Name | What it is |
-|---|---|
-| `SENSORS` | All 21 sensors, each a `SensorInfo`. |
-| `SensorInfo` | One sensor: its `index` (1 to 21), its `symbol` (the short engineering name such as `T24`), a plain `description`, its `unit`, and the `station` — the part of the engine it sits in, used only in figures. Its `column` property gives the column name, `sensor_2`. |
-| `PAPER_SENSOR_SYMBOLS` | The 14 sensors the paper keeps, in the order of its Table 3. **Do not reorder.** |
-| `PAPER_SENSOR_COLUMNS` | The same 14, written as column names. |
-| `PAPER_EXCLUDED_SYMBOLS` | The 7 the paper drops. |
-| `symbol_to_column(symbol)` | `"T24"` to `"sensor_2"`. |
-| `column_to_symbol(column)` | `"sensor_2"` to `"T24"`. |
-| `detect_uninformative_sensors(frame)` | The diagnostic described above. Returns a dictionary with three keys — `"constant"`, `"low_resolution"` and `"informative"` — each a sorted list of sensor names. |
-| `UNIT_COL`, `CYCLE_COL` | The names of the engine and cycle columns: `"unit"` and `"cycle"`. |
-| `OP_SETTING_COLS`, `SENSOR_COLS`, `RAW_COLUMNS` | The three setting columns, the 21 sensor columns, and all 26 in file order. |
-
-The units in `SensorInfo` are the ones American aerospace engineering uses:
-`degR` is degrees Rankine, an absolute temperature scale; `psia` is pounds per
-square inch, absolute; `rpm` is revolutions per minute; `lbm/s` is pounds of
-mass per second; `-` means the quantity is a plain ratio with no unit.
-
-### `labeling.py`
-
-| Name | What it is |
-|---|---|
-| `apply_piecewise_rul(frame, rul_max=...)` | Caps the `rul` column at `rul_max`. Pass `output_column` to write to a new column instead of replacing the old one, which is useful for drawing the effect of the cap. |
-| `piecewise_rul_curve(total_cycles, rul_max)` | The label curve one engine should have, for drawing or for testing. `piecewise_rul_curve(6, rul_max=3)` gives `[3, 3, 3, 2, 1, 0]`. |
-
-### `smoothing.py`
-
-| Name | What it is |
-|---|---|
-| `apply_ewma(frame, columns, alpha=...)` | Smooths the chosen columns, one engine at a time. `alpha=None` turns it off and returns an unchanged copy, which is how the filter's contribution is measured. Only those columns change; the label is left alone. |
-| `ewma_series(values, alpha)` | The same filter on a single series, written out longhand. The tests use it to confirm the fast pandas version agrees. |
-
-`alpha` must be above 0 and at most 1. Anything else raises.
-
-### `normalization.py`
-
-| Name | What it is |
-|---|---|
-| `OperatingConditionEncoder` | Works out how the aircraft was being flown at each row. `fit(frame)` learns from the **training rows only**; `transform(frame)` adds the condition column to any table; `fit_transform` does both. `n_detected` says how many conditions it settled on. Leave `n_conditions` as `None` to detect the number from the data. |
-| `SensorNormalizer` | Rescales the sensors. `method` is one of the three above, `columns` is which columns to touch, and `feature_range` is the target range for the two min-max methods. `fit(frame)` measures the **training rows only**; `transform(frame)` applies what it measured to any table; `fit_transform` does both. After fitting, `statistics_` holds what it measured, one row per sensor and condition, so it can be inspected and saved. |
-| `CONDITION_COL` | The name of the column the encoder adds: `"operating_condition"`. |
-
-### `windowing.py`
-
-| Name | What it is |
-|---|---|
-| `make_windows(frame, sensor_columns, ...)` | Cuts every engine's history into overlapping windows. Use for training data. |
-| `make_last_windows(frame, sensor_columns, ...)` | Takes only the last window of each engine. Use for test data. |
-| `split_units_by_id(units, validation_fraction=..., seed=...)` | Splits the engine numbers into the ones to train on and the ones to hold back. The two never share an engine. A fraction of 0 holds nothing back. |
-| `WindowedDataset` | The result of the two window functions. Its fields are listed below. |
-
-`WindowedDataset` holds five things, all lined up so that row *i* of each
-describes the same example:
-
-| Field | What it holds |
-|---|---|
-| `features` | The readings, shaped `(examples, sensors, numbers per sensor)`. |
-| `targets` | The remaining life at the last cycle of each window, in flight cycles. |
-| `units` | Which engine each example came from. Needed to group predictions by engine, and to check that no engine landed in two splits. |
-| `end_cycles` | The cycle number of the last row of each window. |
-| `sensor_columns` | The sensor names, in the order of the second axis. Kept with the array so the sensor order cannot be lost, which would quietly misalign the data with the sensor graph. |
-
-`len(dataset)` gives the number of examples, and
-`dataset.subset_by_units([...])` returns a copy holding only the engines listed.
-
-### `pipeline.py`
-
-| Name | What it is |
-|---|---|
-| `run_preprocessing(config=None, data_dir=None, keep_frames=False)` | Runs all nine steps and returns a `PreparedData`. `keep_frames=True` also keeps the intermediate tables, which costs memory but is what a notebook wants. |
-| `PreparedData` | Everything the training stage needs, plus everything needed to check it. Its fields are listed below. |
-
-| Field | What it holds |
-|---|---|
-| `config` | The exact settings that produced this object. |
-| `train`, `validation`, `test` | The three sets of examples. `validation` is empty when nothing was held back, which is the default. |
-| `adjacency_raw`, `adjacency_normalized` | The sensor graph before and after rescaling. |
-| `sensor_symbols` | The sensor names, in the order of the graph's rows. |
-| `normalizer`, `condition_encoder` | The two fitted objects, kept so what they measured can be inspected and saved. |
-| `diagnostics` | A free-form record of what the run observed: constant sensors, the shape of the graph, the size of each split, and whether the paper's choice of sensors agrees with the data. |
-| `raw`, `frames` | The intermediate tables, or `None` unless `keep_frames=True`. |
-
-`summary()` returns a small table describing the three sets. `save(directory)`
-writes the five files listed above.
+`load_subset` also compares the row and engine counts against the published
+figures for the official release and **warns** on a mismatch rather than
+stopping, because a legitimate variant should not halt the work while a silent
+mismatch would be far worse.

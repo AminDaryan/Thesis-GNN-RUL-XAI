@@ -51,7 +51,7 @@ identifier below.
 
 ## A-01 — The label ceiling is 125 cycles
 
-**Where:** `config.PreprocessingConfig.rul_max`, `data/labeling.py`
+**Where:** `config.PreprocessingConfig.rul_max`, `data/labeling/`
 
 **The gap.** Equation 19 of the paper reads
 `RUL_t = min(T_total − T_end, RUL_max)`, and the text says only that `RUL_max`
@@ -88,7 +88,7 @@ above it and therefore every error figure. A sensitivity check over the values
 
 ## A-02 — The ceiling is applied to the test labels as well
 
-**Where:** `config.PreprocessingConfig.clip_test_labels`, `data/pipeline.py`
+**Where:** `config.PreprocessingConfig.clip_test_labels`, `data/pipeline/`
 
 **The gap.** The paper does not say whether the official test labels are capped
 before the error is computed.
@@ -127,7 +127,7 @@ must be re-measured whenever the architecture changes.)
 
 ## A-03 — Sensor values are rescaled with z-scores
 
-**Where:** `config.PreprocessingConfig.normalization`, `data/normalization.py`
+**Where:** `config.PreprocessingConfig.normalization`, `data/normalization/`
 
 **The gap.** The paper never describes how the sensor inputs are scaled. The
 words "normalisation", "min-max" and "standardisation" do not appear in
@@ -197,7 +197,7 @@ the global one, the effect is likely larger still.
 
 ## A-04 — The smoothing parameter is 0.5
 
-**Where:** `config.PreprocessingConfig.smoothing_alpha`, `data/smoothing.py`
+**Where:** `config.PreprocessingConfig.smoothing_alpha`, `data/smoothing/`
 
 **The gap.** Section 3.2.3 of the paper defines the filter as
 `S_t = alpha * X_t + (1 − alpha) * S_(t−1)` and then writes: *"S(t-1) indicates
@@ -221,7 +221,7 @@ straightforward to measure.
 
 ## A-05 — Windows are taken one cycle apart
 
-**Where:** `config.PreprocessingConfig.window_stride`, `data/windowing.py`
+**Where:** `config.PreprocessingConfig.window_stride`, `data/windowing/`
 
 **The gap, and how much of one it really is.** Table 6 gives a window of 30
 time steps and no stride, and the running text never mentions one. But
@@ -261,7 +261,7 @@ must be used when it is used.
 
 ### Original entry
 
-**Where:** `config.PreprocessingConfig.validation_fraction`, `data/windowing.py`
+**Where:** `config.PreprocessingConfig.validation_fraction`, `data/windowing/`
 
 **The gap.** The paper describes no validation split. Table 6 states 200
 epochs, with no early stopping and no held-out set mentioned.
@@ -321,7 +321,7 @@ are matters.
 
 ## A-07 — Each sensor node carries the last cycle of its window
 
-**Where:** `data/windowing.py`; `models/estgnn.py` (`in_features`)
+**Where:** `data/windowing/`; `models/estgnn.py` (`in_features`)
 
 **The gap.** Table 4 of the paper gives the input to the first graph layer as
 `[batch, 14, 1]` with `W(1) in R^(1 x 32)`: one number per sensor. That number
@@ -331,9 +331,30 @@ paper prints it.
 
 **What we chose.** With the LSTM stage omitted (see A-11), each sensor node
 carries the **most recent reading** of its window, giving `[batch, 14, 1]` and
-`W(1) in R^(1 x 32)` exactly as printed. The parameter count matches Table 4
-to the digit: **61,729**, asserted by
+`W(1) in R^(1 x 32)` exactly as printed. The parameter count comes to
+**61,729**, asserted by
 `test_models.py::test_the_default_width_reproduces_table_4`.
+
+**What that 61,729 is, exactly — corrected 2026-08-31.** Earlier drafts of this
+entry, of `README.md` and of `models/README.md` called it "Table 4's count",
+"the count Table 4 gives" and "matching Table 4 to the digit". **Table 4 prints
+no total.** It prints five weight-matrix shapes, and those come to
+
+```
+1x32 + 32x64 + 64x32 + 448x128 + 128x1  =  61,600
+```
+
+The remaining **129** are the two biases `b_fc1` and `b_fc2`, which Table 4 does
+not list but Equations 12 and 13 do print. And the total stays at 61,729 rather
+than 61,857 only because **A-12** gives the three graph convolution layers no
+bias — a choice of ours, made because Equations 8 to 10 print none.
+
+So the figure is a *derivation* from three places in the paper plus one of this
+project's own assumptions, not a number read off a table. It is still a real
+and useful check — it caught the 62,657-parameter Run A described in F-06 — but
+calling it "Table 4's count" let a derived quantity wear the clothes of a
+printed one, which working rule 5 exists to prevent. Found by the audit of
+2026-08-31.
 
 **Why.** Reproducing an ablation means keeping the printed architecture and
 removing the named component. Any other filler for that one number — the mean
@@ -389,7 +410,7 @@ encoder would consume if one were added later.
 
 ## A-08 — WITHDRAWN: the paper does state the order
 
-**Where:** `data/pipeline.py`
+**Where:** `data/pipeline/`
 
 **Status.** This was logged as an assumption in error. It is not one. Fig. 1 of
 the paper prints the preprocessing chain explicitly:
@@ -443,7 +464,7 @@ assumption.
 
 ## A-09 — The recursive form of the smoothing filter is used
 
-**Where:** `data/smoothing.py`
+**Where:** `data/smoothing/`
 
 **The gap.** The pandas function used for this filter has two modes, which
 differ in how they treat the first few values of a series. The paper does not
@@ -460,7 +481,7 @@ cosmetic detail.
 
 ## A-10 — The seventh dropped sensor is NRc
 
-**Where:** `data/sensors.py`
+**Where:** `data/sensors/`
 
 **The gap.** Section 3.2.2 of the paper states that "seven sensors are removed"
 and then names only six: T2, P2, epr, farB, Nfdmd and PCNRdmd.
@@ -484,14 +505,34 @@ constancy half, which is exactly what the data shows.
 **Confirmed against the data.** Running the diagnostic on the real FD001
 training set shows that exactly the six *named* sensors are perfectly constant.
 `NRc` is not: it takes 6078 distinct values across the 20 631 training rows. So
-it was dropped for a different reason than the other six, most plausibly
-redundancy — the corrected core speed is derived from the physical core speed
-`Nc`, which the paper keeps. The paper's sentence conflates two different
-reasons for exclusion.
+it was dropped for a different reason than the other six. The paper's sentence
+conflates two different reasons for exclusion.
+
+**The paper's own criterion settles it — measured 2026-08-31.** Section 3.2.2
+gives the rule as removal for "high correlational redundancy (above 0.95) and
+constant values". Applying exactly that rule to the real FD001 training set:
+
+- **six** sensors are constant — `T2`, `P2`, `epr`, `farB`, `Nf_dmd`,
+  `PCNfR_dmd` — which are precisely the six the paper names;
+- among the fifteen sensors that are *not* constant, **exactly one pair**
+  reaches the 0.95 threshold: **`Nc`–`NRc`, at r = +0.9632.** No other pair
+  comes close; `NRc`'s next strongest partner is `htBleed` at +0.2466.
+
+So the paper's stated rule, applied to the paper's stated dataset, removes six
+sensors by constancy and exactly one more by redundancy, and that one can only
+be `Nc` or `NRc`. Table 3 keeps `Nc`. The seventh removed sensor is therefore
+`NRc` by the paper's own criterion, not merely by elimination from its tables.
+
+This is worth noting for a second reason. It is **one of the few places where a
+procedure the paper describes can be run and shown to reproduce the paper's own
+result exactly.** Most of this log records the opposite. Recording the
+agreement as carefully as the disagreements is what keeps the log evidence
+rather than advocacy.
 
 **How much it matters.** None for the code, once identified: the retained set
-is fully determined by Table 3. It is worth one sentence in the thesis, because
-it shows the selection was not purely a variance filter.
+is fully determined by Table 3. It is worth a sentence in the thesis, because
+it shows the selection was not purely a variance filter — and a second
+sentence, because the selection is reproducible where much of the paper is not.
 
 ---
 
@@ -1228,7 +1269,7 @@ touch; only the preprocessing and the adjacency formula moved.
 #### The architecture-faithful comparison is 20.35 against 14.93
 
 Run B is the paper's printed architecture: input `[batch, 14, 1]`,
-`W(1) in R^(1 x 32)`, the same layer widths, and **61,729 parameters — Table 4's
+`W(1) in R^(1 x 32)`, the same layer widths, and **61,729 parameters — what Table 4's
 count exactly**. The only thing removed is the LSTM, which is what "w/o LSTM"
 means. So this is the comparison that carries weight:
 
@@ -1265,7 +1306,7 @@ parameters do temporal filtering (A-07).
 
 The lesson is worth keeping even though the configuration is gone: **check the
 parameter count against the printed architecture before comparing accuracy.**
-Table 4 gives 61,729. Run A had 62,657. That single number would have caught
+Table 4's shapes imply 61,729. Run A had 62,657. That single number would have caught
 the problem immediately, and it is now asserted by a test.
 
 #### What the ablations say, re-measured
@@ -1946,7 +1987,7 @@ the text layer, because two-column extraction interleaves table rows.
 
 ## A-23 — An engine shorter than the window is left out, not padded
 
-**Where:** `data/windowing.py`, `_extract_one_unit`
+**Where:** `data/windowing/`, `_extract_one_unit`
 
 **The gap.** Table 6 fixes the window at 30 time steps, and the paper reports
 results on all four sub-datasets. Some test engines are shorter than 30 cycles,
@@ -2071,7 +2112,7 @@ Reproduce with the script recorded in this entry's commit message.
 
 ## A-25 — The scaling is fitted after the split, which reverses the order the paper's Fig. 1 prints
 
-**Where:** `data/pipeline.py`, steps 6 and 7
+**Where:** `data/pipeline/`, steps 6 and 7
 
 **The gap.** Fig. 1 prints the preprocessing chain as
 
@@ -2114,6 +2155,131 @@ followed here.
 
 ---
 
+### F-13 — Fig. 1 lists node features the paper's own feature selection removes
+
+**Where in the paper.** Fig. 1, the "Node features" list in the
+physics-based-graph panel, read at scale 11.
+
+The list reads, in order:
+
+> T20 (°R), T24 (°R), T30 (°R), T50 (°R), P20 (psia), P15 (psia), P30 (psia),
+> Nf (rpm), Nc (rpm), …
+
+Two problems, and they compound.
+
+**The names T20 and P20 appear nowhere else in the paper.** Table 2 lists all
+21 C-MAPSS sensors and calls the corresponding ones **T2** ("Total temperature
+at fan inlet") and **P2** ("Pressure at fan inlet"), which are the names Saxena
+et al. (2008) use. Nothing in the paper defines T20 or P20.
+
+**Those two sensors are ones the paper removes.** Section 3.2.2 states that
+seven sensors are removed by feature selection and names six of them: "T2, P2,
+epr, farB, Nf_dmd and PCNR_dmd". So T2 and P2 — under whichever spelling — are
+excluded, and they are correspondingly absent from Table 3's fourteen rows,
+which begin at T24, and from Fig. 5's correlation heatmap, which shows only the
+kept sensors.
+
+**The figure contradicts itself.** The graph drawn immediately beside that list,
+inside the same panel, has fourteen nodes labelled with the Table 3 set — P30,
+P15, T50, T30, T24, Nf, Nc, Ps30 and the rest. So Fig. 1's caption text and
+Fig. 1's own drawing disagree about what enters the graph.
+
+**Why it is recorded.** The list is the only place in the paper that enumerates
+what a node carries, and it is wrong in a way that would mislead a
+re-implementer into building a 16-node graph. This project follows Table 3 and
+Section 3.2.2, which agree with each other and with the data (see A-10). Like
+F-07 and the duplicated Table 6 caption, this is evidence that the figures were
+assembled by hand and not generated from the code that produced the results.
+
+---
+
+### F-14 — The text under Equations 9 and 10 misnumbers the weight matrices
+
+**Where in the paper.** Section 2.3.2, the sentence immediately following
+Equation 10, read at scale 11.
+
+Equations 8, 9 and 10 print, in order, `W(1)`, `W(2)` and `W(3)` — the first,
+second and third graph convolution layers. The sentence beneath them reads:
+
+> where **W(1)** and **W(2)** are the second and third learnable weight
+> matrixes of GNN, respectively.
+
+The superscripts are off by one. Equation 8 has already used `W(1)` for the
+*first* layer, so calling `W(1)` "the second" contradicts the equation three
+lines above it. The sentence should name `W(2)` and `W(3)`, which are the
+matrices Equations 9 and 10 actually contain.
+
+**Consequence: none for the architecture.** Table 4 prints the shape of every
+matrix — `W(1) in R^(1x32)`, `W(2) in R^(32x64)`, `W(3) in R^(64x32)` — and
+those are unambiguous, mutually consistent, and what this project implements.
+Nothing here changes a layer.
+
+**Why it is recorded anyway.** F-07's argument that the paper's tables and
+figures were assembled by hand rests on accumulating exactly this kind of
+evidence, and an audit that found it and left it out would be selecting its
+evidence. Counted so far: the duplicated Table 6 caption, Fig. 1's node feature
+list (F-13), this sentence, the sign contradiction between Equation 20 and its
+own text (A-15), the R-squared denominator (A-16), and the Conclusions'
+"highest R²" (F-11).
+
+---
+
+### F-15 — Fig. 9 and Table 12 disagree about which sensors matter most
+
+The paper offers exactly two quantitative interpretability results. They do not
+agree, and the disagreement is not marginal.
+
+**What Fig. 9 says.** Its caption reads "Red nodes represent the four most
+critical sensors, blue nodes show remaining sensors with importance-based color
+gradation". The four in the red box, read at scale 11, are
+
+> **Nc, P30, NRf, T24**
+
+and the beeswarm beside them is ordered top-to-bottom by importance, with
+`Ps30` first in the blue "remaining" box, immediately below the red four.
+
+**What Table 12 says.** It gives SHAP importance for all 14 sensors at 15 time
+steps. Ranking each column by value:
+
+| | in the top four, of 15 columns |
+|---|---|
+| T50 | **15** |
+| Ps30 | **15** |
+| Phi | 11 |
+| Nc | 10 |
+| P30 | 5 |
+| BPR | 4 |
+| T24, T30, P15, Nf, **NRf**, htBleed, W31, W32 | **0** |
+
+**The contradiction.** Two of Fig. 9's four most critical sensors — **NRf and
+T24** — are in Table 12's top four in **none** of its fifteen columns. Both are
+in the bottom half of every column; T24 falls to 0.76 and NRf to 0.89 by G191.
+Meanwhile **T50 and Ps30 are in the top four in every single column**, and
+Fig. 9 places both in the "remaining sensors" box.
+
+The prose agrees with Table 12, not with Fig. 9: Section 4.4 says the model
+"predominantly relies on sensors T50, Nc, Ps30, and phi" early, and names T50,
+P30, Ps30, phi in the middle and Nc, Ps30, BPR, T50 late. NRf and T24 are never
+named as important anywhere in the text.
+
+**What cannot be concluded.** That either is wrong. Fig. 9 may show a different
+engine, a different sub-dataset, or a pooled result rather than the single
+representative unit Table 12 describes; the paper says none of these. What can
+be concluded is that **the two cannot both be describing the same quantity for
+the same unit**, and the paper presents them as a single coherent analysis.
+
+**Consequence for this project.** F-05 compares this project's sensor ranking
+with the paper's. It must say *which* of the paper's two rankings it is
+comparing against, because they differ.
+
+F-05 happens to concern `P15`, and there the two agree: Fig. 9 places it last
+of fourteen, and in Table 12 it is in the **bottom three of fourteen in every
+one of the fifteen columns** — second-lowest in nine of them, lowest in three,
+third-lowest in three. So that particular comparison survives either way. **Any
+future comparison about a highly ranked sensor does not**, and must name which
+of the two it is made against.
+
+---
 
 ---
 

@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 
-from ..utils.logging_setup import get_logger
-from .sensors import OP_SETTING_COLS
+from ...utils.logging_setup import get_logger
+from ..sensors import OP_SETTING_COLS
 
 __all__ = [
     "CONDITION_COL",

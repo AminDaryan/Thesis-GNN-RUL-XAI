@@ -36,7 +36,7 @@ from thesis_gnn_rul_xai.graph.adjacency import (
     pairs_beyond_reach,
 )
 
-# --- data/labeling.py ---------------------------------------------------
+# --- data/labeling/ ---------------------------------------------------
 
 
 def test_example_apply_piecewise_rul():
@@ -51,7 +51,7 @@ def test_example_piecewise_rul_curve():
     assert piecewise_rul_curve(6, rul_max=3).tolist() == [3, 3, 3, 2, 1, 0]
 
 
-# --- data/sensors.py ----------------------------------------------------
+# --- data/sensors/ ----------------------------------------------------
 
 
 def test_example_detect_uninformative_sensors():
@@ -65,7 +65,7 @@ def test_example_detect_uninformative_sensors():
     assert "T2" in report["constant"]
 
 
-# --- data/smoothing.py --------------------------------------------------
+# --- data/smoothing/ --------------------------------------------------
 
 
 def test_example_ewma_series():
@@ -73,7 +73,7 @@ def test_example_ewma_series():
     assert ewma_series([0.0, 1.0, 1.0], alpha=0.5).tolist() == [0.0, 0.5, 0.75]
 
 
-# --- data/windowing.py --------------------------------------------------
+# --- data/windowing/ --------------------------------------------------
 
 
 def test_example_split_units_by_id():

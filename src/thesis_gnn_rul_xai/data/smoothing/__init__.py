@@ -11,8 +11,8 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
-from ..utils.logging_setup import get_logger
-from .sensors import CYCLE_COL, UNIT_COL
+from ...utils.logging_setup import get_logger
+from ..sensors import CYCLE_COL, UNIT_COL
 
 __all__ = ["apply_ewma", "ewma_series"]
 

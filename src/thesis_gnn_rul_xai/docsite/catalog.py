@@ -38,6 +38,20 @@ _CODE_FOLDERS: tuple[tuple[str, str], ...] = (
     ("docsite", "This website itself — the only folder the pipeline never calls"),
 )
 
+# The seven files under data/, each of which now keeps its own page beside its
+# own code. They are listed straight after the data folder overview, so the
+# menu reads as the folder and then its parts, in the order the pipeline runs
+# them. A file that has not been written yet is skipped rather than listed.
+_DATA_MODULE_PAGES: tuple[tuple[str, str], ...] = (
+    ("loading", "Reading the three NASA text files, and working out every row's label"),
+    ("sensors", "The 21 sensors, the 14 the paper keeps, and why their order carries meaning"),
+    ("labeling", "Why the label stops counting above a ceiling, measured rather than argued"),
+    ("smoothing", "The filter that takes the jitter out of each engine's signals"),
+    ("normalization", "Operating conditions, rescaling, and the rule that keeps test data out"),
+    ("windowing", "Cutting each engine's history into fixed-length training examples"),
+    ("pipeline", "All nine steps in order, and what comes out at the end"),
+)
+
 # The taught pages, in the order they are meant to be read. Each is a file in
 # docs/learn/; the blurb is what the navigation shows beneath its title.
 _LEARN_PAGES: tuple[tuple[str, str], ...] = (
@@ -234,14 +248,24 @@ def build_catalog(root: Path | None = None) -> Catalog:
         ]
     )
 
-    code = collect(
-        [
+    code_entries: list[Document | None] = []
+    for folder, blurb in _CODE_FOLDERS:
+        code_entries.append(
             _describe(
                 root, f"src/thesis_gnn_rul_xai/{folder}/README.md", blurb, "reference"
             )
-            for folder, blurb in _CODE_FOLDERS
-        ]
-    )
+        )
+        if folder == "data":
+            code_entries += [
+                _describe(
+                    root,
+                    f"src/thesis_gnn_rul_xai/data/{module}/README.md",
+                    module_blurb,
+                    "reference",
+                )
+                for module, module_blurb in _DATA_MODULE_PAGES
+            ]
+    code = collect(code_entries)
 
     evidence = collect(
         [

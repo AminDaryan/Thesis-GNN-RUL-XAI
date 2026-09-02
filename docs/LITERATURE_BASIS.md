@@ -36,9 +36,13 @@ so and does not treat it as evidence.
 
 ## The finding that prompted this: A-23, short engines
 
-**The current choice.** When an engine has fewer rows than the 30-cycle window,
-`data/windowing.py` repeats its first reading backwards until the window is
-full, and keeps the engine.
+**The choice at the time of this search.** When an engine had fewer rows than
+the 30-cycle window, `data/windowing/` repeated its first reading backwards
+until the window was full, and kept the engine. **This search is what changed
+it:** A-23 was rewritten on 2026-09-01 and the code now leaves such an engine
+out instead. The paragraph is left in the past tense rather than updated,
+because the finding below is what prompted the change and reads as nonsense
+without the choice it argued against.
 
 **No paper in the 25 does this.** The search for padding, repeating a first
 reading, or handling short sequences returned nothing on this practice. The
