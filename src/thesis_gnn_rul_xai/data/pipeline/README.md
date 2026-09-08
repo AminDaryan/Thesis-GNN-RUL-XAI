@@ -76,6 +76,19 @@ Several of those are recorded choices rather than values the paper printed:
 
 ## `run_preprocessing` — the nine steps, on a real run
 
+### The input
+
+Nothing is required — every argument has a default:
+
+```python
+prep = run_preprocessing()                       # the settings above, data/raw/
+prep = run_preprocessing(cfg, data_dir=..., keep_frames=True)
+```
+
+`config` defaults to a fresh `PreprocessingConfig`, `data_dir` to the project's
+`data/raw/`, and `keep_frames` to `False`. So the real input is three text
+files and eleven settings.
+
 ### The output first, so the steps have something to refer to
 
 This is the complete, unedited log of a real FD001 run with the default
@@ -259,6 +272,14 @@ used is **A-21**.
 ---
 
 ## `PreparedData` — every field
+
+### What it is given, and what it hands back
+
+A container rather than a function. `run_preprocessing` fills it with twelve
+fields, and it offers two methods: `summary()` for a table to look at, and
+`save()` for writing five files to disk.
+
+### The twelve fields
 
 | Field | What it holds |
 |---|---|

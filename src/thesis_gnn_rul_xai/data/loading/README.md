@@ -424,6 +424,20 @@ form B  (rows_left + life_after_file) matches the rul column: True
 rows checked: 13096
 ```
 
+### The output
+
+A **new** table, the same shape as the one passed in plus one column:
+
+| | |
+|---|---|
+| Rows and columns | unchanged, plus `rul` |
+| `rul` type | `int64` — a whole number of flights |
+| On training data | counts down to 0 at the engine's last row |
+| On test data | counts down to the label file's value at the last row |
+
+For the training table that is 20 631 rows × 27 columns; for the test table
+13 096 × 27.
+
 ### It does not modify what it was given
 
 ```python
@@ -460,6 +474,17 @@ that engine's last recorded row. The first is derived from the second.
 ---
 
 ## `load_subset` — all three files, in order
+
+### The input
+
+A sub-dataset name and the directory holding its three files:
+
+```python
+load_subset("FD001", data_dir="data/raw")
+```
+
+It builds the three filenames itself from the name, so `data/raw/` must contain
+`train_FD001.txt`, `test_FD001.txt` and `RUL_FD001.txt`.
 
 ### Step by step
 
@@ -512,6 +537,14 @@ from them.
 ---
 
 ## `CMAPSSData` — what comes out
+
+### What it is given, and what it hands back
+
+Not a function but a container. `load_subset` fills it with four things, and it
+offers two ways to look at them: `__repr__`, so printing it gives the one-line
+description below, and `summary()`, which returns a small table.
+
+### The four fields
 
 Four things: `subset` (which sub-dataset), `train` and `test` (the two tables,
 each now carrying a `rul` column), and `test_rul` (the official label at each

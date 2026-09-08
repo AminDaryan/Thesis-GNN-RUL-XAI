@@ -192,6 +192,25 @@ Confirmed against the function itself:
   identical to the hand computation? True
 ```
 
+### The output
+
+Three NumPy arrays, all aligned by position — entry `i` of each describes
+window `i`:
+
+| Returned | Type and shape | Value on this input |
+|---|---|---|
+| `windows` | `float32`, `(3, 3, 1)` = (windows, sensors, 1 number each) | the last reading of each sensor in each window |
+| `window_targets` | `float32`, `(3,)` | `[189. 187. 185.]` |
+| `window_cycles` | `int64`, `(3,)` | `[3 5 7]` |
+
+`np.ascontiguousarray` is applied to the first before returning it: the
+transpose and the slice left the values scattered in memory rather than laid
+out in reading order, and copying them into order once here is cheaper than
+letting every later operation work around it.
+
+An engine too short for even one window returns three **empty** arrays of the
+same types instead, which is the signal `_build` looks for.
+
 ### Why the window still matters if only its last reading survives
 
 This is the obvious objection, and it has a real answer. The window still
@@ -206,9 +225,33 @@ whole, because the stage that would have compressed it is not implemented
 
 ## `_build` — every engine, stacked into one dataset
 
+`_extract_one_unit` handles one engine. `_build` runs it over **every** engine
+in the table and glues the results into a single dataset.
+
 ### The input
 
-The whole table, and the same settings.
+A table holding more than one engine. Here are real FD001 rows — engines 1 and
+2, their first 7 flights, three sensors — with `window_size=3` and `stride=2`:
+
+```
+ unit  cycle  sensor_2  sensor_3  sensor_4  rul
+    1      1    641.82   1589.70   1400.60  191
+    1      2    642.15   1591.82   1403.14  190
+    1      3    642.35   1587.99   1404.20  189
+    1      4    642.35   1582.79   1401.87  188
+    1      5    642.37   1582.85   1406.22  187
+    1      6    642.10   1584.47   1398.37  186
+    1      7    642.48   1592.32   1397.77  185
+    2      1    641.89   1583.84   1391.28  286
+    2      2    641.82   1587.05   1393.13  285
+    2      3    641.55   1588.32   1398.96  284
+    2      4    641.68   1584.15   1396.08  283
+    2      5    641.73   1579.03   1402.52  282
+    2      6    641.30   1577.50   1396.76  281
+    2      7    642.03   1587.49   1400.65  280
+```
+
+14 rows, 2 engines. Follow those 14 rows all the way through.
 
 ### Step by step
 
@@ -309,9 +352,73 @@ has a fixed size, so "appending" to one means allocating a bigger array and
 copying everything across. Doing that per engine would copy the dataset 100
 times.
 
+### The output
+
+First, what the loop collected — one block per engine, before anything is
+joined:
+
+```
+  engine 1: windows(3, 3, 1)  targets [189. 187. 185.]  end cycles [3 5 7]  unit block [1 1 1]
+  engine 2: windows(3, 3, 1)  targets [284. 282. 280.]  end cycles [3 5 7]  unit block [2 2 2]
+```
+
+Then the four `np.concatenate` calls turn those two blocks into one dataset:
+
+```
+WindowedDataset(examples=6, shape=(6, 3, 1), engines=2, target_range=(185, 284))
+
+  features.shape : (6, 3, 1)  float32
+  targets        : [189. 187. 185. 284. 282. 280.]
+  units          : [1 1 1 2 2 2]
+  end_cycles     : [3 5 7 3 5 7]
+  sensor_columns : ('sensor_2', 'sensor_3', 'sensor_4')
+```
+
+Read those four arrays **downwards**, one position at a time — entry `i` of each
+describes example `i`:
+
+```
+    example 0: engine 1, ends at cycle 3, features=[ 642.35 1587.99 1404.20], target=189.0
+    example 1: engine 1, ends at cycle 5, features=[ 642.37 1582.85 1406.22], target=187.0
+    example 2: engine 1, ends at cycle 7, features=[ 642.48 1592.32 1397.77], target=185.0
+    example 3: engine 2, ends at cycle 3, features=[ 641.55 1588.32 1398.96], target=284.0
+    example 4: engine 2, ends at cycle 5, features=[ 641.73 1579.03 1402.52], target=282.0
+    example 5: engine 2, ends at cycle 7, features=[ 642.03 1587.49 1400.65], target=280.0
+```
+
+**Check example 0 by hand against the input table above.** Its window is flights
+1, 2 and 3 of engine 1. The last of those is flight 3. The three sensor values
+on that row are 642.35, 1587.99 and 1404.20 — exactly the features. The `rul`
+on that row is 189 — exactly the target. Every one of the six rows is that same
+check.
+
+14 input rows became 6 examples: each engine had 7 flights, and a window of 3
+with a stride of 2 fits starting at rows 0, 2 and 4 — 3 examples per engine.
+
+### Why it is done this way
+
+The four parallel lists could instead have been one list of small objects, one
+per example. They are not, because what the network consumes is a single
+rectangular block of numbers: building four flat arrays directly means the
+result needs no rearranging afterwards, and the bookkeeping stays attached to
+the data by position rather than by a lookup that could go wrong.
+
 ---
 
 ## `make_windows` — the training path
+
+This is the public door for training data: `_build` with `last_only=False`, so
+every engine yields every window it can.
+
+### The input
+
+The full FD001 training table — 20 631 rows over 100 engines — the paper's 14
+sensor columns, and the real settings `window_size=30`, `stride=1`.
+
+### Step by step
+
+There are no steps of its own. It forwards its arguments to `_build` with
+`last_only=False`, and everything above happens.
 
 ### The output, with the real settings
 
@@ -341,8 +448,25 @@ no window can *end* there — there are not 30 flights behind them yet:
 
 ## `make_last_windows` — the test path
 
-Identical machinery with `last_only=True`, so `starts` holds a single value,
-`n_rows - window_size`.
+### The input
+
+The FD001 **test** table — 13 096 rows over 100 engines — the same 14 sensor
+columns, and `window_size=30`. Note there is no `stride` argument: with one
+window per engine there is nothing to step between.
+
+### Step by step
+
+Identical machinery with `last_only=True`, which changes exactly one line
+inside `_extract_one_unit`:
+
+```python
+starts = [n_rows - window_size] if last_only else list(range(...))
+```
+
+So `starts` holds a single value. For a test engine with 31 rows and a window
+of 30 that is `31 - 30 = 1`: rows 1 to 30, ending at the engine's final flight.
+
+### The output
 
 ```python
 make_last_windows(test, PAPER_SENSOR_COLUMNS, window_size=30)
@@ -385,6 +509,13 @@ already seen, and its error would be an optimistic measurement of nothing.
 Splitting by **engine** makes that impossible: a held-back engine contributes
 none of its windows to training.
 
+### The input
+
+A collection of engine numbers — here the 100 distinct engines of the FD001
+training table — plus how large a fraction to hold back and a seed. Note it
+takes **engine numbers**, not windows and not a table. It never sees a window
+at all, which is what makes splitting by window impossible by construction.
+
 ### Step by step
 
 ```python
@@ -424,6 +555,15 @@ empty second array.
 ---
 
 ## `WindowedDataset` — what comes out
+
+### What it is given, and what it hands back
+
+It is not a function but a container: `_build` fills it with five things, and
+it offers three ways to use them — `__len__`, so `len(dataset)` gives the number
+of examples; `__repr__`, so printing it gives the one-line description used
+throughout this page; and `subset_by_units`, for keeping only some engines.
+
+### The five fields
 
 | Field | What it holds |
 |---|---|

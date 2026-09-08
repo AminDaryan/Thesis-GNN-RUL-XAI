@@ -88,6 +88,11 @@ and a tuple refuses.
 
 ## `SensorInfo` and `SENSORS` — the catalogue
 
+### What it is given, and what it hands back
+
+Nothing goes in — `SENSORS` is a fixed list written into the file. What comes
+out is the description of any one of the 21 sensors, looked up by position.
+
 ### The output
 
 ```python
@@ -116,6 +121,11 @@ paper**, checkable in the PDF — not a choice made here.
 ---
 
 ## `PAPER_SENSOR_SYMBOLS` — the 14, in order
+
+### What it is given, and what it hands back
+
+Nothing goes in. What comes out is an ordering — and the ordering, not the
+membership, is the part that carries meaning, as the demonstration below shows.
 
 ### The output
 
@@ -218,6 +228,11 @@ guard the membership of the set, and only care and review guard its order.
 ---
 
 ## `symbol_to_column` and `column_to_symbol` — translating between the two names
+
+### The input
+
+One name, in either direction: a symbol such as `"T24"` for the first, or a
+column name such as `"sensor_2"` for the second.
 
 ### Step by step
 

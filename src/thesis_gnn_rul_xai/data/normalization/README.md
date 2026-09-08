@@ -154,6 +154,12 @@ enforces the rule at the top of this page:
 
 ## `OperatingConditionEncoder`
 
+### The input
+
+`fit` takes a table carrying the three `op_setting_*` columns — **training rows
+only**. `transform` takes any table with those same columns. On FD001 that is
+the 20 631-row training table and then the 13 096-row test table.
+
 ### Step by step — `fit`
 
 ```python
@@ -231,6 +237,17 @@ INFO | A single operating condition: clustering is not needed.
 ---
 
 ## `SensorNormalizer`
+
+### The input
+
+`fit` takes a table of **training rows only** — for `minmax_per_condition` it
+must already carry the `operating_condition` column that the encoder above
+adds. `transform` takes any table. Which columns are touched is fixed when the
+object is built, not per call:
+
+```python
+SensorNormalizer(method="zscore", columns=PAPER_SENSOR_COLUMNS)
+```
 
 ### Step by step — `fit` measures and stores
 
@@ -337,9 +354,25 @@ All three side by side:
 FD001 has one operating condition, so "per condition" and "global" are the same
 grouping. They only diverge on FD002 and FD004.
 
+### The output
+
+A **new** table, same rows and columns, with only the named sensor columns
+changed. On the real FD001 training table:
+
+| Method | What the rescaled column looks like |
+|---|---|
+| `zscore` | average exactly 0, spread exactly 1, no bounds |
+| `minmax_global` | runs from exactly 0.000000 to 1.000000 |
+| `minmax_per_condition` | the same, within each operating condition separately |
+
+The label, the engine number and the cycle count are untouched, and the fitted
+numbers stay available afterwards in `statistics_`.
+
 ### A constant sensor cannot be rescaled
 
-Dividing by a spread of zero is undefined, so both paths check first:
+`_warn_about_degenerate_columns` runs at the end of `fit` and reports any
+column that never moves. Dividing by a spread of zero is undefined, so both
+paths in `transform` check first:
 
 ```python
 if spread > _ZERO_RANGE_TOLERANCE:  ... else: scaled[mask] = 0.0
@@ -481,6 +514,10 @@ running this pipeline on those two.
 ---
 
 ## What can go wrong
+
+These four are raised by `__post_init__`, which runs the moment the object is
+built — so an impossible configuration fails before any data is touched, rather
+than part-way through a run.
 
 **An unknown method**, caught when the object is built rather than when it runs:
 
