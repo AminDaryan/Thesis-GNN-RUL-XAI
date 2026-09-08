@@ -93,10 +93,14 @@ class PreprocessingConfig:
     adjacency_normalization: AdjacencyNormalization = "row"
 
     # --- Holding engines back ------------------------------------------------
-    # ASSUMPTION A-06 and A-18: hold nothing back, because the paper describes
-    # no held-out set. config/fd001_validated.yaml puts the split back for
-    # comparing one setting against another. Written up in docs/ASSUMPTIONS.md.
-    validation_fraction: float = 0.0
+    # ASSUMPTION A-06: hold back 20 % of the training engines, chosen by engine
+    # and never by window. The paper describes no held-out set and trains a
+    # fixed 200 epochs, so this is an addition rather than a reading of it: a
+    # run now restores the weights that scored best on the held-back engines
+    # and may stop early. Reinstated as the default on 2026-09-08, reversing
+    # the 2026-08-29 decision that removed it; the reversal and what it cost
+    # are written up under A-06 in docs/ASSUMPTIONS.md.
+    validation_fraction: float = 0.2
     seed: int = 42
 
     # --- Bookkeeping -------------------------------------------------------

@@ -28,12 +28,14 @@ smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
 adjacency_normalization: row
 
 # --- Data splitting -------------------------------------------------------
-# ASSUMPTION A-06 / A-18. Table 6 states 200 epochs. Holding engines out and
-# restoring the best-validation checkpoint is validation-based model selection,
-# which Table 6 does not describe, so this reproduction holds nothing out and
-# keeps the epoch-200 weights. Use config/fd001_validated.yaml for any
-# comparison between configurations -- see A-22.
-validation_fraction: 0.0
+# ASSUMPTION A-06. Hold back 20 % of the training engines, chosen by engine and
+# never by window, because neighbouring windows of one engine overlap almost
+# completely. The paper describes no held-out set: Table 6 states 200 epochs
+# with no early stopping. So holding engines out, restoring the weights that
+# scored best on them, and stopping early are all additions -- and a number
+# from this file therefore cannot be set beside a published one without saying
+# so. Reinstated 2026-09-08, reversing the 2026-08-29 removal; see A-06.
+validation_fraction: 0.2
 seed: 42
 
 notes: >-

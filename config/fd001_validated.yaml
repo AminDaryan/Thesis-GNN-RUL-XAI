@@ -1,4 +1,7 @@
 # FD001 with a validation split -- for comparing configurations, NOT for
+# NOTE (2026-09-08): the split became the default, so this file is now
+# identical to config/fd001.yaml. It is kept because older results and
+# several entries in docs/ASSUMPTIONS.md name it.
 # reporting a reproduction figure. See config/fd001.yaml for that.
 #
 # Every field is documented in src/thesis_gnn_rul_xai/config.py.

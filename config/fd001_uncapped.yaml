@@ -24,7 +24,7 @@ smoothing_alpha: 0.5
 graph: physics
 adjacency_normalization: row
 
-validation_fraction: 0.0
+validation_fraction: 0.2
 seed: 42
 
 notes: >-

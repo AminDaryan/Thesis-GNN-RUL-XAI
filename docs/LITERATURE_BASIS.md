@@ -197,11 +197,43 @@ is set to 88 to normalize the RUL labels**, and max–min normalization is used
 to normalize the data." Dividing the labels by a chosen maximum is the practice
 A-13 follows; only the constant differs, because it follows the ceiling.
 
-### A-06 — holding engines out. **Nothing usable found.**
+### A-06 — holding engines out. **Nothing found, and now measured to be absent.**
 
-The hits were surveys counting how often train/test splits appear in the field,
-not C-MAPSS papers describing their own validation engines. A-06 stays in the
-"no precedent found" class until something better turns up.
+The original search returned only surveys counting how often train/test splits
+appear in the field, not C-MAPSS papers describing their own validation
+engines, so A-06 sat in the "no precedent found" class.
+
+**Re-checked on 2026-09-08 by reading all twelve papers directly**, the same
+corpus as F-12, asking each one whether it describes holding anything out.
+
+> **Twelve of twelve describe no validation split for C-MAPSS.**
+
+Not one names held-out engines, a validation fraction, or what an early-stopping
+criterion would monitor. The single occurrence of a genuine validation set in
+the corpus is Zheng et al., and it is for a *wind-turbine* dataset, not for
+C-MAPSS: "The data collected from wind turbines No. 7 and No. 18 were used for
+training, while data from turbine No. 15 was used for validating model
+performance."
+
+**What several of them do instead is worse than having no split.** Two state
+outright that the test set is what guides their choices:
+
+- Zhang et al. (GLSTGN), Section 4.2, p. 11, introducing their sensitivity
+  study: "the sensitivity analysis of the remaining hyperparameters **on the
+  test results** for the FD001 dataset".
+- Li T. et al. (HAGCN), Section 4.1.5, p. 6: "In the experiments, we **test the
+  model at per epoch**, and to avoid randomness of the results, the final
+  values of the two evaluation" measures are averaged.
+
+Testing every epoch and reporting the best, or sweeping settings against the
+test score, is model selection on the test set. It produces a number that
+cannot be compared with one produced any other way.
+
+**So the honest position for this project is:** holding engines out has no
+precedent in this corpus, and neither does not holding them out — because the
+alternative the corpus actually practises is tuning on the test set, which this
+project will not do. A-06 therefore rests on the argument rather than on a
+citation, and the entry says so.
 
 ---
 
