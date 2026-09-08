@@ -315,6 +315,65 @@ def test_the_sensor_graph_figure_reports_what_the_code_measures():
     assert f"diameter {report['diameter']}" in drawn
 
 
+def test_the_notebook_map_counts_what_the_pipeline_really_produces(raw_dir: Path):
+    """The map of notebook 01 must agree with the pipeline it describes.
+
+    The figure exists so a reader can see the whole chain at once. That is
+    only worth having if its numbers are the pipeline's own, so they are
+    compared against a real run here rather than against anything written
+    down.
+    """
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    prepared = run_preprocessing(PreprocessingConfig(), data_dir=raw_dir)
+    drawn = figures.render_figure("notebook-map")
+    assert drawn.startswith("<svg")
+    assert "figure-notice" not in drawn
+
+    def spaced(value: int) -> str:
+        return f"{value:,}".replace(",", " ")
+
+    windows = len(prepared.train) + len(prepared.validation)
+    # The three sets the notebook ends with, drawn as the shapes it saves.
+    assert f"({spaced(len(prepared.train))}, 14, 1)" in drawn
+    assert f"({spaced(len(prepared.validation))}, 14, 1)" in drawn
+    assert f"({spaced(len(prepared.test))}, 14, 1)" in drawn
+    # The total before the split, and the graph the same run built.
+    assert spaced(windows) in drawn
+    assert f"{prepared.diagnostics['graph']['n_edges']} edges" in drawn
+
+
+def test_the_notebook_map_needs_the_nasa_files_rather_than_inventing_them(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setattr(figures, "raw_data_dir", lambda: tmp_path)
+    drawn = figures.render_figure("notebook-map")
+    assert "figure-notice--data" in drawn
+    assert "<svg" not in drawn
+
+
+def test_the_map_survives_into_the_page_the_site_builds_from_the_notebook(
+    root: Path, raw_dir: Path
+):
+    """The map has to reach the reader, not just sit in the notebook file.
+
+    It went missing once: the cell displayed an SVG object, and nbconvert's
+    HTML exporter drops an image/svg+xml output while keeping a text/html one,
+    so the notebook held the picture and the website showed nothing where it
+    should have been. Nothing failed; the figure was simply absent.
+    """
+    pytest.importorskip("nbconvert")
+    from thesis_gnn_rul_xai.docsite import notebooks
+
+    body, _ = notebooks.render_notebook(
+        root / "notebooks" / "01_preprocessing_fd001.ipynb"
+    )
+    assert "What notebook 01 does" in body, (
+        "the pipeline map is not in the page the site builds from notebook 01"
+    )
+
+
 def test_the_message_passing_figure_stops_where_the_graph_stops():
     from thesis_gnn_rul_xai.graph.adjacency import (
         build_physics_adjacency,
