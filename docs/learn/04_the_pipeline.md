@@ -179,6 +179,22 @@ project's three configuration comparisons **reversed direction** as a result.
 
 ---
 
+## The whole chain, with the counts filled in
+
+The strip at the top of this page names the eight steps. This one is the same
+chain with the data in it: what goes in, what comes out, how many rows and
+engines survive each step, and where the training and test sets stop being
+treated the same way.
+
+{{figure:notebook-map}}
+
+Every number in it was measured by running the pipeline while this page loaded,
+so it cannot fall behind the code. It is also the picture that opens
+`notebooks/01_preprocessing_fd001.ipynb`, which walks the same eight steps one
+cell at a time and checks each one.
+
+---
+
 ## What you now know
 
 - Eight steps: load, diagnose, select, cap, smooth, split, rescale, window.
