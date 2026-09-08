@@ -28,7 +28,7 @@ the only folder under `src/thesis_gnn_rul_xai/` that the pipeline never calls.
 | `server.py` | The web server. Receives a request for an address such as `/api/doc?path=README.md` and sends back the answer. |
 | `catalog.py` | Finds every document in the repository and arranges them into the groups the menu shows. |
 | `markup.py` | Turns one Markdown file into the HTML the browser displays. |
-| `figures.py` | Draws the twelve diagrams, each from this repository's own data. |
+| `figures.py` | Draws the thirteen diagrams, each from this repository's own data. |
 | `results.py` | Reads the stored runs in `reports/` and the entries in `docs/ASSUMPTIONS.md`. |
 | `notebooks.py` | Turns a notebook into HTML for reading, and starts JupyterLab for running. |
 | `assets/shell.html` | The page the browser loads first: a menu, a search box, and an empty middle. |
@@ -156,7 +156,8 @@ code sample stays plain text.
 
 ## The figures, and the two that cannot always be drawn
 
-There are twelve. Ten of them need nothing but the repository:
+There are thirteen: eight need nothing but the repository, four read the real
+NASA files, and one needs PyTorch.
 
 | Figure | What it shows |
 |---|---|
@@ -169,9 +170,14 @@ There are twelve. Ten of them need nothing but the repository:
 | `reach` | How far apart every pair of sensors is |
 | `shapley` | Every order three players could join a group in |
 | `architecture` | Every layer of the network, with its real parameter count |
-| `rul-curve`, `smoothing`, `windowing` | The label, the filter and the window |
+| `rul-curve`, `smoothing`, `windowing`, `notebook-map` | The label, the filter, the window, and the whole of notebook 01 |
 
-The last three read the **real NASA files**. If those files are not in
+`notebook-map` is the one that answers "what does the preprocessing notebook
+actually do?" in a single picture. It runs the pipeline while the page loads
+and prints the count the data really has at every step, so it cannot drift away
+from the notebook it describes the way a hand-drawn diagram would.
+
+The last four read the **real NASA files**. If those files are not in
 `data/raw/`, the figure is replaced by a note saying so and pointing at the
 download. It does **not** draw an invented signal that happens to have the right
 shape. That is the same rule the rest of the project follows, applied to
