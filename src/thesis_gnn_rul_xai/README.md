@@ -42,6 +42,7 @@ Each subfolder does one job. Each has its own README with the detail.
 | `data/` | Turns the raw C-MAPSS text files into model-ready arrays: loading, sensor selection, labels, smoothing, rescaling, sliding windows, and the pipeline that runs those in order. |
 | `graph/` | Builds the sensor graph — the adjacency matrix that tells the network which sensors are considered connected — and normalises it. |
 | `models/` | The network itself: the graph convolution layer and the full model. |
+| `models/temporal/` | What each sensor node carries: the last cycle, the window's average, or what a per-sensor recurrent network read out of it. |
 | `training/` | The training configuration and the training loop. |
 | `evaluation/` | The scoring measures used to report results. |
 | `explain/` | The Shapley-value explanations of the model's predictions. |

@@ -107,8 +107,8 @@ INFO    | ...data.smoothing     | Applied exponentially weighted moving average 
 INFO    | ...data.normalization | Detected 1 distinct operating condition(s) from the settings.
 INFO    | ...data.normalization | A single operating condition: clustering is not needed.
 INFO    | ...data.normalization | Fitted 'zscore' normalisation on 14 column(s) across 1 condition(s).
-INFO    | ...data.windowing     | Built 17731 window(s) of shape (14, 1) from 100 engine(s).
-INFO    | ...data.windowing     | Built 100 window(s) of shape (14, 1) from 100 engine(s).
+INFO    | ...data.windowing     | Built 17731 window(s) of shape (14, 30) from 100 engine(s).
+INFO    | ...data.windowing     | Built 100 window(s) of shape (14, 30) from 100 engine(s).
 INFO    | ...data.pipeline      | Preprocessing complete: 17731 training, 0 validation, 100 test example(s).
 ```
 
@@ -126,7 +126,7 @@ are windowed differently.
 | 5 | Smooth the 14 sensor columns | [`smoothing`](../smoothing/README.md) | train + test | same shape, sensor columns smoothed |
 | 6 | Decide which engines are held back | [`windowing`](../windowing/README.md) | 100 engine numbers | two lists of engine numbers |
 | 7 | Operating conditions, then rescaling | [`normalization`](../normalization/README.md) | train + test | `operating_condition` column added; sensors rescaled |
-| 8 | Cut into windows | [`windowing`](../windowing/README.md) | train + test tables | train `(17731, 14, 1)`, test `(100, 14, 1)` |
+| 8 | Cut into windows | [`windowing`](../windowing/README.md) | train + test tables | train `(17731, 14, 30)`, test `(100, 14, 30)` |
 | 9 | Apply the split from step 6 | [`windowing`](../windowing/README.md) | 17731 windows | training and validation sets |
 
 ### Step 2 — the diagnosis that changes nothing, and the warning it produces
@@ -298,9 +298,9 @@ With nothing held back (`validation_fraction=0.0`):
 ```
             examples  engines feature_shape  target_min  target_max
 split
-train          17731      100       (14, 1)         0.0       125.0
-validation         0        0       (14, 1)         NaN         NaN
-test             100      100       (14, 1)         7.0       125.0
+train          17731      100      (14, 30)         0.0       125.0
+validation         0        0      (14, 30)         NaN         NaN
+test             100      100      (14, 30)         7.0       125.0
 ```
 
 The default run, with 20 % of the engines held back (A-06):
@@ -308,9 +308,9 @@ The default run, with 20 % of the engines held back (A-06):
 ```
             examples  engines feature_shape  target_min  target_max
 split
-train          14459       80       (14, 1)         0.0       125.0
-validation      3272       20       (14, 1)         0.0       125.0
-test             100      100       (14, 1)         7.0       125.0
+train          14459       80      (14, 30)         0.0       125.0
+validation      3272       20      (14, 30)         0.0       125.0
+test             100      100      (14, 30)         7.0       125.0
 
   train engines: 80   validation engines: 20   overlap: set()
 ```

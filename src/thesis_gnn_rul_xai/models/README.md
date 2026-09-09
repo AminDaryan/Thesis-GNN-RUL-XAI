@@ -175,11 +175,18 @@ So: `ESTGNN.forward()` returns the normalised value in `[0, 1]`, and
 
 ### What these results may be compared with
 
-Because the LSTM stage is not implemented, results from this network must be
-compared against the paper's own **"ESTGNN w/o LSTM"** ablation, which its
-Table 11 reports as **14.93 RMSE on FD001**. They must **not** be compared
-against the full model's headline 11.78. The full ESTGNN has not been
-reproduced here, and no claim about it can be made from this code.
+It depends on the temporal stage the run used, and every run records which.
+
+With **`last_cycle`**, the default, there is no recurrent network, so results
+must be compared against the paper's own **"ESTGNN w/o LSTM"** ablation, which
+its Table 11 reports as **14.93 RMSE on FD001** — and **not** against the full
+model's headline 11.78.
+
+With **`lstm`**, the stage of the paper's Section 2.2 is present, so the headline
+row becomes the right comparison. Even then it is not a reproduction: the
+paper states how many recurrent networks there are and what goes into each, and
+never states their size, so A-26 had to choose one. F-16 records what the stage
+is worth when it is trained.
 
 ## Judgement calls made in this folder
 
@@ -204,8 +211,9 @@ code given.
   PyTorch calls the same rule `xavier_uniform_`, after Xavier Glorot who
   proposed it — the two names refer to one method, not two. The dense layers
   keep PyTorch's own default instead. This is **A-14**.
-- **The LSTM stage is omitted** (**A-11**) and **each node carries the last
-  cycle of its window** (**A-07**) — both explained above.
+- **The LSTM stage is off by default** (**A-11**), and when it is off **each node
+  carries the last cycle of its window** (**A-07**) — both explained above. Its
+  size is **A-26**.
 - **Targets are divided by the label ceiling** (**A-13**) and **test labels are
   capped at the same ceiling** (**A-02**) — both explained above. The code for
   those two lives mostly outside this folder, but the reason for them is the

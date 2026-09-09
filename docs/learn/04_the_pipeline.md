@@ -106,12 +106,13 @@ Two rules govern this, and each has a test:
 - **Split before fitting anything.** A held-out engine must never influence the
   scale of a sensor.
 
-By default this project holds **nothing** back, because the paper describes no
-held-out set and trains for a fixed 200 epochs. Holding engines out in order to
-restore the best-validation checkpoint is validation-based model selection,
-which the paper never describes. A separate configuration file puts the split
-back, and every comparison between two configurations must use it — see A-06,
-A-18 and A-22.
+Since 2026-09-02 this project holds back **20 %** of the training engines, which
+reverses a decision taken on 2026-08-29 to hold nothing back. The paper
+describes no held-out set and trains a fixed 200 epochs, so holding engines out
+— and restoring the best-validation checkpoint, and stopping early — are all
+additions to it. Measured over five seeds they are worth 0.32 cycles, which the
+seed-to-seed spread cannot distinguish from zero (*p* = 0.234). See A-06, A-18
+and A-22.
 
 ## 7 — Rescale *(leakage-critical)*
 
@@ -155,10 +156,16 @@ examples for 100 test engines.
 
 ## The shape that surprises people
 
-The final feature array has shape **(17 731, 14, 1)**. Fourteen sensors, and
-**one number each**.
+The pipeline hands over shape **(17 731, 14, 30)** — every cycle of every window.
+What reaches the **first graph layer** is **(17 731, 14, 1)**: fourteen sensors,
+and **one number each**.
 
 Not thirty. One.
+
+Those are two different statements, and the difference is the point. The reduction
+from thirty cycles to one number is a decision about the **model**, so it is made
+in the model, by a named stage in `models/temporal/`. It used to be made here,
+in the preprocessing, and that is what allowed the mistake described below.
 
 This follows from the paper's own Table 4, which prints an input of
 `[batch, 14, 1]` and a first weight matrix in $\mathbb{R}^{1 \times 32}$. In
@@ -204,7 +211,8 @@ cell at a time and checks each one.
 - The sensor **order** is load-bearing, because the graph is indexed by
   position.
 - Smoothing removes **59.0 %** of the median sensor's jitter; windowing turns
-  100 engines into **17 731 examples** of shape **(14, 1)**.
+  100 engines into **17 731 examples** of shape **(14, 30)**, which the model's
+  temporal stage reduces to the **(14, 1)** Table 4 prints.
 - Four judgement calls live in this chain: the smoothing strength (A-04), the
   stride (A-05), the test-label cap (A-02) and the entire input scaling (A-03,
   measured in F-10).

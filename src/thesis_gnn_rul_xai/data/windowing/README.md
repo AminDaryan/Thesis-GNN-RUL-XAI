@@ -55,8 +55,8 @@ as `[x(t-w+1), … , x(t)]` and its Section 2.1 attaches the target to time `t`.
 ### An array, and what its shape means
 
 A **NumPy array** is a fixed-size grid of numbers of one type. Its **shape** is
-the tuple of its side lengths, so shape `(3, 14, 1)` means 3 items, each a
-14-by-1 grid. The arrays here are three-dimensional and each dimension means
+the tuple of its side lengths, so shape `(3, 14, 30)` means 3 items, each a
+14-by-30 grid. The arrays here are three-dimensional and each dimension means
 something specific, stated at every step below.
 
 ---
@@ -427,12 +427,12 @@ make_windows(train, PAPER_SENSOR_COLUMNS, window_size=30, stride=1)
 ```
 
 ```
-INFO | Built 17731 window(s) of shape (14, 1) from 100 engine(s).
+INFO | Built 17731 window(s) of shape (14, 30) from 100 engine(s).
 
-WindowedDataset(examples=17731, shape=(17731, 14, 1), engines=100, target_range=(0, 332))
+WindowedDataset(examples=17731, shape=(17731, 14, 30), engines=100, target_range=(0, 332))
 ```
 
-Shape `(17731, 14, 1)` reads as **17731 examples, 14 sensors each, one number
+Shape `(17731, 14, 30)` reads as **17731 examples, 14 sensors each, thirty numbers
 per sensor**.
 
 **Check the count two ways.** Every engine loses its first 29 flights, because
@@ -473,9 +473,9 @@ make_last_windows(test, PAPER_SENSOR_COLUMNS, window_size=30)
 ```
 
 ```
-INFO | Built 100 window(s) of shape (14, 1) from 100 engine(s).
+INFO | Built 100 window(s) of shape (14, 30) from 100 engine(s).
 
-WindowedDataset(examples=100, shape=(100, 14, 1), engines=100, target_range=(7, 145))
+WindowedDataset(examples=100, shape=(100, 14, 30), engines=100, target_range=(7, 145))
 
   one window per engine?                      True
   end_cycles equal each engine's last cycle?  True
@@ -585,7 +585,7 @@ ds.subset_by_units(validation_engines)
 ```
 
 ```
-WindowedDataset(examples=3272, shape=(3272, 14, 1), engines=20, target_range=(0, 239))
+WindowedDataset(examples=3272, shape=(3272, 14, 30), engines=20, target_range=(0, 239))
 
   only validation engines present?                     True
   windows in train part + validation part == whole?    True

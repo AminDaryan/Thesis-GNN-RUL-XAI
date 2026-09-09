@@ -8,6 +8,30 @@ every shape and every parameter count on it is what the code actually has.
 
 ---
 
+## Before the table: the stage the paper does not tabulate
+
+Table 4 begins at `Input | Node features | [batch, 14, 1]`. Something has to
+turn a sensor's **thirty cycles** into that one number, and the paper says what
+it is — fourteen dedicated recurrent networks, one per sensor, in its Section
+2.2 — but gives that stage **no row in Table 4 at all**.
+
+So the network has three parts and the paper tabulates the last two:
+
+```
+window of 30 cycles  ->  temporal stage  ->  graph layers  ->  dense
+     (14, 30)               (14, 1)            (14, 32)       one number
+```
+
+By default that stage is `LastCycle`: keep the most recent reading, drop the
+other 29, learn nothing (**A-07**). With `--temporal lstm` it is the paper's
+own stage instead, whose size the paper never states (**A-26**). Finding
+**F-16** measures what the difference is worth: 3.19 cycles on FD001, against
+the 3.15 the paper's own Table 11 prints.
+
+Everything below is the part Table 4 does print, and it is the same either way.
+
+---
+
 ## The shape of it
 
 Six layers, and the whole thing has **61 729 trainable parameters**, which is

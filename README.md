@@ -9,7 +9,8 @@ C-MAPSS benchmark and measures how far it can be taken from the paper alone.
 graph network of its Table 4, the training loop of its Table 6, the four
 evaluation measures of its Section 3.3, and the dynamic SHAP analysis of its
 Section 2.4 — the last computed exactly rather than by sampling. The
-per-sensor LSTM stage is deliberately omitted; see
+per-sensor LSTM stage of its Section 2.2 is built too, as a stage that can be
+switched in and out; it is not the default. See
 [section 12](#12-known-limitations).
 
 **Where that gets to.** On FD001, **RMSE 16.82 ± 0.16** across five seeds,
@@ -283,9 +284,12 @@ configuration of the LSTM networks. Every one is documented, with its
 justification and its likely effect, in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
 
 Nothing in this repository should be described as "reproducing ESTGNN".
-Results from this code are comparable with the **"ESTGNN w/o LSTM"** row of the
-paper's own ablation table (their Table 11), because the LSTM stage is
-deliberately omitted here. See assumption A-11.
+**Which published row a result may be set beside depends on which temporal stage
+produced it**, and every run records that. With the default stage there is no
+recurrent network, so the comparison is the **"ESTGNN w/o LSTM"** row of the
+paper's own ablation table (their Table 11). With `--temporal lstm` the paper's
+headline row becomes the right comparison instead. See assumptions A-11 and A-26,
+and finding F-16.
 
 ---
 
@@ -477,10 +481,11 @@ Five files in `data/processed/`:
 | `config.yaml` | The exact settings used |
 | `diagnostics.json` | What the pipeline observed while running |
 
-The feature array has shape `(examples, 14, 1)`: for each example, 14 sensors,
-each carrying one number — the most recent reading of its 30-cycle window. That
-is the input shape `[batch, 14, 1]` printed in the paper's Table 4. See
-assumption A-07.
+The feature array has shape `(examples, 14, 30)`: for each example, 14 sensors,
+each carrying its whole 30-cycle window. The model's temporal stage turns that
+into the `[batch, 14, 1]` its first graph layer takes, which is the input shape
+printed in the paper's Table 4. Under the default stage that one number is the
+most recent reading of the window. See assumption A-07.
 
 ---
 
@@ -576,8 +581,8 @@ this project's results and the A-19 ablation needs re-running.
 | ESTGNN w/o GCN | 16.42 | Table 11 |
 | ESTGNN w/o physics prior | 12.34 | Table 11 |
 
-**Only one of those numbers is comparable with this code.** The per-sensor LSTM
-is deliberately not implemented (see [section 12](#12-known-limitations) and
+**Only one of those numbers is comparable with the run below.** It was produced
+without the per-sensor LSTM (see [section 12](#12-known-limitations) and
 assumption A-11), so the matching row is "w/o LSTM", and the comparison is
 20.35 ± 0.75 against 14.93 — a 5.4-cycle shortfall, worse than the paper's own
 "w/o GCN" row. The paper's ablation table reports RMSE only, which
@@ -814,7 +819,7 @@ the layers above, so read them last and they will contain no surprises.
    shorter than the function and tells you what matters about it.
 4. **Follow the shapes.** Almost every step is a change of shape, and section 7
    lists them all. If you can say what shape the data has after each step —
-   `(20631, 26)` to `(17731, 14, 1)` to `(100,)` — you understand the pipeline,
+   `(20631, 26)` to `(17731, 14, 30)` to `(100,)` — you understand the pipeline,
    whatever the code looks like.
 
 **If you have one hour**, read notebook 01 end to end. **If you have two**, add
@@ -948,10 +953,13 @@ regardless of how good they look.
 
 ## 12. Known limitations
 
-**The LSTM stage is not implemented.** The paper places one LSTM per sensor
+**The LSTM stage is not the default.** The paper places one LSTM per sensor
 before the graph layers, but never states its size, its depth, or how it
-reduces a 30-cycle window to the single number its Table 4 requires. Rather
-than invent those details, this project omits the stage. The paper publishes
+reduces a 30-cycle window to the single number its Table 4 requires. Those three
+are now assumption **A-26** rather than a reason not to build it: `models/temporal/`
+holds the stage, with the fourteen dedicated networks the paper does state, and
+`--temporal lstm` trains it. What has **not** changed is that a run without it
+compares against the "w/o LSTM" row, and that is still what the default does. The paper publishes
 this exact configuration itself, as the "ESTGNN w/o LSTM" row of its ablation
 table. Comparisons must be made against that row. See assumption A-11.
 
