@@ -201,12 +201,25 @@ def test_a_withdrawn_entry_is_not_reported_as_active(root: Path):
     assert entries["A-08"].status == "withdrawn"
 
 
-def test_an_entry_superseded_in_its_body_is_picked_up(root: Path):
-    # A-06 and A-18 carry no status word in the title; they open with a bold
-    # "Superseded ... by A-22." line instead.
-    entries = {entry.identifier: entry for entry in results.load_entries(root)}
-    assert entries["A-06"].status == "superseded"
-    assert entries["A-18"].status == "superseded"
+def test_an_entry_superseded_in_its_body_is_picked_up(tmp_path: Path):
+    """A status can sit in an entry's body rather than its title, and must count.
+
+    A-06 and A-18 used that form while A-22 had removed the validation split.
+    Both went active again on 2026-09-02, so no entry in the log exercises the
+    branch any more, and it is checked here against a log written in the test
+    rather than left uncovered until some future entry needs it.
+    """
+    log = tmp_path / "docs" / "ASSUMPTIONS.md"
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        "# Assumptions log\n\n"
+        "## A-99 — A title carrying no status word\n\n"
+        "**Superseded 2026-08-29 by A-22.** The reproduction holds nothing "
+        "out.\n",
+        encoding="utf-8",
+    )
+    entries = {entry.identifier: entry for entry in results.load_entries(tmp_path)}
+    assert entries["A-99"].status == "superseded"
 
 
 def test_a_status_word_in_ordinary_prose_does_not_retire_an_entry(root: Path):
@@ -223,7 +236,9 @@ def test_only_the_entries_that_say_so_are_retired(root: Path):
         for entry in results.load_entries(root)
         if entry.status != "active"
     }
-    assert retired == {"A-06", "A-08", "A-18"}
+    # A-06 and A-18 were here until 2026-09-02, when the validation split they
+    # describe came back and both entries became current again.
+    assert retired == {"A-08"}
 
 
 def test_every_stored_run_names_the_commit_that_produced_it(stored_runs):

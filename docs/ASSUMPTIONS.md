@@ -27,7 +27,7 @@ identifier below.
 | A-03 | Input rescaling | Not described at all | **`zscore`** — the largest measured assumption in the project (3.83 cycles, F-10); selected under A-22 |
 | A-04 | Smoothing strength | Self-contradictory sentence in Section 3.2.3 | Read as `alpha = 0.5` |
 | A-05 | Window stride | Not in the text; **Fig. 1 indicates one time step** | 1 cycle |
-| A-06 | Validation split | None; trains for a fixed 200 epochs | **None in the reproduction** (A-22); 20 % in `fd001_validated.yaml`, for comparing configurations |
+| A-06 | Validation split | None; trains for a fixed 200 epochs | **20 % of the engines**, reinstated 2026-09-02 after the A-22 removal; worth 0.32 cycles, which five seeds cannot distinguish from zero (p = 0.234) |
 | A-07 | Node feature content | Table 4 **prints** one number per sensor (`W(1) in R^(1x32)`), produced by an LSTM that is never specified | The last cycle of the window, keeping Table 4's shape |
 | ~~A-08~~ | Order: smoothing and scaling | **Fig. 1 specifies it**: smoothing then normalisation | Withdrawn as an assumption; the paper's order is followed |
 | A-09 | Smoothing formula variant | Gives the recursive form as Equation 18 | Recursive form (`adjust=False` in pandas) |
@@ -39,7 +39,7 @@ identifier below.
 | A-15 | Sign of the score function | Equations 20 and 21 contradict each other | The NASA convention the paper's own text describes |
 | A-16 | R-squared denominator | Equation 23 uses the predicted values | The standard definition, using the observed ones |
 | A-17 | Learning-rate schedule | Both endpoints given, mechanism not | **One drop of x0.1 at the halfway epoch**, so only the two printed rates are used; indistinguishable from exponential (p = 0.39) |
-| A-18 | Early stopping | None; trains a fixed 200 epochs | **Disabled in the reproduction** (A-22); available with a validation split |
+| A-18 | Early stopping | None; trains a fixed 200 epochs | **On**, since the split returned on 2026-09-02; fires between epochs 8 and 55 of a nominal 200 |
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
 | A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.25 cycles closer *with nothing held back* under the step schedule (p = 0.068, **no longer significant**), selected under A-22 |
@@ -242,13 +242,54 @@ fixed amount of data.
 
 ---
 
-## A-06 — No engines are held out in the reproduction; twenty percent are for comparisons
+## A-06 — Twenty percent of the training engines are held out
+
+**Reinstated 2026-09-02, reversing the removal of 2026-08-29.**
+`config/fd001.yaml` holds out 20 % of the training engines again, so a run
+restores the weights that scored best on them and may stop early.
+
+**What that costs, measured.** Five seeds each at commit `ae59bc1-dirty`,
+physics graph, row normalisation, z-score scaling, capped test labels, step
+schedule. The seed varies which engines are held back as well as the
+initialisation, so the spread is what a real repetition would show.
+
+| Configuration | RMSE | closer to 14.93 by | paired two-sided p |
+|---|---|---|---|
+| `validation_fraction: 0.2` — the default since 2026-09-02 | **16.496 ± 0.415** | 0.321 | 0.234 |
+| `validation_fraction: 0.0` — the default from 2026-08-29 to 2026-09-02 | 16.818 ± 0.157 | — | — |
+
+**The difference does not survive the spread, and that is the finding.**
+Holding engines out lands 0.32 cycles closer to the paper's figure, but two
+of the five seeds go the other way (−0.103 and −0.100 against +1.022,
++0.707 and +0.081) and the paired t-test gives p = 0.234. This is not
+evidence that the split improves the number. It is evidence that five seeds
+cannot tell, which is a different statement and the only one supported.
+
+**Three things came back together, and this pair of runs cannot separate
+them.** With a validation set present, `training/run.py` also stops early
+and ends with `model.load_state_dict(best_state)`. The five runs stopped at
+epochs 51, 55, 8, 18 and 35 of a nominal 200 — one of them at epoch 8. So
+the comparison above is not "a split against no split"; it is "a split,
+early stopping and best-checkpoint selection against a fixed 200 epochs".
+Separating them needs a third arm with `early_stopping_patience: null`,
+which has not been run.
+
+**What this does to A-22.** That entry chose to remove the split because
+Table 6 states 200 epochs and its rule lets the paper win where the paper
+speaks. The reversal overrides that choice for the default configuration;
+A-22's own headline figure of 16.818 ± 0.157 was measured under the removed
+arrangement and is labelled there accordingly.
+
+---
+
+### What this entry said between 2026-08-29 and 2026-09-02
 
 **Superseded 2026-08-29 by A-22.** This entry originally held out 20 % of the
 training engines unconditionally. Table 6 states 200 epochs, and holding
 engines out in order to restore the best-validation checkpoint is
 validation-based model selection, which the paper never describes; under A-22's
-rule the paper wins. `config/fd001.yaml` therefore holds nothing out.
+rule the paper wins. `config/fd001.yaml` therefore held nothing out, until
+the reversal recorded above put the split back on 2026-09-02.
 
 **The split has not been abandoned, only moved.** `config/fd001_validated.yaml`
 keeps it, and **every comparison between configurations must use that file** —
@@ -826,7 +867,20 @@ Both tables below carry a row for each schedule.
 
 ---
 
-## A-18 — Early stopping is disabled in the reproduction
+## A-18 — Early stopping ends training when the held-out error stops improving
+
+**Live again since 2026-09-02, with the split of A-06.** Early stopping was
+never switched off in code — `training/config.py` has held
+`early_stopping_patience = 20` throughout — so it was disabled only in the
+sense that `validation_fraction: 0.0` left it nothing to measure. With 20 %
+of the engines held back it fires again, and in the five-seed run recorded
+under A-06 it fired at epochs 51, 55, 8, 18 and 35 of a nominal 200.
+**Table 6's "200 epochs" is therefore not what the default configuration
+runs**, and any number produced by it must be described that way.
+
+---
+
+### What this entry said between 2026-08-29 and 2026-09-02
 
 **Superseded 2026-08-29 by A-22.** Table 6 states 200 epochs. Early stopping
 contradicts that, so the reproduction runs the full 200.
@@ -1446,14 +1500,17 @@ paper regardless.* Applied assumption by assumption:
 |---|---|---|
 | A-03 input scaling | nothing at all | silent → **`zscore`**, 3.83 cycles closer than min-max |
 | A-21 adjacency normalisation | "normalized … incorporating self-loops"; no formula | silent → **`row`**, 0.35 closer with nothing held back (p = 0.047) |
-| A-06 validation split | describes none | contradicts Table 6's 200 epochs → **removed** |
-| A-18 early stopping | Table 6: 200 epochs | contradicts → **removed** |
+| A-06 validation split | describes none | contradicts Table 6's 200 epochs → removed, then **reinstated 2026-09-02**; worth 0.32 cycles, p = 0.234 |
+| A-18 early stopping | Table 6: 200 epochs | contradicts → removed, then **live again 2026-09-02** with A-06 |
 | A-04 smoothing | Eq. 18 defines it | stated → kept, and removing it is worse anyway |
 | A-01 label ceiling | Eq. 19; value inferred from Fig. 7 | evidence-backed → kept at 125 |
 | A-17 LR schedule | Table 6: 1e-3 → 1e-4 | mechanism silent → **one x0.1 step**, the only form any C-MAPSS paper uses |
 
 Result: **16.818 ± 0.157** on FD001 against the paper's 14.93, from
-20.353 ± 0.752 under the previous defaults.
+20.353 ± 0.752 under the previous defaults. **That figure was measured with
+nothing held back.** Since the A-06 reversal of 2026-09-02 the default holds
+out 20 % of the engines and gives **16.496 ± 0.415**, a difference the seeds
+cannot distinguish from zero (p = 0.234; the table under A-06).
 
 **Why this is recorded as an assumption and not as a result.** Three reasons,
 all of which bear on how the number may be described.
