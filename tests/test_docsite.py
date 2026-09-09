@@ -351,9 +351,10 @@ def test_the_notebook_map_counts_what_the_pipeline_really_produces(raw_dir: Path
 
     windows = len(prepared.train) + len(prepared.validation)
     # The three sets the notebook ends with, drawn as the shapes it saves.
-    assert f"({spaced(len(prepared.train))}, 14, 1)" in drawn
-    assert f"({spaced(len(prepared.validation))}, 14, 1)" in drawn
-    assert f"({spaced(len(prepared.test))}, 14, 1)" in drawn
+    width = prepared.train.features.shape[2]
+    assert f"({spaced(len(prepared.train))}, 14, {width})" in drawn
+    assert f"({spaced(len(prepared.validation))}, 14, {width})" in drawn
+    assert f"({spaced(len(prepared.test))}, 14, {width})" in drawn
     # The total before the split, and the graph the same run built.
     assert spaced(windows) in drawn
     assert f"{prepared.diagnostics['graph']['n_edges']} edges" in drawn
@@ -411,7 +412,7 @@ def test_the_architecture_figure_prints_the_real_parameter_count():
     from thesis_gnn_rul_xai.models.estgnn import ESTGNN
 
     matrix, _ = build_physics_adjacency()
-    model = ESTGNN(normalize_adjacency(matrix, method="row"), in_features=1)
+    model = ESTGNN(normalize_adjacency(matrix, method="row"), window_size=1)
     drawn = figures.render_figure("architecture")
     assert f"{model.count_parameters():,}".replace(",", " ") in drawn
 

@@ -51,7 +51,7 @@ from dataclasses import replace
 
 from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
 from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
-from thesis_gnn_rul_xai.models import ESTGNN
+from thesis_gnn_rul_xai.models import ESTGNN, build_temporal_stage
 from thesis_gnn_rul_xai.training import (
     TrainingConfig,
     evaluate_model,
@@ -98,7 +98,8 @@ def current_commit() -> str:
         return "unknown"
 
 
-def build_model(prepared) -> ESTGNN:
+def build_model(prepared, temporal: str = "last_cycle",
+                hidden_size: int = 32) -> ESTGNN:
     """Build the network on the graph the pipeline produced.
 
     Which graph that is, and how it was normalised, are decided by
@@ -109,8 +110,14 @@ def build_model(prepared) -> ESTGNN:
     """
     return ESTGNN(
         prepared.adjacency_normalized,
-        in_features=prepared.train.features.shape[2],
+        temporal=build_temporal_stage(
+            temporal,
+            window_size=prepared.config.window_size,
+            n_nodes=prepared.adjacency_normalized.shape[0],
+            hidden_size=hidden_size,
+        ),
         rul_max=prepared.config.rul_max,
+        allow_time_in_the_graph_layer=temporal == "raw_window",
     )
 
 
@@ -143,6 +150,16 @@ def main() -> int:
                         choices=("step", "exponential", "cosine", "plateau",
                                  "constant"),
                         default="step", help="See assumption A-17")
+    parser.add_argument("--temporal", default="last_cycle",
+                        choices=["last_cycle", "mean_window", "raw_window",
+                                 "lstm", "gru"],
+                        help="Which temporal stage sits in front of the graph "
+                             "layers. 'last_cycle' is the stand-in of A-07; "
+                             "'lstm' is the paper's own Section 2.2 stage, one "
+                             "network per sensor")
+    parser.add_argument("--temporal-hidden", type=int, default=32,
+                        help="Hidden size of the recurrent stage (A-26; the "
+                             "paper states none)")
     parser.add_argument("--no-early-stopping", action="store_true",
                         help="Train the full epoch count, as the paper describes")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
@@ -201,7 +218,8 @@ def main() -> int:
             prepared = run_preprocessing(per_seed, data_dir=arguments.data_dir)
 
         torch.manual_seed(seed)
-        model = build_model(prepared)
+        model = build_model(prepared, arguments.temporal,
+                            arguments.temporal_hidden)
         history = train(model, prepared.train, prepared.validation, training)
 
         result = evaluate_model(model, prepared.test)
@@ -254,9 +272,11 @@ def main() -> int:
         printed = "  ".join(f"{k} {v}" for k, v in values.items())
         print(f"  {name:<38} {printed}")
     print(
-        "\nThe LSTM stage is not implemented here (A-11), so the row to compare\n"
-        "against is 'ESTGNN w/o LSTM'. See docs/ASSUMPTIONS.md for every way\n"
-        "this pipeline differs from the paper."
+        "\nWhich row above this run may be set beside depends on its temporal\n"
+        "stage. Without one -- the default -- it is 'ESTGNN w/o LSTM'; with\n"
+        "--temporal lstm it is the full ESTGNN, under the size A-26 chose.\n"
+        "See docs/ASSUMPTIONS.md for every way this pipeline differs from the\n"
+        "paper."
     )
 
     # The node feature mode belongs in the name: two runs that differ only in
@@ -290,6 +310,10 @@ def main() -> int:
         f"_{'cap' if preprocessing.clip_test_labels else 'uncap'}"
         f"_{arguments.seeds}seed"
         f"_{'fixedsplit' if arguments.fixed_split else 'varsplit'}"
+        + ("" if arguments.temporal == "last_cycle"
+           else f"_{arguments.temporal}{arguments.temporal_hidden}"
+           if arguments.temporal in ("lstm", "gru")
+           else f"_{arguments.temporal}")
         + ("_noearlystop" if arguments.no_early_stopping else "")
         + ("" if arguments.lr_schedule == "step" else f"_{arguments.lr_schedule}")
         + f"_cfg{config_digest}_{commit}_{stamp}"
@@ -312,6 +336,12 @@ def main() -> int:
                 "clip_test_labels": preprocessing.clip_test_labels,
                 "early_stopping": not arguments.no_early_stopping,
                 "lr_schedule": arguments.lr_schedule,
+                "temporal_stage": arguments.temporal,
+                "temporal_hidden": (
+                    arguments.temporal_hidden
+                    if arguments.temporal in ("lstm", "gru")
+                    else None
+                ),
                 "mean": {c: float(table[c].mean()) for c in columns},
                 "std": {
                     c: (float(table[c].std(ddof=1)) if arguments.seeds > 1 else None)

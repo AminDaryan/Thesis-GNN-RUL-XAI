@@ -22,7 +22,13 @@ from thesis_gnn_rul_xai.graph.adjacency import (
     build_physics_adjacency,
     normalize_adjacency,
 )
-from thesis_gnn_rul_xai.models import ESTGNN, GraphConvolution
+from thesis_gnn_rul_xai.models import (
+    ESTGNN,
+    GraphConvolution,
+    LastCycle,
+    LSTMStage,
+    RawWindow,
+)
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +53,7 @@ def test_parameter_counts_match_table_4(adjacency):
     W_fc1 in R(448x128) and W_fc2 in R(128x1). The graph layers carry no bias
     (Equations 8 to 10 show none); the dense layers do (Equations 12 and 13).
     """
-    model = ESTGNN(adjacency, in_features=1)
+    model = ESTGNN(adjacency)
     summary = {row["layer"]: row for row in model.layer_summary()}
 
     assert summary["GCN-1"]["parameters"] == 1 * 32
@@ -60,36 +66,87 @@ def test_parameter_counts_match_table_4(adjacency):
 
 
 def test_activations_and_shapes_match_table_4(adjacency):
-    model = ESTGNN(adjacency, in_features=1)
+    """Table 4, plus the temporal row the paper prints no line for.
+
+    Table 4 begins at "Input | Node features | [batch, 14, 1]", so the paper's
+    own table starts where the recurrent stage has already finished. The
+    summary here lists that stage first and then reproduces Table 4 exactly.
+    """
+    model = ESTGNN(adjacency)
     rows = model.layer_summary()
-    assert [row["activation"] for row in rows] == [
+    assert rows[0]["layer"] == "Temporal"
+    assert rows[0]["parameters"] == 0          # LastCycle learns nothing
+    table4 = rows[1:]
+    assert [row["activation"] for row in table4] == [
         "-", "ReLU", "ReLU", "ReLU", "-", "ReLU", "Sigmoid"
     ]
-    assert [row["out"] for row in rows] == [
+    assert [row["out"] for row in table4] == [
         "(B, 14, 1)", "(B, 14, 32)", "(B, 14, 64)", "(B, 14, 32)",
         "(B, 448)", "(B, 128)", "(B, 1)",
     ]
 
 
 def test_the_default_width_reproduces_table_4(adjacency):
-    """The default in_features=1 is Table 4's printed input shape."""
+    """The default stage gives Table 4's printed input shape."""
     table4 = ESTGNN(adjacency)
     assert table4.in_features == 1
     assert table4.count_parameters() == 61729
 
 
 def test_a_wider_first_layer_only_changes_w1(adjacency):
-    """in_features stays general; widening it touches W(1) and nothing else."""
-    table4 = ESTGNN(adjacency, in_features=1)
-    wider = ESTGNN(adjacency, in_features=30)
+    """Widening what reaches the graph layer touches W(1) and nothing else."""
+    table4 = ESTGNN(adjacency, temporal=LastCycle(30))
+    wider = ESTGNN(adjacency, temporal=RawWindow(30),
+                   allow_time_in_the_graph_layer=True)
     assert wider.count_parameters() - table4.count_parameters() == (30 - 1) * 32
+
+
+def test_raw_cycles_reaching_the_graph_layer_are_refused_unless_asked_for():
+    """The refusal that makes the 2026-08-28 mistake impossible to repeat.
+
+    A stage that widens a node without holding any parameters is handing the
+    graph layer raw cycles, which is a temporal encoder inside a layer that is
+    not named one. The model works that out from the stage rather than
+    trusting it, so a hand-written passthrough cannot slip past either.
+    """
+    matrix, _ = build_physics_adjacency()
+    normalized = normalize_adjacency(matrix, method="row")
+    with pytest.raises(ValueError, match="without learning anything across"):
+        ESTGNN(normalized, temporal=RawWindow(30))
+    allowed = ESTGNN(normalized, temporal=RawWindow(30),
+                     allow_time_in_the_graph_layer=True)
+    assert allowed.time_folded_into_graph_layer is True
+
+
+def test_a_learned_stage_is_not_treated_as_raw_cycles():
+    """An LSTM holds parameters, so widening past one number is not the trap."""
+    matrix, _ = build_physics_adjacency()
+    stage = LSTMStage(window_size=30, n_nodes=14, hidden_size=8, out_features=4)
+    model = ESTGNN(normalize_adjacency(matrix, method="row"), temporal=stage)
+    assert model.in_features == 4
+    assert model.time_folded_into_graph_layer is False
+
+
+def test_the_paper_gives_every_sensor_its_own_network():
+    """Section 2.2: "Each sensor s is associated with a dedicated LSTM network".
+
+    Fourteen cells, not one shared, so the count scales with the sensors.
+    """
+    per_sensor = LSTMStage(window_size=30, n_nodes=14, hidden_size=32)
+    shared = LSTMStage(window_size=30, n_nodes=14, hidden_size=32,
+                       shared_across_sensors=True)
+    assert len(per_sensor.cells) == 14
+    assert len(shared.cells) == 1
+    per = sum(p.numel() for p in per_sensor.parameters())
+    one = sum(p.numel() for p in shared.parameters())
+    assert per == one + 13 * sum(p.numel() for p in shared.cells[0].parameters())
 
 
 # --- what the network produces ------------------------------------------
 
 
 def test_output_is_one_number_per_example_inside_the_unit_interval(adjacency):
-    model = ESTGNN(adjacency, in_features=30)
+    model = ESTGNN(adjacency, temporal=LastCycle(30))
     batch = torch.randn(8, 14, 30)
     output = model(batch)
     assert output.shape == (8,)
@@ -104,7 +161,7 @@ def test_the_prediction_can_never_exceed_the_ceiling(adjacency):
     test labels is therefore not a convenience: leaving them uncapped would
     charge the model for an error it is structurally unable to avoid.
     """
-    model = ESTGNN(adjacency, in_features=30, rul_max=125)
+    model = ESTGNN(adjacency, temporal=LastCycle(30), rul_max=125)
     for scale in (0.0, 1.0, 50.0, 1e4):
         cycles = model.predict_cycles(torch.full((4, 14, 30), scale))
         assert bool((cycles >= 0).all() and (cycles <= 125).all())
@@ -112,7 +169,7 @@ def test_the_prediction_can_never_exceed_the_ceiling(adjacency):
 
 def test_the_graph_is_not_a_learned_parameter(adjacency):
     """The physics prior is knowledge put in, not something fitted."""
-    model = ESTGNN(adjacency, in_features=30)
+    model = ESTGNN(adjacency, temporal=LastCycle(30))
     assert "adjacency" in dict(model.named_buffers())
     assert "adjacency" not in dict(model.named_parameters())
     np.testing.assert_allclose(model.adjacency.numpy(), adjacency, rtol=1e-6)
@@ -124,7 +181,7 @@ def test_an_unnormalised_adjacency_is_rejected(adjacency):
     # Match the condition, not the wording of the explanation: the message is
     # prose and gets rewritten, the zero diagonal is what the check is about.
     with pytest.raises(ValueError, match="zero on its diagonal"):
-        ESTGNN(raw, in_features=30)
+        ESTGNN(raw, temporal=LastCycle(30))
 
 
 # --- message passing actually follows the graph -------------------------
@@ -143,7 +200,7 @@ def test_three_layers_cannot_reach_four_hops(adjacency, symbols):
     layers really are using the adjacency matrix rather than mixing everything
     together.
     """
-    model = ESTGNN(adjacency, in_features=30)
+    model = ESTGNN(adjacency, temporal=RawWindow(30), allow_time_in_the_graph_layer=True)
     order = list(symbols)
     far_source, far_target = order.index("P15"), order.index("W32")
 
@@ -170,7 +227,7 @@ def test_three_layers_cannot_reach_four_hops(adjacency, symbols):
 def test_a_fully_connected_graph_reaches_everything_in_one_hop(symbols):
     """The 'without physics prior' ablation removes the structure entirely."""
     dense, _ = build_fully_connected_adjacency(14)
-    model = ESTGNN(normalize_adjacency(dense), in_features=30)
+    model = ESTGNN(normalize_adjacency(dense), temporal=RawWindow(30), allow_time_in_the_graph_layer=True)
     order = list(symbols)
 
     def one_graph_layer(features):
@@ -190,7 +247,7 @@ def test_a_fully_connected_graph_reaches_everything_in_one_hop(symbols):
 def test_one_optimiser_step_reduces_the_loss(adjacency):
     """Gradients reach every layer, including the first graph convolution."""
     torch.manual_seed(0)
-    model = ESTGNN(adjacency, in_features=30)
+    model = ESTGNN(adjacency, temporal=LastCycle(30))
     features = torch.randn(16, 14, 30)
     targets = torch.rand(16)
 
@@ -212,9 +269,9 @@ def test_one_optimiser_step_reduces_the_loss(adjacency):
 
 def test_building_the_model_is_repeatable(adjacency):
     torch.manual_seed(7)
-    first = ESTGNN(adjacency, in_features=30)
+    first = ESTGNN(adjacency, temporal=LastCycle(30))
     torch.manual_seed(7)
-    second = ESTGNN(adjacency, in_features=30)
+    second = ESTGNN(adjacency, temporal=LastCycle(30))
     for a, b in zip(first.parameters(), second.parameters(), strict=True):
         torch.testing.assert_close(a, b)
 

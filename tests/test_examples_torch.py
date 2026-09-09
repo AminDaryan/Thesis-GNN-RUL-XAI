@@ -19,7 +19,13 @@ from thesis_gnn_rul_xai.graph.adjacency import (
     build_physics_adjacency,
     normalize_adjacency,
 )
-from thesis_gnn_rul_xai.models import ESTGNN, GraphConvolution
+from thesis_gnn_rul_xai.models import (
+    ESTGNN,
+    GraphConvolution,
+    LastCycle,
+    LSTMStage,
+    MeanWindow,
+)
 
 # --- models/layers.py ---------------------------------------------------
 
@@ -68,3 +74,57 @@ def test_example_coalition_weights_add_up_to_one():
     counts = np.array([comb(n - 1, size) for size in range(n)])
     assert round(float(np.sum(counts * coalition_weights(n))), 9) == 1.0
     assert coalition_weights(3)[0] == factorial(0) * factorial(2) / factorial(3)
+
+
+# --- models/temporal/ ---------------------------------------------------
+
+
+def test_example_temporal_stages_on_two_hand_checkable_sensors():
+    """Two sensors, four cycles each, so every number can be checked by hand.
+
+    The three stages differ only in what they leave on a node, and all three
+    hand the graph layers the same shape, which is what makes them swappable.
+    """
+    windows = torch.tensor([[[1.0, 2.0, 3.0, 4.0],
+                             [10.0, 20.0, 30.0, 40.0]]])
+
+    last = LastCycle(4)(windows)
+    torch.testing.assert_close(last, torch.tensor([[[4.0], [40.0]]]))
+
+    mean = MeanWindow(4)(windows)
+    # (1 + 2 + 3 + 4) / 4 = 2.5 and (10 + 20 + 30 + 40) / 4 = 25.0
+    torch.testing.assert_close(mean, torch.tensor([[[2.5], [25.0]]]))
+
+    learned = LSTMStage(window_size=4, n_nodes=2, hidden_size=8)
+    assert tuple(learned(windows).shape) == (1, 2, 1)
+    assert last.shape == mean.shape == learned(windows).shape
+
+
+def test_example_the_stage_decides_the_width_of_the_first_graph_matrix(raw_dir):
+    """On the real FD001 windows: same data in, two different networks out.
+
+    The pipeline hands over all 30 cycles. What reaches the graph layers, and
+    therefore how wide W(1) is, is decided by the stage and nothing else --
+    which is the whole point of A-07 living in the model.
+    """
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    prepared = run_preprocessing(PreprocessingConfig(), data_dir=raw_dir)
+    assert prepared.test.features.shape == (100, 14, 30)
+
+    batch = torch.from_numpy(prepared.test.features[:8])
+    graph = normalize_adjacency(build_physics_adjacency()[0], method="row")
+
+    stand_in = ESTGNN(graph, temporal=LastCycle(30))
+    assert stand_in.in_features == 1
+    assert stand_in.count_parameters() == 61_729
+    assert tuple(stand_in(batch).shape) == (8,)
+
+    paper = ESTGNN(graph, temporal=LSTMStage(window_size=30, n_nodes=14,
+                                             hidden_size=32))
+    assert paper.in_features == 1
+    # Fourteen dedicated cells at hidden size 32, plus the projection to one
+    # number, on top of the same 61,729-parameter graph stage.
+    assert paper.count_parameters() == 61_729 + 62_753
+    assert tuple(paper(batch).shape) == (8,)

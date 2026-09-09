@@ -56,7 +56,7 @@ def model(prepared):
     torch.manual_seed(0)
     return ESTGNN(
         prepared.adjacency_normalized,
-        in_features=prepared.train.features.shape[2],
+        window_size=prepared.train.features.shape[2],
         rul_max=prepared.config.rul_max,
     )
 
@@ -70,7 +70,7 @@ def _tiny_model(n_nodes: int = 3, window: int = 4) -> ESTGNN:
     """A small complete-graph network, so 2**n coalitions is trivial."""
     torch.manual_seed(1)
     dense, _ = build_fully_connected_adjacency(n_nodes)
-    return ESTGNN(normalize_adjacency(dense), in_features=window, rul_max=125)
+    return ESTGNN(normalize_adjacency(dense), window_size=window, rul_max=125)
 
 
 # --- the weighting factor of Equation 15 --------------------------------
@@ -170,7 +170,7 @@ def test_too_many_nodes_is_refused_rather_than_approximated():
     """This module computes Equation 15 exactly or not at all."""
     n = MAX_EXACT_NODES + 1
     dense, _ = build_fully_connected_adjacency(n)
-    big = ESTGNN(normalize_adjacency(dense), in_features=2, rul_max=125)
+    big = ESTGNN(normalize_adjacency(dense), window_size=2, rul_max=125)
     with pytest.raises(ValueError, match="deliberately does not provide"):
         shap_values(big, np.zeros((n, 2), dtype=np.float32), np.zeros((n, 2), dtype=np.float32))
 

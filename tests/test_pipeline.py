@@ -235,11 +235,26 @@ def test_disabling_smoothing_changes_the_features(raw_dir):
     assert not np.allclose(smoothed.train.features, unsmoothed.train.features)
 
 
-def test_nodes_carry_exactly_one_feature(raw_dir):
-    """A-07: Table 4's input shape is [batch, 14, 1], and it is not optional."""
+def test_nodes_carry_the_whole_window_and_the_stage_reduces_it(raw_dir):
+    """Where Table 4's [batch, 14, 1] is produced, and where it is not.
+
+    The pipeline hands over every cycle. The temporal stage turns that into
+    the one number per sensor that Table 4 prints, and it is the stage that
+    decides which number. Splitting it this way is what stops a preprocessing
+    setting from silently widening the first graph weight matrix -- see A-07.
+    """
+    pytest.importorskip("torch")
+    from thesis_gnn_rul_xai.models.temporal import LastCycle
+
     prepared = run_preprocessing(
         PreprocessingConfig(window_size=20),
         data_dir=raw_dir,
     )
-    assert prepared.train.features.shape[1:] == (14, 1)
-    assert prepared.test.features.shape[1:] == (14, 1)
+    assert prepared.train.features.shape[1:] == (14, 20)
+    assert prepared.test.features.shape[1:] == (14, 20)
+
+    import torch
+
+    stage = LastCycle(20)
+    reduced = stage(torch.from_numpy(prepared.test.features[:4]))
+    assert tuple(reduced.shape) == (4, 14, 1)

@@ -95,7 +95,9 @@ def _extract_one_unit(
             "Any score computed from what remains covers fewer engines.",
             history[UNIT_COL].iloc[0], n_rows, window_size,
         )
-        empty_windows = np.empty((0, len(sensor_columns), 1), dtype=np.float32)
+        empty_windows = np.empty(
+            (0, len(sensor_columns), window_size), dtype=np.float32
+        )
         return (empty_windows,
                 np.empty(0, dtype=np.float32),
                 np.empty(0, dtype=np.int64))
@@ -114,13 +116,11 @@ def _extract_one_unit(
     # block of numbers: (n, W, S) becomes (n, S, W).
     windows = np.transpose(windows, (0, 2, 1))
 
-    # ASSUMPTION A-07: give each sensor exactly one number, the most recent
-    # reading of its window. The paper's Table 4 prints one number per sensor
-    # going into the first layer. In the paper that number comes out of a stage
-    # we do not implement (A-11), so the latest reading stands in for it.
-    # Written up in docs/ASSUMPTIONS.md.
-    windows = windows[:, :, -1:]
-
+    # Every cycle of the window is handed on. Which of them a sensor node ends
+    # up carrying is a question about the MODEL, and it is answered there, by
+    # the temporal stage in models/temporal/ -- see A-07. Answering it here
+    # made the reduction look like a property of the data, and left a path from
+    # a preprocessing setting to the width of the first graph weight matrix.
     return np.ascontiguousarray(windows), window_targets, window_cycles
 
 

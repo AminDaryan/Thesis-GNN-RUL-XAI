@@ -642,7 +642,7 @@ def draw_architecture() -> str:
     from ..models.estgnn import ESTGNN
 
     matrix, _ = build_physics_adjacency()
-    model = ESTGNN(normalize_adjacency(matrix, method="row"), in_features=1)
+    model = ESTGNN(normalize_adjacency(matrix, method="row"), window_size=1)
     rows = model.layer_summary()
     total = model.count_parameters()
 
@@ -1261,15 +1261,18 @@ def draw_notebook_map() -> str:
             f'rx="7" fill="{colour}" fill-opacity="0.13" stroke="{colour}" '
             f'stroke-width="1.4" />'
             + _text(x + box_w / 2, y + 21, label, size=11.5, weight="600")
-            + _mono(x + box_w / 2, y + 39, f"({_spaced(count)}, 14, 1)", size=12,
+            + _mono(x + box_w / 2, y + 39,
+                    f"({_spaced(count)}, {graph['n_nodes']}, "
+                    f"{config.window_size})", size=12,
                     weight="600", fill=colour)
         )
     y += 72
     body.append(
         _text(_WIDTH / 2, y,
-              "14 sensor nodes, one number each: the last cycle of the "
-              "window, standing in for the recurrent stage this project "
-              "does not build (A-07, A-11).",
+              "14 sensor nodes, each carrying its whole window. How many "
+              "numbers a node ends up with is decided in the model, by a "
+              "named temporal stage (A-07); by default it is one, the "
+              "last cycle.",
               size=11, opacity=0.62)
     )
 

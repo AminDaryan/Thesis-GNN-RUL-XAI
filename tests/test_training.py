@@ -38,7 +38,7 @@ def prepared(raw_dir):
 def _model(prepared) -> ESTGNN:
     return ESTGNN(
         prepared.adjacency_normalized,
-        in_features=prepared.train.features.shape[2],
+        window_size=prepared.train.features.shape[2],
         rul_max=prepared.config.rul_max,
     )
 

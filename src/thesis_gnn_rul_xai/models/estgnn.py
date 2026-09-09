@@ -21,6 +21,7 @@ from torch import Tensor, nn
 
 from ..utils.logging_setup import get_logger
 from .layers import GraphConvolution
+from .temporal import LastCycle, TemporalStage
 
 __all__ = ["ESTGNN"]
 
@@ -45,11 +46,13 @@ class ESTGNN(nn.Module):
         self,
         adjacency: np.ndarray | Tensor | Sequence[Sequence[float]],
         *,
-        in_features: int = 1,
+        temporal: TemporalStage | None = None,
+        window_size: int = 1,
         rul_max: int = 125,
         gcn_hidden: Sequence[int] = GCN_HIDDEN_SIZES,
         fc_hidden: int = FC_HIDDEN_SIZE,
         gcn_bias: bool = False,
+        allow_time_in_the_graph_layer: bool = False,
     ) -> None:
         super().__init__()
 
@@ -66,8 +69,6 @@ class ESTGNN(nn.Module):
                 "sensor keeps its own reading when it mixes with its "
                 "neighbours. Given the raw matrix, no sensor could see itself."
             )
-        if in_features < 1:
-            raise ValueError(f"in_features must be at least 1, got {in_features}.")
         if rul_max < 1:
             raise ValueError(f"rul_max must be positive, got {rul_max}.")
         if len(gcn_hidden) < 1:
@@ -75,8 +76,39 @@ class ESTGNN(nn.Module):
 
         self.register_buffer("adjacency", matrix)
         self.n_nodes = int(matrix.shape[0])
-        self.in_features = int(in_features)
         self.rul_max = int(rul_max)
+
+        # The width of the first graph weight matrix is read off the STAGE, not
+        # off the data. That is the whole point of the stage: with the width
+        # taken from features.shape[2] there was a path from a preprocessing
+        # setting to a 30-wide W(1), and nothing in between was named. See
+        # A-07, and the refusal below.
+        # Without a stage, the default is the A-07 stand-in over whatever
+        # window the caller names. window_size=1 makes it the identity, so
+        # ESTGNN(adjacency) alone is still Table 4 exactly.
+        self.temporal = temporal if temporal is not None else LastCycle(window_size)
+        self.in_features = int(self.temporal.out_features)
+
+        # A stage that puts more than one number on a node WITHOUT learning
+        # anything across the cycles is handing the graph layer raw cycles. It
+        # cannot lie about this, because nothing is asked of it: the answer is
+        # derived from whether it holds parameters.
+        learns_across_time = any(p.numel() for p in self.temporal.parameters())
+        self.time_folded_into_graph_layer = (
+            self.in_features > 1 and not learns_across_time
+        )
+        if self.time_folded_into_graph_layer and not allow_time_in_the_graph_layer:
+            raise ValueError(
+                f"{type(self.temporal).__name__} puts {self.in_features} numbers "
+                "on each sensor without learning anything across the cycles, so "
+                f"the first graph weight matrix becomes ({self.in_features}, "
+                f"{int(gcn_hidden[0])}). Those are multipliers learned over time "
+                "and shared across sensors -- a temporal encoder, inside a layer "
+                "that is not named one. That is the arrangement removed on "
+                "2026-08-28; see A-07. To build it deliberately pass "
+                "allow_time_in_the_graph_layer=True, which records the choice in "
+                "the run."
+            )
 
         widths = [self.in_features, *(int(w) for w in gcn_hidden)]
         self.graph_layers = nn.ModuleList(
@@ -108,7 +140,7 @@ class ESTGNN(nn.Module):
 
         Call predict_cycles() below if you want flight cycles.
         """
-        hidden = features
+        hidden = self.temporal(features)
         for layer in self.graph_layers:
             hidden = torch.relu(layer(hidden, self.adjacency))
 
@@ -134,6 +166,16 @@ class ESTGNN(nn.Module):
         """List every layer in the same form as the paper's Table 4."""
         rows: list[dict[str, object]] = []
         width = self.in_features
+        rows.append(
+            {
+                "layer": "Temporal",
+                "type": type(self.temporal).__name__,
+                "in": f"(B, {self.n_nodes}, {self.temporal.window_size})",
+                "out": f"(B, {self.n_nodes}, {self.temporal.out_features})",
+                "parameters": sum(p.numel() for p in self.temporal.parameters()),
+                "activation": "-",
+            }
+        )
         rows.append(
             {
                 "layer": "Input",
@@ -190,6 +232,6 @@ class ESTGNN(nn.Module):
 
     def extra_repr(self) -> str:  # pragma: no cover - display only
         return (
-            f"nodes={self.n_nodes}, in_features={self.in_features}, "
-            f"rul_max={self.rul_max}"
+            f"nodes={self.n_nodes}, temporal={type(self.temporal).__name__}, "
+            f"in_features={self.in_features}, rul_max={self.rul_max}"
         )

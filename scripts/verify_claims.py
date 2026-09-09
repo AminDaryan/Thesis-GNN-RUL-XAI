@@ -303,13 +303,18 @@ def _trained_model(config: PreprocessingConfig):
     import torch
 
     from thesis_gnn_rul_xai.models import ESTGNN
+    from thesis_gnn_rul_xai.models.temporal import build_temporal_stage
     from thesis_gnn_rul_xai.training import TrainingConfig, train
 
     prepared = run_preprocessing(config, data_dir=raw_data_dir(), keep_frames=True)
     torch.manual_seed(42)
     model = ESTGNN(
         prepared.adjacency_normalized,
-        in_features=prepared.train.features.shape[2],
+        temporal=build_temporal_stage(
+            "last_cycle",
+            window_size=prepared.config.window_size,
+            n_nodes=prepared.adjacency_normalized.shape[0],
+        ),
         rul_max=config.rul_max,
     )
     train(model, prepared.train, None, TrainingConfig(seed=42, device="cpu"))

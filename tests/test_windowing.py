@@ -16,23 +16,33 @@ from thesis_gnn_rul_xai.data.windowing import (
 COLUMNS = list(PAPER_SENSOR_COLUMNS)
 
 
-def test_window_shape_is_nodes_then_one_feature(loaded):
-    """The array must be (examples, sensors, 1) -- Table 4's [batch, 14, 1]."""
+def test_window_shape_is_nodes_then_every_cycle(loaded):
+    """The array is (examples, sensors, window) -- one block of cycles per sensor.
+
+    Table 4's [batch, 14, 1] is what the FIRST GRAPH LAYER sees, not what the
+    pipeline produces. Reducing the window to one number is the temporal
+    stage's job, in models/temporal/, because which cycle a node carries is a
+    question about the model. See A-07.
+    """
     dataset = make_windows(loaded.train, COLUMNS, window_size=20)
     assert dataset.features.ndim == 3
     assert dataset.features.shape[1] == 14
-    assert dataset.features.shape[2] == 1
+    assert dataset.features.shape[2] == 20
     assert dataset.features.dtype == np.float32
 
 
-def test_the_single_feature_is_the_last_cycle_of_the_window(loaded):
-    """A-07: the one number per node is the most recent reading, not a summary."""
+def test_the_last_column_is_the_last_cycle_of_the_window(loaded):
+    """The window ends where it should, so LastCycle picks the right reading.
+
+    A-07's stand-in takes features[:, :, -1]. This checks the pipeline puts the
+    end cycle there, which is what makes that stage mean what it says.
+    """
     window = 20
     dataset = make_windows(loaded.train, COLUMNS, window_size=window, stride=1)
     first_engine = loaded.train.sort_values(["unit", "cycle"])
     first_engine = first_engine[first_engine["unit"] == dataset.units[0]]
     expected = first_engine[COLUMNS].to_numpy(np.float32)[window - 1]
-    np.testing.assert_allclose(dataset.features[0, :, 0], expected, rtol=1e-6)
+    np.testing.assert_allclose(dataset.features[0, :, -1], expected, rtol=1e-6)
 
 
 def test_the_number_of_windows_follows_the_formula(loaded):
@@ -54,16 +64,18 @@ def test_the_label_belongs_to_the_last_cycle_of_the_window(loaded):
 
 
 def test_window_content_matches_the_source_rows(loaded):
-    """The number on each node must be the actual reading at the end cycle."""
-    dataset = make_windows(loaded.train, COLUMNS, window_size=20)
+    """Every cycle in the block must be the real reading from that flight."""
+    window = 20
+    dataset = make_windows(loaded.train, COLUMNS, window_size=window)
     unit = int(dataset.units[5])
     end_cycle = int(dataset.end_cycles[5])
-    history = loaded.train[loaded.train["unit"] == unit]
-    expected = (
-        history[history["cycle"] == end_cycle][COLUMNS]
-        .to_numpy(dtype=np.float32)
-        .reshape(14, 1)
-    )
+    history = loaded.train[loaded.train["unit"] == unit].sort_values("cycle")
+    rows = history[
+        (history["cycle"] > end_cycle - window) & (history["cycle"] <= end_cycle)
+    ]
+    # The pipeline stores a sensor's cycles along the last axis, so the source
+    # rows -- one per cycle -- are the transpose of what it holds.
+    expected = rows[COLUMNS].to_numpy(dtype=np.float32).T
     np.testing.assert_allclose(dataset.features[5], expected, rtol=1e-6)
 
 

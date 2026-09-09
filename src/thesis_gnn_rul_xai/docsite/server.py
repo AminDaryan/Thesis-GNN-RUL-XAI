@@ -166,7 +166,7 @@ def _model_facts() -> dict[str, object]:
         }
 
     matrix, _ = build_physics_adjacency()
-    model = ESTGNN(normalize_adjacency(matrix, method="row"), in_features=1)
+    model = ESTGNN(normalize_adjacency(matrix, method="row"), window_size=1)
     return {
         "layers": model.layer_summary(),
         "parameters": model.count_parameters(),
