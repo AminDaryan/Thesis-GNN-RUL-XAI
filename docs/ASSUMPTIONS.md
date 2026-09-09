@@ -45,6 +45,7 @@ identifier below.
 | A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.25 cycles closer *with nothing held back* under the step schedule (p = 0.068, **no longer significant**), selected under A-22 |
 | A-23 | Engines shorter than the window | Not discussed; 17 test engines across FD002 and FD004 are affected | Left out, following the only published treatment found; no FD001 engine is affected |
 | A-24 | What `phi_0` is in Equation 14 | Calls it "the average value of target variable across all samples" | The prediction at the average window, forced by A-20; **10.719 cycles** from the paper's wording |
+| A-26 | Size and depth of the recurrent stage | Table 4 has **no recurrent row**; Table 6 lists no hidden size, depth or projection | One layer, hidden size 32, a linear projection to the one number Table 4 prints; **fourteen dedicated cells**, which the paper does state |
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
 
 ---
@@ -362,6 +363,19 @@ are matters.
 
 ## A-07 — Each sensor node carries the last cycle of its window
 
+**Amended 2026-09-09: the choice moved into the model.** It used to be made
+in `data/windowing/`, one line before the pipeline returned, where it looked
+like a property of the dataset. The pipeline now hands over every cycle of the
+window and `models/temporal/LastCycle` performs the reduction, so the width of
+the first graph weight matrix is read off the **stage** rather than off the
+**data**. Nothing about the arrangement below changed: the same number reaches
+the same layer, and the five-seed run recorded under A-26 reproduces the
+previous figure. What changed is that there is no longer a path from a
+preprocessing setting to a thirty-wide `W(1)`, which is how the 2026-08-28
+mistake became possible. `ESTGNN` now refuses to build a stage that widens a
+node without learning anything across the cycles, unless the caller asks for
+it in words and the run records that it did.
+
 **Where:** `data/windowing/`; `models/estgnn.py` (`in_features`)
 
 **The gap.** Table 4 of the paper gives the input to the first graph layer as
@@ -623,7 +637,17 @@ needs padding.
 
 ---
 
-## A-11 — The per-sensor LSTM stage is omitted
+## A-11 — The per-sensor LSTM stage is omitted from the default
+
+**Amended 2026-09-09: it can now be built.** `models/temporal/LSTMStage` is
+the paper's Section 2.2 stage, fourteen dedicated networks, one per sensor.
+It is **not** the default: `--temporal last_cycle` remains what a run does
+unless told otherwise, so every figure in this log produced before that date
+still describes what it says it describes, and results from the default
+still compare against the paper's own "ESTGNN w/o LSTM" row and never its
+headline. What the paper leaves unstated about that stage is now A-26 rather
+than a reason not to build it. The reasoning below is unchanged and is why
+the omission was right at the time.
 
 **Where:** project scope
 
@@ -2337,6 +2361,139 @@ future comparison about a highly ranked sensor does not**, and must name which
 of the two it is made against.
 
 ---
+
+---
+
+### F-16 — Building the paper's LSTM reproduces its stated benefit almost exactly, and leaves a constant gap that has nothing to do with it
+
+`models/temporal/LSTMStage` builds the stage of the paper's Section 2.2:
+fourteen dedicated recurrent networks, one per sensor, which is what the paper
+states rather than anything chosen here (A-26 covers the size, which it does
+not state). That made the paper's own ablation runnable for the first time in
+this project.
+
+**What was run.** Five seeds each, commit `f82c76c-dirty`, FD001, physics
+graph, row normalisation, z-score scaling, capped test labels, step schedule,
+20 % of engines held back. The two arms differ in the temporal stage and in
+nothing else.
+
+| Temporal stage | RMSE | Score | R² | ASUE |
+|---|---|---|---|---|
+| `last_cycle` — the A-07 stand-in | 16.496 ± 0.415 | 539.8 | 0.8305 | 11.651 |
+| `lstm`, hidden 32 — the paper's stage | **13.307 ± 0.532** | **330.1** | **0.8896** | **8.938** |
+
+Paired across seeds, the stage is worth **3.189 cycles**, t = −8.978,
+two-sided p = 0.0009. Every one of the five seeds improves. Unlike A-06's
+split, this difference is far larger than the seed-to-seed spread.
+
+**Set beside the paper's own ablation.** Table 11 (page 12) prints the FD001
+column of its ablation study, including the delta:
+
+| | Paper, Table 11 | Here, 5 seeds | Difference |
+|---|---|---|---|
+| ESTGNN (Full) | 11.78 | 13.307 ± 0.532 | +1.53 |
+| ESTGNN w/o LSTM | 14.93 | 16.496 ± 0.415 | +1.57 |
+| **What the LSTM is worth** | **3.15** | **3.189** | **0.04** |
+
+The paper's 3.15 is not computed here: Table 11 prints it, in its "LSTM" delta
+row, alongside "Δ ( %) v.s. Full (+27)".
+
+**Two things follow, and they point in opposite directions.**
+
+**The stage's contribution reproduces to within 0.04 cycles.** That is a
+stronger corroboration than the paper's silence would lead you to expect: A-26
+had to choose the hidden size, the depth and the projection, and the *value* of
+the stage came out the same anyway. It is the closest this project has come to
+reproducing a number the paper reports, and it is worth stating that it is a
+reproduction of a **difference**, not of a level.
+
+**The remaining gap is a constant, and the LSTM is not in it.** 1.53 cycles
+with the stage, 1.57 without: unchanged across a doubling of the model, from
+61,729 parameters to 124,482. Whatever produces it is therefore not the
+temporal stage, and no amount of work on that stage will close it. The
+candidates are the settings the paper does not specify at all, and F-10 already
+measures the largest of them: the input scaling, worth 3.83 cycles between the
+two readings tried. A-21, A-01 and A-17 are the others.
+
+**How this comparison may and may not be described.** The paper reports single
+runs with no error bars, so its 11.78 and 14.93 have no spread to compare
+against; the ± here is this project's and covers seed, split and batch order.
+The two arms above differ from the paper in every way recorded in A-01 through
+A-26 except the one being tested. So this is evidence that **the stage does
+what the paper says it does**, not evidence that this code reproduces the
+paper.
+
+**Where the runs are.**
+`reports/fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f82c76c-dirty_20260909T123135Z`
+and
+`reports/fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_f82c76c-dirty_20260909T125552Z`.
+
+---
+
+## A-26 — The recurrent stage is one layer of hidden size 32, projected to one number
+
+**Where:** `models/temporal/LSTMStage`, `scripts/train.py --temporal-hidden`
+
+**The gap.** The paper describes the recurrent stage's *arrangement* precisely
+and its *size* not at all.
+
+What it does state, in Section 2.2 and repeated four times, is that every
+sensor gets its own network: *"Each sensor s ∈ {1, 2, …, n} is associated with
+a **dedicated** LSTM network"*, with Equation 7 indexing the hidden state by
+sensor, the channels processed *"independently"* through *"separate specialized
+pathways"*, and the architectural strengths opening with *"Independent parallel
+LSTM networks for each sensor"*. **That is a citation, not an assumption**, and
+this project follows it: fourteen cells, not one shared.
+
+What it never states is how big each one is. **Table 4 has no recurrent row at
+all** — it begins at `Input | Node features | [batch size,14,1]`, so the stage
+sits entirely outside the only architecture table the paper prints. Table 6
+lists the learning rate, 200 epochs, batch size 32, thirty time steps, Adam and
+MSE loss, and nothing else. The word "hidden" appears three times in the whole
+paper: once in the related-work section, and twice inside the gate equations
+meaning `h_{t-1}`, the previous hidden state.
+
+So three quantities are missing: the **width** of the hidden state, the
+**depth** in layers, and how a hidden state becomes the one number `W(1) ∈
+ℝ(1×32)` consumes.
+
+**What we chose.** One layer, hidden size 32, and a single linear projection
+from the last cycle's hidden state to one number per sensor.
+
+**Why.** The width matches the first graph layer's output width, which is the
+only number of that kind the paper prints, and 32 is the smallest of the three
+widths in Table 4. One layer is the minimum that is still an LSTM, and adding
+depth would be inventing more than is needed to have the stage at all. Taking
+the last cycle's hidden state is what Equation 7 describes — it defines
+`h_t^(s)` at time `t`, the end of the window — and the projection exists
+because Table 4 requires one number and an LSTM produces `hidden_size` of them.
+The projection is the part with least support in the paper: it is required by
+Table 4's shape, but the paper never prints it.
+
+**How much it matters.** Large, and measured.
+
+| | Parameters |
+|---|---|
+| The graph stage alone, Table 4 | 61,729 |
+| One `nn.LSTM(input_size=1, hidden_size=32)` | 4,480 |
+| Fourteen of them, plus the projection | 62,753 |
+| **The whole model with the stage** | **124,482** |
+
+The paper's own architecture is therefore **about twice the size** of what this
+project trained before, and about **thirteen times slower per batch** (22.9 ms
+against 1.8 ms for a batch of 32, so an epoch over the 14,459 training windows
+goes from roughly 0.8 s to roughly 10.4 s).
+
+Everything in the table is `sum(p.numel() ...)` on the real objects, not
+arithmetic on paper.
+
+**What this does not settle.** A different hidden size is a different model,
+and this entry fixes one point in a space the paper leaves open. Any number
+produced with the stage names the width in its run directory and in
+`summary.json`, so two such numbers can be told apart. Whether 32 is a good
+choice has not been measured against 16, 64 or two layers, and until it is, a
+result from this stage says what this configuration does and not what the
+paper's stage would do.
 
 ---
 
