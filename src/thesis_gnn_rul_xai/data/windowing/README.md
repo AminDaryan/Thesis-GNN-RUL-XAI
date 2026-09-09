@@ -549,8 +549,8 @@ INFO | Split 100 engines into 80 for training and 20 for validation (seed=42).
   fraction 0.0 -> validation is empty: True   training keeps all: 100
 ```
 
-A fraction of 0 — the project's default — holds nothing back and returns an
-empty second array.
+A fraction of 0 holds nothing back and returns an empty second array.
+That was the project's default until 2026-09-02; it is now 0.2 (A-06).
 
 ---
 

@@ -293,7 +293,7 @@ fields, and it offers two methods: `summary()` for a table to look at, and
 
 ### `summary()`
 
-Default run, nothing held back:
+With nothing held back (`validation_fraction=0.0`):
 
 ```
             examples  engines feature_shape  target_min  target_max
@@ -303,7 +303,7 @@ validation         0        0       (14, 1)         NaN         NaN
 test             100      100       (14, 1)         7.0       125.0
 ```
 
-With `validation_fraction=0.2`:
+The default run, with 20 % of the engines held back (A-06):
 
 ```
             examples  engines feature_shape  target_min  target_max

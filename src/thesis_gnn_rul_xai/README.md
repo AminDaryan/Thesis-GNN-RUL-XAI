@@ -206,7 +206,7 @@ The section above explains the ones that need more than a line.
 | `smoothing_alpha` | `0.5` | How hard to smooth, between 0 and 1. Larger follows the raw signal more closely; smaller smooths harder. `None` turns smoothing off. **A-04.** |
 | `graph` | `"physics"` | Which sensor graph the network gets. **A-19** covers the `"complete"` option. |
 | `adjacency_normalization` | `"row"` | How that graph is rescaled before use. **A-21.** |
-| `validation_fraction` | `0.0` | What share of the **engines** to hold back. `0.0` holds nothing back, which is the paper's arrangement. Never split by window. **A-06.** |
+| `validation_fraction` | `0.2` | What share of the **engines** to hold back. `0.0` holds nothing back, which is the paper's arrangement; 0.2 is this project's addition, reinstated 2026-09-02. Never split by window. **A-06.** |
 | `seed` | `42` | Fixes which engines get held back. |
 | `notes` | — | Free text saved with the settings. |
 

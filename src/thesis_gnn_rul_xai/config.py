@@ -85,7 +85,8 @@ class PreprocessingConfig:
     # docs/ASSUMPTIONS.md. Leave this on "physics" for the paper's own graph.
     graph: SensorGraph = "physics"
     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
-    # formula and two forms fit what it says. With nothing held back, as below,
+    # formula and two forms fit what it says. With nothing held back --
+    # the default until 2026-09-02, and no longer what this file sets --
     # rows measured 0.35 cycles closer than the alternative over five seeds
     # (paired p = 0.047). That advantage does not survive holding engines out,
     # so it is a fact about this configuration only. Written up as A-21 in

@@ -22,7 +22,8 @@ smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
 
 # --- The sensor graph -----------------------------------------------------
 # ASSUMPTION A-21: the paper never prints the normalisation formula. With
-# nothing held back, as below, row is 0.35 cycles closer than symmetric over
+# nothing held back -- which was the default until 2026-09-02, but is not
+# what this file now sets -- row is 0.35 cycles closer than symmetric over
 # five seeds (paired p = 0.047, two-sided). That advantage does NOT survive
 # holding engines out -- see A-21's table before quoting it more widely.
 adjacency_normalization: row

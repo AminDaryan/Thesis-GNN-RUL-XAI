@@ -204,8 +204,9 @@ how the rate travels between them. `lr_schedule` offers four ways:
   three it reacts to a measurement rather than to the epoch number, so it needs
   something to measure. **With nothing held back it never fires at all**, and
   the run finishes at its starting rate of 1e-3 instead of the 1e-4 Table 6
-  gives. Since the default configuration holds nothing back, the loop warns
-  when you ask for this combination rather than letting the run look normal.
+  gives. The default configuration held nothing back until 2026-09-02, and
+  the loop still warns when you ask for this combination rather than
+  letting the run look normal.
 - `"constant"` — never change it. Included so the effect of the schedule can be
   measured.
 
