@@ -8,6 +8,14 @@ judgement calls. Everything below exists to protect that distinction.
 Read `README.md` section 9 for the layout and `docs/ASSUMPTIONS.md` for every
 judgement call made so far.
 
+`docs/PENDING.md` holds what is known to be wrong, unmeasured or unfinished, and
+what finishing each item looks like. **Read it before starting anything and
+before saying a task is done**, for two reasons: the thing you are about to fix
+may already be written up there with the context you would otherwise re-derive,
+and the thing you decide not to fix belongs there rather than in a reply that
+scrolls away. An entry that turns out to be already done gets deleted, not left
+standing — a stale entry costs the next reader the budget of confirming it.
+
 Rules 1 to 8 protect that distinction. Rules 9 and 10 are about explaining, and
 rule 10 is the longest here because it applies most often: it sets how anything
 is explained in this project, in a README or in a reply in conversation.

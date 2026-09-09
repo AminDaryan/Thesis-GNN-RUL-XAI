@@ -281,6 +281,12 @@ def build_catalog(root: Path | None = None) -> Catalog:
                 "Full citations, with what each work is used for",
                 "reference",
             ),
+            _describe(
+                root,
+                "docs/PENDING.md",
+                "Known to be wrong, unmeasured or unfinished, and how to finish it",
+                "reference",
+            ),
             *_reviews(root),
         ]
     )
