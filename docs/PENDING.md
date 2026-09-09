@@ -14,13 +14,20 @@ gap in the numbering means an entry was finished and removed.
 
 ---
 
-## P-08 — The swappable-stages design is proposed but not started
+## P-08 — The swappable-stages design: the temporal seam is built, the rest is not
 
-`docs/DESIGN_swappable_stages.md` sets out how to add the paper's LSTM stage
-while keeping the current model, and how to make the temporal, graph and
-explanation stages each swappable. Nine commits, each leaving the suite green;
-the riskiest is step 3, where `data/windowing/` stops throwing away 29 of the 30
-cycles and every documented shape moves with it.
+`docs/DESIGN_swappable_stages.md` sets out nine steps. **Steps 1, 2, 3 and 7 are
+done** as of 2026-09-09: `models/temporal/` exists with five stages, `ESTGNN`
+takes one and derives its width from it, `data/windowing/` hands over the whole
+window, and `LSTMStage` builds the paper's Section 2.2 stage. The refactor was
+gated on reproducing the previous five-seed run and did so bit-identically,
+including `best_epoch`. F-16 records what the stage is worth.
+
+**What is not done:** step 4 (a `ModelConfig` digested into the run name, and
+`model.pt` saved per seed), step 5 (`models/spatial/`), step 6 (`raw_window`
+re-measured at today's configuration, F-17), step 8 (`GATStage` and
+`NoSpatialStage`, which would make the paper's "w/o GCN" row of 16.42 addressable
+for the first time), and step 9 (edge and subgraph attributions).
 
 Two defects it turned up along the way, both real and both independent of
 whether the design is ever built:
@@ -40,6 +47,60 @@ a one-time discontinuity that needs a line in the log.
 
 ---
 
+## P-09 — The notebooks and the playground, as agreed 2026-09-09
+
+`notebooks/02_model_fd001.ipynb` is one document doing two jobs in 45 cells:
+it builds and trains the network, and it explains the network with SHAP. It now
+also carries the temporal stage. The agreed shape is a split at the
+**model / explanation** seam rather than by component, because a temporal stage
+without graph layers is not a runnable model and a component notebook could not
+produce a result on its own.
+
+The sequence, each step useful alone:
+
+1. **`03_explaining_fd001.ipynb`** — move section 7 of notebook 02 out and give
+   it room: what a Shapley value is, why this implementation is exact where
+   most are not, what "removing a sensor" means under A-20, dynamic SHAP over
+   cycles, and what an attribution does **not** establish. That last part is
+   the thesis's research gap and currently gets a paragraph.
+2. **Save `model.pt` per seed** in each run directory. Nothing downstream of a
+   trained model can be built without it, and it is two lines in
+   `scripts/train.py`. `TrainingHistory.save()` is also never called, so
+   `epochs`, `batch_size` and `learning_rate` reach no run directory at all.
+3. **`04_what_each_component_is_worth.ipynb`** — reads `reports/`, lays out the
+   matrix of temporal x graph x normalisation, and shows each component's
+   contribution with the seed spread and a paired test. This is the notebook
+   that answers "how does each component affect the result", and it can only be
+   honest if it reads recorded runs rather than training inline.
+4. **A matrix explorer in the documentation site**, beside the four that exist
+   (`#/explore/graph`, `architecture`, `results`, `assumptions`).
+
+**The playground must not train.** This was argued and agreed rather than
+assumed. A number that appears in a browser and is never written to `reports/`
+with its commit cannot be quoted or reproduced (rule 3a, and F-09 is what
+happens when that slips). A UI that answers in ten seconds shows single-seed
+numbers, which rule 3 forbids as a result. And five seeds of `last_cycle` take
+about thirteen minutes, the LSTM far longer, so it is not an interaction loop
+under any design.
+
+The line is **what needs training**:
+
+| Instant, computed on request | Read from `reports/` |
+|---|---|
+| the graph under any choice, with degrees, diameter, reach | RMSE, score, R², ASUE |
+| the architecture for any temporal x graph pair, with real parameter counts | any comparison, with its spread and paired test |
+| preprocessing effects: smoothing, windows, the label ceiling | every number carrying its commit |
+
+**The feature to build it around is the empty cells.** A matrix where the
+unmeasured combinations are visibly blank, each showing the command that would
+fill it. Not "here is a number" but "here is what has been measured, under
+which commit, with what spread, and here is what nobody has run". For a thesis
+that is the panel that answers the examiner's question, and it makes the gaps
+in the experiment a first-class object instead of something a reader has to
+reconstruct.
+
+---
+
 ## P-03 — Results labelled "current default" were measured under the old default
 
 The A-06 reversal changed what "the current default" means, and several tables
@@ -50,6 +111,7 @@ back.
 |---|---|
 | `README.md` | the results table row "**Current default** — z-score, row, no validation split (A-22)" |
 | `docs/learn/02_graphs.md` | "Current default — z-score, row normalisation, nothing held back" |
+| ~~`docs/learn/04_the_pipeline.md`~~ | fixed 2026-09-09: it said the project holds nothing back |
 | `docs/ASSUMPTIONS.md` | F-04's table, A-21's table, A-22's result line, and the A-21 summary row |
 
 None of these numbers is wrong as history. The label is what is wrong: they

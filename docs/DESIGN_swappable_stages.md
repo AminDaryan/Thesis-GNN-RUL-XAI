@@ -1,6 +1,13 @@
 # Swappable temporal, graph and explanation stages
 
-**Status:** proposed, not started. Written 2026-09-09.
+**Status:** partly built. Written 2026-09-09, and steps 1, 2, 3 and 7 of the
+migration in section 6 were carried out the same day: `models/temporal/` with
+five stages, `ESTGNN` taking one and reading its width from it, the pipeline
+handing over the whole window, and the paper's per-sensor LSTM. The step-3
+gate held — the five-seed run reproduced bit-identically, `best_epoch`
+included. Steps 4, 5, 6, 8 and 9 are not built; `docs/PENDING.md` P-08 lists
+them. Everything below is as first written, so read section 6 as the plan it
+was rather than as a record of what happened.
 
 ## What this is
 

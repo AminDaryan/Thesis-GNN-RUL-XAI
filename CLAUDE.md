@@ -131,9 +131,20 @@ facts about the source.
 - **"We measured Z"** — a result; it needs the command that produced it.
 
 Never let one wear the clothes of another. "This reproduces the paper" is a
-claim about all three at once and is almost always wrong here: the LSTM stage is
-not implemented, so results compare against the paper's own **"ESTGNN w/o
-LSTM"** row (14.93 RMSE on FD001), never its headline figures.
+claim about all three at once and is almost always wrong here. **Which
+published row a result may be set beside depends on which temporal stage
+produced it**, and a run records that in its directory name and in
+`summary.json`:
+
+- `--temporal last_cycle`, the default, has no recurrent stage, so it compares
+  against the paper's own **"ESTGNN w/o LSTM"** row (14.93 RMSE on FD001) and
+  never its headline.
+- `--temporal lstm` builds the stage of the paper's Section 2.2, so the
+  headline row (11.78) becomes the right comparison — but only under the size
+  A-26 had to choose, which the paper never states.
+
+Neither is a reproduction. The first omits a stage the paper has; the second
+fills in numbers the paper does not give.
 
 ### 6. Correct errors plainly, including your own
 
@@ -773,7 +784,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 211 tests; must all pass
+pytest                # 216 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -798,15 +809,15 @@ has drifted from the code more than once — see the header of that script.
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing, leaving
-142 passing and 69 skipped. The model, training and explanation tests
+146 passing and 70 skipped. The model, training and explanation tests
 additionally need PyTorch; without it they are not collected at all, so 159
-of the 211 are collected, 158 pass, and one skips — the figure test that
+of the 216 are collected, 157 pass, and two skip — the figure test that
 prints the model's real parameter count.
 
 Both of those counts assume the training runs stored in `reports/`, which are
 not committed. A clone that has none also skips the tests about them: with no
-data and no stored runs, which is what the CI runner has, it is 137 passing
-and 74 skipped.
+data and no stored runs, which is what the CI runner has, it is 141 passing
+and 75 skipped.
 
 If a change touches a notebook, re-execute it before committing, so its stored
 outputs match its code:
