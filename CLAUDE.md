@@ -799,7 +799,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 260 tests; must all pass (one does not yet: see below)
+pytest                # 260 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -833,10 +833,13 @@ not committed. A clone that has none also skips the tests about them: with no
 data and no stored runs, which is what the CI runner has, it is 172 passing
 and 87 skipped; without PyTorch as well, 137 passing and 57 skipped.
 
-Every count above was measured on 2026-09-14, and in each of those settings
-one further test fails: stopping a running playground job does not work on
-Windows. It failed before that day's changes too, and `docs/PENDING.md`
-records it.
+With everything present, all 260 pass (measured 2026-09-14, after the fix
+below). The other counts were measured earlier that day, when one further test
+failed in every setting: stopping a playground job that had just been marked
+running did nothing, because its process did not exist yet. That test needs
+neither the data, nor PyTorch, nor a stored run, so with the fix each of those
+settings should show one more passing test than written above; those settings
+have not been re-measured.
 
 If a change touches a notebook, re-execute it before committing, so its stored
 outputs match its code. The notebooks in `notebooks/xai/` load a stored

@@ -941,17 +941,16 @@ nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
 
-With the data and the stored runs, all 260 tests are collected and 259 pass.
-The one that does not — stopping a running job of the documentation site's
-playground — fails on Windows in every setting, failed before 2026-09-14 too,
-and is recorded in `docs/PENDING.md`. Every count in this section was measured
-on 2026-09-14.
+With the data and the stored runs, all 260 tests are collected and all 260
+pass, measured on 2026-09-14.
 
 The suite covers each preprocessing step, the sensor graph, the network, the
 training loop, the four measures, the Shapley values and occlusion, loading a
 stored run back, and the pipeline end to end. The model, training and
 explanation tests need PyTorch; without it they are not collected at all rather
-than failing, which leaves 195 of the 260 — 191 of those pass and three skip.
+than failing, which leaves 195 of the 260. Measured before the stop fix, 191
+of those passed, three skipped and the stop test failed; it needs no PyTorch,
+so with the fix 192 should pass, not yet re-measured.
 
 `tests/test_examples.py` and `tests/test_examples_torch.py` hold one small
 worked example of each function — the kind of thing that would once have gone
