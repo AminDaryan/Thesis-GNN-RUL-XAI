@@ -128,7 +128,7 @@ popular.
 > This project measured both. Row normalisation came out 0.35 cycles closer to
 > the paper's figure with nothing held back (paired *p* = 0.047), and is the
 > default. The full reasoning, including the fact that the advantage does *not*
-> survive holding engines out, is assumption A-21.
+> survive holding engines out, is in the log (assumption A-21).
 
 ---
 

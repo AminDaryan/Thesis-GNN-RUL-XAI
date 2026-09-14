@@ -339,8 +339,8 @@ Fig. 7 against that figure's axis ticks, which puts it at 125.2. That is a
 measurement made from a figure, not a number the paper printed — and the
 paper's schematic figure appears to disagree with its experimental one.
 
-The full argument, including the disagreement between the two figures, is
-[A-01 in the assumptions log](../../../../docs/ASSUMPTIONS.md).
+The full argument, including the disagreement between the two figures, is in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md) (assumption A-01).
 
 ### A-02 — the ceiling is applied to the test labels too
 
@@ -359,12 +359,12 @@ number it is structurally incapable of producing.
 labels can only move the reported error **favourably**: it removes exactly the
 cases the model was going to be furthest from. So any number from this project
 compared against a published one must carry that caveat. This is settled and
-not up for re-litigation, and the entry is
-[A-02](../../../../docs/ASSUMPTIONS.md).
+not up for re-litigation (assumption A-02 in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md)).
 
-**Do not confuse** these two. A-01 is *where* the ceiling sits. A-02 is *who it
-is applied to*. They are independent choices and either could have gone the
-other way.
+**Do not confuse** these two. The first is *where* the ceiling sits (assumption
+A-01). The second is *who it is applied to* (assumption A-02). They are
+independent choices and either could have gone the other way.
 
 ---
 

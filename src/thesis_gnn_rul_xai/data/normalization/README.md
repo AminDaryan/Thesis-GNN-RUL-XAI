@@ -460,7 +460,7 @@ RuntimeError: Call fit() before transform().
 ```
 
 The related question of *when* in the pipeline the split happens — before or
-after scaling — is a separate recorded choice, **A-25**, and
+after scaling — is a separate recorded choice (assumption A-25), and
 [`pipeline`](../pipeline/README.md) is where it is carried out.
 
 The key idea is: `fit` and `transform` are two methods rather than one because
@@ -479,7 +479,8 @@ mentions operating conditions in its preprocessing at all. Nothing in
 reconstruct.
 
 **What we chose.** `zscore` — subtract the mean, divide by the spread — as the
-default, selected under the rule in A-22. The `minmax_per_condition` option
+default, selected by the rule of taking whichever unspecified option lands
+nearest the paper's own figure (assumption A-22). The `minmax_per_condition` option
 follows Jin et al. (2025) and was the default until 2026-08-29.
 
 **How much it matters — and this is the largest measured effect in the whole
@@ -493,9 +494,9 @@ project.** Five seeds each, everything else identical (commit `09628fa`):
 **3.83 cycles, paired t-test p = 0.0005.** That is 71 % of the entire gap to
 the paper's 14.93, and larger than every other assumption tested combined.
 
-Those numbers are quoted from **F-10** in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md); they were measured on a
-named commit and are not re-derived on this page.
+Those numbers are quoted from
+[the assumptions log](../../../../docs/ASSUMPTIONS.md) (finding F-10); they were
+measured on a named commit and are not re-derived on this page.
 
 **What that means for any number this project reports.** It does not tell us
 what Wen et al. did. It does mean this choice is the single biggest reason a
@@ -505,8 +506,9 @@ belongs next to any result quoted from here.
 ### A-08 — the order of the preprocessing steps
 
 Rescaling sits between smoothing and windowing, and that order is **not** a
-choice: Figure 1 of the paper prints the chain explicitly. The entry is kept
-under its original number, **A-08**, and now records why it is not an
+choice: Figure 1 of the paper prints the chain explicitly. The log keeps the
+entry under the number it was first given (assumption A-08, withdrawn), and it
+now records why it is not an
 assumption — along with a measured caution about what that order does on FD002
 and FD004, where several operating conditions are in play. Read it before
 running this pipeline on those two.

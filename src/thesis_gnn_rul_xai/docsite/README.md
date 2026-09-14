@@ -47,9 +47,9 @@ The usual way to publish documentation is to run a tool that converts a folder
 of Markdown into a folder of HTML, and then serve the HTML. The trouble is that
 the HTML is a *copy*. Edit a Markdown file, forget to run the tool, and the
 website now says something the repository does not. This project has already
-been bitten by a stored copy disagreeing with the code it described — see F-09
-in the assumptions log, where a results file survived that no committed code
-could produce — so a second copy of the documentation was not worth the risk.
+been bitten by a stored copy disagreeing with the code it described — a results
+file survived that no committed code could produce (finding F-09 in the
+assumptions log) — so a second copy of the documentation was not worth the risk.
 
 Reading a file from disk on every request costs a few milliseconds and removes
 the failure mode entirely. There is no build step, nothing to regenerate, and

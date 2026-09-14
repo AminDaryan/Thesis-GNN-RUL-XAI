@@ -23,10 +23,10 @@ window of 30 cycles  ->  temporal stage  ->  graph layers  ->  dense
 ```
 
 By default that stage is `LastCycle`: keep the most recent reading, drop the
-other 29, learn nothing (**A-07**). With `--temporal lstm` it is the paper's
-own stage instead, whose size the paper never states (**A-26**). Finding
-**F-16** measures what the difference is worth, and the answer depends on how
-the model is trained. With this project's procedure — a fifth of the engines
+other 29, learn nothing (assumption A-07). With `--temporal lstm` it is the
+paper's own stage instead, whose size the paper never states, so this project
+chose one (assumption A-26). What the difference is worth has been measured
+(finding F-16), and the answer depends on how the model is trained. With this project's procedure — a fifth of the engines
 held back and the best checkpoint restored — the stage is worth 3.19 cycles on
 FD001, close to the 3.15 the paper's Table 11 prints. With **the paper's own**
 procedure — nothing held back, 200 epochs, the final weights — it is worth 0.77,
@@ -68,8 +68,8 @@ keeping in mind when reading any claim about what the graph contributes.
 
 **The graph layers have no bias term.** The paper's Equations 8 to 10 print
 only a weight matrix, while its dense layers do print a bias, so this project
-follows what is printed. That is assumption A-12, and it is one line to switch
-if someone wants to measure what a bias would change.
+follows what is printed (assumption A-12). It is one line to switch if someone
+wants to measure what a bias would change.
 
 ---
 
@@ -87,12 +87,13 @@ Three consequences follow, and all three are documented choices:
 
 - The **training targets are divided by the ceiling** so they lie in 0 to 1,
   matching what the sigmoid can output. The paper calls its output a
-  "normalized RUL value" without saying by what, so the division is assumption
-  A-13.
+  "normalized RUL value" without saying by what, so the division is this
+  project's choice (assumption A-13).
 - The **test labels are capped** at the same ceiling. Leaving one at 140 would
-  charge the model for an error it cannot avoid. That is A-02, it has been
-  measured, and because it can only move the reported numbers favourably it
-  must be stated whenever they are compared with published ones.
+  charge the model for an error it cannot avoid. The cap is a choice too
+  (assumption A-02), its effect has been measured, and because it can only move
+  the reported numbers favourably it must be stated whenever they are compared
+  with published ones.
 - A test called `test_the_prediction_can_never_exceed_the_ceiling` enforces the
   property, so it cannot be broken by accident.
 
@@ -103,25 +104,26 @@ Three consequences follow, and all three are documented choices:
 The paper's method has four parts: one small recurrent network per sensor, the
 hand-designed graph, three graph convolution layers, and SHAP afterwards.
 
-**This project implements three of the four.** The per-sensor recurrent stage —
-a **long short-term memory** network, or **LSTM**, a kind of network built for
-sequences that keeps an internal memory of what it has already seen — is not
-implemented.
+**This project's default network uses three of the four.** The per-sensor
+recurrent stage — a **long short-term memory** network, or **LSTM**, a kind of
+network built for sequences that keeps an internal memory of what it has
+already seen — is built, but it is not the default (assumption A-11).
 
 The reason is that the paper never states its size, its depth, or how it turns
-a 30-cycle window into the single number Table 4 requires. Any version of it
-would be invention rather than reproduction, and inventing the missing half of
-someone else's method and then reporting the result as a reproduction is
-exactly the failure mode this project is organised to avoid. It is assumption
-A-11.
+a 30-cycle window into the single number Table 4 requires. The version built
+here fills those in with a choice of this project's (assumption A-26), so a
+result from it says what that choice does, not what the paper's stage did.
+Filling in the missing half of someone else's method and then reporting the
+result as a reproduction is exactly the failure mode this project is organised
+to avoid, so the default leaves the stage out and says so.
 
 This has a clean consequence for how results may be compared. The paper
 publishes an ablation table containing a row for its own method **without** the
-LSTM stage, which is precisely this configuration. So:
+LSTM stage, which is precisely the default configuration. So:
 
-> Results from this code compare against the paper's **"ESTGNN w/o LSTM"** row.
-> They are never comparable with its headline figures, and nothing in this
-> repository should be described as "reproducing ESTGNN".
+> Results from the default network compare against the paper's **"ESTGNN w/o
+> LSTM"** row. They are never comparable with its headline figures, and nothing
+> in this repository should be described as "reproducing ESTGNN".
 
 The gap between the two rows in the paper's own table is large, so this is not
 a small omission being waved away — it is a substantial part of the method,
@@ -170,13 +172,15 @@ starting at 1e-3 and ending at 1e-4.
 The paper gives both ends of that rate and never says how it gets between them.
 This project holds 1e-3 for the first half of the run and then drops straight
 to 1e-4 for the second half, so the run only ever uses the two rates the paper
-actually prints — which is assumption A-17. Those two rates are exactly one
-factor of ten apart, and a single drop of that size is what the nearest
-published practice does; no paper on this dataset was found decaying the rate
-exponentially, which is what this project did until 2026-09-01. Two further silences
-are filled here too: the starting values of the weights (A-14, Glorot uniform,
-following the paper that introduced this layer type) and whether to stop early
-(A-18, no — the paper states a fixed 200 epochs).
+actually prints (assumption A-17). Those two rates are exactly one factor of
+ten apart, and a single drop of that size is what the nearest published
+practice does; no paper on this dataset was found decaying the rate
+exponentially, which is what this project did until 2026-09-01. Two further
+silences are filled here too: the starting values of the weights, drawn at
+random from a range set by each layer's size as the paper that introduced this
+layer type does (assumption A-14), and whether to stop early. The paper states a
+fixed 200 epochs; this project stops once the error on the held-back engines has
+not improved for 20 of them, and keeps the best (assumption A-18).
 
 ---
 
@@ -189,8 +193,9 @@ following the paper that introduced this layer type) and whether to stop early
   graph part.
 - The **sigmoid output makes predictions above 125 impossible**, which forces
   the target scaling (A-13) and the test-label cap (A-02).
-- The **LSTM stage is deliberately absent** (A-11), so results compare against
-  the paper's "ESTGNN w/o LSTM" row and never its headline numbers.
+- The **LSTM stage is built but not the default** (A-11), so results from the
+  default compare against the paper's "ESTGNN w/o LSTM" row and never its
+  headline numbers.
 - Shapes and properties are checked aggressively because **a wrong answer in
   this domain still looks plausible**.
 

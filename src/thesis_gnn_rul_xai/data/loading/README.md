@@ -567,7 +567,7 @@ Two things in that table matter later:
 
 - The **shortest test history is 31 cycles.** The window used by
   [`windowing`](../windowing/README.md) is 30, so every FD001 test engine is
-  long enough to yield one window — narrowly. That is finding **F-03**.
+  long enough to yield one window — narrowly (finding F-03).
 - Training histories are longer than test histories throughout, which is what
   you would expect: training engines are recorded to failure and test engines
   are cut off before it.
@@ -582,9 +582,10 @@ follows from the published description of the format.
 
 The choices start immediately afterwards. The `rul` column this file produces
 counts all the way up — 191 for training engine 1 at cycle 1 — and the very
-next step, [`labeling`](../labeling/README.md), stops it at a ceiling. That
-ceiling is **A-01**, and applying it to the test labels as well is **A-02**.
-Both are in [the assumptions log](../../../../docs/ASSUMPTIONS.md).
+next step, [`labeling`](../labeling/README.md), stops it at a ceiling. The
+value of that ceiling and applying it to the test labels as well are both
+choices, and both are in [the assumptions log](../../../../docs/ASSUMPTIONS.md)
+(assumptions A-01 and A-02).
 
 ---
 

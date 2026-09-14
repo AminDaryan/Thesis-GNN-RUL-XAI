@@ -39,13 +39,14 @@ it stopped early, how long it took, and the settings used.
 The model is modified in place. On return it holds the weights of whichever
 epoch the loop selected, not necessarily the last one — see the next section.
 
-## Validation is optional, and it is off by default
+## Validation is optional, and what changes without it
 
 This is the part most likely to trip someone up.
 
 The project's preprocessing settings have a `validation_fraction`, and its
-default value is `0.0`. With that default **no engines are held out at all**,
-and `train` is called with no validation set. When that happens:
+default value is `0.2`: a fifth of the training engines are held out. Setting it
+to `0.0` — which is the paper's arrangement — means **no engines are held out at
+all**, and `train` is called with no validation set. When that happens:
 
 - nothing is scored between epochs;
 - nothing can stop early — every epoch in `epochs` runs;
@@ -157,8 +158,8 @@ where the output can reach them. `ESTGNN.predict_cycles` multiplies by the same
 constant on the way back out, so everything a reader sees is in cycles again.
 
 The constant is the same for every window, so this cannot change any
-comparison. It is nonetheless a decision, because the paper never states it:
-**A-13** in `docs/ASSUMPTIONS.md`.
+comparison. It is nonetheless a decision, because the paper never states it
+(assumption A-13 in `docs/ASSUMPTIONS.md`).
 
 **Three — pair each window with its label, and hand out batches.**
 
@@ -193,8 +194,8 @@ how the rate travels between them. `lr_schedule` offers four ways:
   rates Table 6 actually prints, which happen to be exactly one factor of ten
   apart. This is the closest thing to a published practice: Li, Zhao, Sun, Yan
   and Chen (2021) decay "by multiplying 0.1 in epochs 120 and 160", and no
-  C-MAPSS paper found decays exponentially. See **A-17** and
-  `docs/LITERATURE_BASIS.md`.
+  C-MAPSS paper found decays exponentially (assumption A-17, and
+  `docs/LITERATURE_BASIS.md`).
 - `"exponential"` — multiply by a constant factor after every epoch, chosen so
   the final epoch lands exactly on `final_learning_rate`. This was the default
   until 2026-09-01, when the literature search found nothing supporting it.
@@ -233,29 +234,30 @@ how the rate travels between them. `lr_schedule` offers four ways:
 ## The judgement calls made in this folder
 
 Each of these is a place where the paper does not say what to do and we had to
-choose. All are written up in `docs/ASSUMPTIONS.md` under the codes given.
+choose. All are written up in `docs/ASSUMPTIONS.md` under the codes given in
+parentheses.
 
 - **Scaling the targets.** The paper's final layer is a sigmoid, but it never
   states the arithmetic that turns that number back into flight cycles or what
   the training targets look like. We divide targets by `rul_max` and multiply
-  predictions back by it. That choice is recorded as **A-13**.
+  predictions back by it (assumption A-13).
 
 - **How the learning rate decays.** The paper gives both endpoints and calls it
-  an adaptive schedule, but never the mechanism. We picked exponential decay,
-  with the factor chosen so the last epoch lands exactly on the final rate; the
-  other three options exist so the sensitivity to that choice can be measured.
-  That choice is recorded as **A-17**.
+  an adaptive schedule, but never the mechanism. The default holds the first
+  rate and drops once, straight to the final one, halfway through the run, so
+  only the two rates the paper prints are ever used. Exponential decay was the
+  default until 2026-09-01; it and the other options exist so the sensitivity to
+  that choice can be measured (assumption A-17).
 
 - **Early stopping.** The paper trains for a fixed number of epochs with no
   validation set and no early stopping described. Stopping when the validation
   error has stopped improving, and restoring the best epoch's weights, is a
   deliberate departure from the paper rather than a reconstruction of it, and
-  has to be described that way. That choice is recorded as **A-18**.
+  has to be described that way (assumption A-18).
 
 - **Holding engines out at all.** Whether to have a validation set is itself a
-  departure, since the paper has none. That choice is recorded as **A-06**, and
-  it is the reason validation error and test error must be kept apart, as
-  described above.
+  departure, since the paper has none (assumption A-06), and it is the reason
+  validation error and test error must be kept apart, as described above.
 
 ## Reference
 
@@ -279,8 +281,8 @@ the paper does not state them.
 | `final_learning_rate` | How big they are at the last epoch. Table 6 gives 0.0001. It may not be larger than `learning_rate`; the paper describes a rate that shrinks. |
 | `optimizer` | Only `"adam"` is implemented, which is what Table 6 specifies. Anything else raises rather than quietly substituting. |
 | `loss` | Only `"mse"`, likewise. |
-| `lr_schedule` | How the rate travels between the first value and the last, one of the four above. **A-17.** |
-| `early_stopping_patience` | Stop when the held-out error has not improved for this many epochs, and go back to the best epoch's weights. `None` runs every epoch. **A-18.** |
+| `lr_schedule` | How the rate travels between the first value and the last, one of the options above (assumption A-17). |
+| `early_stopping_patience` | Stop when the held-out error has not improved for this many epochs, and go back to the best epoch's weights. `None` runs every epoch (assumption A-18). |
 | `min_improvement` | How far the held-out error has to fall, in cycles, before it counts as an improvement worth restarting the count for. |
 | `gradient_clip` | A limit on how large one adjustment may be, or `None` to leave them alone. The paper never mentions it, so it is `None` by default and the run matches. |
 | `seed` | Fixes the starting weights and the order the examples are shuffled into. |

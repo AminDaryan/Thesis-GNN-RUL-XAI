@@ -46,8 +46,7 @@ And lower is better, with 0 perfect.
 
 > The paper's Equations 20 and 21 contradict each other on the sign — one of
 > them would reward late predictions. This project follows the NASA convention,
-> which is what the paper's own surrounding text describes. That is assumption
-> A-15.
+> which is what the paper's own surrounding text describes (assumption A-15).
 
 ### R² — coefficient of determination
 
@@ -60,7 +59,7 @@ anything at all, as opposed to how precise it is.
 
 > The paper's Equation 23 puts the predicted values in the denominator, which
 > is not the standard definition and gives a different quantity. This project
-> uses the standard one — assumption A-16.
+> uses the standard one (assumption A-16).
 
 ### ASUE — average safe underestimation error
 
@@ -150,9 +149,9 @@ which is the rule below from another direction.
 
 All three of this project's configuration comparisons were re-measured after a
 correction to the architecture in August 2026, and **two of them reversed
-direction**. Not "shrank" — reversed. F-04 has since reversed a second time,
-under a change to the preprocessing and the split with the architecture held
-fixed.
+direction**. Not "shrank" — reversed. What the physics graph is worth has since
+reversed a second time, under a change to the preprocessing and the split with
+the architecture held fixed.
 
 So a comparison must always name the configuration it was made under, and must
 be re-run whenever anything moves. What the physics graph is worth under one

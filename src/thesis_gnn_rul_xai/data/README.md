@@ -169,7 +169,7 @@ and each is explained in plain terms on the page of the file it lives in.
 | **A-04** | The smoothing strength is 0.5. Section 3.2.3 contradicts itself. | [smoothing](smoothing/README.md) |
 | **A-05** | Windows are taken one cycle apart. Table 6 gives the size, never a stride. | [windowing](windowing/README.md) |
 | **A-06** | A validation set is held out at all. The paper describes none. Validation error and test error are **not** comparable here. | [windowing](windowing/README.md) |
-| **A-07** | Each sensor node carries the last cycle of its window, standing in for the omitted recurrent stage (**A-11**). | [windowing](windowing/README.md) |
+| **A-07** | This folder hands over each sensor's whole window; the model's default stage then keeps its last cycle, standing in for the paper's recurrent stage, which is built but not the default (assumption A-11). | [windowing](windowing/README.md) |
 | **A-08** | The order of the steps — which turned out **not** to be a choice: Figure 1 prints the chain. | [pipeline](pipeline/README.md) |
 | **A-09** | The recursive form of the smoothing filter, matching Equation 18. | [smoothing](smoothing/README.md) |
 | **A-10** | The seventh dropped sensor is NRc. Section 3.2.2 says seven and names six. | [sensors](sensors/README.md) |
@@ -177,8 +177,9 @@ and each is explained in plain terms on the page of the file it lives in.
 | **A-25** | The split is decided before the scaling is fitted. | [pipeline](pipeline/README.md) |
 
 Two observations about the paper, established from data rather than chosen, are
-findings rather than assumptions: **F-03**, that the shortest FD001 test history
-is 31 cycles and so no FD001 engine is affected by A-23, and the fact that
+findings rather than assumptions: that the shortest FD001 test history is 31
+cycles, so no FD001 engine is affected by leaving out engines shorter than the
+window (finding F-03), and the fact that
 **P15** is one of the paper's 14 while carrying only two distinct values in the
 whole FD001 training set — reported on every run rather than quietly corrected.
 

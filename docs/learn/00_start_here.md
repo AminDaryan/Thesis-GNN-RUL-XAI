@@ -43,8 +43,11 @@ are never allowed to blur into each other.
 > specific table, equation or section.
 
 > **We chose Y.** The paper did not specify something, so a choice had to be
-> made. Every one of these has a numbered entry — A-01, A-02 and so on —
-> giving the gap, the choice, the reasoning and how much it matters.
+> made. Every one of these has a numbered entry in `docs/ASSUMPTIONS.md`,
+> giving the gap, the choice, the reasoning and how much it matters. The pages
+> say what each choice is in words and give its number afterwards, in
+> parentheses, as a pointer: "a ceiling of 125 cycles (assumption A-01)". You
+> never need to remember what a number stands for.
 
 > **We measured Z.** A number this code produced. It comes with the command
 > that produced it, and it is an average over at least five random seeds,
@@ -53,7 +56,8 @@ are never allowed to blur into each other.
 Watch for those three shapes as you read. Almost every disagreement about a
 re-implementation turns out to be one of them wearing another's clothes.
 
-There is a fourth label you will meet: a **finding**, numbered F-01 to F-12.
+There is a fourth label you will meet: a **finding**, numbered the same way
+("finding F-01").
 A finding is something learned *about the paper* from the data — for example
 that one of the sensors it includes carries almost no information, or that its
 own tables contradict each other in a particular place. Findings are not

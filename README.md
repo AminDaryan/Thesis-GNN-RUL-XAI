@@ -149,14 +149,18 @@ exist to prevent it.
 
 **Normalisation (rescaling).** Putting different measurements onto a comparable
 numerical scale, so that a temperature near 1400 does not dominate a ratio near
-8 simply because it is a larger number. This project uses **min-max scaling**,
-which maps each sensor's smallest observed value to 0 and its largest to 1:
+8 simply because it is a larger number. This project uses the **z-score**,
+which subtracts each sensor's mean and divides by its standard deviation, the
+typical size of its spread, so that a rescaled reading says how many spreads it
+lies from that sensor's average:
 
-$$\text{scaled} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}$$
+$$\text{scaled} = \frac{x - \bar{x}}{s}$$
 
-with the minimum and maximum taken from the training engines only, and
-separately for each operating condition. `zscore` is available as an
-alternative. See assumption A-03.
+with the mean $\bar{x}$ and the standard deviation $s$ taken from the training
+engines only. Min-max scaling, which maps each sensor's smallest training value
+to 0 and its largest to 1 separately for each operating condition, is available
+as an alternative and was the default until 2026-08-29. The paper describes
+neither, so either one is this project's choice (assumption A-03).
 
 **Exponentially weighted moving average (EWMA).** The filter used to damp
 measurement noise. Each smoothed value is a blend of the current reading and
@@ -165,15 +169,21 @@ the previous smoothed value:
 $$S_t = \alpha X_t + (1 - \alpha) S_{t-1}, \qquad S_1 = X_1, \qquad \alpha = 0.5$$
 
 Because it only ever looks backwards, it cannot leak a future reading into the
-present. See assumptions A-04 and A-09.
+present. The strength 0.5 is this project's reading of a sentence the paper
+prints ambiguously (assumption A-04). The paper's Equation 18 is the recursive
+formula above; the software library used here can also compute a variant that
+treats the first few readings differently, and the recursive one is used
+(assumption A-09).
 
 **Graph convolution.** The operation each of the three network layers performs:
 
-$$H' = \mathrm{ReLU}\left(\hat{A} H W\right), \qquad \hat{A} = D^{-1/2} (A + I) D^{-1/2}$$
+$$H' = \mathrm{ReLU}\left(\hat{A} H W\right), \qquad \hat{A} = D^{-1} (A + I)$$
 
 `H` holds the current node features, `W` is learned, and `Â` is the fixed
-sensor graph with self-loops added and each edge divided by the degrees it
-joins. See assumption A-21.
+sensor graph with each sensor also joined to itself and each row divided by its
+own total, so that every sensor receives the average of itself and its
+neighbours. The paper never prints which rescaling of the graph it uses; this
+one is this project's choice (assumption A-21).
 
 **Piecewise-linear RUL.** The target. While an engine is healthy the label is
 held at a ceiling; after that it falls by one per cycle:
@@ -181,7 +191,8 @@ held at a ceiling; after that it falls by one per cycle:
 $$\mathrm{RUL}(t) = \min\left(T_{\text{total}} - t,\; \mathrm{RUL}_{\max}\right),
 \qquad \mathrm{RUL}_{\max} = 125$$
 
-See assumption A-01.
+The paper prints the formula but not the value 125, which is this project's
+choice (assumption A-01).
 
 **Time window.** A short, fixed-length slice of an engine's history, for
 example 30 consecutive cycles. Windows are what the model actually receives,
@@ -277,19 +288,22 @@ therefore a re-implementation from the text alone.
 
 ### An important limit on what this code can claim
 
-The paper does not specify everything needed to rebuild it. Eleven separate
-choices had to be made here rather than read from the paper, including the
-value of the label ceiling, the entire input rescaling procedure, and the
-configuration of the LSTM networks. Every one is documented, with its
-justification and its likely effect, in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md).
+The paper does not specify everything needed to rebuild it. The choices made
+here rather than read from the paper include the value of the label ceiling,
+the entire input rescaling procedure, and the size of the LSTM networks.
+[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records 27 of them, each with its
+justification and its measured or argued effect; one has since been withdrawn,
+because the paper turned out to state it.
 
 Nothing in this repository should be described as "reproducing ESTGNN".
 **Which published row a result may be set beside depends on which temporal stage
 produced it**, and every run records that. With the default stage there is no
 recurrent network, so the comparison is the **"ESTGNN w/o LSTM"** row of the
 paper's own ablation table (their Table 11). With `--temporal lstm` the paper's
-headline row becomes the right comparison instead. See assumptions A-11 and A-26,
-and finding F-16.
+headline row becomes the right comparison instead, but only under a size of
+recurrent network the paper never states (assumptions A-11 and A-26), and what
+the stage is worth depends on whether the best pass's weights are kept
+(finding F-16).
 
 ---
 
@@ -489,7 +503,8 @@ The feature array has shape `(examples, 14, 30)`: for each example, 14 sensors,
 each carrying its whole 30-cycle window. The model's temporal stage turns that
 into the `[batch, 14, 1]` its first graph layer takes, which is the input shape
 printed in the paper's Table 4. Under the default stage that one number is the
-most recent reading of the window. See assumption A-07.
+most recent reading of the window, a stand-in for the paper's recurrent stage
+(assumption A-07).
 
 ---
 
@@ -998,20 +1013,23 @@ regardless of how good they look.
 **The LSTM stage is not the default.** The paper places one LSTM per sensor
 before the graph layers, but never states its size, its depth, or how it
 reduces a 30-cycle window to the single number its Table 4 requires. Those three
-are now assumption **A-26** rather than a reason not to build it: `models/temporal/`
-holds the stage, with the fourteen dedicated networks the paper does state, and
-`--temporal lstm` trains it. What has **not** changed is that a run without it
-compares against the "w/o LSTM" row, and that is still what the default does. The paper publishes
-this exact configuration itself, as the "ESTGNN w/o LSTM" row of its ablation
-table. Comparisons must be made against that row. See assumption A-11.
+are now choices this project made (assumption A-26) rather than a reason not to
+build it: `models/temporal/` holds the stage, with the fourteen dedicated
+networks the paper does state, and `--temporal lstm` trains it. What has **not**
+changed is that a run without it compares against the "w/o LSTM" row, and that
+is still what the default does (assumption A-11). The paper publishes this exact
+configuration itself, as the "ESTGNN w/o LSTM" row of its ablation table.
+Comparisons must be made against that row.
 
 **Only FD001 is handled so far.** The per-condition *scaler* is written and
 tested, but the pipeline is not yet ready for FD002 or FD004. The paper's own
 step order (Fig. 1) smooths in raw physical units before the per-condition
 scaling removes the jumps between flight conditions, which blends readings from
 different conditions together. On FD001 there is one condition and the order is
-harmless; on FD002 and FD004 it collapses the wear signal. See A-08. FD003 has a
-single operating condition and should work as-is, but has not been run.
+harmless; on FD002 and FD004 it collapses the wear signal. That order was once
+logged as a choice of this project and withdrawn when Fig. 1 turned out to state
+it; the measurement on FD002 is kept in the same entry (assumption A-08). FD003
+has a single operating condition and should work as-is, but has not been run.
 
 **The published numbers have not been reproduced, and exact agreement is not
 a realistic target.** The paper's preprocessing is not fully described, its

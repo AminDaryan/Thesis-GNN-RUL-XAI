@@ -33,8 +33,8 @@ least three distinct values?
 
 This step **only reports**. It never changes which sensors are used. It exists
 so the paper's selection can be checked against the data rather than taken on
-trust — and it is what turned up finding F-01, that `P15` takes only two
-distinct values yet is kept by the paper.
+trust — and it is what turned up that `P15` takes only two distinct values
+yet is kept by the paper (finding F-01).
 
 ## 3 — Select
 
@@ -57,9 +57,10 @@ The same ceiling is applied to the **test** labels as well. That is worth
 stating plainly, because it moves the reported numbers in the model's favour.
 The network's final layer is a sigmoid multiplied by the ceiling, so it is
 structurally incapable of predicting more than 125; leaving a test label at 140
-would charge the model for an error it cannot avoid. Applying the cap is
-assumption A-02, its effect has been measured, and the fact that it flatters the
-numbers must be repeated whenever they are compared with published ones.
+would charge the model for an error it cannot avoid. Applying the cap is this
+project's choice (assumption A-02), its effect has been measured, and the fact
+that it flatters the numbers must be repeated whenever they are compared with
+published ones.
 
 ## 5 — Smooth *(leakage-critical)*
 
@@ -87,7 +88,8 @@ Two things make this step safe, and both are enforced by tests:
   concatenated data would blend the end of one engine's life into the start of
   the next.
 
-The strength $\alpha = 0.5$ is assumption A-04. The paper's own sentence on
+The strength $\alpha = 0.5$ is this project's reading of the paper (assumption
+A-04). The paper's own sentence on
 this is self-contradictory — it attaches the number 0.5 to the previous
 *smoothed value* rather than to the smoothing parameter — and reading it as the
 parameter is the only interpretation under which the sentence means anything.
@@ -111,8 +113,8 @@ reverses a decision taken on 2026-08-29 to hold nothing back. The paper
 describes no held-out set and trains a fixed 200 epochs, so holding engines out
 — and restoring the best-validation checkpoint, and stopping early — are all
 additions to it. Measured over five seeds they are worth 0.32 cycles, which the
-seed-to-seed spread cannot distinguish from zero (*p* = 0.234). See A-06, A-18
-and A-22.
+seed-to-seed spread cannot distinguish from zero (*p* = 0.234; assumptions
+A-06, A-18 and A-22).
 
 ## 7 — Rescale *(leakage-critical)*
 
@@ -126,12 +128,13 @@ engines. A mean or a standard deviation computed over the test set is
 information from the future leaking backwards.
 
 The paper **never describes its input scaling at all** — not the method, not
-where the statistics are fitted. This project uses z-scores, chosen under the
-rule recorded in A-22, and the choice is worth 3.83 cycles against the
-per-condition min-max scaling used by a closely related paper. That makes it
-the largest measured effect of any single choice in the project, and it is
-recorded as finding F-10: the input scaling the paper never describes accounts
-for most of the remaining gap to its reported figure.
+where the statistics are fitted. This project uses z-scores, chosen by its rule
+of taking whichever unspecified option lands nearest the paper's own figure
+(assumption A-22), and the choice is worth 3.83 cycles against the
+per-condition min-max scaling used by a closely related paper. That makes it the
+largest measured effect of any single choice in the project: the input scaling
+the paper never describes accounts for most of the remaining gap to its
+reported figure (finding F-10).
 
 ## 8 — Window
 
@@ -146,7 +149,7 @@ pipeline produces **17 731 examples**.
 
 The window length of 30 comes from the paper's Table 6. How far the window
 moves between examples does not appear in the text; a stride of one cycle is
-assumption A-05.
+this project's choice (assumption A-05).
 
 Test engines get exactly **one** window each — the last 30 cycles before the
 cut-off — because there is one true label per test engine. That gives 100 test
@@ -171,9 +174,10 @@ This follows from the paper's own Table 4, which prints an input of
 `[batch, 14, 1]` and a first weight matrix in $\mathbb{R}^{1 \times 32}$. In
 the paper's full method that single number per sensor is produced by a small
 recurrent network that reads the 30-cycle window and summarises it. This
-project does not implement that stage — see the next page — so each sensor node
+project builds that stage but does not use it by default — see the next page — so
+each sensor node
 carries **the last cycle of its window** instead, which keeps Table 4's shape
-exactly. That is assumption A-07.
+exactly (assumption A-07).
 
 It is worth dwelling on, because getting it wrong is easy and expensive. An
 earlier version of this project let each node carry all 30 cycles. That made the

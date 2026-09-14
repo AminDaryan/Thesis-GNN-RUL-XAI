@@ -48,6 +48,13 @@ The identifier then appears in the code at the point of use, in a comment that
 first and last rate but never how it gets between them" — everything needed,
 without leaving the file.
 
+The same holds in every document written for a reader. A number like `A-17` is
+a pointer to where a choice is argued, never a word in its own right: a sentence
+says what the choice is, and the number follows in parentheses, "one drop of
+the learning rate at the halfway pass (assumption A-17)". Nobody should need to
+remember what 27 assumptions are called to follow a sentence.
+`python scripts/check_prose.py` fails when a number is used as a word.
+
 ### "We measured Z" — a result
 
 A number this code produced, with the command that produced it, averaged over
@@ -61,7 +68,7 @@ re-derived.
 
 ## Assumptions are ours; findings are the paper's
 
-There is a fourth label, `F-01` through `F-12`, and keeping it separate from
+There is a fourth label, `F-01` through `F-16`, and keeping it separate from
 `A-xx` is the point.
 
 An **assumption** is a choice this project made. A **finding** is something
@@ -71,19 +78,19 @@ central thing a re-implementation study must not do.
 
 A few of the findings, to show the range:
 
-- **F-01** — `P15` is in the paper's graph but takes only two distinct values
-  in the training data.
-- **F-07** — the paper's own stated construction rules for its graph require an
-  edge that its printed matrix does not contain.
-- **F-08** — the paper's Table 12 cannot hold signed Shapley values, given what
-  it reports elsewhere.
-- **F-10** — the input scaling the paper never describes accounts for most of
-  the remaining gap between its figure and this reproduction's.
-- **F-11** — the paper's Conclusions claim a "highest R²" that its own Table 9
-  refutes.
-- **F-12** — none of the twelve neighbouring papers on this benchmark gives a
-  graph node a single number; the smallest node feature any of them uses is
-  thirty wide.
+- **`P15` is in the paper's graph but takes only two distinct values** in the
+  training data (finding F-01).
+- **The paper's own stated construction rules for its graph require an edge
+  that its printed matrix does not contain** (finding F-07).
+- **The paper's Table 12 cannot hold signed Shapley values**, given what it
+  reports elsewhere (finding F-08).
+- **The input scaling the paper never describes accounts for most of the
+  remaining gap** between its figure and this reproduction's (finding F-10).
+- **The paper's Conclusions claim a "highest R²" that its own Table 9 refutes**
+  (finding F-11).
+- **None of the twelve neighbouring papers on this benchmark gives a graph node
+  a single number**; the smallest node feature any of them uses is thirty wide
+  (finding F-12).
 
 None of those is a criticism dressed as a result. Each is a checkable statement
 about a published document, recorded because a reader comparing the two needs

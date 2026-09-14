@@ -125,22 +125,24 @@ have, so the sizes are checked and a mismatch is named rather than absorbed.
 
 ### One number per sensor, and why 30 would be wrong
 
-Each node carries a single number. Table 4 prints the input to the first graph
-layer as `[batch, 14, 1]` with a weight matrix of shape `1 × 32`. In the paper,
-that number is the output of a per-sensor LSTM — but the paper never states
-that LSTM's hidden size, its depth, or how it reduces a 30-cycle window to one
-number. This project leaves that stage out rather than invent it, and feeds
-each node the most recent reading of its window instead. Those two decisions
-are recorded as **A-11** (omit the LSTM stage) and **A-07** (use the last cycle
-of the window) in `docs/ASSUMPTIONS.md`.
+Each node carries a single number into the graph layers. Table 4 prints the
+input to the first graph layer as `[batch, 14, 1]` with a weight matrix of
+shape `1 × 32`. In the paper, that number is the output of a per-sensor LSTM —
+but the paper never states that LSTM's hidden size, its depth, or how it reduces
+a 30-cycle window to one number. The pipeline hands the model each sensor's
+whole window, and a **temporal stage** in front of the graph layers, from
+`models/temporal/`, reduces it to that one number. The default stage keeps the
+most recent reading of the window (assumption A-07), so the paper's LSTM stage
+is not the default (assumption A-11); `LSTMStage` builds it when asked.
 
-The `ESTGNN` constructor still accepts any `in_features`, because the model
-should not hard-code a number the data pipeline decides. **Do not read that as
-an invitation to pass 30.** Handing each node its whole 30-cycle window makes
-the first weight matrix `30 × 32`, which is 32 learned linear filters over
-time, shared across sensors. That is a temporal encoder — exactly the thing
-A-11 declines to invent — hidden inside a layer that is not labelled as one. It
-is not the configuration this project runs.
+The first graph weight matrix takes its width from the stage, not from the
+data. **A stage that hands the graph layers more than one number per sensor
+without learning anything across the cycles is refused.** Handing each node its
+whole 30-cycle window unchanged would make the first weight matrix `30 × 32`,
+which is 32 learned linear filters over time, shared across sensors: a temporal
+encoder hidden inside a layer that is not labelled as one. It is not the
+configuration this project runs, and building it on purpose needs
+`allow_time_in_the_graph_layer=True`, which records the choice.
 
 Only the first graph layer depends on `in_features` anyway. GCN-2 and GCN-3
 take their widths from the layer before them.
@@ -158,14 +160,14 @@ Two things follow, and both matter:
    A sigmoid cannot leave `[0, 1]`, so a network trained against targets
    measured in cycles could never reach a label of 40, let alone 125. The
    division is not a preference; it is the only scaling that puts the targets
-   where the output layer can reach them. That decision is recorded as **A-13**
-   in `docs/ASSUMPTIONS.md`. The division happens in `training/run.py`; the
+   where the output layer can reach them. The paper implies it without printing
+   it (assumption A-13). The division happens in `training/run.py`; the
    multiplication back into cycles happens here, in `ESTGNN.predict_cycles`.
 
 2. **The model can never predict a remaining life above `rul_max`, for any
    input at all.** This is a hard fact about the architecture, not a tendency.
    It is why the project also caps the official test labels at 125 before
-   scoring — a decision recorded as **A-02** — because leaving them uncapped
+   scoring (assumption A-02), because leaving them uncapped
    would charge the model for an error its own architecture forbids it from
    avoiding. Whenever a number from this project is quoted, the cap has to be
    quoted with it.
@@ -185,21 +187,22 @@ model's headline 11.78.
 With **`lstm`**, the stage of the paper's Section 2.2 is present, so the headline
 row becomes the right comparison. Even then it is not a reproduction: the
 paper states how many recurrent networks there are and what goes into each, and
-never states their size, so A-26 had to choose one. F-16 records what the stage
-is worth when it is trained.
+never states their size, so this project had to choose one (assumption A-26).
+What the stage is worth when trained depends on whether the best pass's weights
+are kept, which the paper never describes (finding F-16).
 
 ## Judgement calls made in this folder
 
 Each of these is a place where the paper does not say what to do and we had to
-choose. The full reasoning for every one is in `docs/ASSUMPTIONS.md` under the
-code given.
+choose. The full reasoning for every one is in `docs/ASSUMPTIONS.md`, under the
+code given in parentheses.
 
 - **The graph layers carry no bias.** The paper's Equations 8 to 10 show only
   the weight matrix `W`, while Equations 12 and 13, describing the dense
   layers, print an explicit bias. Within the same short section it prints
   biases where it means them, so the omission reads as deliberate. We follow
   the equations as printed. `GraphConvolution` takes `bias=True` so the
-  difference can be measured rather than argued about. This is **A-12**.
+  difference can be measured rather than argued about (assumption A-12).
 - **The starting weights are drawn using the Glorot rule.** Training has to
   begin from somewhere, and the weights start as random numbers. The Glorot
   rule sets how wide a range to draw them from, based on how many numbers enter
@@ -210,12 +213,13 @@ code given.
   Kipf and Welling (2017) use for this exact layer, so it is what is used here.
   PyTorch calls the same rule `xavier_uniform_`, after Xavier Glorot who
   proposed it — the two names refer to one method, not two. The dense layers
-  keep PyTorch's own default instead. This is **A-14**.
-- **The LSTM stage is off by default** (**A-11**), and when it is off **each node
-  carries the last cycle of its window** (**A-07**) — both explained above. Its
-  size is **A-26**.
-- **Targets are divided by the label ceiling** (**A-13**) and **test labels are
-  capped at the same ceiling** (**A-02**) — both explained above. The code for
+  keep PyTorch's own default instead (assumption A-14).
+- **The LSTM stage is off by default** (assumption A-11), and when it is off
+  **each node carries the last cycle of its window** (assumption A-07) — both
+  explained above. Its size, when it is on, is a choice too (assumption A-26).
+- **Targets are divided by the label ceiling** (assumption A-13) and **test
+  labels are capped at the same ceiling** (assumption A-02) — both explained
+  above. The code for
   those two lives mostly outside this folder, but the reason for them is the
   sigmoid defined here.
 
@@ -237,11 +241,13 @@ enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
 | Argument | What it is |
 |---|---|
 | `adjacency` | The sensor graph, **already through `normalize_adjacency()`**. A grid with a zero anywhere on its diagonal is rejected, because that means it has not been through it. |
-| `in_features` | How many numbers each sensor carries. Defaults to 1, which is what Table 4 prints and what the preprocessing produces. Read the warning above before passing anything else. |
+| `temporal` | The temporal stage from `models/temporal/` that turns each sensor's window into what the graph layers read. When it is left out, the model builds `LastCycle(window_size)`. The first graph layer takes its width from the stage. |
+| `window_size` | How many cycles each sensor's window holds, used only when `temporal` is left out. Defaults to 1, which makes the default stage pass the single reading straight through, so `ESTGNN(adjacency)` alone is exactly Table 4. |
+| `allow_time_in_the_graph_layer` | Defaults to `False`, which refuses a stage that puts more than one number per sensor on the graph layers without learning anything across the cycles. Read the section on one number per sensor above before setting it. |
 | `rul_max` | The label ceiling, used to turn the network's output back into flight cycles. Defaults to 125. |
 | `gcn_hidden` | How wide each graph convolution is. Defaults to Table 4's `(32, 64, 32)`. |
 | `fc_hidden` | How wide the first fully connected layer is. Table 4 gives 128. |
-| `gcn_bias` | Whether the graph convolutions carry a bias. Defaults to `False`; see **A-12** above. |
+| `gcn_bias` | Whether the graph convolutions carry a bias. Defaults to `False`, as explained above (assumption A-12). |
 
 | Method | What it does |
 |---|---|
@@ -262,7 +268,7 @@ card, but no amount of training will alter it.
 |---|---|
 | `in_features` | How many numbers each sensor carries coming in. |
 | `out_features` | How many it carries going out. |
-| `bias` | Whether to add a learned offset after the multiplication. Defaults to `False`; see **A-12** above. |
+| `bias` | Whether to add a learned offset after the multiplication. Defaults to `False`, as explained above (assumption A-12). |
 
 `forward(features, adjacency)` takes the readings shaped
 `(batch, sensors, in_features)` and the rescaled graph shaped

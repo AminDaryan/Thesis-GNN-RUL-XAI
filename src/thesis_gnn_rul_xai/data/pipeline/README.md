@@ -175,9 +175,10 @@ That is a real argument, not a hand-wave: `apply_piecewise_rul` writes only
 Two operations that touch disjoint columns commute.
 
 Note also that the test labels are capped only `if config.clip_test_labels` —
-that switch is **A-02**, and it can only move reported error favourably.
+capping them at all is this project's choice (assumption A-02), and it can only
+move reported error favourably.
 
-### Step 6 — the split happens *before* anything is measured (A-25)
+### Step 6 — the split happens *before* anything is measured
 
 This is the step whose placement matters most, and it sits where it does on
 purpose:
@@ -192,7 +193,8 @@ train_units, validation_units = split_units_by_id(
 
 Figure 1 of the paper prints the reverse order — normalisation, *then* the train
 and test datasets — and never says which engines the scaling is fitted on.
-Deciding the split first is **A-25**, and the reason is the one from
+Deciding the split first is this project's choice (assumption A-25), and the
+reason is the one from
 [`normalization`](../normalization/README.md): if the split happened after
 fitting, the held-back engines would have helped decide the mean and the spread,
 and their error would then look better than it really is.
@@ -285,7 +287,7 @@ Two things to read there. The rescaled row sums to exactly 1, which is what
 "row" normalisation means. And position 0 of the rescaled row is `0.125` where
 the raw row had `0` — the rescaling adds a connection from each sensor to
 itself, so there are 8 entries of 0.125 rather than 7. Which rescaling formula is
-used is **A-21**.
+used is this project's choice (assumption A-21).
 
 ---
 
@@ -430,11 +432,12 @@ with the data, so it cannot be re-derived wrongly later.
 
 ## The judgement calls recorded in this file
 
-### A-08 — the order of the steps is the paper's, not ours
+### The order of the steps is the paper's, not ours
 
 This one turned out **not** to be a choice. Figure 1 of the paper prints the
-chain explicitly, so the pipeline follows it. The entry is kept under its
-original number, **A-08**, and now records why it is not an assumption — plus a
+chain explicitly, so the pipeline follows it. The log keeps the entry under the
+number it was first given (assumption A-08, withdrawn), and it now records why
+it is not an assumption — plus a
 measured caution about what that order does on the multi-condition sub-datasets
 FD002 and FD004. Read it before running this pipeline on those two.
 

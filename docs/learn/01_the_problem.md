@@ -95,7 +95,7 @@ sensor, `P15`, which takes only two distinct values across the whole training
 set. The paper *keeps* `P15`. This project keeps it too — the sensor graph is
 defined over the paper's fixed set of 14, and quietly changing the selection
 would make the reproduction something else — but the observation is recorded as
-a finding, F-01, rather than swept up.
+a finding rather than swept up (finding F-01).
 
 ---
 
@@ -126,7 +126,7 @@ unstated. 125 was arrived at three ways: by reading it off the true-RUL curve
 in one of the paper's own figures at high magnification, by matching the
 paper's description of predictions holding "around 125" while an engine is
 healthy, and by noting that closely related work on the same dataset uses the
-same value. It is recorded as assumption A-01.
+same value. The choice is recorded with that reasoning (assumption A-01).
 
 That is the first judgement call of the path, and it is a fair example of the
 rest: the paper is specific about the shape of the thing and silent about a
@@ -143,8 +143,7 @@ number the shape needs.
 - **FD001** holds 100 training engines run to failure and 100 test engines cut
   off partway, with lifetimes spread from 128 to 362 cycles.
 - **14 of 21 sensors** are used; six of the seven dropped ones are provably
-  flat in the data, and a seventh flat sensor is kept anyway, which is finding
-  F-01.
+  flat in the data, and a seventh flat sensor is kept anyway (finding F-01).
 - The label is **held at a ceiling of 125** while the engine is healthy, and
   that ceiling is a choice this project had to make (A-01).
 

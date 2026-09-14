@@ -48,7 +48,7 @@ Data Challenge that the paper cites.
 The two printed equations are inconsistent with each other. We implement the
 intent the paper states in words, which is also the standard function every
 other paper on this dataset uses, so that our numbers can be compared with
-theirs. That choice is recorded as A-15 in `docs/ASSUMPTIONS.md`.
+theirs (assumption A-15 in `docs/ASSUMPTIONS.md`).
 
 ## The four measures
 
@@ -98,8 +98,8 @@ its output more widely, without becoming any more accurate. Predicting
 `[-5, 15, 35, 55]` for a truth of `[10, 20, 30, 40]` is no better than
 predicting the mean — the standard formula scores it 0.0 — but the paper's
 version scores it 0.75. We use the standard definition, which is also what the
-text beside the equation describes. That choice is recorded as A-16 in
-`docs/ASSUMPTIONS.md`.
+text beside the equation describes (assumption A-16 in
+`docs/ASSUMPTIONS.md`).
 
 `r_squared` raises a `ValueError` when every true label is the same value,
 because the denominator is then zero and the measure is undefined.
@@ -150,13 +150,13 @@ rejects three things:
 Both are cases where the paper contradicts itself and we had to pick a side.
 Full write-ups are in `docs/ASSUMPTIONS.md`.
 
-- **A-15 — the sign of the score function.** The paper's Equation 20 and
-  Equation 21 imply the opposite penalty direction from the one its own prose
-  and the cited 2008 NASA challenge describe. We follow the prose and the
-  challenge, so late (optimistic) predictions are punished harder.
-- **A-16 — the denominator of R-squared.** The paper's Equation 23 puts the
-  predicted values in the denominator, which is not the coefficient of
-  determination. We use the standard formula, with the observed values.
+- **The sign of the score function.** The paper's Equation 20 and Equation 21
+  imply the opposite penalty direction from the one its own prose and the cited
+  2008 NASA challenge describe. We follow the prose and the challenge, so late
+  (optimistic) predictions are punished harder (assumption A-15).
+- **The denominator of R-squared.** The paper's Equation 23 puts the predicted
+  values in the denominator, which is not the coefficient of determination. We
+  use the standard formula, with the observed values (assumption A-16).
 
 ## References
 

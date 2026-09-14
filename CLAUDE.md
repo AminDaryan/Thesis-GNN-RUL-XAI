@@ -208,6 +208,18 @@ to anyone. `python scripts/check_prose.py` catches this specific list; it
 cannot judge whether writing is clear, so it is a floor and not a substitute
 for the check above.
 
+**A numbered code is a pointer, never a word.** `A-07`, `F-16`, `P-09` and
+`D-3` mean nothing to someone who has not memorised the log. In anything written
+for a reader — the READMEs, `docs/learn/`, the notebooks, and replies in
+conversation — say the thing in words, then put the code after it in
+parentheses: "each sensor passes on its most recent reading (assumption A-07)".
+Never "F-16 shows", "under A-20" or "see A-06". A pending-work number (`P-xx`)
+never appears in a reader's document at all, because its entry is deleted when
+the work is done and the pointer would lead nowhere. `check_prose.py` fails on
+a code used as a word in those documents; in conversation nothing enforces it
+but this paragraph. The author raised this three times before it was written
+here, the last on 2026-09-14.
+
 Second half of the check: **a claim about how something works needs a worked
 example with real numbers.** "A column of the weight matrix is a list of
 multipliers" explains nothing on its own. Load the real data, print the actual

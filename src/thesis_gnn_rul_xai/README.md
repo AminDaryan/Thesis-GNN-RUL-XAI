@@ -139,7 +139,7 @@ hard-to-find cause of wrong results.
 
 **The settings are checked as soon as the object is built.** `__post_init__`
 validates the subset name, the window size and stride, the label ceiling, the
-smoothing strength, the two graph options and the validation fraction. Catching
+smoothing strength, the graph options and the validation fraction. Catching
 an impossible configuration there, before any data is touched, gives a clear
 error message instead of a confusing failure deep inside the pipeline.
 
@@ -147,14 +147,15 @@ error message instead of a confusing failure deep inside the pipeline.
 
 ## The judgement calls made in this folder
 
-Each of these is a place where the paper does not say what to do. The short
-code (`A-05`, `A-19`, and so on) is the entry in `docs/ASSUMPTIONS.md` that
-gives the full reasoning. Two of the entries mentioned below are not choices
-about this project but observations about the paper: `A-22` records the rule
-used to pick among settings the paper leaves open — choose the option that
-lands nearest the paper's own reported figure — and `F-10` is a measurement
-showing that the undescribed input scaling accounts for most of the remaining
-gap to that figure.
+Each of these is a place where the paper does not say what to do. The code in
+parentheses after each one (such as "assumption A-05") points at the entry in
+`docs/ASSUMPTIONS.md` that gives the full reasoning; nothing here needs it to
+be understood.
+
+Several of these settings were not chosen independently. Where the paper is
+silent, the author's rule was to pick the option that lands nearest the
+paper's own reported error (assumption A-22), so those settings are not
+independent of the figure they are compared with.
 
 - **The label ceiling is 125 cycles.** RUL labels are capped, so an engine that
   is still healthy is simply labelled "125 cycles left". The paper defines this
@@ -162,18 +163,18 @@ gap to that figure.
   read off the True RUL curve of the paper's Fig. 7; it also matches Section
   4.2, which describes predictions holding "around 125" while an engine is
   healthy, and it is the value used by the closely related work of Jin et al.
-  (2025) on the same dataset. Recorded as **A-01**.
+  (2025) on the same dataset (assumption A-01).
 
 - **The window stride is 1 cycle.** A training example is 30 consecutive flight
   cycles (the paper's Table 6). How far the window moves between one example
   and the next is never stated. A stride of 1 produces the largest number of
-  training examples and is the usual choice on C-MAPSS. Recorded as **A-05**.
+  training examples and is the usual choice on C-MAPSS (assumption A-05).
 
 - **Sensor values are rescaled with z-scores.** The paper never describes its
-  input scaling at all. The default here was picked under the rule in A-22, and
-  it is worth 3.83 cycles against the per-condition min-max scaling of Jin et
-  al. (2025) — the largest measured effect of any single choice in the project.
-  Recorded as **A-03**, with the measurement in **F-10**.
+  input scaling at all. The default here was picked by the nearest-to-the-paper
+  rule above, and it is worth 3.83 cycles against the per-condition min-max
+  scaling of Jin et al. (2025) — the largest measured effect of any single
+  choice in the project (assumption A-03, measured in finding F-10).
 
 - **The smoothing strength is 0.5.** Sensor traces are passed through an
   exponentially weighted moving average filter, whose one parameter runs from

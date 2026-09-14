@@ -84,8 +84,8 @@ resulting numbers mean.
 
 The paper does not say what stand-in it uses. We replace an absent sensor's
 reading with that sensor's average across the training windows, so the model
-sees "this sensor is behaving typically" rather than some arbitrary value. That
-choice is recorded as A-20 in `docs/ASSUMPTIONS.md`.
+sees "this sensor is behaving typically" rather than some arbitrary value
+(assumption A-20 in `docs/ASSUMPTIONS.md`).
 
 **Why zero would be the obvious alternative, and why that is a trap.** The
 temptation is to feed a sensor 0 when it is left out. Whether that is safe
@@ -100,7 +100,8 @@ depends entirely on the rescaling, not on the baseline:
   means "exactly average" — the number zero is the training mean, and the zero
   baseline agrees with the mean window almost exactly (Spearman +0.996).
 
-A-20 records both measurements. The point it draws from them is that a SHAP
+The log records both measurements (assumption A-20). The point it draws from
+them is that a SHAP
 baseline cannot be justified on its own — only against the scaling in force —
 and the mean window is kept because it is the one choice defensible under
 either. Wen et al. state neither their baseline nor their scaling.
@@ -135,17 +136,17 @@ engine, sensors down the side, time steps across, though its columns are
 labelled `G1`, `G2` and so on instead of by cycle.
 
 The *contents* are not comparable. Our values are signed and measured in flight
-cycles. The paper's cannot be: finding F-08 in `docs/ASSUMPTIONS.md` shows that
-Table 12's contents cannot be signed Shapley values satisfying the paper's own
-Equation 14. Do not place the two side by side without saying so.
+cycles. The paper's cannot be: Table 12's contents cannot be signed Shapley
+values satisfying the paper's own Equation 14 (finding F-08 in
+`docs/ASSUMPTIONS.md`). Do not place the two side by side without saying so.
 
 The same caution applies to `shap_summary`. Its `mean_abs` column — the average
 size of a sensor's contribution, ignoring direction — is the usual measure of
 "importance", and it is the order in which the rows of the paper's Fig. 9
 appear, which is the convention for a SHAP summary plot although the paper does
 not say so. It is **not** established that `mean_abs` is what Table 12 reports.
-By F-08 that table holds magnitudes of something, computed in a way the paper
-never states.
+By the same finding, that table holds magnitudes of something, computed in a way
+the paper never states.
 
 `shap_summary` also returns `mean`, the average signed contribution (a large
 negative value means the sensor consistently pulled the predicted life *down*),

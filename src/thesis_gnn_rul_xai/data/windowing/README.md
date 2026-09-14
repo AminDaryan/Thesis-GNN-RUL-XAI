@@ -171,26 +171,29 @@ is, and swap dimensions 1 and 2. The reason is that the next stage treats each
 sensor as one node of a graph, so each sensor needs to own one contiguous block
 of numbers.
 
-**6. Keep only the last reading of each sensor — assumption A-07.**
+**6. Hand every cycle of the window on.**
 
-```python
-windows = windows[:, :, -1:]
-```
+Nothing is cut away here. Until 2026-09-09 this step kept only the last reading
+of each sensor, `windows[:, :, -1:]`; it no longer does. How many of a window's
+numbers a sensor node takes into the graph layers is a question about the
+model, so the model's temporal stage in `models/temporal/` answers it. By
+default that stage keeps the last reading (assumption A-07), which is the same
+number this step used to keep — but now the reduction is named, where the model
+is built, instead of hidden in the data.
 
-```
-  after A-07 slice [:, :, -1:]: shape (3, 3, 1) = (windows, sensors, 1)
-```
-
-`-1:` takes the last element but keeps the dimension, so the result is
-`(3, 3, 1)` rather than `(3, 3)`. That trailing 1 is deliberate — the network
-expects one number per sensor, not a bare list.
-
-Confirmed against the function itself:
+Confirmed against the function itself, on the same seven real rows:
 
 ```
-  from the function: (3, 3, 1)  targets [189. 187. 185.]  cycles [3 5 7]
-  identical to the hand computation? True
+  from the function: (3, 3, 3)  targets [189. 187. 185.]  cycles [3 5 7]
+  its first window:
+  [[ 641.82  642.15  642.35]
+   [1589.7  1591.82 1587.99]
+   [1400.6  1403.14 1404.2 ]]
 ```
+
+Row 0 of that first window is `sensor_2` at cycles 1, 2 and 3 — 641.82, 642.15
+and 642.35, the first three values of its column in the input table — and rows 1
+and 2 are the other two sensors over the same three cycles.
 
 ### The output
 
@@ -199,27 +202,31 @@ window `i`:
 
 | Returned | Type and shape | Value on this input |
 |---|---|---|
-| `windows` | `float32`, `(3, 3, 1)` = (windows, sensors, 1 number each) | the last reading of each sensor in each window |
+| `windows` | `float32`, `(3, 3, 3)` = (windows, sensors, cycles) | every reading of each sensor in each window |
 | `window_targets` | `float32`, `(3,)` | `[189. 187. 185.]` |
 | `window_cycles` | `int64`, `(3,)` | `[3 5 7]` |
 
 `np.ascontiguousarray` is applied to the first before returning it: the
-transpose and the slice left the values scattered in memory rather than laid
-out in reading order, and copying them into order once here is cheaper than
-letting every later operation work around it.
+transpose left the values scattered in memory rather than laid out in reading
+order, and copying them into order once here is cheaper than letting every later
+operation work around it.
 
 An engine too short for even one window returns three **empty** arrays of the
 same types instead, which is the signal `_build` looks for.
 
-### Why the window still matters if only its last reading survives
+### Why the whole window is handed on, when the default model keeps one reading
 
-This is the obvious objection, and it has a real answer. The window still
-decides **which moments are eligible**: the first example of an engine ends at
-flight `window_size`, not at flight 1, because a window has to fit behind it.
-It is also exactly what a temporal stage would consume if one were added. The
-window is not being discarded — it is simply not handed to the graph layer
-whole, because the stage that would have compressed it is not implemented
-(**A-11**).
+This is the obvious objection, and it has a real answer. The reduction from 30
+readings to one is a property of the model, and the paper's own model does it
+with a recurrent network that reads all 30 (`LSTMStage` builds it). Doing the
+reduction here would decide, inside the data, what every model is allowed to
+see. And when it was done here, deleting one line of this function on 2026-08-28
+silently widened the network's first weight matrix from `(1, 32)` to
+`(30, 32)`, and two configuration comparisons reversed before anyone noticed.
+
+The window also still decides **which moments are eligible**: the first example
+of an engine ends at flight `window_size`, not at flight 1, because a window has
+to fit behind it.
 
 ---
 
@@ -343,8 +350,8 @@ hunting much later.
 features=np.concatenate(feature_blocks).astype(np.float32)
 ```
 
-`np.concatenate` joins along the first dimension: `(3,3,1)` and `(3,3,1)` become
-`(6,3,1)`, and `[1 1 1]` and `[2 2 2]` become `[1 1 1 2 2 2]`. All four lists are
+`np.concatenate` joins along the first dimension: `(3,3,3)` and `(3,3,3)` become
+`(6,3,3)`, and `[1 1 1]` and `[2 2 2]` become `[1 1 1 2 2 2]`. All four lists are
 joined the same way, so the alignment survives.
 
 Collecting into Python lists and joining **once** is deliberate: a NumPy array
@@ -358,16 +365,16 @@ First, what the loop collected — one block per engine, before anything is
 joined:
 
 ```
-  engine 1: windows(3, 3, 1)  targets [189. 187. 185.]  end cycles [3 5 7]  unit block [1 1 1]
-  engine 2: windows(3, 3, 1)  targets [284. 282. 280.]  end cycles [3 5 7]  unit block [2 2 2]
+  engine 1: windows(3, 3, 3)  targets [189. 187. 185.]  end cycles [3 5 7]  unit block [1 1 1]
+  engine 2: windows(3, 3, 3)  targets [284. 282. 280.]  end cycles [3 5 7]  unit block [2 2 2]
 ```
 
 Then the four `np.concatenate` calls turn those two blocks into one dataset:
 
 ```
-WindowedDataset(examples=6, shape=(6, 3, 1), engines=2, target_range=(185, 284))
+WindowedDataset(examples=6, shape=(6, 3, 3), engines=2, target_range=(185, 284))
 
-  features.shape : (6, 3, 1)  float32
+  features.shape : (6, 3, 3)  float32
   targets        : [189. 187. 185. 284. 282. 280.]
   units          : [1 1 1 2 2 2]
   end_cycles     : [3 5 7 3 5 7]
@@ -606,16 +613,17 @@ WindowedDataset(empty, sensors=14)      len: 0
 ### A-05 — windows are taken one flight apart
 
 The paper gives a window size of 30 in its Table 6 and in Section 3.4, but
-**never states a stride**. We use 1. Recorded as
-[A-05](../../../../docs/ASSUMPTIONS.md).
+**never states a stride**. We use 1 (assumption A-05 in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md)).
 
-### A-07 — each sensor carries one number, the last of its window
+### A-07 — the model, not this file, reduces a window to one number
 
 Table 4 of the paper gives the input to the first graph layer as
 `[batch, 14, 1]` — one number per sensor. In the paper that number is the output
-of a per-sensor recurrent stage; with that stage omitted (**A-11**), the most
-recent reading of the window stands in for it. Recorded as
-[A-07](../../../../docs/ASSUMPTIONS.md).
+of a per-sensor recurrent stage. This file hands on the whole window; the
+model's default temporal stage then keeps the most recent reading in place of
+the paper's stage, which is not the default (assumptions A-07 and A-11 in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md)).
 
 ### A-23 — an engine shorter than the window is left out, not padded
 
@@ -635,16 +643,16 @@ engines. Drop an engine and the score falls because there is one term fewer, not
 because the model improved. Counted from the real files, no FD001 or FD003 test
 engine is affected; 6 FD002 and 11 FD004 engines are. So this cannot touch any
 number this project currently reports, and becomes live the moment FD002 or
-FD004 is run. The full entry is
-[A-23](../../../../docs/ASSUMPTIONS.md).
+FD004 is run. The full entry is in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md) (assumption A-23).
 
 ### A-06 — a validation split exists at all
 
 The paper describes no validation split and trains for a fixed number of passes;
 holding engines out is **our addition**. The consequence is settled and not up
 for re-litigation: **validation error and test error are not comparable in this
-project**, and neither should ever be presented as the other. Recorded as
-[A-06](../../../../docs/ASSUMPTIONS.md).
+project**, and neither should ever be presented as the other (assumption A-06
+in [the assumptions log](../../../../docs/ASSUMPTIONS.md)).
 
 ---
 

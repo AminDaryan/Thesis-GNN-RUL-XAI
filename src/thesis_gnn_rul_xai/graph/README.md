@@ -69,10 +69,10 @@ transcription. All 196 cells agree.
 - **The paper's own rule 4 requires an edge its matrix does not contain.** The
   text says `phi` influences `htBleed`, `W31` *and* `W32`, but the `phi`-`W32`
   entry is 0 in Table 3 and in Fig. 3 alike. This code follows the matrix,
-  because the matrix is what the model consumes. The conflict is recorded as
-  finding F-07 in `docs/ASSUMPTIONS.md`. (Findings, numbered `F-xx`, are facts
-  about the paper established from data; assumptions, numbered `A-xx`, are
-  choices this project had to make.)
+  because the matrix is what the model consumes. The conflict is written up in
+  `docs/ASSUMPTIONS.md` (finding F-07). Findings there are facts about the
+  paper established from data; assumptions are choices this project had to
+  make.
 - **The paper never prints the normalisation formula.** See the assumptions
   section at the end of this file.
 

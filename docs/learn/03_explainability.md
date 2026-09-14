@@ -110,7 +110,7 @@ be handed 13. Something has to occupy the fourteenth slot.
 The paper's Equation 15 requires this quantity and never says what it puts
 there. **This project replaces an absent sensor with its average reading across
 the training data** — the intuition being "this sensor is at its typical value,
-so it tells us nothing in particular". That is assumption A-20.
+so it tells us nothing in particular" (assumption A-20).
 
 It is not the only defensible option; substituting zero is another common
 choice. The two have been compared on the same trained model and the same
@@ -155,7 +155,7 @@ Recall from page 1 that `P15` takes only two distinct values across the entire
 training set, yet the paper includes it in the graph.
 
 What does SHAP say about a sensor that carries almost no information? The
-answer is recorded as finding F-05, and it has a history worth knowing: **the
+answer is recorded in the log (finding F-05), and it has a history worth knowing: **the
 first version of that finding was wrong.** It was written from 14 sampled
 windows out of 240, and got both the size of the effect and the mechanism
 behind it wrong. It was corrected after being recomputed over the full set.

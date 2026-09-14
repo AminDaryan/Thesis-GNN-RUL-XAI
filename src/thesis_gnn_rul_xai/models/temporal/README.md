@@ -41,7 +41,7 @@ Delete that slice and `W(1)` silently becomes `(30, 32)` instead of `(1, 32)`.
 That is what happened on 2026-08-28: 30 raw cycles reached the first graph
 layer, the model scored *better*, and two of the project's three configuration
 comparisons reversed direction before anyone noticed the architecture had
-changed. The full story is A-07 in `docs/ASSUMPTIONS.md`.
+changed. The full story is in `docs/ASSUMPTIONS.md` (assumption A-07).
 
 With the stage in place there is no such path. The pipeline always hands over
 every cycle, the stage says what happens to them, and the network's shape
@@ -60,10 +60,10 @@ follows from the stage.
 | `gru` | the same, with a simpler recurrent cell | yes | 1 by default |
 
 `last_cycle` is the default and is what every result in this project before
-2026-09-09 was produced with. It is assumption **A-07**: Table 4 of the paper
-prints one number per sensor entering the first graph layer, that number comes
-out of a recurrent stage in the paper, and when this project does not build
-that stage the latest reading stands in for it.
+2026-09-09 was produced with. It is this project's choice (assumption A-07):
+Table 4 of the paper prints one number per sensor entering the first graph
+layer, that number comes out of a recurrent stage in the paper, and when that
+stage is not used the latest reading stands in for it.
 
 ### `lstm` — what the paper actually describes
 
@@ -84,12 +84,13 @@ What the paper does *not* say is narrower than "the LSTM is unspecified". Table
 4 has no recurrent row at all — it begins at the node features — and Table 6
 lists the learning rate, 200 epochs, batch size 32, thirty time steps, Adam and
 MSE loss. There is no hidden size, no depth, and no projection. Those three are
-assumption **A-26**.
+this project's choices (assumption A-26).
 
 ### `raw_window` — kept, named, and gated
 
-This is the arrangement removed on 2026-08-28. It is kept because A-07's
-comparison is otherwise re-runnable only at a dead commit, and because a mode
+This is the arrangement removed on 2026-08-28. It is kept because the comparison
+that decided the last-cycle stand-in (assumption A-07) is otherwise re-runnable
+only at a dead commit, and because a mode
 you can only reach by writing a new class is *less* safe than one that names
 itself in the run directory.
 

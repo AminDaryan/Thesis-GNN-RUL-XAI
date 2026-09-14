@@ -339,8 +339,8 @@ is computed at every step, so it cannot be a constant. The only reading under
 which that sentence describes a working filter is that 0.5 is the parameter.
 
 **How much it matters.** That is an argument about what a sentence means, not a
-measurement. The full entry is
-[A-04 in the assumptions log](../../../../docs/ASSUMPTIONS.md).
+measurement. The full entry is in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md) (assumption A-04).
 
 ### A-09 — which of pandas' two conventions is used
 
@@ -382,7 +382,7 @@ pin it down:
   ewma_series matches adjust=False?  True
 ```
 
-The entry is [A-09](../../../../docs/ASSUMPTIONS.md).
+The entry is in [the assumptions log](../../../../docs/ASSUMPTIONS.md) (assumption A-09).
 
 ---
 
