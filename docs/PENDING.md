@@ -47,6 +47,74 @@ a one-time discontinuity that needs a line in the log.
 
 ---
 
+## P-10 — The audit of 2026-09-08 is written but not triaged
+
+`docs/AUDIT_2026-09-08_scientific_validity.md` is an independent audit run from
+outside the repository. It reports eleven defects, D-1 to D-11, ranked by what
+they do to a conclusion, and none of them has been acted on yet. Its opening
+three are the heaviest:
+
+- **D-1.** The paper's own adjacency matrix normalises to rank 8, so part of the
+  fourteen-number input is structurally invisible to any graph convolution
+  built on it. It says this applies to the per-sensor LSTM model as well, since
+  that stage also hands the graph layers one number per sensor.
+- **D-2.** The "without physics prior" control is degenerate: the fully
+  connected graph normalises to a rank-1 averaging operator, so F-04's figure
+  measures the cost of averaging every sensor rather than the value of the
+  engineering knowledge.
+- **D-3.** Every configuration comparison since 2026-08-29 was decided on the
+  test set.
+
+**A numbering collision to avoid.** The audit's recommendations say to *"write
+the rank finding up as F-16"*. It was written against a tree in which F-16 did
+not yet exist. **F-16 is now taken** by the recurrent-stage finding, written
+2026-09-09 and corrected 2026-09-14, so the rank finding must take the next
+free identifier. `tests/test_docsite.py` requires findings to be numbered
+consecutively from F-01, so skipping a number fails the suite.
+
+**A trap in re-running it, created after it was written.** The audit's
+non-graph baselines (D-5) are specified as scikit-learn on
+`prepared.train.features[:, :, 0]`. When the audit ran, the pipeline handed over
+`(N, 14, 1)`, so index 0 was the one cycle there was — the last. Since
+2026-09-09 the pipeline hands over `(N, 14, 30)` and the temporal stage reduces
+it, so **index 0 is now the first cycle of the window, 29 cycles out of date**,
+and the same command runs without complaint and measures something else. Use
+`features[:, :, -1]` to reproduce what the audit measured.
+
+**What finishing looks like:** each D-item either written into
+`docs/ASSUMPTIONS.md` as a finding or an amendment, or answered in writing with
+the reason it does not apply. Two of them already bear on F-16 and are cited
+there: D-8, that seed spread is not uncertainty over engines, and D-10, that the
+per-epoch training curves are never saved.
+
+---
+
+## P-11 — F-16's pairing crosses a refactor, and its central inference is unobserved
+
+Two loose ends in F-16, both cheap to close.
+
+**The pairing crosses the 2026-09-09 refactor.** The `last_cycle` run with
+nothing held back is at commit `ae59bc1-dirty`; the recurrent run it is paired
+against is at `c703693-dirty`, after the temporal stage became a component. The
+refactor was gated on reproducing the previous five-seed run bit-identically and
+did, so the training path is the same, but a reader should not have to take
+that on trust. **Finishing:** re-run
+
+```bash
+python scripts/train.py --config <a copy of config/fd001.yaml with validation_fraction: 0.0> --no-early-stopping --seeds 5
+```
+
+at one commit, confirm it reproduces 16.818 ± 0.157, and replace the pairing.
+
+**That the recurrent model over-trains is inferred, not seen.** F-16 infers it
+from where the best epochs fall (9 to 21) and from how much worse the epoch-200
+weights are. The per-epoch curves would show it directly and are thrown away
+(`TrainingHistory.save()` is never called — P-09 step 2, and audit D-10).
+**Finishing:** save the curves per seed, re-run arm D, and put the validation
+curve of one seed into F-16 in place of the inference.
+
+---
+
 ## P-09 — The notebooks and the playground, as agreed 2026-09-09
 
 `notebooks/02_model_fd001.ipynb` is one document doing two jobs in 45 cells:
