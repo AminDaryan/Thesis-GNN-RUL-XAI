@@ -13,22 +13,22 @@ per-sensor LSTM stage of its Section 2.2 is built too, as a stage that can be
 switched in and out; it is not the default. See
 [section 12](#12-known-limitations).
 
-**Where that gets to.** On FD001, **RMSE 16.82 ± 0.16** across five seeds,
-against the 14.93 the paper reports for its own "ESTGNN w/o LSTM" ablation —
-on an architecture that matches the paper's Table 4 exactly, down to the
-61,729 parameters its printed shapes imply.
+**Where that gets to.** On FD001, **RMSE 16.50 ± 0.42** across five seeds
+under the current default settings, against the 14.93 the paper reports for
+its own "ESTGNN w/o LSTM" ablation — on an architecture that matches the
+paper's Table 4 exactly, down to the 61,729 parameters its printed shapes imply.
 
-**Read assumption A-22 before quoting that number.** The settings the paper
-leaves unspecified were deliberately chosen to land near its figure, so the
-configuration is not independent of the quantity it is compared against. Under
-the previous, independently-chosen settings the same code gives 20.35 ± 0.75.
-The paper specifies neither, so the honest summary is that this reproduction
-**spans 16.82 to 20.35 cycles depending on choices the source leaves open**.
-[Section 8](#8-results-so-far) gives all four measures.
+**Read how the settings were chosen before quoting that number.** The settings
+the paper leaves unspecified were deliberately chosen to land near its figure
+(assumption A-22), so the configuration is not independent of the quantity it
+is compared against. Under the previous, independently chosen settings the
+same code gives 20.35 ± 0.75. The paper specifies neither, so the honest summary
+is that this re-implementation **spans 16.50 to 20.35 cycles depending on
+choices the source leaves open**. [Section 8](#8-results-so-far) gives all four
+measures.
 
-**Status.** The automated tests pass and ruff is clean. The notebooks predate
-the A-07 change of 2026-08-28 and need re-executing; their stored shapes still
-read `(…, 14, 30)`.
+**Status.** Ruff is clean. The notebooks were re-executed on 2026-09-14 and
+their stored outputs match the code; section 10 gives the test counts.
 
 ---
 
@@ -536,41 +536,52 @@ when it is given only one.
 
 | Configuration | RMSE | NASA score | R² | ASUE |
 |---------------|------|-----------|-----|------|
-| **Current default** — z-score, row, no validation split (A-22) | **16.82 ± 0.16** | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
-| Fully connected graph (A-19 ablation, current default) | 19.21 ± 0.06 | 782 ± 9 | 0.770 ± 0.001 | 13.94 ± 0.15 |
-| Previous default — min-max, symmetric, 20 % held out | 20.35 ± 0.75 | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
-| Fully connected graph (A-19 ablation, previous default) | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
+| **Current default** — z-score scaling, row rescaling, 20 % of engines held back, the paper's graph | **16.50 ± 0.42** | 540 ± 45 | 0.830 ± 0.008 | 11.65 ± 1.00 |
+| the same, every sensor joined to every other | 19.28 ± 0.43 | 796 ± 79 | 0.768 ± 0.010 | 13.76 ± 0.49 |
+| the same, the 41 most strongly correlated sensor pairs | 16.59 ± 0.35 | 1033 ± 292 | 0.829 ± 0.007 | 9.87 ± 0.15 |
+| z-score, row, **nothing held back** — the default until 2026-09-02 | 16.82 ± 0.16 | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
+| the same, every sensor joined to every other | 19.21 ± 0.06 | 782 ± 9 | 0.770 ± 0.001 | 13.94 ± 0.15 |
+| **min-max** scaling, symmetric rescaling, 20 % held back — the default until 2026-08-29 | 20.35 ± 0.75 | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
+| the same, every sensor joined to every other | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
 
-**The physics prior is worth 2.40 cycles under the current default** — rows one
-and two, paired `t = 41.6, p = 0.000002`, with every one of the five seeds
-worse without it. Under the previous default — rows three and four — the same
-ablation was worth 0.044 cycles at `p = 0.913`, indistinguishable from zero.
+**What the paper's sensor graph is worth depends on what it is replaced
+with.** Joining every sensor to every other costs 2.78 cycles under the current
+default — paired `p = 0.0005`, every one of the five seeds worse. A graph built
+from the data instead, keeping the 41 sensor pairs whose readings move together
+most strongly — the same number of edges as the paper's — costs 0.10 cycles at
+`p = 0.66`, indistinguishable from nothing, although its predictions lean late.
+So most of what the every-sensor comparison costs is that graph's averaging of
+every sensor together, not the loss of the engineering knowledge. That is
+written up in `docs/ASSUMPTIONS.md` (assumption A-27).
 
-**That is the same ablation, on the same data, giving opposite answers under
-settings the paper does not specify**, and it is one of this project's more
-useful results. Finding F-04 has now reversed twice and records all three
-measurements, including a withdrawn 5.7-cycle figure that was an artefact of
-the removed `window` mode. The paper reports 0.56 cycles for this ablation; our
-three attempts bracket it without reproducing it.
+**The every-sensor comparison has also given opposite answers under settings
+the paper does not specify**: 2.78 and 2.40 cycles with z-score scaling, 0.044
+(`p = 0.913`) with min-max. The history, including a withdrawn 5.7-cycle figure
+from the removed `window` mode, is in `docs/ASSUMPTIONS.md` (finding F-04). The
+paper reports 0.56 cycles for its own version of this comparison, for its full
+model, and never says what it replaced its graph with.
 
-Two changes separate rows one-and-two from rows three-and-four — the input
-scaling and the split — so these runs do not isolate which caused the reversal.
-F-04 says so rather than guessing.
+The min-max rows differ from the current default in two ways — the input
+scaling and the rescaling of the graph — so these runs do not isolate which
+caused the difference, and the log says so rather than guessing.
 
-Reproduce the first row with:
+Reproduce the first three rows with:
 
 ```bash
-python scripts/train.py --seeds 5
+python scripts/train.py --config config/fd001.yaml --seeds 5
+python scripts/train.py --config config/fd001.yaml --graph complete --seeds 5
+python scripts/train.py --config config/fd001.yaml --graph correlation --seeds 5
 ```
 
 Two earlier rows have been withdrawn. They used a `window` node-feature mode in
 which each node carried all 30 cycles, which made the first weight matrix
 `(30, 32)` instead of the `(1, 32)` Table 4 prints — 928 parameters the paper's
 architecture does not have, computing a bank of linear filters over time. That
-is a temporal encoder, which A-11 exists to avoid. The mode was removed on
-2026-08-28; its numbers (13.45 ± 0.20 physics, 19.17 ± 0.45 complete) are
-reproducible at commit `cdcc827` and are recorded in F-06, but they are not
-this project's results and the A-19 ablation needs re-running.
+is a temporal encoder, which the default network deliberately does not have
+(assumption A-11). The mode was removed on 2026-08-28; its numbers
+(13.45 ± 0.20 physics, 19.17 ± 0.45 complete) are reproducible at commit
+`cdcc827` and are recorded in `docs/ASSUMPTIONS.md` (finding F-06), but they are
+not this project's results.
 
 ### How that compares with the paper
 
@@ -581,28 +592,32 @@ this project's results and the A-19 ablation needs re-running.
 | ESTGNN w/o GCN | 16.42 | Table 11 |
 | ESTGNN w/o physics prior | 12.34 | Table 11 |
 
-**Only one of those numbers is comparable with the run below.** It was produced
-without the per-sensor LSTM (see [section 12](#12-known-limitations) and
-assumption A-11), so the matching row is "w/o LSTM", and the comparison is
-20.35 ± 0.75 against 14.93 — a 5.4-cycle shortfall, worse than the paper's own
-"w/o GCN" row. The paper's ablation table reports RMSE only, which
-is why the other three columns are blank for it.
+**Only one of those numbers is comparable with the current default.** It was
+produced without the per-sensor LSTM (see [section 12](#12-known-limitations)),
+so the matching row is "w/o LSTM", and the comparison is 16.50 ± 0.42 against
+14.93 — a 1.57-cycle shortfall. The paper's ablation table reports RMSE only,
+which is why the other three columns are blank for it.
 
 ### What that comparison does and does not show
 
 The architecture matches: input `[batch, 14, 1]`, `W(1) ∈ ℝ^(1×32)`, the same
 layer widths, and **61,729 parameters — exactly what Table 4's printed shapes
-imply**, asserted by a test. Table 4 prints no total; see A-07 for the
-arithmetic. The only thing removed is the LSTM, which is what "w/o LSTM" means. So the
-**5.4-cycle gap has no shape mismatch to hide behind**, and what is left to
-explain it is the documented assumptions: the input rescaling is substituted
-from a different paper (A-03), early stopping is an addition (A-18), the target
+imply**, asserted by a test. Table 4 prints no total; the arithmetic is in
+`docs/ASSUMPTIONS.md` (assumption A-07). The only thing removed is the LSTM,
+which is what "w/o LSTM" means. So the **1.57-cycle gap has no shape mismatch
+to hide behind**, and what is left to explain it is the documented choices:
+the input rescaling was picked for landing nearest the paper's own figure
+rather than read from the paper (assumptions A-03 and A-22), holding engines
+back and stopping early are additions (assumptions A-06 and A-18), the target
 scaling, weight initialisation and learning-rate schedule are all unstated
-(A-13, A-14, A-17), and capping the test labels moves the figure *favourably* by
-a measured 1.311 cycles (A-02), so the underlying gap is wider still.
+(assumptions A-13, A-14 and A-17), and capping the test labels moved an earlier
+configuration's figure *favourably* by a measured 1.311 cycles (assumption
+A-02), so the underlying gap is wider than it looks.
 
-Finding F-06 in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records this in
-full, together with F-04 on the physics graph and F-05 on what SHAP says.
+[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records this in full (finding
+F-06), together with what the sensor graph is worth (finding F-04 and
+assumption A-27) and what the Shapley values say about the sensor that carries
+almost no information (finding F-05).
 
 ---
 
@@ -980,16 +995,18 @@ produces its own numbers and compares them with the published ones in
 the reasons are documented as assumptions rather than left as a gap.
 Understanding and recording the difference is the achievable goal.
 
-**Most of the assumptions have not been tested for sensitivity.** Each entry
-in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) states how much it is
-expected to matter, but for most that expectation is an argument rather
-than a measurement. Four have actually been measured — A-07 and A-19 in
-finding F-06, A-20 and A-21 in their own entries. Nine more are settings that
-could be varied and have not been: A-01 (the ceiling), A-03 (the scaling method),
-A-04 (the smoothing strength), A-05 (the stride), A-06 (the validation
-fraction), A-12 (the bias), A-14 (the initialisation), A-17 (the schedule)
-and A-18 (early stopping). Each would take one run of
-`scripts/train.py --seeds 5` to settle.
+**Each choice has been measured under one configuration at most.** Many of the
+choices in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) have now been varied
+over five seeds: the input scaling, the smoothing, the label ceiling, the
+learning-rate schedule and early stopping (finding F-10), the held-back engines
+(assumption A-06), the rescaling of the graph (assumption A-21), what replaces
+the paper's graph (assumptions A-19 and A-27), and the stand-in for a removed
+sensor (assumption A-20). But each was varied under the configuration of its
+day, and this project's comparisons have reversed when that configuration
+changed, so none of them is settled for every configuration. Three have not
+been varied at all: the window stride (assumption A-05), the bias in the graph
+layers (assumption A-12) and the starting values of the weights (assumption
+A-14). Each would take one run of `scripts/train.py --seeds 5`.
 
 ---
 

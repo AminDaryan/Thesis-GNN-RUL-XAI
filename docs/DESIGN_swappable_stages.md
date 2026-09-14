@@ -668,6 +668,12 @@ The gate is on the configuration and the command line, not on the class. `tests/
 
 **New, A-26 onward** (A-25 and F-15 are the current maxima, and `tests/test_docsite.py:185` asserts contiguity):
 
+*Note added 2026-09-14.* The numbers from A-27 down in this table were
+provisional and none of them reached the log. The log's contiguity test gave
+the next free number, A-27, to the correlation-based sensor graph (the 41 most
+strongly correlated pairs), so every row below A-26 takes the next free number
+when it is written.
+
 | id | the gap | the choice |
 |---|---|---|
 | A-26 | the recurrent stage's hidden size and depth, which the paper never prints | 32 and 1, and the run is not a reproduction |

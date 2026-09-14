@@ -47,6 +47,7 @@ identifier below.
 | A-24 | What `phi_0` is in Equation 14 | Calls it "the average value of target variable across all samples" | The prediction at the average window, forced by A-20; **10.719 cycles** from the paper's wording |
 | A-26 | Size and depth of the recurrent stage | Table 4 has **no recurrent row**; Table 6 lists no hidden size, depth or projection | One layer, hidden size 32, a linear projection to the one number Table 4 prints; **fourteen dedicated cells**, which the paper does state |
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
+| A-27 | A sensor graph built from the data | Never builds one; its Conclusions claim its own graph goes "beyond data-driven correlations" | The 41 most strongly correlated pairs on the training engines, as many edges as Table 3; **indistinguishable from Table 3 by test RMSE** (+0.096, p = 0.655), 2.0 cycles better on the held-back engines (p = 0.012), but its test predictions run later |
 
 ---
 
@@ -961,7 +962,19 @@ passing itself, which would make the variant an ablation of the GCN rather than
 of the prior — and the paper reports that separately, as "w/o GCN". A learned
 graph would add a mechanism the paper does not describe.
 
-**How much it matters.** A great deal, as F-04 below records.
+*Correction, 2026-09-14.* "Changing nothing else" was wrong. A fully connected
+graph also changes how many edges there are, and once its rows are rescaled
+every sensor receives the same average of all fourteen, which the audit of
+2026-09-08 raised as its item D-2. A graph built from the data with the same 41
+edges as Table 3 (assumption A-27) removes the knowledge while keeping the
+count, and under the current default it costs 0.096 cycles where this graph
+costs 2.784. So this choice measures mostly the averaging, not the knowledge.
+It is kept because it is still the most literal reading of "without physics
+prior", but no number from it should be described as the value of the
+engineering knowledge without A-27's figure beside it.
+
+**How much it matters.** A great deal, as F-04 below records — and, as the
+correction above says, for a reason other than the one intended.
 
 ---
 
@@ -973,25 +986,53 @@ measurable", and now measures 2.4 cycles at `p = 0.000002`. Nothing about the
 graph changed between those measurements. What changed was the preprocessing
 and the split — choices the paper does not specify.
 
+**Added 2026-09-14: the current default, and what the fully connected graph
+really measures.** The table below gains a row for the configuration
+`config/fd001.yaml` now sets, 20 % of engines held back, which this entry did
+not have: **+2.784 cycles, p = 0.00046**, the same direction as the
+nothing-held-back row. In the same week a third graph was measured beside
+these two — the 41 sensor pairs whose readings correlate most strongly, as many
+edges as Table 3 (assumption A-27) — and it costs only **+0.096 cycles,
+p = 0.655**. That graph removes the engineering knowledge but keeps the number
+of edges, so the large figures in this table are mostly the cost of joining
+every sensor to every other, which makes all fourteen rows of the rescaled
+table identical, and not the value of the knowledge. Read A-27 before quoting
+any row here as what the physics prior is worth.
+
 That instability is the finding. The individual numbers are less interesting
 than the fact that an ablation result moved from *decisive*, to *zero*, to
 *decisive again* under settings the source leaves open.
 
-**All four measurements, five seeds each, paired by seed on test RMSE.** The
-first two rows differ only in the learning-rate schedule of A-17 and agree
-with each other, which is the useful part: the instability below came from
-the preprocessing, not from every setting the paper leaves open.
+**All five measurements, five seeds each, paired by seed on test RMSE.** The
+second and third rows differ only in the learning-rate schedule of A-17 and
+agree with each other, which is the useful part: the instability below came
+from the preprocessing, not from every setting the paper leaves open.
 
 | Configuration | physics | fully connected | cost of removing it | p |
 |---|---|---|---|---|
-| **current default** — z-score, row, nothing held back, **step** schedule (`bc20edd-dirty`) | **16.818 ± 0.157** | 19.214 ± 0.056 | **+2.396** | **0.000002** |
+| **current default** — z-score, row, **20 % held back**, step schedule (`f386291-dirty`, 2026-09-14) | **16.496 ± 0.415** | 19.281 ± 0.432 | **+2.784** | **0.00046** |
+| z-score, row, nothing held back, **step** schedule (`bc20edd-dirty`) — the default until 2026-09-02 | 16.818 ± 0.157 | 19.214 ± 0.056 | +2.396 | 0.000002 |
 | the same under the superseded **exponential** schedule (`9548104`) | 16.694 ± 0.331 | 19.213 ± 0.056 | +2.520 | 0.000057 |
 | min-max, symmetric, 20 % held back (`cdcc827-dirty`) | 20.353 ± 0.752 | 20.397 ± 0.395 | +0.044 | 0.913 |
 | superseded `window` mode (`cdcc827`) | 13.45 ± 0.20 | 19.17 ± 0.45 | +5.7 | — |
 
-**The current measurement is unambiguous within its own configuration.** Every
-one of the five seeds is worse without the physics prior — the per-seed costs
-are `[2.569, 2.387, 2.244, 2.309, 2.470]` — and all four measures agree:
+**Both z-score measurements are unambiguous within their own configurations.**
+Under the current default every one of the five seeds is worse with the fully
+connected graph — per-seed costs `[2.125, 2.822, 2.997, 3.636, 2.342]` — and all
+four measures agree (runs
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`
+and
+`fd001_complete_row_cap_5seed_varsplit_cfgf21547_f386291-dirty_20260914T150527Z`):
+
+| Measure | physics | fully connected | difference | paired t | p |
+|---|---|---|---|---|---|
+| RMSE | 16.496 ± 0.415 | 19.281 ± 0.432 | +2.784 | +10.51 | 0.00046 |
+| NASA score | 539.8 ± 44.7 | 796.1 ± 78.8 | +256.3 | +5.46 | 0.0055 |
+| R-squared | 0.830 ± 0.008 | 0.768 ± 0.010 | −0.062 | −10.48 | 0.00047 |
+| ASUE | 11.651 ± 0.995 | 13.759 ± 0.489 | +2.108 | +5.66 | 0.0048 |
+
+With nothing held back the per-seed costs were
+`[2.569, 2.387, 2.244, 2.309, 2.470]`, and again all four measures agreed:
 
 | Measure | physics | fully connected | difference | paired t | p |
 |---|---|---|---|---|---|
@@ -1001,9 +1042,12 @@ are `[2.569, 2.387, 2.244, 2.309, 2.470]` — and all four measures agree:
 | ASUE | 12.333 ± 0.598 | 13.941 ± 0.148 | +1.608 | +6.70 | 0.002576 |
 
 **What cannot be concluded from the reversal.** Two things changed between the
-zero result and this one — the input scaling (min-max to z-score) and the split
-(20 % held back to nothing held back) — so these runs do not isolate which
-caused it. No stored run varies only one. Saying "the z-score revealed the
+zero result and the nothing-held-back one — the input scaling (min-max to
+z-score) and the split (20 % held back to nothing held back) — so those runs do
+not isolate which caused it. The current-default row narrows this: it holds 20 %
+back like the min-max row, so the split is ruled out, but it also rescales the
+graph by rows where the min-max row used the symmetric form, so two differences
+remain. No stored run varies only one. Saying "the z-score revealed the
 prior's value" would be a guess, and this file does not make those.
 
 **How this compares with the paper.** Wen et al. report the same ablation
@@ -1117,8 +1161,8 @@ the prediction?* It is measured in flight cycles, and by the efficiency
 property the fourteen values plus the baseline prediction reconstruct the
 actual prediction exactly.
 
-**How much it matters — re-measured 2026-08-31 under the current default, and
-the answer reverses.** The same trained model, the same 20 test windows, three
+**How much it matters — re-measured 2026-08-31 under the default of that date,
+and the answer reverses.** The same trained model, the same 20 test windows, three
 baselines. Commit `f150570`, `config/fd001.yaml` (z-score, row, nothing held
 back):
 
@@ -1174,7 +1218,7 @@ importance. Exact Shapley values, computed over the full life of three held-out
 engines, show that the prediction is half right in a way that turns out to be
 more useful than if it had simply been correct.
 
-**Re-measured 2026-08-31** under the current default (z-score, row, nothing
+**Re-measured 2026-08-31** under the default of that date (z-score, row, nothing
 held back), commit `f150570`, over every window of three engines. Because
 nothing is held back now, these three are training engines rather than held-out
 ones; the same three are used so the two measurements can be compared.
@@ -1441,7 +1485,7 @@ seeds of each form, everything else identical, paired by seed on test RMSE:
 
 | Configuration | row | symmetric | better | paired t | p (two-sided) |
 |---|---|---|---|---|---|
-| **current default** — z-score, nothing held back, **step** schedule | **16.818 ± 0.157** | 17.071 ± 0.325 | **row by 0.253** | −2.478 | 0.068 |
+| z-score, **nothing held back**, **step** schedule — the default until 2026-09-02 | **16.818 ± 0.157** | 17.071 ± 0.325 | **row by 0.253** | −2.478 | 0.068 |
 | the same under the superseded **exponential** schedule | 16.694 ± 0.331 | 17.045 ± 0.201 | row by 0.352 | −2.830 | 0.047 |
 | z-score, 20 % held back, early stopping | 16.616 ± 0.289 | 16.524 ± 0.339 | symmetric by 0.091 | +0.550 | 0.611 |
 | z-score, 20 % held back, no early stopping | 16.616 ± 0.289 | 16.599 ± 0.275 | symmetric by 0.017 | +0.094 | 0.930 |
@@ -2606,6 +2650,174 @@ produced with the stage names the width in its run directory and in
 choice has not been measured against 16, 64 or two layers, and until it is, a
 result from this stage says what this configuration does and not what the
 paper's stage would do.
+
+---
+
+## A-27 — The data-driven graph joins the 41 most strongly correlated sensor pairs
+
+**Where:** `graph/adjacency.py`, `build_correlation_adjacency(..., n_edges=41)`;
+`data/pipeline/`; `graph: correlation` in the configuration, or
+`scripts/train.py --graph correlation`
+
+**The gap.** The paper never builds a graph from the data. It uses the Pearson
+correlation coefficient in one place, to decide which sensors to keep at all
+(Section 3.2.2, Equation 17: sensors that never change, or that correlate above
+0.95 with another, are dropped). Its graph is built by hand (Section 2.3.1,
+Table 3). Yet item 2 of its Conclusions says the hand-built matrix captures
+sensor relationships "beyond data-driven correlations". Nothing in the paper
+tests that claim against a graph built from correlations, and its "without
+physics prior" row of Table 11 never says what replaced its graph (assumption
+A-19). Checked on 2026-09-14 by searching the PDF's text for every occurrence
+of "correlat": none of them describes building a graph from correlations or
+comparing one with Table 3.
+
+**What we chose.** A graph with exactly as many edges as Table 3 has, 41,
+joining the 41 pairs of sensors whose readings have the largest absolute
+Pearson correlation. The correlations are measured on the rows of the training
+engines only, after smoothing and rescaling — the same table the network is
+trained on — and the graph is rebuilt for every seed, because the seed decides
+which engines are held back. A tie goes to the pair that comes first in sensor
+order.
+
+**Why.**
+
+1. **A cut-off lets the number of edges float, and on FD001 it floats to a
+   graph that cannot test anything.** Measured on the 80 training engines of
+   seed 42 under `config/fd001.yaml`:
+
+   | Cut-off on the absolute correlation | Edges | Sensors joined to nothing | Largest group of joined sensors |
+   |---|---|---|---|
+   | 0.5, 0.6 or 0.7 | 66 | P15, Nc | 12, every pair of them joined |
+   | 0.8 | 62 | P15, Nc | 12 |
+   | 0.85 | 42 | P15, Nc | 12 |
+   | 0.9 | 12 | T24, T30, P15, Nc, htBleed | 7 |
+   | 0.95 | 0 | all 14 | — |
+
+   From 0.5 to 0.7 the graph is twelve sensors each joined to all the others,
+   66 edges being every pair of twelve. Once the rows are rescaled to sum to one
+   (assumption A-21), those twelve rows are identical, so the first graph layer
+   hands all twelve sensors the same average — the flattening the
+   every-sensor-joined graph causes, which the audit of 2026-09-08 raised as its
+   item D-2. A comparison against that graph would measure density, not which
+   relationships were chosen.
+2. **Fixing the count at the paper's 41 leaves one difference: which pairs are
+   joined.** The engineer chose 41; the data chooses 41.
+3. **Pearson, because the paper uses Pearson** for the neighbouring decision of
+   which sensors to keep. The absolute value, because a strong inverse
+   relationship is as much a relationship as a direct one.
+4. **Training engines only**, for the reason the rescaling is fitted on them
+   (assumption A-25): otherwise the held-back and test engines would help decide
+   the model that is then scored on them. `tests/test_pipeline.py` checks that
+   the graph handed to the network is exactly the one built from those rows.
+
+**What the graph looks like.** Recomputed on each seed's training engines:
+
+| Seed | Weakest kept correlation | Edges shared with Table 3 | Joined to nothing | Independent rows after rescaling |
+|---|---|---|---|---|
+| 42 | 0.8550 | 17 | P15, Nc | 10 |
+| 43 | 0.8498 | 18 | P15, Nc | 12 |
+| 44 | 0.8516 | 18 | P15, Nc | 12 |
+| 45 | 0.8507 | 18 | P15, Nc | 12 |
+| 46 | 0.8484 | 18 | P15, Nc | 11 |
+
+Fewer than half of the 41 edges are ones the engineer also drew. `P15` and
+`Nc` are joined to nothing on every seed, so in this network those two sensors
+only ever combine with themselves. "Independent rows" counts the rows of the
+rescaled table that cannot be built by adding up other rows: 14 would mean
+every sensor can end up with its own mixture of its neighbours. The paper's own
+graph gives 8 (the audit's item D-1).
+
+**How much it matters — measured.** Five seeds of each graph at commit
+`f386291-dirty`, under the current default: z-score scaling, row rescaling,
+capped test labels, 20 % of engines held back with early stopping, the step
+schedule, and the last-cycle temporal stage, so no recurrent stage. Paired by
+seed on the test engines:
+
+| Measure | Table 3, the paper's graph | 41 strongest correlations | difference | paired t | p |
+|---|---|---|---|---|---|
+| RMSE | 16.496 ± 0.415 | 16.592 ± 0.354 | +0.096 | +0.48 | 0.655 |
+| NASA score | 539.8 ± 44.7 | 1032.7 ± 292.2 | +492.9 | +3.91 | 0.017 |
+| R-squared | 0.830 ± 0.008 | 0.829 ± 0.007 | −0.002 | −0.48 | 0.657 |
+| ASUE | 11.651 ± 0.995 | 9.865 ± 0.153 | −1.786 | −4.35 | 0.012 |
+
+**By RMSE and R-squared the two graphs cannot be told apart.** The per-seed
+RMSE differences are `[+0.238, +0.311, +0.146, +0.457, −0.672]`.
+
+**On the held-back engines the correlation graph does better.** Each seed holds
+back the same 20 engines whichever graph it trains on, so the held-back error
+pairs by seed too, and a comparison between configurations should be judged on
+it rather than on the test engines (the audit of 2026-09-08 found this project
+had not always done so):
+
+| | Table 3 | 41 strongest correlations | difference | p |
+|---|---|---|---|---|
+| held-back RMSE | 21.168 ± 0.870 | 19.169 ± 1.473 | −1.999 | 0.012 |
+
+Lower on every seed: `[−1.798, −2.391, −3.429, −1.734, −0.644]`. **Read it
+with one caution.** The held-back error a run records is the lowest that error
+reached over all the passes, and it is also what chose which pass's weights to
+keep (assumption A-18), so it is flattered — by an amount that can differ
+between two networks whose errors wander differently from pass to pass. The
+test error was not used to choose anything. The two figures also weight
+engines differently and are never comparable with each other (assumption
+A-06). So the held-back result says the correlation graph is at least not
+worse; it does not settle that it is better.
+
+**They do make different errors.** The correlation graph predicts more life
+than the engine had, on every seed. Read from the `test_predictions.csv` each
+seed saved:
+
+| | Table 3 | 41 strongest correlations |
+|---|---|---|
+| mean of predicted − actual, cycles | 0.860 | 2.611 |
+| test engines predicted late, of 100 | 50.8 | 55.2 |
+| largest late error, cycles | 45.7 | 59.3 |
+
+(means over the five seeds). The shift in the mean error is
+`[+1.504, +1.656, +1.924, +1.253, +2.417]` by seed, paired p = 0.0009. The
+NASA score punishes a late prediction exponentially harder than an early one
+(assumption A-15) and ASUE counts only early ones, which is why the first moves
+up and the second down. Two cautions about those two results: four measures
+were compared, and at 0.05 divided among four tests (0.0125) only ASUE's
+difference clears the bar; and the mean-error comparison was run after seeing
+the score and ASUE, to explain them, so it is a follow-up and not a test
+decided in advance. One seed of the correlation run, seed 42, kept its weights
+from the third pass over the data.
+
+**What this says about the paper's claim.** In this configuration the
+engineering knowledge did not make the network more accurate than the data's
+own 41 strongest relationships — not on the test engines, and not on the
+held-back engines, where the correlation graph came out ahead; it did make its
+test errors less often and less severely late. That is a fact about this architecture — one number per sensor
+and no recurrent stage — and not about the full model the paper's claim is
+made for. Two of this project's configuration comparisons have reversed when
+the architecture moved (working rule 3), so it should be re-measured with
+`--temporal lstm` before being quoted about ESTGNN.
+
+**What this says about the "without physics prior" experiment.** Under the same
+configuration, the every-sensor-joined graph costs 2.784 cycles of RMSE
+(finding F-04). The correlation graph removes the same engineering knowledge
+but keeps the number of edges, and costs 0.096, indistinguishable from zero. So
+in this configuration nearly all of what the every-sensor-joined comparison
+measures is the flattening that graph causes, not the knowledge it removes.
+That supports the audit's item D-2, and it is an inference from two
+measurements rather than a third measurement of its own.
+
+**Reproduce with:**
+
+```bash
+python scripts/train.py --config config/fd001.yaml --seeds 5
+python scripts/train.py --config config/fd001.yaml --graph correlation --seeds 5
+```
+
+The stored runs are
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`
+and
+`fd001_correlation_row_cap_5seed_varsplit_cfg7fdfce_f386291-dirty_20260914T150213Z`.
+The first reproduces the `ae59bc1-dirty` run of 2026-09-08 on all four measures
+and all five seeds, so the tree it ran from trains the network as before. The
+threshold table and the per-seed graph table are recomputed by
+`python scripts/verify_claims.py --only correlation` for seed 42.
 
 ---
 

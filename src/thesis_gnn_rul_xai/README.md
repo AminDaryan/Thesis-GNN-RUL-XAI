@@ -88,8 +88,15 @@ them:
 **`graph`** — which sensor graph the model is given:
 
 - `"physics"` is the hand-designed matrix printed in Table 3 of the paper.
-- `"complete"` connects every sensor to every other one. This is the paper's
-  "without physics prior" ablation.
+- `"complete"` connects every sensor to every other one. It stands in for the
+  paper's "without physics prior" experiment, which removes the engineering
+  knowledge to see what it was worth.
+- `"correlation"` joins the 41 pairs of sensors whose readings move together
+  most strongly on the training engines — the same number of edges as the
+  paper's graph, chosen by the data instead of by an engineer. The paper never
+  builds this graph; it exists to test the paper's claim that its own graph
+  captures more than correlations do. `graph/README.md` explains how it is
+  built and why a fixed number of edges rather than a cut-off.
 
 **`adjacency_normalization`** — how the adjacency matrix is rescaled before the
 graph layers use it. Either `"symmetric"` or `"row"`. The function that applies
@@ -172,22 +179,27 @@ gap to that figure.
   paper is self-contradictory here: it attaches the number 0.5 to the previous
   *smoothed value* rather than to the smoothing parameter. Reading it as the
   smoothing parameter is the only interpretation that makes the sentence mean
-  anything, so 0.5 is used. Recorded as **A-04**. Setting the field to `None`
+  anything, so 0.5 is used (assumption A-04). Setting the field to `None`
   turns smoothing off entirely.
 
-- **The "without physics prior" ablation uses a fully connected graph.** The
-  paper names that ablation but never says what replaces the hand-designed
-  matrix. Recorded as **A-19**.
+- **The "without physics prior" experiment uses a fully connected graph.** The
+  paper names that experiment but never says what replaces the hand-designed
+  matrix (assumption A-19).
+
+- **The data-driven graph keeps the 41 most strongly correlated sensor pairs.**
+  The paper never builds such a graph, so both the rule for joining sensors and
+  the number of edges are choices (assumption A-27).
 
 - **The adjacency matrix is row-normalised.** The paper describes normalising
   the matrix with self-loops added but never prints the formula, and two forms
   fit its description. Row normalisation measured 0.35 cycles closer than the
-  symmetric form (p = 0.047), and was selected under A-22. Recorded as
-  **A-21**.
+  symmetric form (p = 0.047) with no engines held back, and was selected by the
+  nearest-to-the-paper rule; with engines held back the two cannot be told
+  apart (assumption A-21).
 
-- **No validation split and no early stopping in the reproduction.** As above:
-  the paper's Table 6 states 200 epochs and describes no held-out set.
-  Recorded as **A-06** and **A-18**.
+- **Twenty percent of the training engines are held back, and training stops
+  early on them.** As above: the paper's Table 6 states 200 passes over the
+  data and describes no held-back engines (assumptions A-06 and A-18).
 
 ---
 
@@ -200,14 +212,14 @@ The section above explains the ones that need more than a line.
 |---|---|---|
 | `subset` | `"FD001"` | Which of the four sub-datasets to use. |
 | `window_size` | `30` | How many consecutive flight cycles go into one training example. From the paper's Table 6. |
-| `window_stride` | `1` | How far the window moves between one example and the next, in cycles. **A-05.** |
-| `rul_max` | `125` | The ceiling put on the label, in cycles. **A-01.** |
-| `clip_test_labels` | `True` | Whether the same ceiling is put on the test labels. Leave it on; see above. **A-02.** |
-| `normalization` | `"zscore"` | How the sensors are put on a comparable scale. **A-03.** |
-| `smoothing_alpha` | `0.5` | How hard to smooth, between 0 and 1. Larger follows the raw signal more closely; smaller smooths harder. `None` turns smoothing off. **A-04.** |
-| `graph` | `"physics"` | Which sensor graph the network gets. **A-19** covers the `"complete"` option. |
-| `adjacency_normalization` | `"row"` | How that graph is rescaled before use. **A-21.** |
-| `validation_fraction` | `0.2` | What share of the **engines** to hold back. `0.0` holds nothing back, which is the paper's arrangement; 0.2 is this project's addition, reinstated 2026-09-02. Never split by window. **A-06.** |
+| `window_stride` | `1` | How far the window moves between one example and the next, in cycles (assumption A-05). |
+| `rul_max` | `125` | The ceiling put on the label, in cycles (assumption A-01). |
+| `clip_test_labels` | `True` | Whether the same ceiling is put on the test labels. Leave it on; see above (assumption A-02). |
+| `normalization` | `"zscore"` | How the sensors are put on a comparable scale (assumption A-03). |
+| `smoothing_alpha` | `0.5` | How hard to smooth, between 0 and 1. Larger follows the raw signal more closely; smaller smooths harder. `None` turns smoothing off (assumption A-04). |
+| `graph` | `"physics"` | Which sensor graph the network gets: `"physics"`, `"complete"` (assumption A-19) or `"correlation"` (assumption A-27). |
+| `adjacency_normalization` | `"row"` | How that graph is rescaled before use (assumption A-21). |
+| `validation_fraction` | `0.2` | What share of the **engines** to hold back. `0.0` holds nothing back, which is the paper's arrangement; 0.2 is this project's addition. Never split by window (assumption A-06). |
 | `seed` | `42` | Fixes which engines get held back. |
 | `notes` | — | Free text saved with the settings. |
 

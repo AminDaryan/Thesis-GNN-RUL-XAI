@@ -53,15 +53,19 @@ PreprocessingConfig()
     smoothing_alpha            0.5
     graph                      'physics'
     adjacency_normalization    'row'
-    validation_fraction        0.0
+    validation_fraction        0.2
     seed                       42
 ```
 
-Several of those are recorded choices rather than values the paper printed:
-`window_stride` is **A-05**, `rul_max` is **A-01**, `clip_test_labels` is
-**A-02**, `normalization` is **A-03**, `smoothing_alpha` is **A-04**,
-`adjacency_normalization` is **A-21**, and a non-zero `validation_fraction` is
-**A-06**.
+Several of those are this project's choices rather than values the paper
+printed: how far the window moves (`window_stride`, assumption A-05), the label
+ceiling (`rul_max`, assumption A-01), capping the test labels too
+(`clip_test_labels`, assumption A-02), the input scaling (`normalization`,
+assumption A-03), the smoothing strength (`smoothing_alpha`, assumption A-04),
+the rescaling of the graph (`adjacency_normalization`, assumption A-21), and
+holding any engines back at all (`validation_fraction`, assumption A-06).
+`graph` can also name two graphs the paper never uses (assumptions A-19 and
+A-27).
 
 ---
 
@@ -244,14 +248,28 @@ Built last, from settings rather than fixed values:
 ```python
 if config.graph == "physics":
     adjacency_raw, symbols = build_physics_adjacency()
-else:
+elif config.graph == "complete":
     adjacency_raw, symbols = build_fully_connected_adjacency(len(PAPER_SENSOR_SYMBOLS))
+else:
+    physics_edges = int(build_physics_adjacency()[0].sum() // 2)
+    adjacency_raw, symbols = build_correlation_adjacency(
+        train[train[UNIT_COL].isin(train_units)], columns, n_edges=physics_edges,
+    )
 adjacency_normalized = normalize_adjacency(adjacency_raw, method=config.adjacency_normalization)
 ```
 
 The code comment explains why these are settings: *"so that the graph saved next
 to a result is the one the network was actually given. Before that was true, a
 run could store one graph and train on another, and nothing would say so."*
+
+**The correlation graph is the one graph built from data, so it is the one that
+could leak.** It is measured only on the rows of the training engines, after
+smoothing and rescaling, for the reason step 6 fits the rescaling on them: had
+the held-back engines helped decide which sensors are joined, their error would
+look better than it is. Because each seed holds back different engines, each
+seed can get a slightly different graph. `graph/README.md` explains why it
+keeps exactly as many edges as the paper's graph (assumption A-27), and
+`tests/test_pipeline.py` checks it is built from the training rows alone.
 
 ```
   adjacency_raw       shape (14, 14) dtype float32

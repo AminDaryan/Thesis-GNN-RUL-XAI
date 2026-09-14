@@ -139,20 +139,30 @@ that telling the model which sensors are physically related helps it more than
 letting it work that out from data. The paper reports an ablation supporting
 that claim, at a cost of 0.56 cycles.
 
-This project has now measured the same ablation **three times, and got three
-answers**:
+This project has now measured the same ablation — an ablation being a run with
+one part removed, here by joining every sensor to every other — **four times,
+and got four answers**:
 
 | Configuration | With the physics graph | Fully connected | Cost of removing it |
 |---|---|---|---|
-| Current default — z-score, row normalisation, nothing held back | 16.818 ± 0.157 | 19.214 ± 0.056 | **+2.396** (*p* = 0.000002) |
+| Current default — z-score, row normalisation, 20 % held back | 16.496 ± 0.415 | 19.281 ± 0.432 | **+2.784** (*p* = 0.0005) |
+| z-score, row normalisation, nothing held back — the default until 2026-09-02 | 16.818 ± 0.157 | 19.214 ± 0.056 | +2.396 (*p* = 0.000002) |
 | Min-max scaling, symmetric normalisation, 20 % held back | 20.353 ± 0.752 | 20.397 ± 0.395 | +0.044 (*p* = 0.913) |
 | A since-removed node-feature mode | 13.45 ± 0.20 | 19.17 ± 0.45 | +5.7 |
 
+A fifth measurement changed what the question means. Under the current
+default, a graph built from the data — the 41 sensor pairs whose readings move
+together most strongly, as many edges as the paper's graph — scores
+16.592 ± 0.354, only +0.096 cycles from the physics graph (*p* = 0.655). The
+fully connected graph averages every sensor together, and that, not the missing
+engineering knowledge, is most of what its extra error measures (assumption
+A-27).
+
 Decisive, then nothing, then decisive again. **Nothing about the graph changed
-between those three measurements.** What changed was the preprocessing and the
+between those measurements.** What changed was the preprocessing and the
 split — choices the paper does not specify at all.
 
-That instability is finding F-04, and the instability is the finding. An
+That instability is itself the finding (finding F-04). An
 ablation is normally reported as a property of an architecture: *the physics
 prior is worth X*. These measurements say it is not that. It is a property of
 the architecture **and** the preprocessing **and** the split, and the paper
@@ -181,8 +191,10 @@ configuration whenever you quote one, and re-run it whenever anything moves.
 - **Four sensor pairs are beyond reach** of this architecture, permanently.
 - The `Â` in the formula carries **self-loops** and a **degree normalisation**,
   and which normalisation to use was a choice (A-21).
-- What the physics graph is worth has been measured **three times with three
-  answers** — 5.7, 0.044 and 2.396 cycles — under settings the paper leaves
-  open. That instability is finding F-04.
+- What the physics graph is worth, against a graph joining every sensor to
+  every other, has been measured **with four different answers** — 5.7, 0.044,
+  2.396 and 2.784 cycles — under settings the paper leaves open (finding F-04).
+  Against a graph built from the data with as many edges, it is worth nothing
+  five seeds can detect (assumption A-27).
 
 Next: how to make the model explain itself.

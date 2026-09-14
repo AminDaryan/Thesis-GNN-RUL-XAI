@@ -115,21 +115,30 @@ survives the seed-to-seed spread.
 
 This project has done that, and the results are a lesson in why it matters.
 
-**The adjacency normalisation, A-21.** Symmetric against row normalisation. The
+**How the sensor graph is rescaled.** Symmetric against row normalisation. The
 difference turned out to be 0.35 cycles with a paired *p* of 0.047 — real, but
 small, and it does not survive holding engines out. A settled question, and the
-answer is "barely".
+answer is "barely" (assumption A-21).
 
-**The physics graph, F-04.** This one has now been measured three times and has
-reversed twice. It first read 5.7 cycles, was withdrawn and re-measured as
-**0.044 cycles** (*p* = 0.913 — indistinguishable from zero), and now reads
-**2.396 cycles** (*p* = 0.000002, with every one of the five seeds agreeing).
+**What the paper's physics graph is worth.** This one has reversed twice. Set
+against a graph joining every sensor to every other, it first read 5.7 cycles,
+was withdrawn and re-measured as **0.044 cycles** (*p* = 0.913 —
+indistinguishable from zero), then read **2.396 cycles** with nothing held back
+(*p* = 0.000002, every one of the five seeds agreeing), and reads **2.784** under
+the current default (finding F-04).
 
 Nothing about the graph changed between those measurements. The preprocessing
 and the split changed — and the paper specifies neither. Two things moved
-between the zero result and the current one, the input scaling and the split,
-so these runs do not isolate which caused the reversal, and the log says so
-rather than guessing.
+between the zero result and the nothing-held-back one, the input scaling and the
+split, so these runs do not isolate which caused the reversal, and the log says
+so rather than guessing.
+
+Then the question itself turned out to be badly posed. Joining every sensor to
+every other makes every sensor receive the same average, so it removes far more
+than the engineering knowledge. A graph built from the data, with the same 41
+edges the paper's has, costs **0.096 cycles** (*p* = 0.655): nothing that five
+seeds can see (assumption A-27). The comparison you choose decides the answer,
+which is the rule below from another direction.
 
 ---
 
@@ -175,9 +184,10 @@ And even that comparison needs three warnings attached:
    own figure — which means the configuration is not independent of the
    quantity it is being compared against. Under the previously chosen settings
    the same code gives 20.35 ± 0.75. The paper specifies neither, so the honest
-   summary is that this reproduction **spans 16.82 to 20.35 cycles depending on
-   choices the source leaves open**. This is assumption A-22, and it should be
-   read before quoting any single number.
+   summary is that this reproduction **spans 16.50 to 20.35 cycles depending on
+   choices the source leaves open**. The rule is written up in
+   `docs/ASSUMPTIONS.md` (assumption A-22), and it should be read before quoting
+   any single number.
 2. **Capping the test labels flatters the result** by a measured amount, so the
    underlying gap is wider than it appears (A-02).
 3. **The paper's numbers are single runs** with no seeds and no error bars, so

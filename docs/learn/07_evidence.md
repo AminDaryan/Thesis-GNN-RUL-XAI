@@ -33,7 +33,7 @@ recording it is what makes it possible to say the transcription is sound.
 
 The paper does not specify everything needed to rebuild the method. Where a
 value or a procedure had to be chosen, it gets a numbered entry, `A-01` through
-`A-22`, containing four things:
+`A-27`, containing four things:
 
 - **The gap** — quoting what the paper does and does not say.
 - **What was chosen.**
@@ -97,22 +97,26 @@ Several claims in this repository were wrong when first written. They were
 fixed after checking, and the record says so rather than being quietly
 overwritten.
 
-- **F-05** was written from 14 sampled windows out of 240, and had both its
-  magnitude and its mechanism wrong.
-- **A-10** claimed a sensor was "the only" one meeting a condition when seven
-  qualified.
-- **A-08** was logged as an assumption when the paper's Fig. 1 states the thing
-  outright. It was withdrawn.
-- **F-04** claimed the physics graph was worth 5.7 cycles. Re-measured, the
-  difference was 0.044 cycles and not significant. It was reversed.
+- **What the Shapley values say about `P15`** was first written from 14 sampled
+  windows out of 240, and had both its size and its explanation wrong (finding
+  F-05).
+- **The entry on the seventh sensor the paper drops** claimed a sensor was "the
+  only" one meeting a condition when seven qualified (assumption A-10).
+- **The order of smoothing and scaling** was logged as a choice when the
+  paper's Fig. 1 states it outright. It was withdrawn (assumption A-08).
+- **What the paper's sensor graph is worth** was first claimed to be 5.7
+  cycles. Re-measured, the difference was 0.044 cycles and not significant, and
+  the entry was reversed; it has moved again since, and a graph built from the
+  data showed most of the remaining cost was not the engineering knowledge at
+  all (finding F-04, and assumption A-27).
 
 The withdrawn and reversed entries are still there, marked as such, with their
 original text below the correction. A corrected record is worth more than a
 clean one — partly because it tells you what kind of mistake this project is
 prone to, which is information a clean record destroys.
 
-**F-09** is the sharpest of these. A results file survived in the repository
-that no committed code could produce. It happened to contradict a figure that
+**The sharpest of these** is a results file that survived in the repository
+although no committed code could produce it (finding F-09). It happened to contradict a figure that
 was correct. It could as easily have corroborated one that was wrong. That is
 why every run now writes its commit — with a `-dirty` suffix when the working
 tree had uncommitted changes — into both its summary file and its own directory

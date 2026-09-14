@@ -13,8 +13,10 @@ sensors the model may exchange information between directly.
 
 - `__init__.py` — makes the folder a package. No logic.
 - `adjacency.py` — everything else: the transcribed matrix from the paper, two
-  alternative graphs to compare it against, the normalisation the network
-  applies before using it, and a report describing the graph's shape.
+  alternative graphs to compare it against (every sensor joined to every
+  other, and the sensors joined by how strongly their readings move together),
+  the normalisation the network applies before using it, and a report
+  describing the graph's shape.
 
 ## The vocabulary, in one place
 
@@ -144,19 +146,61 @@ and these numbers appear in the thesis. `to_networkx` does the conversion;
 it ignores self-loops, because a node is never its own neighbour for the
 purpose of counting distance.
 
-## Traps
+## The graph built from the data instead
 
-- **The correlation graph must be built from training data only.**
-  `build_correlation_adjacency` connects two sensors when the absolute value of
-  their Pearson correlation coefficient reaches a threshold. (The Pearson
-  correlation coefficient measures how closely two quantities follow a straight
-  line: -1 means one rises exactly as the other falls, 0 means no straight-line
-  relationship, +1 means they rise and fall together. The absolute value is used
-  because a strong inverse relationship is as informative as a strong direct
-  one.) Feeding it test data leaks test information into the model, for the same
-  reason that scaling statistics are computed on training data only. It exists
-  so the hand-designed graph can be compared directly against the data-driven
-  approach everyone else uses.
+The paper claims, in its Conclusions, that its hand-designed graph captures
+sensor relationships beyond what correlations in the data would show. It never
+builds a correlation graph to check. `build_correlation_adjacency` builds one,
+so that claim can be measured: the configuration setting `graph: correlation`
+trains the same network on it.
+
+**What correlation measures.** The Pearson correlation coefficient says how
+closely two quantities follow a straight line: -1 means one rises exactly as
+the other falls, 0 means no straight-line relationship, +1 means they rise and
+fall together. The paper itself uses it, for a different job: its Section 3.2.2
+uses it to decide which sensors to keep at all. Here the absolute value is
+used, because a strong inverse relationship is as much a relationship as a
+strong direct one.
+
+**Two ways to turn correlations into edges**, and the function takes exactly
+one of them:
+
+- `threshold=` joins every pair whose correlation reaches a cut-off.
+- `n_edges=` joins the given number of most strongly correlated pairs.
+
+**Why the network is given the second, with 41 edges.** A cut-off lets the
+number of edges float, and on FD001 it floats to a graph that cannot test
+anything. Measured on the 80 training engines of `config/fd001.yaml`:
+
+| Cut-off | Edges | Sensors joined to nothing | The rest |
+|---|---|---|---|
+| 0.5, 0.6 or 0.7 | 66 | `P15`, `Nc` | all 12 joined to each other |
+| 0.8 | 62 | `P15`, `Nc` | 12, not all joined |
+| 0.85 | 42 | `P15`, `Nc` | 12, not all joined |
+| 0.9 | 12 | `T24`, `T30`, `P15`, `Nc`, `htBleed` | 7 in the largest group |
+
+Between 0.5 and 0.7 twelve sensors are all joined to each other. After the
+rescaling described above, every one of those twelve rows becomes the same
+average of the same twelve sensors, so the first graph layer gives all twelve
+identical numbers — the same flattening the every-sensor-joined graph causes.
+Comparing that graph with the paper's would measure how many edges each has,
+not whether the engineering knowledge chose better ones. Fixing the count at
+41, the paper's own, leaves *which* pairs are joined as the only difference.
+
+On the five seeds' training engines the 41-edge graph shares 17 or 18 of its
+edges with the paper's graph, and leaves `P15` and `Nc` joined to nothing on
+every one of them, so in that network those two sensors only ever see
+themselves (assumption A-27 records all of this).
+
+**It must be built from the training engines only.** Correlations measured on
+held-back or test engines would let those engines help decide the model, for
+the same reason the scaling statistics are computed on training engines only.
+The pipeline measures them on the training engines' rows after smoothing and
+rescaling, and `tests/test_pipeline.py` checks that the graph it hands over is
+exactly the one built from those rows. Because each seed holds back different
+engines, each seed can be given a slightly different graph.
+
+## Traps
 - **The transcription is checked when the module is imported.** The bottom of
   `adjacency.py` asserts that the matrix is 14-by-14, symmetric, zero on the
   diagonal, and connected. A silent transcription error would corrupt every
@@ -168,26 +212,28 @@ purpose of counting distance.
 
 ## Judgement calls made in this folder
 
-Both are recorded in full in `docs/ASSUMPTIONS.md`.
+All three are recorded in full in `docs/ASSUMPTIONS.md`.
 
-- **What the "without physics prior" ablation replaces the graph with.** The
-  paper names that ablation — it removes the engineering knowledge while keeping
-  the rest of the architecture identical, so any change in accuracy is
-  attributable to the graph alone — but never says what matrix takes the hand
-  designed one's place. A graph with no edges would ablate message passing
-  itself, which the paper already reports separately as "without GCN", so
-  `build_fully_connected_adjacency` uses a complete graph instead: every sensor
-  joined to every other. That choice is recorded as **A-19**.
+- **What the "without physics prior" experiment replaces the graph with.** The
+  paper names that experiment — an ablation, meaning a run with one part
+  removed to see what it was worth; here the part is the engineering knowledge,
+  with the rest of the architecture unchanged — but never says what matrix
+  takes the hand-designed one's place. A graph with no edges would remove the
+  sensors' exchange of information itself, which the paper already reports
+  separately as "without GCN", so `build_fully_connected_adjacency` uses a
+  complete graph instead: every sensor joined to every other (assumption A-19).
+- **How the data-driven graph is built.** The paper never builds one, so the
+  rule — the 41 most strongly correlated pairs on the training engines — is a
+  choice, argued above (assumption A-27).
 - **Which normalisation formula to use.** The paper's Equation 8 says only that
   "A denotes the normalized adjacency matrix incorporating self-loops" and that
   the normalisation "ensures stable gradient propagation and balanced feature
   aggregation across different node degrees". The formula itself is never
   printed, and both the symmetric and the row form fit that description. The
   default of `normalize_adjacency` is the symmetric form, because it is the one
-  defined by the layer the paper cites. That choice is recorded as **A-21**;
-  read the entry there before quoting either form, because it has been
-  re-measured since and the project's own configuration default lives in
-  `config.py`, not here.
+  defined by the layer the paper cites. The project's own configuration default
+  is the row form, set in `config.py`, not here; read the entry before quoting
+  either, because it has been re-measured since (assumption A-21).
 
 ## References
 
@@ -210,7 +256,7 @@ Everything `adjacency.py` offers.
 |---|---|
 | `build_physics_adjacency()` | Returns the paper's own graph and the sensor name of each row: a 14-by-14 grid of zeros and ones with zeros down the diagonal, and the 14 names in order. |
 | `build_fully_connected_adjacency(n_nodes=14)` | Returns a graph where every sensor is joined to every other, for the comparison described above. Same pair of return values. |
-| `build_correlation_adjacency(frame, sensor_columns, threshold=0.5)` | Builds a graph from data instead: joins two sensors when their correlation reaches `threshold`. **Training data only.** Same pair of return values. |
+| `build_correlation_adjacency(frame, sensor_columns, threshold=None, n_edges=None)` | Builds a graph from data instead. Give exactly one rule: `threshold` joins every pair whose absolute correlation reaches it; `n_edges` joins that many of the most strongly correlated pairs, ties going to the pair that comes first in sensor order. A sensor whose readings never change counts as correlated with nothing. **Training data only.** Same pair of return values. |
 | `normalize_adjacency(matrix, add_self_loops=True, method="symmetric")` | Rescales a graph for the network, in one of the two forms above. Rejects a matrix that is not square or not symmetric, and one where a node has nothing joined to it. Set `add_self_loops=False` only to demonstrate what the self-loops do; the network needs them. |
 | `adjacency_report(matrix, symbols)` | Measures a graph. Returns the dictionary described above. |
 | `pairs_beyond_reach(matrix, symbols, n_layers)` | The sensor pairs too far apart for that many layers to connect, as `(name, name, distance)`, sorted by distance and then by name. Empty when every pair is within reach. |
