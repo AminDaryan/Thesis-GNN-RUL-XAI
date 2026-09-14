@@ -177,6 +177,31 @@ def test_diagnostics_record_the_important_facts(prepared):
     assert diagnostics["kept_but_uninformative"] == ["P15"]   # finding F-01
 
 
+def test_the_correlation_graph_is_measured_on_the_training_engines_alone(raw_dir):
+    """A-27: the held-back engines must not help decide which sensors are joined.
+
+    The graph the pipeline hands over must be exactly the one built from the
+    training engines' rows, and it must have as many edges as the paper's.
+    """
+    from thesis_gnn_rul_xai.data.sensors import UNIT_COL
+    from thesis_gnn_rul_xai.graph.adjacency import build_correlation_adjacency
+
+    prepared = run_preprocessing(
+        PreprocessingConfig(graph="correlation", validation_fraction=0.25, seed=7),
+        data_dir=raw_dir,
+        keep_frames=True,
+    )
+    frame = prepared.frames["train"]
+    training_only = frame[frame[UNIT_COL].isin(np.unique(prepared.train.units))]
+    expected, _ = build_correlation_adjacency(
+        training_only, list(PAPER_SENSOR_COLUMNS), n_edges=41
+    )
+    np.testing.assert_array_equal(prepared.adjacency_raw, expected)
+    assert prepared.diagnostics["graph"]["n_edges"] == 41
+    assert prepared.diagnostics["graph_kind"] == "correlation"
+    assert set(np.unique(frame[UNIT_COL])) > set(np.unique(prepared.train.units))
+
+
 def test_the_run_is_repeatable(raw_dir):
     """The same settings must give bit-for-bit identical arrays."""
     config = PreprocessingConfig(

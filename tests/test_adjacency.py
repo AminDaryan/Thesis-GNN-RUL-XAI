@@ -228,3 +228,32 @@ def test_correlation_graph_responds_to_the_threshold(loaded):
     strict, _ = build_correlation_adjacency(loaded.train, columns, threshold=0.95)
     assert loose.sum() >= strict.sum()
     assert np.all(np.diag(loose) == 0)
+
+
+def test_correlation_graph_keeps_exactly_the_strongest_pairs_asked_for(loaded):
+    """A-27: as many edges as asked, and every kept pair at least as strong as every dropped one."""
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_COLUMNS
+
+    columns = list(PAPER_SENSOR_COLUMNS)
+    matrix, _ = build_correlation_adjacency(loaded.train, columns, n_edges=41)
+    assert int(matrix.sum() // 2) == 41
+    np.testing.assert_array_equal(matrix, matrix.T)
+    assert np.all(np.diag(matrix) == 0)
+
+    strength = np.abs(np.nan_to_num(loaded.train[columns].corr().to_numpy()))
+    upper = np.triu(np.ones((14, 14), dtype=bool), k=1)
+    kept = strength[upper & (matrix == 1)]
+    dropped = strength[upper & (matrix == 0)]
+    assert kept.min() >= dropped.max()
+
+
+def test_correlation_graph_needs_exactly_one_rule(loaded):
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_COLUMNS
+
+    columns = list(PAPER_SENSOR_COLUMNS)
+    with pytest.raises(ValueError, match="exactly one"):
+        build_correlation_adjacency(loaded.train, columns)
+    with pytest.raises(ValueError, match="exactly one"):
+        build_correlation_adjacency(loaded.train, columns, threshold=0.5, n_edges=41)
+    with pytest.raises(ValueError, match="n_edges"):
+        build_correlation_adjacency(loaded.train, columns, n_edges=92)

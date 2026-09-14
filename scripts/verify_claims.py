@@ -54,7 +54,7 @@ import argparse
 import json
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from itertools import combinations
 from pathlib import Path
@@ -79,7 +79,9 @@ from thesis_gnn_rul_xai.data.smoothing import apply_ewma
 from thesis_gnn_rul_xai.graph.adjacency import (
     PHYSICS_ADJACENCY_ROWS,
     adjacency_report,
+    build_correlation_adjacency,
     build_physics_adjacency,
+    normalize_adjacency,
     pairs_beyond_reach,
 )
 from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
@@ -231,6 +233,51 @@ def check_windows() -> list[Claim]:
             Claim("A-23", f"{subset} test engines under 30 cycles", under,
                   int((lengths < 30).sum()))
         )
+    return claims
+
+
+def check_correlation() -> list[Claim]:
+    """A-27's tables: the graphs a correlation cut-off gives, and the 41-edge graph, for seed 42."""
+    config = load_config(Path(__file__).resolve().parents[1] / "config" / "fd001.yaml")
+    prepared = run_preprocessing(
+        replace(config, graph="correlation"), data_dir=raw_data_dir(), keep_frames=True
+    )
+    frame = prepared.frames["train"]
+    training = frame[frame[UNIT_COL].isin(np.unique(prepared.train.units))]
+    columns = list(PAPER_SENSOR_COLUMNS)
+    physics, symbols = build_physics_adjacency()
+
+    def isolated(matrix: np.ndarray) -> str:
+        return ", ".join(s for s, d in zip(symbols, matrix.sum(axis=1), strict=True) if d == 0)
+
+    claims: list[Claim] = [
+        Claim("A-27", "training engines, seed 42", 80, len(np.unique(prepared.train.units)))
+    ]
+    recorded_cuts = {0.5: (66, "P15, Nc"), 0.6: (66, "P15, Nc"), 0.7: (66, "P15, Nc"),
+                     0.8: (62, "P15, Nc"), 0.85: (42, "P15, Nc"),
+                     0.9: (12, "T24, T30, P15, Nc, htBleed"), 0.95: (0, ", ".join(symbols))}
+    for cut, (edges, alone) in recorded_cuts.items():
+        matrix, _ = build_correlation_adjacency(training, columns, threshold=cut)
+        claims.append(Claim("A-27", f"edges at cut-off {cut}", edges, int(matrix.sum() // 2)))
+        claims.append(Claim("A-27", f"joined to nothing at cut-off {cut}", alone, isolated(matrix)))
+
+    strength = np.abs(np.nan_to_num(training[columns].corr().to_numpy()))
+    graph = prepared.adjacency_raw
+    upper = np.triu(np.ones_like(graph, dtype=bool), k=1)
+    rescaled = normalize_adjacency(graph, method=config.adjacency_normalization)
+    claims += [
+        Claim("A-27", "41-edge graph: edges", 41, int(graph.sum() // 2)),
+        Claim("A-27", "41-edge graph: weakest kept correlation", 0.8550,
+              round(float(strength[upper & (graph == 1)].min()), 4), tolerance=5e-5),
+        Claim("A-27", "41-edge graph: edges shared with Table 3", 17,
+              int(((graph == 1) & (physics == 1)).sum() // 2)),
+        Claim("A-27", "41-edge graph: joined to nothing", "P15, Nc", isolated(graph)),
+        Claim("A-27", "41-edge graph: independent rows after rescaling", 10,
+              int(np.linalg.matrix_rank(rescaled))),
+        Claim("A-27", "Table 3: independent rows after rescaling", 8,
+              int(np.linalg.matrix_rank(
+                  normalize_adjacency(physics, method=config.adjacency_normalization)))),
+    ]
     return claims
 
 
@@ -418,6 +465,7 @@ CHECKS = [
     Check("sensors", "F-01, A-10", True, False, check_sensors),
     Check("labels", "F-02, F-03", True, False, check_labels),
     Check("windows", "A-23", True, False, check_windows),
+    Check("correlation", "A-27", True, False, check_correlation),
     Check("ordering", "A-08", True, False, check_ordering),
     Check("baselines", "A-20", True, True, check_baselines),
     Check("p15", "F-05", True, True, check_p15),

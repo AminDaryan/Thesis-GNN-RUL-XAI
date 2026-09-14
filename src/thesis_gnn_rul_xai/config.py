@@ -17,6 +17,7 @@ from typing import Any, Literal
 import yaml
 
 __all__ = [
+    "SENSOR_GRAPHS",
     "AdjacencyNormalization",
     "NormalizationMethod",
     "PreprocessingConfig",
@@ -27,10 +28,13 @@ __all__ = [
 # The three ways of putting the sensors on a comparable scale. README.md.
 NormalizationMethod = Literal["minmax_per_condition", "minmax_global", "zscore"]
 
-# Which sensor graph to give the network: the paper's own, or one where every
-# sensor is connected to every other. ASSUMPTION A-19 covers the second, which
-# stands in for an experiment the paper names but never describes.
-SensorGraph = Literal["physics", "complete"]
+# Which sensor graph to give the network: the paper's own; one where every
+# sensor is connected to every other, which stands in for an experiment the
+# paper names but never describes (ASSUMPTION A-19); or one built from how
+# strongly the sensors' readings move together on the training engines, with
+# as many edges as the paper's graph (ASSUMPTION A-27).
+SensorGraph = Literal["physics", "complete", "correlation"]
+SENSOR_GRAPHS: tuple[str, ...] = ("physics", "complete", "correlation")
 
 # The two ways of rescaling that graph before the network uses it.
 # ASSUMPTION A-21 covers the choice. Applied by normalize_adjacency() in
@@ -83,6 +87,10 @@ class PreprocessingConfig:
     # prior", stand in a graph where every sensor is joined to every other. The
     # paper names that experiment but never says what it used. Written up in
     # docs/ASSUMPTIONS.md. Leave this on "physics" for the paper's own graph.
+    # ASSUMPTION A-27: "correlation" joins the 41 most strongly correlated
+    # sensor pairs on the training engines, the same number of edges as the
+    # paper's graph. The paper claims its graph captures more than correlations
+    # but never builds one to compare against. Written up in docs/ASSUMPTIONS.md.
     graph: SensorGraph = "physics"
     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
     # formula and two forms fit what it says. With nothing held back --
@@ -133,9 +141,9 @@ class PreprocessingConfig:
                 "smoothing_alpha must lie in the interval (0, 1], or be None to "
                 f"disable smoothing. Got {self.smoothing_alpha}."
             )
-        if self.graph not in ("physics", "complete"):
+        if self.graph not in SENSOR_GRAPHS:
             raise ValueError(
-                f"graph must be 'physics' or 'complete', got {self.graph!r}."
+                f"graph must be one of {list(SENSOR_GRAPHS)}, got {self.graph!r}."
             )
         if self.adjacency_normalization not in ("symmetric", "row"):
             raise ValueError(

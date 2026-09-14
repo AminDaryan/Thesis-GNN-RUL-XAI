@@ -16,6 +16,7 @@ import pandas as pd
 from ...config import PreprocessingConfig
 from ...graph.adjacency import (
     adjacency_report,
+    build_correlation_adjacency,
     build_fully_connected_adjacency,
     build_physics_adjacency,
     normalize_adjacency,
@@ -241,9 +242,22 @@ def run_preprocessing(
     # and train on another, and nothing would say so.
     if config.graph == "physics":
         adjacency_raw, symbols = build_physics_adjacency()
-    else:
+    elif config.graph == "complete":
         adjacency_raw, symbols = build_fully_connected_adjacency(
             len(PAPER_SENSOR_SYMBOLS)
+        )
+    else:
+        # ASSUMPTION A-27: join the sensor pairs whose readings move together
+        # most strongly, as many pairs as the paper's graph has edges. Measured
+        # on the training engines only, after smoothing and rescaling, so that
+        # neither the held-back nor the test engines help decide the graph --
+        # the same rule the rescaling follows. The paper never builds such a
+        # graph. Written up in docs/ASSUMPTIONS.md.
+        physics_edges = int(build_physics_adjacency()[0].sum() // 2)
+        adjacency_raw, symbols = build_correlation_adjacency(
+            train[train[UNIT_COL].isin(train_units)],
+            columns,
+            n_edges=physics_edges,
         )
     adjacency_normalized = normalize_adjacency(
         adjacency_raw, method=config.adjacency_normalization

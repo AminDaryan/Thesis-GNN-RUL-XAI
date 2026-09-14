@@ -82,21 +82,47 @@ def build_correlation_adjacency(
     frame: pd.DataFrame,
     sensor_columns: Sequence[str],
     *,
-    threshold: float = 0.5,
+    threshold: float | None = None,
+    n_edges: int | None = None,
     symbols: Sequence[str] | None = None,
 ) -> tuple[np.ndarray, tuple[str, ...]]:
     """Connect sensors whose readings move together. Pass training data only."""
-    if not 0.0 <= threshold <= 1.0:
-        raise ValueError(f"threshold must lie in [0, 1], got {threshold}.")
+    if (threshold is None) == (n_edges is None):
+        raise ValueError("give exactly one of threshold and n_edges.")
 
-    correlation = frame[list(sensor_columns)].corr(method="pearson").to_numpy()
-    matrix = (np.abs(correlation) >= threshold).astype(np.float32)
-    np.fill_diagonal(matrix, 0.0)
+    columns = list(sensor_columns)
+    # A sensor that never changes has no correlation with anything; pandas
+    # reports NaN, which is counted here as no relationship at all.
+    strength = np.abs(np.nan_to_num(frame[columns].corr(method="pearson").to_numpy()))
+    n_nodes = len(columns)
+    matrix = np.zeros((n_nodes, n_nodes), dtype=np.float32)
+
+    if threshold is not None:
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError(f"threshold must lie in [0, 1], got {threshold}.")
+        matrix[strength >= threshold] = 1.0
+        np.fill_diagonal(matrix, 0.0)
+        rule = f"threshold {threshold:.2f}"
+    else:
+        possible = n_nodes * (n_nodes - 1) // 2
+        if not 0 <= n_edges <= possible:
+            raise ValueError(
+                f"n_edges must lie in [0, {possible}] for {n_nodes} sensors, got {n_edges}."
+            )
+        # ASSUMPTION A-27: keep the given number of most strongly correlated
+        # pairs rather than every pair above a cut-off, so the data-driven graph
+        # can be given exactly as many edges as the paper's own. Ties go to the
+        # pair that comes first in sensor order.
+        rows, cols = np.triu_indices(n_nodes, k=1)
+        kept = np.argsort(-strength[rows, cols], kind="stable")[:n_edges]
+        matrix[rows[kept], cols[kept]] = 1.0
+        matrix[cols[kept], rows[kept]] = 1.0
+        rule = f"the {n_edges} strongest pairs"
 
     labels = tuple(symbols) if symbols is not None else PAPER_SENSOR_SYMBOLS
     logger.info(
-        "Built a correlation graph with threshold %.2f: %d undirected edge(s).",
-        threshold, int(matrix.sum() // 2),
+        "Built a correlation graph from %s: %d undirected edge(s).",
+        rule, int(matrix.sum() // 2),
     )
     return matrix, labels
 

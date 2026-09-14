@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from thesis_gnn_rul_xai.data.labeling import apply_piecewise_rul, piecewise_rul_curve
 from thesis_gnn_rul_xai.data.sensors import (
@@ -31,6 +32,7 @@ from thesis_gnn_rul_xai.evaluation.metrics import (
 )
 from thesis_gnn_rul_xai.graph.adjacency import (
     adjacency_report,
+    build_correlation_adjacency,
     build_physics_adjacency,
     normalize_adjacency,
     pairs_beyond_reach,
@@ -147,6 +149,26 @@ def test_example_normalize_adjacency_row_form_differs():
 
     assert [round(float(value), 6) for value in by_row] == [1.0, 1.0, 1.0]
     assert [round(float(value), 3) for value in symmetric] == [1.15, 0.908, 0.908]
+
+
+def test_example_correlation_graph_keeps_the_strongest_pairs():
+    """x and y rise together exactly (correlation 1); z moves against both at
+    -0.4. Asked for one edge, x-y is kept. Asked for two, the tie between x-z
+    and y-z goes to x-z, the pair that comes first in column order."""
+    frame = pd.DataFrame({
+        "x": [1.0, 2.0, 3.0, 4.0],
+        "y": [2.0, 4.0, 6.0, 8.0],
+        "z": [4.0, 1.0, 3.0, 2.0],
+    })
+    assert frame.corr().loc["x", "z"] == pytest.approx(-0.4)
+
+    one, _ = build_correlation_adjacency(frame, ["x", "y", "z"], n_edges=1, symbols="xyz")
+    two, _ = build_correlation_adjacency(frame, ["x", "y", "z"], n_edges=2, symbols="xyz")
+    cut, _ = build_correlation_adjacency(frame, ["x", "y", "z"], threshold=0.39, symbols="xyz")
+
+    assert one.tolist() == [[0, 1, 0], [1, 0, 0], [0, 0, 0]]
+    assert two.tolist() == [[0, 1, 1], [1, 0, 0], [1, 0, 0]]
+    assert cut.tolist() == [[0, 1, 1], [1, 0, 1], [1, 1, 0]]
 
 
 def test_example_adjacency_report():
