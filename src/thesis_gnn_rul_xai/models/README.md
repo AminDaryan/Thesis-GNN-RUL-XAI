@@ -22,8 +22,10 @@ pip install -e ".[model]"
 | File | What it is |
 |------|------------|
 | `layers.py` | `GraphConvolution`, one graph convolution layer. |
-| `estgnn.py` | `ESTGNN`, the whole network: three graph convolutions, a flatten, two dense layers. |
-| `__init__.py` | Re-exports `ESTGNN` and `GraphConvolution`. |
+| `estgnn.py` | `ESTGNN`, the whole network: a temporal stage, three graph convolutions, a flatten, two dense layers. |
+| `temporal/` | The temporal stages, each a different way of turning one sensor's 30-cycle window into what the graph layers read. That folder has its own README. |
+| `config.py` | `ModelConfig`, the seven settings that decide the network's shape, kept in one record a run can save; and `build_model`, which builds the network such a record describes. Explained under [Writing down which network a run used](#writing-down-which-network-a-run-used). |
+| `__init__.py` | Re-exports the names above, so `from thesis_gnn_rul_xai.models import ModelConfig` works. |
 
 ## What the network is
 
@@ -190,6 +192,153 @@ paper states how many recurrent networks there are and what goes into each, and
 never states their size, so this project had to choose one (assumption A-26).
 What the stage is worth when trained depends on whether the best pass's weights
 are kept, which the paper never describes (finding F-16).
+
+## Writing down which network a run used
+
+### The problem
+
+A stored result is worth quoting only if someone can say which network
+produced it. The shape of the network is decided by seven settings, and they
+arrive from different places: the training script's command line, the
+documentation site's playground, and, when an explanation is computed later,
+the folder of a run that finished days ago. If each of those places built the
+network its own way, two of them could read the same settings and build two
+different networks, and nothing would say so.
+
+`config.py` answers that with two things. `ModelConfig` is one record holding
+all seven settings. `build_model` is the one function that turns such a record
+into a network. The training script, the playground and the reader of stored
+runs in `training/stored.py` all go through both.
+
+### The seven settings
+
+| Setting | Default | Where the default comes from |
+|---|---|---|
+| `temporal` | `"last_cycle"` | Our choice: keep the most recent reading of each window (assumption A-07), so the paper's LSTM stage is off (assumption A-11). |
+| `temporal_hidden` | `32` | Our choice, since the paper never gives the LSTM's size (assumption A-26). Read only by `lstm` and `gru`, the two stages that read a window one cycle at a time and carry a running summary of size `temporal_hidden` from cycle to cycle. |
+| `temporal_out_features` | `1` | How many numbers each sensor hands the graph layers. Table 4 prints the input to the first graph layer as `[batch size,14,1]`. |
+| `shared_across_sensors` | `False` | Section 2.2 of the paper gives each sensor "a dedicated LSTM network", so one network shared by all fourteen is not the paper. |
+| `gcn_hidden` | `(32, 64, 32)` | Table 4: GCN-1, GCN-2 and GCN-3 output 32, 64 and 32 numbers per sensor. |
+| `fc_hidden` | `128` | Table 4: FC-1 outputs 128. |
+| `gcn_bias` | `False` | Our choice: Table 4 lists only a weight matrix for each graph layer (assumption A-12). |
+
+A record checks its values the moment it is made, so a bad setting stops the
+program before any training starts rather than after an hour of it:
+
+```text
+ModelConfig(temporal="transformer")
+  -> ValueError: temporal must be one of ['last_cycle', 'mean_window', 'raw_window', 'lstm', 'gru'], got 'transformer'.
+ModelConfig(fc_hidden=0)
+  -> ValueError: fc_hidden must be at least 1, got 0.
+```
+
+`recurrent` is a yes-or-no answer read off the record: `True` for `lstm` and
+`gru`, the two stages that have a hidden size at all, and `False` otherwise.
+
+### Saving the record beside a run, and reading it back
+
+`save(path)` writes the record as YAML, a plain-text format for settings. This
+is the `model_config.yaml` that `scripts/train.py` leaves in every run folder.
+For the default record the whole file is:
+
+```yaml
+temporal: last_cycle
+temporal_hidden: 32
+temporal_out_features: 1
+shared_across_sensors: false
+gcn_hidden:
+- 32
+- 64
+- 32
+fc_hidden: 128
+gcn_bias: false
+```
+
+`load_model_config(path)` reads such a file back into a `ModelConfig`, and
+refuses a key it does not know. Python would refuse one anyway, with
+`ModelConfig.__init__() got an unexpected keyword argument 'hidden'`; the check
+exists so the message names the file and lists every key that is allowed:
+
+```text
+Unknown model setting(s) in .../bad.yaml: ['hidden']. Valid keys are: ['fc_hidden', 'gcn_bias', 'gcn_hidden', 'shared_across_sensors', 'temporal', 'temporal_hidden', 'temporal_out_features'].
+```
+
+A run from before `model_config.yaml` existed recorded only its temporal stage
+and hidden size in `summary.json`, and `training/stored.py` rebuilds the record
+from those two, with every other setting at its default.
+
+### The six-character name of a network
+
+A run folder's name has to change whenever the network does, or two different
+networks would be filed under one name. Writing all seven settings into a
+folder name would make it unreadable, so the record is reduced to a short
+**fingerprint**: a few characters computed from the settings, which come out
+the same every time for the same settings and completely different when any
+one of them changes.
+
+`digest()` makes it in three steps:
+
+1. Write the record as JSON text, a standard way of writing nested data as
+   characters, with the keys in alphabetical order. The order is fixed so that
+   the same settings always become the same text.
+2. Feed that text to SHA-256, a standard function that turns any text into 64
+   hexadecimal characters (the digits 0 to 9 and the letters a to f). Change a
+   single character of the text and the output changes beyond recognition.
+3. Keep the first six characters.
+
+For the default record, step 1 gives
+
+```text
+{"fc_hidden": 128, "gcn_bias": false, "gcn_hidden": [32, 64, 32], "shared_across_sensors": false, "temporal": "last_cycle", "temporal_hidden": 32, "temporal_out_features": 1}
+```
+
+step 2 gives `4e49f2beee0f32bea65cfa3f41da5a3a...`, and the digest is `4e49f2`.
+Change only `fc_hidden` from 128 to 64 and the digest becomes `f98ee3`, with
+nothing in common with the first.
+
+`scripts/train.py` uses it like this. The temporal stage is already written
+into a run's folder name in words — nothing for `last_cycle`, the default, and
+`_lstm32` for an LSTM of hidden size 32 — so the stage and its size do not
+count as a difference. Any other setting that differs from the default adds
+`_net<digest>`, so a run with `fc_hidden` at 64 carries `_netf98ee3`. Six
+characters allow 16 million different names, which makes two different
+networks sharing one unlikely but not impossible, and that is why the full
+record is always saved beside the results rather than trusted to the name.
+
+Every character fed to SHA-256 is a setting: `ModelConfig` has no field of free text,
+so rewording a comment cannot rename a run.
+
+### Building the network
+
+`build_model(adjacency, config, window_size=..., rul_max=...)` builds the
+temporal stage the record names, then the `ESTGNN` around it. What it takes:
+
+- `adjacency`, the sensor graph, already rescaled by `normalize_adjacency()`;
+- `config`, the `ModelConfig`;
+- `window_size`, how many cycles each sensor's window holds (30 by default);
+- `rul_max`, the label ceiling (125 by default).
+
+It returns the network, not yet trained. Built on the paper's graph with a
+window of 30, the stages give these sizes, from `count_parameters()`:
+
+| `temporal` | Numbers the network learns |
+|---|---|
+| `last_cycle` | 61,729 |
+| `mean_window` | 61,729 |
+| `lstm` | 124,482 |
+| `raw_window` | 62,657 |
+
+The first two match because neither stage learns anything: one keeps the last
+reading and the other averages the thirty, and both hand over one number per
+sensor. `raw_window` hands over all 30, so the first graph weight matrix grows
+from 1 × 32 = 32 numbers to 30 × 32 = 960, and 61,729 + 960 − 32 = 62,657.
+
+That last stage is the one `ESTGNN` refuses to build unless told
+`allow_time_in_the_graph_layer=True`, for the reason given in
+[One number per sensor, and why 30 would be wrong](#one-number-per-sensor-and-why-30-would-be-wrong).
+`build_model` passes `True` only when `config.temporal` is `"raw_window"`:
+naming that stage in a record counts as asking for it on purpose, and every
+other stage is still checked.
 
 ## Judgement calls made in this folder
 

@@ -58,6 +58,108 @@ def test_example_estgnn():
     assert sum(p.numel() for p in model.parameters()) == 61729
 
 
+# --- models/config.py ---------------------------------------------------
+
+
+def test_example_a_run_name_gets_six_characters_that_change_with_any_network_setting():
+    """Why a run directory name ends in something like `net4e49f2`, and how it is made.
+
+    The problem: two runs that differ only in, say, the width of the first fully
+    connected layer must never get the same directory name, or the second would
+    be mistaken for the first. Spelling every setting out in the name would make
+    it hundreds of characters long.
+
+    The answer is a short fingerprint of all the settings together, made in
+    three steps:
+
+    1. Write every setting of the network out as one line of text. A
+       `ModelConfig` is the object holding those settings. The keys are put in
+       alphabetical order so the same settings always give the same line,
+       whatever order they were typed in.
+    2. Feed that line to SHA-256, a standard function that turns any text into
+       64 hexadecimal characters. The same text always gives the same 64; text
+       that differs by one character gives 64 unrelated ones.
+    3. Keep the first six.
+
+    Below, the default settings give "4e49f2". Changing one setting, the first
+    fully connected layer from 128 numbers wide to 64, gives "f98ee3": a
+    different fingerprint, so a different directory.
+    """
+    import hashlib
+    import json
+
+    from thesis_gnn_rul_xai.models import ModelConfig
+
+    default = ModelConfig()
+
+    # Step 1: the settings as one line of text, keys in alphabetical order.
+    text = json.dumps(default.to_dict(), sort_keys=True)
+    assert text == (
+        '{"fc_hidden": 128, "gcn_bias": false, "gcn_hidden": [32, 64, 32], '
+        '"shared_across_sensors": false, "temporal": "last_cycle", '
+        '"temporal_hidden": 32, "temporal_out_features": 1}'
+    )
+
+    # Steps 2 and 3: SHA-256 of that text, first six characters. digest() is
+    # the method that does both, and it gives the same answer as doing it by hand.
+    by_hand = hashlib.sha256(text.encode("utf-8")).hexdigest()[:6]
+    assert by_hand == default.digest() == "4e49f2"
+
+    # One setting changed, the fingerprint changed.
+    assert ModelConfig(fc_hidden=64).digest() == "f98ee3"
+
+
+def test_example_load_model_config_names_the_unknown_key(tmp_path):
+    from thesis_gnn_rul_xai.models import ModelConfig, load_model_config
+
+    saved = ModelConfig().save(tmp_path / "model_config.yaml")
+    assert load_model_config(saved) == ModelConfig()
+
+    (tmp_path / "bad.yaml").write_text("temporal: lstm\nhidden: 64\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"Unknown model setting\(s\) in .*bad\.yaml: \['hidden'\]"):
+        load_model_config(tmp_path / "bad.yaml")
+
+
+def test_example_how_many_numbers_the_network_learns_with_each_temporal_stage():
+    """The same graph layers, four different first stages, and what each costs.
+
+    "Learns" means the numbers training adjusts: the entries of the weight
+    matrices and biases. `count_parameters()` adds them up. Every model below is
+    built on the paper's sensor graph, for windows of 30 cycles.
+
+    The temporal stage sits in front of the graph layers and decides what each
+    sensor hands to the first one, which is called W(1). W(1) is a table of
+    multipliers with one row per number a sensor hands over and one column per
+    output (32 columns, from Table 4). So it is 1 x 32 = 32 multipliers when
+    each sensor hands over one number, and 30 x 32 = 960 when it hands over 30.
+
+    - last_cycle keeps the most recent of the 30 readings. It learns nothing
+      and hands over one number: 61,729 in all.
+    - mean_window averages the 30 readings. It also learns nothing and hands
+      over one number, so it is the same 61,729.
+    - lstm is the paper's stage: 14 recurrent networks, one per sensor. Each
+      has 4,480 learned numbers (its four gates each hold 32 weights for the
+      input, 32 x 32 for the previous state and two sets of 32 biases:
+      4 x 1,120). Then 33 more turn its 32 outputs into one number
+      (32 weights and 1 bias). 61,729 + 14 x 4,480 + 33 = 124,482.
+    - raw_window learns nothing but hands over all 30 readings, so W(1) grows
+      from 32 multipliers to 960: 61,729 - 32 + 960 = 62,657.
+    """
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    graph = normalize_adjacency(build_physics_adjacency()[0], method="row")
+    sizes = {
+        stage: build_model(graph, ModelConfig(temporal=stage),
+                           window_size=30, rul_max=125).count_parameters()
+        for stage in ("last_cycle", "mean_window", "lstm", "raw_window")
+    }
+
+    assert sizes["last_cycle"] == 61_729
+    assert sizes["mean_window"] == 61_729
+    assert sizes["lstm"] == 61_729 + 14 * 4 * (32 + 32 * 32 + 32 + 32) + (32 + 1) == 124_482
+    assert sizes["raw_window"] == 61_729 - 1 * 32 + 30 * 32 == 62_657
+
+
 # --- explain/shap.py ----------------------------------------------------
 
 

@@ -1,8 +1,9 @@
 # `utils` — small shared helpers
 
-Three things every other part of the project needs: where the files live, how
-random numbers are fixed, and how progress messages are printed. Nothing here
-knows anything about engines, graphs or the paper.
+Four things every other part of the project needs: where the files live, how
+random numbers are fixed, how progress messages are printed, and how a stored
+result records the code that produced it. Nothing here knows anything about
+engines, graphs or the paper.
 
 > **The `.py` files here carry one line of description each, and nothing more.**
 > All of the explanation lives in this file.
@@ -13,6 +14,8 @@ knows anything about engines, graphs or the paper.
   and figure directories.
 - `seeding.py` — sets random seeds and creates random number generators.
 - `logging_setup.py` — configures where log messages go and how they look.
+- `provenance.py` — names the commit a result was produced at, and the moment
+  it finished, so the result can be traced back to its code.
 - `__init__.py` — marks the folder as a package. It contains no code.
 
 ## Paths
@@ -104,6 +107,95 @@ repeatedly is harmless.
 
 `get_logger(name)` returns the logger for one module. Pass `__name__`, so log
 lines show which module produced them.
+
+## Provenance: which code produced a result
+
+### The problem
+
+A number in `reports/` is only evidence if someone can find the exact code that
+produced it and run it again. This repository once held a results file that
+disagreed with its own documentation and could not be reproduced from any
+committed state of the code (finding F-09 in `docs/ASSUMPTIONS.md`). So every
+stored result carries a stamp saying which code it came from and when, and
+`provenance.py` makes the two halves of that stamp. `scripts/train.py` and
+`scripts/explain.py` both use it, and put both halves into the name of the
+folder they write and into its `summary.json`.
+
+### Prerequisite: what a commit is
+
+The project's history is kept with git. A **commit** is a saved snapshot of
+every tracked file, and git names each one by a long code of hexadecimal
+characters (the digits 0 to 9 and the letters a to f). The first seven
+characters are enough to find it again, so that short form is what gets
+recorded: `git checkout 563c390` puts every file back exactly as it was in that
+snapshot.
+
+A snapshot only describes the files as they were when it was saved. If a file
+has been edited since and not yet saved in a new commit, the code that ran is
+not the code the commit holds, and checking the commit out would not reproduce
+the result.
+
+### `current_commit(cwd=None)`
+
+Returns the short commit, with `-dirty` added when the files on disk differ
+from it. It asks git two questions:
+
+1. `git rev-parse --short HEAD` — which commit is checked out? This gives the
+   short name, such as `563c390`.
+2. `git status --porcelain` — is anything different from that commit? This
+   prints one line per changed, added or untracked file, and nothing at all
+   when the files match the commit exactly.
+
+If the second answer is not empty, `-dirty` is appended. Run in this repository
+on 2026-09-14, it returned:
+
+```text
+563c390-dirty
+```
+
+No tracked file had been modified at that moment. The mark came entirely from
+**untracked** files — ones git has never been told to keep: `AGENTS.md`, and
+two scratch folders, `.claude/` and `tmp/`. Those two were added to
+`.gitignore`, the list of files git is told to overlook, in the very next
+commit, and `git status` does not report a file that list covers, so they no
+longer set the mark. Counting untracked files is deliberate and conservative. An
+untracked file under `src/` would be a module the commit does not contain, so
+the code that ran could not be rebuilt from the commit; counting every untracked
+file catches that case, at the cost of a false alarm for a stray file anywhere
+else. A result marked `-dirty` because of a scratch folder is still traceable,
+but only by someone who can confirm that nothing under `src/`, `scripts/` or
+`config/` was among the differences, so clear the stray files before a run
+whose numbers you mean to quote.
+
+If git cannot be run at all — it is not installed, or the folder is a copy
+rather than a clone — the answer is `"unknown"`, and a result stamped
+`unknown` cannot be quoted under the project's rule that a stored result must
+name its code.
+
+`cwd` is the folder git is asked about. Left out, it is the folder
+`provenance.py` itself sits in, so the answer describes the repository the
+package lives in, whichever directory the script was started from.
+
+### `utc_stamp()`
+
+Returns the current time in UTC (Coordinated Universal Time, the world's reference clock, which never changes for summer), written with no separators:
+
+```text
+20260914T170300Z
+```
+
+That reads as 2026-09-14, then `T` for time, then 17:03:00, then `Z`, the
+standard mark for UTC. UTC rather than local time, because local time jumps an
+hour twice a year and differs between machines, so two runs could otherwise
+sort in the wrong order. No colons, because Windows does not allow `:` in a
+file or folder name, and this stamp goes into folder names.
+
+The stamp is also the only thing that separates two runs of identical settings
+at the same commit, and it only counts whole seconds. Two such runs finishing
+within the same second would be given the same folder name, and because both
+scripts create their folder with `exist_ok=True` — carry on if it already
+exists — the second would write its files over the first rather than stop. One
+run at a time, which is how the playground runs its jobs, never meets this.
 
 ## Judgement calls
 

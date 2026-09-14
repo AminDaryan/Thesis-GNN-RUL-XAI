@@ -11,6 +11,8 @@ The three examples that need PyTorch are in test_examples_torch.py.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -30,6 +32,7 @@ from thesis_gnn_rul_xai.evaluation.metrics import (
     r_squared,
     rmse,
 )
+from thesis_gnn_rul_xai.evaluation.published import SUBSETS, published_row
 from thesis_gnn_rul_xai.graph.adjacency import (
     adjacency_report,
     build_correlation_adjacency,
@@ -37,6 +40,7 @@ from thesis_gnn_rul_xai.graph.adjacency import (
     normalize_adjacency,
     pairs_beyond_reach,
 )
+from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
 
 # --- data/labeling/ ---------------------------------------------------
 
@@ -126,6 +130,38 @@ def test_example_evaluate():
 
     assert round(result["rmse"], 4) == 4.0825
     assert result["n_late"] == 2
+
+
+# --- evaluation/published.py --------------------------------------------
+
+
+def test_example_published_row_prints_only_what_the_table_prints():
+    """Table 11 gives the model without its LSTM stage an RMSE and nothing else.
+
+    Its average across the four sub-datasets and its difference from the full
+    model are the two figures Table 11 prints beside it.
+    """
+    without = published_row("without_lstm", "FD001")
+    assert (without.rmse, without.score, without.r2, without.asue) == (14.93, None, None, None)
+
+    rows = [published_row("without_lstm", subset).rmse for subset in SUBSETS]
+    assert rows == [14.93, 23.34, 16.25, 24.21]
+    assert round(sum(rows) / 4, 2) == 19.68
+    assert round(without.rmse - published_row("full", "FD001").rmse, 2) == 3.15
+
+    with pytest.raises(ValueError, match="no published row called 'transformer'"):
+        published_row("transformer", "FD001")
+
+
+# --- utils/provenance.py ------------------------------------------------
+
+
+def test_example_provenance_stamps_have_the_form_folder_names_use():
+    """A short commit, marked -dirty when the files differ from it; UTC to the second."""
+    assert re.fullmatch(r"[0-9a-f]{7,}(-dirty)?|unknown", current_commit())
+    stamp = utc_stamp()
+    assert re.fullmatch(r"\d{8}T\d{6}Z", stamp)
+    assert ":" not in stamp
 
 
 # --- graph/adjacency.py -------------------------------------------------
