@@ -18,6 +18,9 @@ press Ctrl+C.
 Nothing here computes a result. This folder is a **reader** for work done
 elsewhere in the package, plus a set of diagrams drawn from that work. It is
 the only folder under `src/thesis_gnn_rul_xai/` that the pipeline never calls.
+Its playground page can *start* the project's own scripts, `scripts/train.py`
+and `scripts/explain.py`, but what they compute is theirs, stored by them in
+`reports/`, and only read back here.
 
 ---
 
@@ -31,6 +34,8 @@ the only folder under `src/thesis_gnn_rul_xai/` that the pipeline never calls.
 | `figures.py` | Draws the thirteen diagrams, each from this repository's own data. |
 | `results.py` | Reads the stored runs in `reports/` and the entries in `docs/ASSUMPTIONS.md`. |
 | `notebooks.py` | Turns a notebook into HTML for reading, and starts JupyterLab for running. |
+| `playground.py` | Checks the playground's settings, builds the command that runs them, queues the jobs, and reads stored runs and explanations back. |
+| `assets/playground.js` | The playground page: its form, its job list, its charts. |
 | `assets/shell.html` | The page the browser loads first: a menu, a search box, and an empty middle. |
 | `assets/app.css` | How it looks. |
 | `assets/app.js` | What happens when you click something. |
@@ -265,6 +270,164 @@ look.
 
 ---
 
+## The playground: choose, train, compare, explain
+
+The page at `#/explore/playground` is where the parts of the method can be
+swapped and the effect seen. It has three tabs, in the order the work happens:
+
+1. **Design a run.** Choose the sub-dataset, the preprocessing, the temporal
+   stage, the widths of the graph layers and the training settings. The graph
+   layers themselves stay the three of the paper's Table 4; only their sizes
+   change.
+2. **Results and comparisons.** Every stored run, its four measures beside the
+   paper's, every seed's curve and predictions, and any two runs paired seed by
+   seed.
+3. **Explanations.** Pick a stored run and a seed, choose the method and what to
+   explain, and read back how much each sensor moved the predictions.
+
+### Why the page never computes a result of its own
+
+The easy design would train in the server and draw the number. It would also
+break the two rules this project leans on hardest. A number that appears in a
+browser and is never written down with the commit that produced it cannot be
+quoted or reproduced (rule 3a of `CLAUDE.md`, and finding F-09 records what
+happened here the one time that slipped). And a page that answers quickly
+invites one-seed numbers, which rule 3 forbids as results.
+
+So the page does not train. It starts **`scripts/train.py`** — the same script,
+with the same arguments, that anyone would type — and shows that command beside
+the button. What the run produces lands in `reports/` with its commit in its
+directory name, exactly as if it had been typed. An explanation is
+`scripts/explain.py` in the same way, and lands inside the run it explains. The
+command is handed to the operating system as a list of separate arguments,
+never as one line of text for a shell to split, so no setting typed into the
+page can become a second command.
+
+Fewer than five seeds is allowed, because trying things out is the point, and
+is marked **exploratory** everywhere it appears: in the cautions before a run,
+in the results table, and on the run's own page.
+
+### What is shown before anything runs
+
+Some things need no training, and the page shows them as the settings change:
+
+- **The network these settings build**, built for real by `models/`, with each
+  layer's output shape and how many numbers it learns. For the paper's LSTM
+  stage at hidden size 32 that is 124,482; with the stage removed it is 61,729.
+  Settings the network refuses — thirty raw cycles handed straight to a graph
+  layer, for one — are refused here with the network's own message.
+- **The row of the paper a result may be set beside.** Which row is decided by
+  what the settings remove, one part at a time, the way the paper's Table 11
+  does:
+
+  | Temporal stage | Sensor graph | Published row |
+  |---|---|---|
+  | LSTM | the paper's | ESTGNN (Full), Tables 7 to 10 |
+  | removed | the paper's | ESTGNN w/o LSTM, Table 11 |
+  | LSTM | every sensor joined | ESTGNN w/o Physics prior, Table 11 |
+  | anything else | anything | none, and the page says why |
+
+  Removing one part of a model to see what it was worth is called an
+  **ablation**, and the variant buttons at the top of the form set exactly the
+  settings of each row. "w/o GCN" is shown and disabled: a model without graph
+  layers is not built.
+- **The cautions that apply**, each with the entry of `docs/ASSUMPTIONS.md` it
+  comes from as a pointer: that capped test labels can only flatter the numbers,
+  that held-back engines mean the weights of the best pass over the training
+  data are restored — a step the paper never describes — and that on FD002 and
+  FD004 engines shorter than the window are left out, so the score, a sum over
+  engines, stops being comparable.
+- **What the files say about the sub-dataset**: Table 5's counts, and how many
+  test engines are shorter than the chosen window, counted from the real file.
+
+### Where each default comes from
+
+Every setting carries a label saying which of three things set its default,
+because that is the distinction the thesis depends on:
+
+| Label | Meaning | Example |
+|---|---|---|
+| Paper | the paper prints the value | 200 passes over the training data, Table 6 |
+| Our choice | the paper is silent, so a numbered assumption chose | the label ceiling of 125 (assumption A-01) |
+| Project rule | neither: a rule of this repository | five seeds |
+| Not in the paper | an option offered for comparison | the GRU stage |
+
+A pass over the whole training set is what PyTorch calls an **epoch**; the page
+says "pass" throughout.
+
+The training procedure gets a switch of its own, **the paper's** (nothing held
+back, all 200 passes, the last pass's weights) against **this project's
+default** (a fifth of the training engines held back, the best pass restored).
+It is a separate switch because on FD001 it changed what the LSTM stage was
+worth from 3.19 cycles to 0.77 (finding F-16).
+
+### Jobs: one at a time, and what stopping means
+
+A `JobManager`, the queue behind the page, runs one command at a time in the
+order they were asked for. Two trainings at once would compete for the same
+processor and both finish later. Each job has a folder in
+`reports/.playground/` holding the settings file it wrote, everything the
+command printed, and a progress file of one JSON line per event — a pass
+finished, a seed finished, a window explained. The page reads that file every
+two seconds to draw the progress bar and the held-back error of the current
+seed. The folder starts with a dot so the run listing never mistakes it for a
+run.
+
+**Stopping a job writes nothing to `reports/`.** `scripts/train.py` keeps every
+seed's weights, curves and predictions in memory and writes them only when the
+last seed has finished, so a run stopped part-way leaves no directory that could
+be read as a finished one.
+
+The "train it and its w/o LSTM twin" button queues the same settings twice, the
+second time with the temporal stage removed. Both runs use the same seeds, so
+the Results tab can pair them seed by seed.
+
+### Comparing two runs
+
+Tick two runs and the page lists **every setting that differs** between them,
+then pairs their seeds. For each seed it takes the second run's number minus
+the first's; the paired *t* statistic is the average of those differences
+divided by how much they vary, and *p* is how often a *t* that large would turn
+up if the true average difference were zero.
+
+A worked case, from two runs stored on 2026-09-09 that differ in one setting
+only: the temporal stage removed, and the paper's LSTM at hidden size 32, both
+with a fifth of the engines held back, five seeds each. The page computes a
+mean RMSE difference of −3.189 cycles, *t* = −8.978, *p* = 0.00085 — the same
+figures the assumptions log records for this pair (finding F-16), computed here
+by `compare_runs` rather than copied.
+
+If more than one setting differs, the page says the difference cannot be put
+down to any one of them. And under every comparison it says what a paired *p*
+does not establish: every seed is scored on the same test engines, so it answers
+only whether the difference could be an accident of how the network started,
+never how the model would do on engines it has not seen (defect D-8 of the
+audit of 2026-09-08).
+
+### Explanations
+
+Two methods, and the page labels which is the paper's:
+
+- **Exact Shapley values** (Equations 14 and 15). Every one of the 16,384
+  subsets of the 14 sensors is evaluated for every window, with an absent sensor
+  replaced by its average training window (assumption A-20). Measured on this
+  machine's processor with an untrained network, one window takes 0.07 s with
+  the temporal stage removed and 0.50 s with the LSTM stage, so an engine's
+  whole life is minutes, not hours.
+- **Occlusion**, not in the paper: one sensor at a time replaced by the same
+  baseline, 15 evaluations per window. `explain/README.md` explains both.
+
+Either can explain **one engine at every cycle** — the dynamic explanation of
+the paper's Section 4.4 — or **the last window of every test engine**. For one
+engine the page draws the prediction along its life, every sensor at every
+window as a grid of colours, and one chosen window on the sensor graph coloured
+the way the paper's Fig. 9 colours it: the four largest in red, the rest in blue
+from deep to light. It also checks Equation 14 on every stored explanation — a
+window's Shapley values must add up to its prediction minus the prediction at
+the baseline — and prints the largest gap.
+
+---
+
 ## What the server will and will not serve
 
 It listens on `127.0.0.1`, which reaches your own machine and nothing else. It
@@ -283,8 +446,15 @@ Four rules keep it that way:
 - **Files above 400 kB are refused** by the source viewer. Every source file in
   the project is far below that; the raw NASA files are far above it, and a
   3.5 MB table of numbers is not something to read in a browser.
-- **Only one address accepts a POST**, the one that starts JupyterLab.
-  Everything else is read-only.
+- **Only the addresses that start work accept a POST**: the one that starts
+  JupyterLab, and the playground's four (below). Everything else is read-only.
+- **A request that starts work must come from this site's own page and from
+  this computer.** A browser attaches the address of the page that sent a POST
+  in a header called `Origin`, so any other web page open in the same browser
+  could otherwise ask this server to start a training run. The server compares
+  that header with its own address, and it also refuses a request from any
+  machine but this one, even when `--host` has opened the site to a network.
+  Both refusals are tested.
 
 The `--host` option exists and will accept any address, but `docs_ui.py` prints
 a warning when it is given anything other than the loopback address, because
@@ -329,6 +499,18 @@ summary files write `null` there, because one run has no spread. It would be
 easy to turn that into a `0.0` on the way through, and it would be a lie: it
 would read as "measured, and it was zero" instead of "not measured". The table
 shows a dash.
+
+**A job is marked running a moment before its process exists.** The queue
+takes the next job, marks it running, and only then asks the operating system to
+start the command. Until 2026-09-14 a Stop that arrived in that moment found no
+process to end, did nothing, and the job ran to completion while the page
+waited for it to stop. It was first written up as a Windows problem — that
+ending a process there does not reach its children — and that diagnosis was
+wrong: checked directly, the process did not yet exist when Stop arrived, and
+once it did exist it ended in a tenth of a second. Now starting the process and
+checking for a Stop happen under the same lock, so a Stop is either seen before
+the process starts, which then never starts, or finds the process and ends it.
+`tests/test_playground.py` covers the first case.
 
 **The site adds nothing to what the repository says.** Everything on it is
 either a file from the repository, a number computed by the package's own code,
@@ -427,3 +609,27 @@ The first returns a notebook as HTML and the stylesheet it needs. The second
 starts JupyterLab and returns a `JupyterProcess`, the record of a running
 server — where it is serving, how it was started, and a `stop()` that shuts it
 down.
+
+### `validate_settings(payload)` and `paper_row_for(subset, temporal, graph)`
+
+The first takes the settings the page sent, a dictionary, and returns every
+setting checked against its range and filled from its default; an unknown
+setting or a value out of range raises a `SettingsError`, whose message is what
+the page shows. The second returns the row of the paper's results those
+settings may be set beside, as a dictionary of its four measures, or `None`
+together with the reason there is none.
+
+### `JobManager(root)`
+
+The queue of the playground's commands for one project directory. Its
+`submit_training` and `submit_explanation` add a job and return it, `cancel`
+removes a queued job or ends a running one, and `snapshot` returns every job
+with its progress, for the page to draw.
+
+### `list_runs(root)`, `run_detail(root, name)` and `compare_runs(root, first, second)`
+
+Every finished run in `reports/`, newest first, each with the published row it
+may be set beside and the cautions that apply; one run in full, with every
+seed's per-pass record and test predictions and every stored explanation; and
+two runs paired seed by seed, with the settings that differ and a paired *t*
+and *p* for each measure.
