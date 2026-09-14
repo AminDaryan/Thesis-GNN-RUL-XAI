@@ -407,7 +407,7 @@
       '<div class="pg-design"><div class="pg-form">' +
       '<div class="pg-group pg-presets"><div class="pg-preset-title">Which model — the variants of Table 11</div>' +
       '<div class="pg-variants">' + ablations + "</div>" +
-      '<div class="pg-preset-title">How it is trained — the choice F-16 showed matters</div>' +
+      '<div class="pg-preset-title">How it is trained — the choice that moved what the LSTM was worth (F-16)</div>' +
       '<div class="pg-variants pg-variants--two">' + procedures + "</div></div>" +
       groups + '</div><aside class="pg-summary" id="pg-summary"><div class="loading">Building the network…</div></aside></div>';
 
@@ -533,8 +533,9 @@
   function caveatList(caveats) {
     if (!caveats || !caveats.length) { return ""; }
     return '<ul class="pg-caveats">' + caveats.map(function (c) {
-      return '<li class="pg-caveat pg-caveat--' + c.level + '">' + (c.ref ? '<span class="pg-ref">' + refLink(c.ref) + "</span> " : "") +
-        esc(c.text) + "</li>";
+      // The thing is said first; its code follows as a pointer to where it is argued.
+      return '<li class="pg-caveat pg-caveat--' + c.level + '">' + esc(c.text) +
+        (c.ref ? ' <span class="pg-ref">(' + refLink(c.ref) + ")</span>" : "") + "</li>";
     }).join("") + "</ul>";
   }
 

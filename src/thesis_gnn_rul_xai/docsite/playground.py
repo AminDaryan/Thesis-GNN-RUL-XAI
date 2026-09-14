@@ -112,9 +112,9 @@ FIELDS: tuple[dict[str, Any], ...] = (
          {"value": "zscore", "label": "Mean and spread of the training engines",
           "source": _choice("A-03", "the default; the paper never describes its scaling (F-10)")},
          {"value": "minmax_per_condition", "label": "Range 0 to 1, per operating condition",
-          "source": _choice("A-03", "an alternative A-03 weighs")},
+          "source": _choice("A-03", "an alternative weighed against the default")},
          {"value": "minmax_global", "label": "Range 0 to 1, over all rows",
-          "source": _choice("A-03", "an alternative A-03 weighs")},
+          "source": _choice("A-03", "an alternative weighed against the default")},
      ],
      "source": _choice("A-03", "the paper does not describe its scaling")},
     {"key": "smoothing", "group": "preprocessing", "label": "Smooth each sensor",
@@ -145,7 +145,7 @@ FIELDS: tuple[dict[str, Any], ...] = (
          {"value": "row", "label": "Each row sums to one",
           "source": _choice("A-21", "the default")},
          {"value": "symmetric", "label": "Symmetric, by both degrees",
-          "source": _choice("A-21", "the alternative A-21 measured")},
+          "source": _choice("A-21", "the alternative, measured against the default")},
      ],
      "source": _choice("A-21", "the paper describes the step but prints no formula")},
     {"key": "seed", "group": "repeats", "label": "First seed", "kind": "int",
@@ -164,7 +164,7 @@ FIELDS: tuple[dict[str, Any], ...] = (
          {"value": "mean_window", "label": "Average over the window",
           "source": _extension("no learned parameters; not in the paper")},
          {"value": "raw_window", "label": "All 30 cycles straight into the graph layer",
-          "source": _extension("the arrangement A-07 removed; not in the paper")},
+          "source": _extension("the arrangement the last-cycle stage replaced; not in the paper")},
      ],
      "source": _paper("Section 2.2", "the paper's own stage")},
     {"key": "temporal_hidden", "group": "temporal", "label": "Hidden size", "kind": "int",
@@ -257,7 +257,7 @@ ABLATIONS = (
      "settings": {"temporal": "lstm", "graph": "complete"}},
     {"key": "without_gcn", "label": "w/o GCN", "settings": None,
      "reason": "Removing the graph layers is not buildable here: they are the part "
-               "this playground holds fixed (docs/PENDING.md P-08, step 8)."},
+               "this playground holds fixed, and a model without them is not built yet."},
 )
 
 # The paper's training procedure, and this project's default one. F-16 is why
@@ -995,9 +995,13 @@ class JobManager:
             if job.status == "queued":
                 self.queue.remove(identifier)
                 job.status, job.finished = "cancelled", time.time()
-            elif job.status == "running" and job.process is not None:
+            elif job.status == "running":
                 job.status = "cancelling"
-                job.process.terminate()
+                # A job is marked running a moment before its process exists.
+                # Asked to stop in that moment, there is nothing to end yet, so
+                # _run sees "cancelling" and never starts it.
+                if job.process is not None:
+                    job.process.terminate()
         return job
 
     def snapshot(self) -> list[dict[str, Any]]:
@@ -1038,11 +1042,20 @@ class JobManager:
         logger.info("Playground job %s: %s", job.id, job.display)
         with (job.folder / "output.txt").open("wb") as output:
             try:
-                job.process = subprocess.Popen(
-                    job.arguments, cwd=self.root, stdout=output, stderr=subprocess.STDOUT,
-                    env={**_environment(), "PYTHONIOENCODING": "utf-8"},
-                )
-                job.returncode = job.process.wait()
+                # Started and published under the lock, so a stop asked for
+                # before this point is seen here, and one asked for after it
+                # finds the process to end.
+                with self.lock:
+                    if job.status == "cancelling":
+                        job.returncode = None
+                    else:
+                        job.process = subprocess.Popen(
+                            job.arguments, cwd=self.root, stdout=output,
+                            stderr=subprocess.STDOUT,
+                            env={**_environment(), "PYTHONIOENCODING": "utf-8"},
+                        )
+                if job.process is not None:
+                    job.returncode = job.process.wait()
             except OSError as failure:
                 output.write(f"Could not start the command: {failure}\n".encode())
                 job.returncode = -1

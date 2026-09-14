@@ -279,21 +279,6 @@ measured under, and the 20 %-held-back rows of A-21 re-run at one commit.
 
 ---
 
-## P-15 — A playground test fails on Windows: a running job cannot be stopped
-
-`tests/test_playground.py::test_a_running_job_can_be_stopped` failed before any
-of the 2026-09-14 changes were made, and still fails: a job that runs
-`time.sleep(60)` in a child process does not reach the status `cancelled` within
-the test's 20 seconds after `JobManager.cancel`. Every other test passes.
-
-**How to check:** `python -m pytest tests/test_playground.py -k stopped`.
-**What finishing looks like:** find why cancelling does not end the child
-process on Windows — terminating a process on Windows does not reach its
-children the way a signal to a process group does on Linux — fix it, and see the
-test pass on both.
-
----
-
 ## P-04 — Nothing links to the figures gallery
 
 `docsite/assets/app.js` serves a gallery of all thirteen figures at the address
