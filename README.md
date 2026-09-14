@@ -423,18 +423,22 @@ JupyterLab for you, which needs `pip install -e .[notebook]`.
 jupyter lab notebooks/
 ```
 
-There are two, and they are meant to be read in order:
+Read `notebooks/README.md` first: it holds what every notebook shares. Then:
 
 | Notebook | Covers |
 |----------|--------|
 | `01_preprocessing_fd001.ipynb` | steps 1 to 8: the raw text files become model-ready arrays |
-| `02_model_fd001.ipynb` | steps 9 to 12: build the network, train it, score it, explain it |
+| `02_model_fd001.ipynb` | steps 9 to 11: build the network, train it and score it; then the paper's sensor graph against two others |
+| `xai/01_shap_fd001.ipynb` | the paper's explanation method, exact Shapley values, for one prediction and then at every cycle of one engine's life |
+| `xai/02_occlusion_fd001.ipynb` | a cheaper explanation method that is not in the paper, set beside the Shapley values |
 
-Each explains every step, shows the intermediate tables and figures, and
-verifies the stage as it goes. Together they are the intended entry point for
-a reader who wants to understand what happens and why.
+The first two are read in order. The `xai/` notebooks each explain the same
+stored trained network, one method per notebook; `notebooks/xai/README.md` says
+why. Each notebook explains every step, shows the intermediate tables and
+figures, and verifies the stage as it goes. Together they are the intended
+entry point for a reader who wants to understand what happens and why.
 
-> Both notebooks are shipped with their outputs already filled in, so they can
+> Every notebook is shipped with its outputs already filled in, so it can
 > be read without running anything. Those outputs were produced on the **real
 > FD001 files**, verified against the published release (20 631 training rows,
 > 100 training engines, 100 test engines). The data files themselves are not in
@@ -648,12 +652,20 @@ Thesis GNN RUL XAI/
 │   └── learn/                    Eight taught pages, for a reader new to this
 │
 ├── notebooks/
+│   ├── README.md                 What every notebook shares; read it first
 │   ├── 01_preprocessing_fd001.ipynb
-│   └── 02_model_fd001.ipynb
+│   ├── 02_model_fd001.ipynb
+│   └── xai/                      One notebook per explanation method
+│       ├── README.md
+│       ├── 01_shap_fd001.ipynb
+│       └── 02_occlusion_fd001.ipynb
 │
 ├── scripts/
 │   ├── prepare_data.py           Check or preprocess the raw data
 │   ├── train.py                  Train, score, and average over seeds
+│   ├── explain.py                Explain a stored run's trained network
+│   ├── verify_claims.py          Recompute the figures the assumptions log quotes
+│   ├── check_prose.py            Catch unexplained jargon and codes used as words
 │   └── docs_ui.py                Open all of this in a browser
 │
 ├── src/
@@ -851,7 +863,8 @@ is defended.
 | Read all of this in a browser, with figures | `python scripts/docs_ui.py` |
 | Understand the method from nothing, in eight short pages | `docs/learn/`, or the **Learn** section of that site |
 | Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
-| Understand the model, the training and the explanations | `notebooks/02_model_fd001.ipynb` |
+| Understand the model and the training | `notebooks/02_model_fd001.ipynb` |
+| Understand which sensors a prediction came from, and how that changes over an engine's life | `notebooks/xai/01_shap_fd001.ipynb` |
 | Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
 | Know *why* a step is computed that way | the `README.md` in the same folder |
 | Know why a value was chosen when the paper is silent | `docs/ASSUMPTIONS.md` |
