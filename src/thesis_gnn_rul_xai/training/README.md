@@ -23,6 +23,7 @@ pip install -e ".[model]"
 |------|------------|
 | `config.py` | `TrainingConfig`, the dataclass holding every setting for one run, plus `load_training_config` for reading one back from YAML. |
 | `run.py` | Everything involved in running the model: the training loop (`train`), the prediction helper (`predict`), the scoring wrapper (`evaluate_model`), the device chooser (`resolve_device`), and `TrainingHistory`, the record of a finished run. |
+| `stored.py` | Finding a finished run in `reports/` and loading one of its trained networks back: `find_runs`, `read_run`, `load_seed`, and `StoredRun`, what a run recorded about itself. |
 | `__init__.py` | Re-exports the names above. |
 
 ## What one run does
@@ -308,7 +309,7 @@ epoch to report, because no epoch was chosen over any other. `save(directory)`
 writes
 `training_history.csv` and `training_config.yaml` into that folder.
 
-### The four functions
+### The four functions in `run.py`
 
 | Name | What it does |
 |---|---|
@@ -316,3 +317,27 @@ writes
 | `predict(model, dataset, batch_size=256, device=None)` | One prediction per window, in flight cycles, in the order the windows are already in. |
 | `evaluate_model(model, dataset, device=None)` | Predicts, then scores. Returns the same dictionary as `evaluate` in `evaluation/metrics.py`. |
 | `resolve_device(preference="auto")` | Decides between the graphics card and the processor, and logs which. Asking for `"cuda"` when PyTorch cannot see one raises rather than falling back quietly. |
+
+### Loading a stored run back: `stored.py`
+
+`scripts/train.py` writes one folder per run into `reports/`, and inside it one
+folder per seed holding that seed's trained weights (`model.pt`), its per-pass
+record and its test predictions. Anything that needs a trained network after
+the fact — the explanation notebooks in `notebooks/xai/`, `scripts/explain.py` —
+loads it from there rather than training its own, so what it works on is a
+network whose commit and results are on record.
+
+Loading weights back is the easy half. The trap is the data. **The seed decides
+which engines were held back**, so the data a seed's network was trained on can
+only be rebuilt with that seed. `load_seed` does that: it reads the settings the
+run saved beside itself, replaces the seed unless the run held the split fixed,
+runs the pipeline, builds the network those settings describe on the graph that
+pipeline produced, and loads the weights into it. Rebuilding with any other seed
+would hand back engines the network learned from under the name "held back".
+
+| Name | What it does |
+|---|---|
+| `find_runs(preprocessing=None, seeds=None, with_weights=False, root=None, **summary_fields)` | Every run in `reports/` (or `root`) whose saved settings match, oldest first. `preprocessing` compares every setting except `notes`; `seeds` the number of seeds; any other keyword a field of the run's `summary.json`, such as `temporal_stage="last_cycle"`; `with_weights=True` keeps only runs that saved a network for every seed. A folder that is not a finished run, or whose settings file no longer loads, is skipped. |
+| `read_run(path)` | One run, as a `StoredRun`: its folder, its `summary.json`, its preprocessing and model settings, and its per-seed results table. Refuses a folder missing any of those files. |
+| `load_seed(run, seed, data_dir=None)` | The trained network of one seed, switched to evaluation, and the `PreparedData` rebuilt as that network saw it. Refuses a seed the run never trained, or a run from before weights were saved. |
+| `StoredRun` | What `read_run` returns. `seeds` lists the seeds in training order, `weights(seed)` is where one seed's weights live, and `has_weights()` says whether every seed saved them. |

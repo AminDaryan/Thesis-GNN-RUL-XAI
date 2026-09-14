@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -186,6 +187,8 @@ def train(
     train_set: WindowedDataset,
     validation_set: WindowedDataset | None = None,
     config: TrainingConfig | None = None,
+    *,
+    on_epoch: Callable[[dict[str, float]], None] | None = None,
 ) -> TrainingHistory:
     """Train the network and return the record of the run.
 
@@ -290,6 +293,8 @@ def train(
             best_state = copy.deepcopy(model.state_dict())
 
         rows.append(row)
+        if on_epoch is not None:
+            on_epoch(dict(row))
 
         if epoch % 10 == 0 or epoch == 1:
             message = f"epoch {epoch:>4}/{config.epochs}  train {row['train_loss']:.5f}"

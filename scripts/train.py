@@ -27,6 +27,11 @@ The "without physics prior" ablation, on a fully connected sensor graph::
 
     python scripts/train.py --graph complete --seeds 5
 
+The paper's graph against one built from the data, with the same number of
+edges::
+
+    python scripts/train.py --graph correlation --seeds 5
+
 The paper's own procedure, with no validation set and a fixed 200 epochs::
 
     python scripts/train.py --no-early-stopping
@@ -38,87 +43,42 @@ import argparse
 import hashlib
 import json
 import logging
-import subprocess
 import sys
-from datetime import datetime, timezone
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from dataclasses import replace
-
-from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
+from thesis_gnn_rul_xai.config import SENSOR_GRAPHS, PreprocessingConfig, load_config
 from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
-from thesis_gnn_rul_xai.models import ESTGNN, build_temporal_stage
-from thesis_gnn_rul_xai.training import (
-    TrainingConfig,
-    evaluate_model,
-    train,
-)
+from thesis_gnn_rul_xai.evaluation import evaluate
+from thesis_gnn_rul_xai.evaluation.published import published_row
+from thesis_gnn_rul_xai.models import ModelConfig, build_model
+from thesis_gnn_rul_xai.training import TrainingConfig, predict, train
 from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
 from thesis_gnn_rul_xai.utils.paths import reports_dir
+from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
 
-# Published figures for FD001, for orientation while a run is in progress.
-# These are not targets to tune towards; they are there so a result that is
-# wildly out of range is noticed immediately.
-PAPER_FD001 = {
-    "ESTGNN (full, Table 8)": {"rmse": 11.78, "score": 278.6, "r2": 0.921, "asue": 8.312},
-    "ESTGNN w/o LSTM (Table 11)": {"rmse": 14.93},
-    "ESTGNN w/o GCN (Table 11)": {"rmse": 16.42},
-    "ESTGNN w/o physics prior (Table 11)": {"rmse": 12.34},
-}
+# The rows of the paper's results a run can be set beside, for orientation
+# while it is in progress. These are not targets to tune towards; they are
+# there so a result that is wildly out of range is noticed immediately.
+PUBLISHED_ROWS = ("full", "without_lstm", "without_gcn", "without_physics_prior")
 
 
-def current_commit() -> str:
-    """The commit this run was produced at, or "unknown" outside a clone.
+class Progress:
+    """Appends one line of JSON per event to a file another program can follow."""
 
-    A results file whose provenance cannot be established is not evidence.
-    This project once carried one that contradicted its own documentation
-    and could not be reproduced from any committed state; stamping the
-    commit into every run is what stops that happening again.
-    """
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=10,
-            cwd=Path(__file__).resolve().parent,
-        )
-        if out.returncode != 0:
-            return "unknown"
-        commit = out.stdout.strip()
-        dirty = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True, text=True, timeout=10,
-            cwd=Path(__file__).resolve().parent,
-        )
-        return commit + ("-dirty" if dirty.stdout.strip() else "")
-    except Exception:  # pragma: no cover - git absent or not a clone
-        return "unknown"
+    def __init__(self, path: Path | None) -> None:
+        self.handle = path.open("a", encoding="utf-8") if path else None
 
-
-def build_model(prepared, temporal: str = "last_cycle",
-                hidden_size: int = 32) -> ESTGNN:
-    """Build the network on the graph the pipeline produced.
-
-    Which graph that is, and how it was normalised, are decided by
-    ``PreprocessingConfig.graph`` and ``.adjacency_normalization`` and are
-    recorded in the configuration saved beside the results. Rebuilding the
-    matrix here instead would let the model train on one graph while the
-    stored ``adjacency.npz`` held another.
-    """
-    return ESTGNN(
-        prepared.adjacency_normalized,
-        temporal=build_temporal_stage(
-            temporal,
-            window_size=prepared.config.window_size,
-            n_nodes=prepared.adjacency_normalized.shape[0],
-            hidden_size=hidden_size,
-        ),
-        rul_max=prepared.config.rul_max,
-        allow_time_in_the_graph_layer=temporal == "raw_window",
-    )
+    def __call__(self, event: str, **fields: object) -> None:
+        """Write one event, and flush it so a reader sees it at once."""
+        if self.handle is None:
+            return
+        self.handle.write(json.dumps({"event": event, **fields}, default=float) + "\n")
+        self.handle.flush()
 
 
 def main() -> int:
@@ -135,9 +95,12 @@ def main() -> int:
                         help="How many seeds to average over (default: 1)")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the epoch count (Table 6 gives 200)")
-    parser.add_argument("--graph", choices=("physics", "complete"), default=None,
-                        help="Overrides the config. 'complete' is the "
-                             "'without physics prior' ablation (A-19)")
+    parser.add_argument("--graph", choices=SENSOR_GRAPHS, default=None,
+                        help="Overrides the config. 'complete' joins every "
+                             "sensor to every other, for the paper's 'without "
+                             "physics prior' experiment (A-19); 'correlation' "
+                             "joins the 41 most strongly correlated sensor "
+                             "pairs on the training engines (A-27)")
     parser.add_argument("--adjacency-norm", choices=("symmetric", "row"),
                         default=None,
                         help="Overrides the config. See assumption A-21")
@@ -160,8 +123,34 @@ def main() -> int:
     parser.add_argument("--temporal-hidden", type=int, default=32,
                         help="Hidden size of the recurrent stage (A-26; the "
                              "paper states none)")
+    parser.add_argument("--temporal-out-features", type=int, default=1,
+                        help="Numbers per sensor the recurrent stage hands on "
+                             "(A-26 chose 1, the width Table 4 prints)")
+    parser.add_argument("--shared-across-sensors", action="store_true",
+                        help="One recurrent network for all sensors instead of "
+                             "the dedicated one per sensor of Section 2.2")
+    parser.add_argument("--gcn-hidden", type=int, nargs="+", default=None,
+                        help="Output width of each graph layer (Table 4: 32 64 32)")
+    parser.add_argument("--fc-hidden", type=int, default=None,
+                        help="Width of the first fully connected layer (Table 4: 128)")
+    parser.add_argument("--gcn-bias", action="store_true",
+                        help="Give the graph layers a bias; A-12 leaves it out")
+    parser.add_argument("--subset", choices=("FD001", "FD002", "FD003", "FD004"),
+                        default=None, help="Overrides the config")
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="Windows per update (Table 6: 32)")
+    parser.add_argument("--learning-rate", type=float, default=None,
+                        help="First learning rate (Table 6: 1e-3)")
+    parser.add_argument("--final-learning-rate", type=float, default=None,
+                        help="Last learning rate (Table 6: 1e-4)")
+    parser.add_argument("--early-stopping-patience", type=int, default=None,
+                        help="Passes over the training data without improvement "
+                             "before stopping (A-18: 20)")
     parser.add_argument("--no-early-stopping", action="store_true",
                         help="Train the full epoch count, as the paper describes")
+    parser.add_argument("--progress", type=Path, default=None,
+                        help="Append one JSON line per event to this file, for "
+                             "the documentation site's playground to follow")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--output", type=Path, default=None,
                         help="Directory for the results (default: reports/<name>)")
@@ -179,7 +168,37 @@ def main() -> int:
         preprocessing.graph = arguments.graph
     if arguments.adjacency_norm is not None:
         preprocessing.adjacency_normalization = arguments.adjacency_norm
+    if arguments.subset is not None:
+        preprocessing.subset = arguments.subset
     preprocessing.__post_init__()          # re-validate after the overrides
+
+    model_config = ModelConfig(
+        temporal=arguments.temporal,
+        temporal_hidden=arguments.temporal_hidden,
+        temporal_out_features=arguments.temporal_out_features,
+        shared_across_sensors=arguments.shared_across_sensors,
+        **({"gcn_hidden": tuple(arguments.gcn_hidden)} if arguments.gcn_hidden else {}),
+        **({"fc_hidden": arguments.fc_hidden} if arguments.fc_hidden else {}),
+        gcn_bias=arguments.gcn_bias,
+    )
+    # Everything a seed does not change. Built once, so the settings written
+    # beside the results are the ones every seed used.
+    training_template = TrainingConfig(
+        device=arguments.device,
+        lr_schedule=arguments.lr_schedule,
+        **({"epochs": arguments.epochs} if arguments.epochs else {}),
+        **({"batch_size": arguments.batch_size} if arguments.batch_size else {}),
+        **({"learning_rate": arguments.learning_rate} if arguments.learning_rate else {}),
+        **({"final_learning_rate": arguments.final_learning_rate}
+           if arguments.final_learning_rate else {}),
+        **({"early_stopping_patience": arguments.early_stopping_patience}
+           if arguments.early_stopping_patience else {}),
+    )
+    if arguments.no_early_stopping:
+        training_template = replace(training_template, early_stopping_patience=None)
+    progress = Progress(arguments.progress)
+    progress("start", seeds=arguments.seeds, epochs=training_template.epochs,
+             subset=preprocessing.subset, temporal=arguments.temporal)
 
     commit = current_commit()
     print(f"commit {commit}   graph {preprocessing.graph}   "
@@ -198,18 +217,17 @@ def main() -> int:
     )
 
     runs: list[dict[str, float]] = []
+    # What each seed leaves behind besides its four numbers. Held until every
+    # seed has finished, so a run that is stopped part-way writes nothing that
+    # could be mistaken for a finished one.
+    artefacts: list[dict[str, object]] = []
+    import torch
+
     for index in range(arguments.seeds):
         seed = preprocessing.seed + index
-        training = TrainingConfig(
-            seed=seed,
-            device=arguments.device,
-            lr_schedule=arguments.lr_schedule,
-            early_stopping_patience=None if arguments.no_early_stopping else 20,
-            **({"epochs": arguments.epochs} if arguments.epochs else {}),
-        )
+        training = replace(training_template, seed=seed)
         print(f"\n{'=' * 72}\nseed {seed}  ({index + 1} of {arguments.seeds})\n{'=' * 72}")
-
-        import torch
+        progress("seed", index=index, seed=seed)
 
         if shared is not None:
             prepared = shared
@@ -218,15 +236,39 @@ def main() -> int:
             prepared = run_preprocessing(per_seed, data_dir=arguments.data_dir)
 
         torch.manual_seed(seed)
-        model = build_model(prepared, arguments.temporal,
-                            arguments.temporal_hidden)
-        history = train(model, prepared.train, prepared.validation, training)
+        model = build_model(
+            prepared.adjacency_normalized,
+            model_config,
+            window_size=prepared.config.window_size,
+            rul_max=prepared.config.rul_max,
+        )
+        history = train(
+            model, prepared.train, prepared.validation, training,
+            on_epoch=lambda row, seed=seed: progress("epoch", seed=seed, **row),
+        )
 
-        result = evaluate_model(model, prepared.test)
+        predicted = predict(model, prepared.test)
+        result = evaluate(prepared.test.targets.astype(float), predicted)
         result["seed"] = seed
         result["best_epoch"] = history.best_epoch
         result["validation_rmse"] = history.best_validation_rmse
+        result["epochs_run"] = len(history.epochs)
+        result["stopped_early"] = history.stopped_early
+        result["seconds"] = round(history.seconds, 1)
         runs.append(result)
+        artefacts.append({
+            "seed": seed,
+            "history": history,
+            "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+            "predictions": pd.DataFrame({
+                "unit": prepared.test.units,
+                "end_cycle": prepared.test.end_cycles,
+                "rul": prepared.test.targets,
+                "predicted": predicted,
+            }),
+        })
+        progress("seed_done", seed=seed,
+                 **{k: result[k] for k in ("rmse", "score", "r2", "asue")})
         print(
             f"  test: RMSE {result['rmse']:.3f}  score {result['score']:.1f}  "
             f"R2 {result['r2']:.3f}  ASUE {result['asue']:.3f}"
@@ -267,10 +309,15 @@ def main() -> int:
             "any of these numbers."
         )
 
-    print("\nPublished figures for FD001, for orientation only:")
-    for name, values in PAPER_FD001.items():
-        printed = "  ".join(f"{k} {v}" for k, v in values.items())
-        print(f"  {name:<38} {printed}")
+    print(f"\nPublished figures for {preprocessing.subset}, for orientation only:")
+    for key in PUBLISHED_ROWS:
+        row = published_row(key, preprocessing.subset)
+        printed = "  ".join(
+            f"{measure} {getattr(row, measure)}"
+            for measure in ("rmse", "score", "r2", "asue")
+            if getattr(row, measure) is not None
+        )
+        print(f"  {row.label + ' (' + row.source + ')':<52} {printed}")
     print(
         "\nWhich row above this run may be set beside depends on its temporal\n"
         "stage. Without one -- the default -- it is 'ESTGNN w/o LSTM'; with\n"
@@ -299,7 +346,26 @@ def main() -> int:
     # much and would collide again. `cfg` is a digest of the whole
     # preprocessing configuration, so two runs whose settings differ anywhere
     # get different names whether or not anyone remembered to add the field.
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    #
+    # The same goes for the network and the training settings. Their defaults
+    # stay silent; anything else adds a digest of the whole block, `net` for
+    # the shape of the network and `train` for how it was trained, and the
+    # blocks themselves are written out in full beside the results.
+    stamp = utc_stamp()
+    default_model = ModelConfig(
+        temporal=arguments.temporal, temporal_hidden=arguments.temporal_hidden
+    )
+    training_settings = {
+        key: getattr(training_template, key)
+        for key in ("epochs", "batch_size", "learning_rate", "final_learning_rate",
+                    "early_stopping_patience")
+    }
+    default_training = {key: getattr(TrainingConfig(), key) for key in training_settings}
+    if arguments.no_early_stopping:
+        default_training["early_stopping_patience"] = None
+    training_digest = hashlib.sha256(
+        json.dumps(training_settings, sort_keys=True).encode()
+    ).hexdigest()[:6]
     config_digest = hashlib.sha256(
         json.dumps(preprocessing.to_dict(), sort_keys=True, default=str).encode()
     ).hexdigest()[:6]
@@ -316,12 +382,25 @@ def main() -> int:
            else f"_{arguments.temporal}")
         + ("_noearlystop" if arguments.no_early_stopping else "")
         + ("" if arguments.lr_schedule == "step" else f"_{arguments.lr_schedule}")
+        + ("" if model_config == default_model else f"_net{model_config.digest()}")
+        + ("" if training_settings == default_training else f"_train{training_digest}")
         + f"_cfg{config_digest}_{commit}_{stamp}"
     )
     output = arguments.output or (reports_dir() / name)
     output.mkdir(parents=True, exist_ok=True)
     table.to_csv(output / "results.csv", index=False)
     preprocessing.save(output / "preprocessing_config.yaml")
+    model_config.save(output / "model_config.yaml")
+    # One folder per seed: the trained weights, the per-epoch record and the
+    # prediction for every test engine. Without the weights nothing downstream
+    # of a trained model -- an explanation, a new plot -- can be made from a
+    # stored run; without the record, whether a model over-trained can only be
+    # inferred (audit D-10).
+    for kept in artefacts:
+        folder = output / f"seed_{kept['seed']}"
+        kept["history"].save(folder)
+        torch.save(kept["state"], folder / "model.pt")
+        kept["predictions"].to_csv(folder / "test_predictions.csv", index=False)
     (output / "summary.json").write_text(
         json.dumps(
             {
@@ -334,7 +413,15 @@ def main() -> int:
                 "seeds": arguments.seeds,
                 "split": "fixed" if arguments.fixed_split else "varies_with_seed",
                 "clip_test_labels": preprocessing.clip_test_labels,
-                "early_stopping": not arguments.no_early_stopping,
+                # Whether early stopping could fire, not only whether it was
+                # asked for: with nothing held back there is nothing to stop on.
+                "early_stopping": bool(
+                    held_back and training_template.early_stopping_patience is not None
+                ),
+                "validation_fraction": preprocessing.validation_fraction,
+                "reported_weights": (
+                    "best_validation_epoch" if held_back else "final_epoch"
+                ),
                 "lr_schedule": arguments.lr_schedule,
                 "temporal_stage": arguments.temporal,
                 "temporal_hidden": (
@@ -342,6 +429,9 @@ def main() -> int:
                     if arguments.temporal in ("lstm", "gru")
                     else None
                 ),
+                "model": model_config.to_dict(),
+                "training": {**training_settings, "lr_schedule": arguments.lr_schedule},
+                "seed_folders": [f"seed_{kept['seed']}" for kept in artefacts],
                 "mean": {c: float(table[c].mean()) for c in columns},
                 "std": {
                     c: (float(table[c].std(ddof=1)) if arguments.seeds > 1 else None)
@@ -352,6 +442,7 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
+    progress("done", directory=output.name, path=str(output))
     print(f"\nSaved to {output}")
     return 0
 

@@ -82,6 +82,7 @@ ignore = [
 "tests/test_training.py" = ["E402"]
 "tests/test_shap.py" = ["E402"]
 "tests/test_examples_torch.py" = ["E402"]
+"tests/test_stored.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src"]
