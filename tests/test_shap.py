@@ -140,6 +140,61 @@ def test_interchangeable_sensors_receive_equal_values():
     assert values[0] == pytest.approx(values[1], abs=1e-9)
 
 
+# --- occlusion, the cheaper method that is not in the paper --------------
+
+
+def test_occlusion_is_the_change_from_replacing_one_sensor(model, prepared, baseline):
+    """Each value is the full prediction minus the prediction with that one
+    sensor's window swapped for the stand-in, and nothing else."""
+    from thesis_gnn_rul_xai.explain import occlusion_values
+
+    window = prepared.test.features[0]
+    values = occlusion_values(model, window, baseline)
+    with torch.no_grad():
+        full = float(model.predict_cycles(torch.from_numpy(window[None]))[0])
+        for sensor in (0, 3, 13):
+            replaced = window.copy()
+            replaced[sensor] = baseline[sensor]
+            without = float(model.predict_cycles(torch.from_numpy(replaced[None]))[0])
+            assert values[sensor] == pytest.approx(full - without, abs=1e-4)
+
+
+def test_occlusion_gives_one_row_per_window_whatever_the_batch(model, prepared, baseline):
+    from thesis_gnn_rul_xai.explain import occlusion_values
+
+    windows = prepared.test.features[:7]
+    small = occlusion_values(model, windows, baseline, batch_size=3)
+    large = occlusion_values(model, windows, baseline, batch_size=512)
+    assert small.shape == (7, 14)
+    np.testing.assert_allclose(small, large, rtol=1e-6, atol=1e-6)
+
+
+# --- the figure of contributions over an engine's life -------------------
+
+
+def test_the_figure_puts_the_largest_average_contribution_first(model, prepared, baseline):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from thesis_gnn_rul_xai.explain import plot_contributions_over_time
+
+    engine = int(prepared.validation.units[0])
+    table = dynamic_shap(model, prepared.validation, baseline, unit=engine,
+                         symbols=prepared.sensor_symbols)
+    sensors = list(prepared.sensor_symbols)
+    figure = plot_contributions_over_time(table, sensors)
+
+    panels = [axis for axis in figure.axes[1:] if axis.axison]
+    titles = [axis.get_title(loc="left").split()[0] for axis in panels]
+    expected = table[sensors].abs().mean().sort_values(ascending=False, kind="stable")
+    assert titles == expected.index.tolist()
+    assert len({axis.get_ylim() for axis in panels}) == 1   # one scale for every panel
+
+    with pytest.raises(ValueError, match="no column"):
+        plot_contributions_over_time(table.drop(columns="rul"), sensors)
+    matplotlib.pyplot.close("all")
+
+
 # --- shapes, inputs and guards ------------------------------------------
 
 

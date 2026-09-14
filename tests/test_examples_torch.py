@@ -67,6 +67,42 @@ def test_example_coalition_weights():
     assert coalition_weights(3).round(6).tolist() == [0.333333, 0.166667, 0.333333]
 
 
+def test_example_occlusion_is_the_shapley_term_where_the_sensor_arrives_last():
+    """Three sensors on a complete graph. Occlusion credits sensor 0 with
+    f(all three) - f(sensors 1 and 2): the one term of the Shapley sum in which
+    sensor 0 joins last. The Shapley value averages that term with the three
+    others, weighted 1/3, 1/6, 1/6 and 1/3."""
+    from thesis_gnn_rul_xai.explain import occlusion_values, shap_values
+    from thesis_gnn_rul_xai.graph.adjacency import build_fully_connected_adjacency
+
+    torch.manual_seed(1)
+    complete, _ = build_fully_connected_adjacency(3)
+    model = ESTGNN(normalize_adjacency(complete), window_size=4, rul_max=125)
+    baseline = np.zeros((3, 4), dtype=np.float32)
+    features = np.array(
+        [[0.9, 0.8, 0.7, 0.6], [0.2, 0.4, 0.6, 0.8], [0.1, 0.2, 0.3, 0.4]],
+        dtype=np.float32,
+    )
+
+    def f(*present: int) -> float:
+        keep = np.isin(np.arange(3), present)[:, None]
+        window = np.where(keep, features, baseline)[None]
+        with torch.no_grad():
+            return float(model.predict_cycles(torch.from_numpy(window))[0])
+
+    assert coalition_weights(3).tolist() == pytest.approx([1 / 3, 1 / 6, 1 / 3])
+    by_hand = (
+        (f(0) - f()) / 3
+        + (f(0, 1) - f(1)) / 6
+        + (f(0, 2) - f(2)) / 6
+        + (f(0, 1, 2) - f(1, 2)) / 3
+    )
+    assert occlusion_values(model, features, baseline)[0] == pytest.approx(
+        f(0, 1, 2) - f(1, 2), abs=1e-4
+    )
+    assert shap_values(model, features, baseline)[0] == pytest.approx(by_hand, abs=1e-4)
+
+
 def test_example_coalition_weights_add_up_to_one():
     """The weights cover every ordering of the sensors exactly once, so
     multiplying each by the number of groups of that size gives 1."""

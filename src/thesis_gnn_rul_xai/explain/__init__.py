@@ -6,6 +6,8 @@ Read README.md in this folder. It explains what the numbers mean, how to read
 them, and what they must not be compared with.
 """
 
+from .occlusion import occlusion_values
+from .plots import plot_contributions_over_time
 from .shap import (
     MAX_EXACT_NODES,
     coalition_weights,
@@ -22,6 +24,8 @@ __all__ = [
     "dynamic_shap",
     "efficiency_error",
     "mean_window_baseline",
+    "occlusion_values",
+    "plot_contributions_over_time",
     "shap_summary",
     "shap_values",
 ]

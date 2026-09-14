@@ -19,10 +19,17 @@ pip install -e ".[model]"
 
 ## Files
 
-- `shap.py` — everything: the coalition weights, the baseline, the Shapley
-  values themselves, the per-cycle version, and the check that the numbers add
-  up.
-- `__init__.py` — re-exports the public names from `shap.py`.
+- `shap.py` — the paper's method: the coalition weights, the baseline, the
+  Shapley values themselves, the per-cycle version, and the check that the
+  numbers add up.
+- `occlusion.py` — a cheaper method that is not in the paper: replace one
+  sensor at a time with the baseline and record how far the prediction moves.
+- `plots.py` — the figure of every sensor's contribution at every cycle of one
+  engine's life, for either method or both side by side.
+- `__init__.py` — re-exports the public names from all three.
+
+The notebooks in `notebooks/xai/` use all of these on a stored trained network,
+one method per notebook.
 
 ## What a Shapley value is
 
@@ -163,17 +170,77 @@ correctly, because efficiency is a property of the arithmetic rather than of
 the network, so a passing efficiency check is not evidence that the model
 learned anything.
 
+## Occlusion: one sensor at a time
+
+`occlusion_values` answers a simpler question than the Shapley value: how far
+does the prediction move when this one sensor's readings are replaced by the
+baseline, with every other sensor left as it is? For one window that is
+
+```
+occlusion(sensor) = f(every sensor real) − f(every sensor real but this one)
+```
+
+and it needs 15 runs of the network — the window itself and one per sensor —
+where the Shapley values need 16,384. It is not in the paper.
+
+**It is one term of the Shapley sum.** In Equation 15 the group `S` holding all
+thirteen other sensors gives `f(S + {i}) − f(S)`, which is exactly the
+occlusion value, and the sum weights that term by `13! 0! / 14! = 1/14`.
+Occlusion keeps that one term at full weight and drops the rest. The two agree
+only for a sensor that adds the same amount whichever others are present.
+
+Two consequences follow, and neither is about this project's network in
+particular:
+
+- **The fourteen occlusion values do not add up** to the prediction minus the
+  prediction at the baseline. With `f(a, b) = 2a + 3b + 4ab`, input `(1, 1)` and
+  baseline `(0, 0)`, occlusion gives `a` 6 and `b` 7, which sum to 13 where the
+  whole change is 9: each is measured with the other present, so each is
+  credited with the whole `4ab` term.
+- **Two sensors carrying the same information can both look worthless.** With
+  `g(a, b) = 10 × max(a, b)`, replacing either input alone leaves the other to
+  keep the output at 10, so both get 0, where the Shapley values are 5 each.
+
+`notebooks/xai/02_occlusion_fd001.ipynb` measures how far the two methods part
+on the stored network, and
+`tests/test_examples_torch.py::test_example_occlusion_is_the_shapley_term_where_the_sensor_arrives_last`
+checks the one-term relationship on a three-sensor network.
+
+## The figure: contributions over an engine's life
+
+`plot_contributions_over_time` draws what `dynamic_shap` returns. The top panel
+is the prediction being explained: the true remaining life, the predicted one,
+the prediction at the baseline, and a line at the cycle where the true remaining
+life first drops below its ceiling. Below it is one small panel per sensor,
+holding that sensor's contribution at every window, ordered by average size with
+the largest first, and all on **one vertical scale**, so that a tall panel is a
+large contribution and not just a large axis.
+
+With one method, the area between the line and zero is blue where the sensor
+pushed the predicted life up and red where it pushed it down. Given a second
+table through `compare` — occlusion values for the same windows, say — each
+panel draws the two methods as two lines instead, and the panel order still
+follows the first. It returns the matplotlib figure and draws nothing itself,
+so a notebook calls `plt.show()` and a script can save it.
+
+It needs the columns `dynamic_shap` produces, and refuses a table without them
+rather than drawing an empty chart. `tests/test_shap.py` checks the panel order
+and the shared scale.
+
 ## Judgement calls made in this folder
 
-- **A-20 — what "a sensor not considered" means.** Equation 15 needs a
-  prediction with a sensor absent, but the network always needs all fourteen
-  inputs, and the paper never says what it substitutes. We substitute that
-  sensor's average window over the training set. Recorded as A-20 in
-  `docs/ASSUMPTIONS.md`.
+- **What "a sensor not considered" means.** Equation 15 needs a prediction with
+  a sensor absent, but the network always needs all fourteen inputs, and the
+  paper never says what it substitutes. We substitute that sensor's average
+  window over the training set (assumption A-20 in `docs/ASSUMPTIONS.md`).
+  Occlusion uses the same substitute, so the two methods differ only in the
+  arithmetic.
+- **Offering occlusion at all.** It is not in the paper. It is here as the
+  cheapest comparison, not as a replacement.
 
-Finding F-08, also in `docs/ASSUMPTIONS.md`, is not a choice of ours — it is an
-observation about the paper: its Table 12 cannot hold signed Shapley values
-satisfying its own Equation 14.
+That the paper's Table 12 cannot hold signed Shapley values satisfying its own
+Equation 14 is not a choice of ours but an observation about the paper (finding
+F-08, also in `docs/ASSUMPTIONS.md`).
 
 ## References
 
@@ -191,7 +258,7 @@ satisfying its own Equation 14.
 
 ## What each name means
 
-Everything `shap.py` offers.
+Everything `shap.py`, `occlusion.py` and `plots.py` offer.
 
 | Name | What it is |
 |---|---|
@@ -202,6 +269,8 @@ Everything `shap.py` offers.
 | `efficiency_error(model, features, baseline, values)` | The largest amount by which the numbers fail to add up, in cycles. Anything above rounding noise means a bug. |
 | `coalition_weights(n_nodes)` | How much a group of each size counts, from Equation 15. Element `s` is the weight for groups of `s` sensors. |
 | `MAX_EXACT_NODES` | 20. Above this, trying every combination stops being reasonable. |
+| `occlusion_values(model, features, baseline, batch_size=512, device=None)` | From `occlusion.py`. The prediction with every sensor real minus the prediction with one sensor replaced by the baseline, one number per sensor. Takes one window or many, like `shap_values`; `batch_size` changes speed and memory only. |
+| `plot_contributions_over_time(table, sensors, compare=None, method="Shapley value", compare_method="occlusion", title=None)` | From `plots.py`. The figure described above, from a table shaped like `dynamic_shap`'s. `compare` is a second table of values for the same windows, one column per sensor. |
 
 `dynamic_shap` returns these columns, in cycle order:
 
