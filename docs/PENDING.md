@@ -14,6 +14,74 @@ gap in the numbering means an entry was finished and removed.
 
 ---
 
+## P-17 — Nothing in the repository shows the network beats an ordinary model
+
+The thesis has to answer "would any reasonable method have done as well?", and
+no committed code, log entry or README row answers it. Every result is set
+beside the paper and beside other configurations of the same network, never
+beside a model with no graph in it. The audit of 2026-09-08 raised this (its
+D-5) and it was never carried out.
+
+**A scratch measurement on 2026-09-14 says the answer matters.** It set the two
+stored five-seed runs — the current default,
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`,
+and the same settings with the recurrent stage,
+`…_lstm32_cfg72f506_f386291-dirty_20260914T134955Z` — beside scikit-learn
+models trained, for each seed, on exactly that seed's training engines (the
+held-back engines unused) and scored on the same 100 test engines. The inputs
+were `features[:, :, -1]`, the fourteen numbers the default network receives,
+or for the last row the last value, mean and least-squares slope of each
+sensor's 30-cycle window. Library defaults throughout, chosen before any result
+was seen; predictions clipped to [0, 125]. Before comparing, the stored
+predictions were checked to reproduce `results.csv` exactly, and all ten stored
+networks were reloaded at `8b487ab` and reproduced their saved predictions to
+3.8e-06 cycles.
+
+| Model | RMSE, 5 seeds | Network's RMSE minus this | Seeds network better | Paired t over seeds | 95 % interval over 20,000 resamplings of the test engines |
+|---|---|---|---|---|---|
+| network, last cycle (stored) | 16.496 ± 0.415 | — | — | — | own RMSE [14.00, 18.90] |
+| network + recurrent stage, best pass restored (stored) | 13.307 ± 0.532 | +3.189 | 0/5 | 0.0009 | [+1.03, +5.35] |
+| constant: mean training label | 40.568 ± 0.089 | −24.072 | 5/5 | < 0.0001 | [−29.00, −19.12] |
+| gradient boosting trained on shuffled labels | 40.846 ± 0.292 | −24.349 | 5/5 | < 0.0001 | [−29.33, −19.35] |
+| gradient boosting on engine age alone | 31.239 ± 0.100 | −14.742 | 5/5 | < 0.0001 | [−18.92, −10.56] |
+| linear regression, same 14 numbers | 20.457 ± 0.219 | −3.961 | 5/5 | < 0.0001 | [−6.30, −1.70] |
+| one-hidden-layer network of 64, same 14 numbers | 17.702 ± 0.469 | −1.206 | 5/5 | 0.0023 | [−2.89, +0.64] |
+| random forest, same 14 numbers | 17.870 ± 0.308 | −1.373 | 5/5 | 0.0057 | [−3.20, +0.56] |
+| gradient boosting, same 14 numbers | 17.253 ± 0.329 | −0.756 | 5/5 | 0.0472 | [−2.56, +1.17] |
+| gradient boosting, 42 window summaries | 12.134 ± 0.364 | +4.363 | 0/5 | 0.0001 | [+2.04, +6.69] |
+
+The recurrent-stage network against the last row: +1.174 cycles, the booster
+ahead on all five seeds (paired p = 0.0099), interval over engines
+[−0.13, +2.45].
+
+Read with care, and not quoted anywhere until finished:
+
+- **The pipeline is not producing chance numbers.** Shuffled labels land on the
+  constant, so no path other than the sensor-to-life relationship produces a
+  good score through the shared data preparation. This used the booster, not
+  the network's own training loop.
+- **The graph network's edge over an ordinary model on the same fourteen
+  numbers is not established.** It wins on every seed against the three
+  flexible models, but every one of those intervals over engines contains zero.
+- **An untuned booster given the window's trend beats both networks** — the
+  default clearly, the recurrent one on seeds but not resolvably over engines.
+  That bears on assumption A-07 and on the audit's D-6.
+
+**The numbers above came from a script outside the repository**, so under
+working rule 3a they name no committed code and must be re-produced before any
+of them is used.
+
+**What finishing looks like:** a committed `scripts/baselines.py` that reads a
+stored run, rebuilds each seed's split, fits the ladder above and writes its
+own run directory with commit and timestamp; a test that a model fitted on
+shuffled labels scores no better than the constant; the table written into
+`docs/ASSUMPTIONS.md` as a finding with both kinds of uncertainty; the rows
+added to `README.md` section 8; and the same ladder run for the recurrent stage
+under the epoch-200 procedure (F-16) and for any configuration the thesis
+quotes.
+
+---
+
 ## P-12 — What the data-driven graph shows is measured for one architecture only
 
 Assumption A-27 (added 2026-09-14) sets the paper's Table 3 beside a graph of
@@ -48,46 +116,32 @@ question about the graph. Three things keep it from being settled.
 
 ---
 
-## P-16 — The trained checks of `verify_claims.py` no longer agree with the log
+## P-20 — The Shapley tables of A-20 and F-05 come from one trained network
 
-`python scripts/verify_claims.py --fast` passes all 62 of its claims. Without
-`--fast` it adds two checks that train a network and recompute the Shapley
-tables of assumption A-20 and finding F-05, and on 2026-09-14 neither passes:
+Both entries, including the tables added to them on 2026-09-14, are computed
+from a single network: seed 42, nothing held back, all 200 passes. That day's
+correction showed how loose that is. Changing only the learning-rate schedule
+moved `P15`'s largest contribution by 27.9 % on engine 5 and 34.0 % on engine
+82, and swapped the first two sensors of A-20's ranking under the mean window.
+Every rank F-05 relies on held.
 
-- **Under `config/fd001.yaml`** the P15 check stops with
-  `ValueError: engine 5 is not in this dataset`. Since 2026-09-08 the default
-  holds 20 % of the engines back, and engine 5 is one of seed 42's held-back
-  engines, so it is no longer among the training engines the check reads.
-- **Under a copy of that file with `validation_fraction: 0.0`** — the setting
-  both entries say they were measured with, on 2026-08-31 at `f150570` — 18
-  claims were checked and 6 disagreed. Two of those were the check's own fault
-  and were fixed on 2026-09-14: it took the spread of
-  `prepared.train.features[:, sensor, :]`, which held one cycle per window until
-  2026-09-09 and holds thirty since. Taken over the last cycle, the spreads are
-  0.862 for P15 and 1.053 for Nc, exactly as recorded. Four still disagree, all
-  computed from a trained network:
+A different seed may move these figures as much, or more. It has not been
+measured, so every size in both entries is one draw, and the rank claims have
+been tested against two trainings rather than against the spread of five
+(working rule 3).
 
-  | Claim | Recorded | Measured |
-  |---|---|---|
-  | A-20, top four with the mean window | T50, Nc, W31, T24 | Nc, T50, W31, T24 |
-  | A-20, Spearman of all zeros against the mean window | 0.996 | 0.965 |
-  | F-05, largest contribution of P15, engine 5 | 9.449 | 6.814 |
-  | F-05, largest contribution of P15, engine 82 | 9.526 | 6.287 |
+**Finishing:**
 
-**Not caused by the changes of 2026-09-14.** That day's five-seed run of the
-default reproduces the `ae59bc1-dirty` run of 2026-09-08 on every seed and every
-measure, so the training path is unchanged since then. What changed the trained
-network between 2026-08-31 and 2026-09-08 is not established here; the
-learning-rate schedule's default moved to a single step on 2026-09-01, which is
-the first thing to test.
+1. Train five seeds under the entries' settings. Runs since 2026-09-14 save each
+   seed's network.
 
-**How to check:** `python scripts/verify_claims.py --only baselines p15`, and
-again with `--config` pointing at a copy of `config/fd001.yaml` holding nothing
-back.
-**What finishing looks like:** each check pins the settings its entry was
-measured under instead of reading the default; the cause of the drift is found;
-and A-20 and F-05 are re-measured and corrected in place, saying what was wrong
-and how it was found (working rule 6).
+   ```bash
+   python scripts/train.py --config <a copy of config/fd001.yaml with validation_fraction: 0.0> --no-early-stopping --seeds 5
+   ```
+
+2. Recompute both tables on each saved network; `training/stored.py` loads them.
+3. Write into each entry the spread of every figure, and whether `P15` ranks
+   last on every seed.
 
 ---
 
@@ -102,7 +156,9 @@ non-default network by its digest, and saves each seed's weights, per-pass
 record and test predictions.
 
 **What is not done:** step 5 (`models/spatial/`), step 6 (`raw_window`
-re-measured at today's configuration, F-17), step 8 (`GATStage` and
+re-measured at today's configuration, and recorded as the next free finding —
+the design's "F-17" was provisional and that number now belongs to Fig. 10),
+step 8 (`GATStage` and
 `NoSpatialStage`, which would make the paper's "w/o GCN" row of 16.42
 addressable for the first time), and step 9 (edge and subgraph attributions).
 The design's assumption numbers from A-27 on were provisional and have been
@@ -158,7 +214,8 @@ non-graph baselines (D-5) are specified as scikit-learn on
 2026-09-09 the pipeline hands over `(N, 14, 30)` and the temporal stage reduces
 it, so **index 0 is now the first cycle of the window, 29 cycles out of date**,
 and the same command runs without complaint and measures something else. Use
-`features[:, :, -1]` to reproduce what the audit measured.
+`features[:, :, -1]` to reproduce what the audit measured. D-5 now has its own
+entry, P-17, with a measurement at today's configuration.
 
 **What finishing looks like:** each D-item either written into
 `docs/ASSUMPTIONS.md` as a finding or an amendment, or answered in writing with
@@ -191,6 +248,80 @@ weights are. Since 2026-09-14 every run saves each seed's per-pass curves in
 `training_history.csv`. **Finishing:** re-run the recurrent arm with
 `--temporal lstm`, and put the held-back curve of one seed into F-16 in place of
 the inference.
+
+---
+
+## P-18 — Without the recurrent stage, the red four of a dynamic explanation changes almost every window; measured only in a scratch script
+
+On 2026-09-14 the author saw that in the playground's sensor graph, sensors
+change colour between neighbouring windows far more than in the paper's Fig. 10.
+It was measured that day on the longest held-back engine of each of the five
+seeds of two stored runs, both at `f386291-dirty` with the step learning-rate
+schedule — `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`
+(`last_cycle`) and
+`fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`
+(`lstm`, hidden 32) — with `dynamic_shap` run at `563c390-dirty`. For each seed
+both runs explain the same engine. "Joins" counts sensors entering the four
+largest by size from one window to the next:
+
+| | Joins over the 12 steps inside graphs 1–5, 78–82, 187–191 | Joins per step, every window | Mean step ÷ mean size, median over sensors |
+|---|---|---|---|
+| The paper's Table 12 | 1 | — | 0.084 |
+| `lstm` | 4.6 ± 2.1 | 0.38 ± 0.11 | 0.142 ± 0.041 |
+| `last_cycle` | 20.2 ± 4.8 | 1.47 ± 0.12 | 0.390 ± 0.094 |
+
+Paired by seed, `last_cycle` has 15.6 more joins in the 12 steps (p = 0.0005)
+and 1.09 more per step (p = 2e-7). What each stage hands the graph layers was
+measured alongside: its change between neighbouring windows, as a share of its
+spread over the engine's life, is 0.281 ± 0.021 for `last_cycle`, which passes on
+each window's last smoothed reading, and 0.119 ± 0.005 for `lstm`. For T50 on
+seed 42's engine 5, windows ending at cycles 30 to 34, `last_cycle` hands over
+−1.444, −1.115, −1.266, −1.020, −1.515 and `lstm` 0.814, 0.786, 0.782, 0.756,
+0.787.
+
+**What it does not settle.** Even the `lstm` network changes its red four more
+often than Table 12 does, and Table 12 holds positive magnitudes computed in a
+way the paper never states (F-08), so that remaining gap cannot be put down to
+the network. Seed 42, the one the playground's stored explanation uses, gave the
+fewest `lstm` joins of the five (2).
+
+**Why it is here and not in the log.** The numbers came from a script in a
+session scratchpad, not from committed code (working rule 3a).
+
+**What finishing looks like:** the calculation in the repository — a section of
+`notebooks/xai/01_shap_fd001.ipynb` that reads both stored runs, draws the
+paper's Fig. 10 from `evaluation/published.py` beside the engine the way the
+playground now does, and counts the joins — re-run at one commit, and the result
+written into `explain/README.md` as a trap for anyone reading a dynamic
+explanation of the default network. P-20 needs the same loop — Shapley values
+for every saved seed of a stored run — on networks trained with nothing held
+back, so one piece of code can serve both.
+
+---
+
+## P-19 — Outside the playground, the layer table still shows the temporal stage as a row before Table 4's
+
+`ESTGNN.layer_summary()` returns a "Temporal" row and then Table 4's "Input" row,
+and both describe the same `(B, 14, 1)` tensor: Table 4's Input row, which lists
+no parameters, is what the recurrent stage hands to the first graph layer. On
+2026-09-14 the author pointed this out on the playground, which now shows the two
+as one Input row naming the stage. Three places still show both:
+
+- notebook 02, cells 16 and 20, whose text says "the first row is the stage.
+  Every row below it is Table 4, unchanged";
+- the site's "The network" page, whose table `server.py` builds from
+  `layer_summary()` and introduces as "the same table the paper prints", with a
+  Temporal row reading `LastCycle`, `(B, 14, 1)` in and out, 0 parameters;
+- `figures.py`'s `draw_architecture`, which draws a box for each row.
+
+`tests/test_models.py::test_activations_and_shapes_match_table_4` asserts the
+separate row, and `docs/DESIGN_swappable_stages.md` chose it on purpose.
+
+**What finishing looks like:** a decision on whether `layer_summary()` itself
+should fold the stage into the Input row. If yes: change it and that test,
+re-execute notebook 02 (it trains, so it takes minutes) and add a dated line to
+the design. If no: fold the rows on the "The network" page as the playground
+does, and leave the notebook's framing, which says in words what it is doing.
 
 ---
 

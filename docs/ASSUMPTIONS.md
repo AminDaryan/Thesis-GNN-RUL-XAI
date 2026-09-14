@@ -1185,6 +1185,44 @@ instruction written two ways. The 0.004 that separates them is the difference
 between the mean of the training *rows*, which the scaler centres, and the
 mean of the training *windows*, which the baseline averages.
 
+**Correction, 2026-09-14: the table above depends on how the network was
+trained, and did not say so.** It names the scaling, the graph rescaling and
+that nothing was held back, but not the learning-rate schedule. On 2026-08-31
+that was the default of the day: the rate shrank by the same factor after every
+pass over the training data. On 2026-09-01 the default became a single drop at
+the halfway pass (assumption A-17). `scripts/verify_claims.py` reads today's
+defaults, so from then on it trained a different network from the one this
+table describes, and on 2026-09-14 its check of this table failed.
+
+How the cause was established: the same network, seed 42, was trained under
+each schedule with everything else as above, at commit `8b487ab-dirty` (the
+uncommitted changes were to documents, tests, the transcribed tables of
+`evaluation/published.py` and the verification script, none of them on the
+path from the data to a trained network). Under the old schedule every figure
+in the table above came back exactly. Under the current one:
+
+| Baseline | Four most important sensors | mean \|φ\| | Spearman with the mean window |
+|---|---|---|---|
+| mean window (used here) | Nc, T50, W31, T24 | 3.340 | — |
+| median window | T50, T24, W31, Nc | 2.952 | **+0.956** |
+| all zeros | T50, Nc, W31, T24 | 3.192 | **+0.965** |
+
+**What survives.** The same four sensors lead under every stand-in and both
+schedules, and the zero baseline still agrees closely with the mean window —
+nowhere near the −0.16 that min-max gave below.
+
+**What does not.** Under the mean window, `Nc` and `T50` swap first and second
+place. And the agreement between zeros and the mean window falls from 0.996 to
+0.965, which shows the explanation of the 0.004 in the paragraph above is
+incomplete. All three stand-ins are computed from the training data before any
+network exists, so they are identical under both schedules, and so is every
+difference between them. Yet the gap in agreement grew from 0.004 to 0.035 with
+only the training changed. How far a given difference in the stand-in moves the
+ranking is a property of the trained network, not of the data alone.
+
+Both tables come from one network, seed 42. How much a different seed moves them
+is not measured.
+
 **Under the previous min-max default the same comparison said the opposite.**
 Preserved from before the A-22 rework, measured under `minmax_per_condition`:
 
@@ -1212,7 +1250,8 @@ both: it is the neutral value by construction, whatever the scaling maps
 neutral onto.
 
 Any figure quoted from this analysis must say which baseline **and which
-scaling** produced it.
+scaling** produced it — and, since the correction of 2026-09-14 above, **which
+training**: the learning-rate schedule and whether engines were held back.
 
 ---
 
@@ -1242,6 +1281,43 @@ That agrees with the paper's own Fig. 9, which also places `P15` at the bottom,
 and it is a point of genuine agreement between this re-implementation and the
 original. It is the one part of this entry that has survived every change to
 the architecture and the scaling.
+
+**Correction, 2026-09-14: the table above depends on how the network was
+trained, and did not say so.** Exactly as in A-20: it was measured when the
+learning rate shrank by the same factor after every pass, and the default became
+a single drop at the halfway pass the next day (assumption A-17). The check in
+`scripts/verify_claims.py` reads today's defaults, and on 2026-09-14 it
+disagreed with the largest contributions for engines 5 and 82. Under today's
+other default, a fifth of the engines held back, it stopped altogether, because
+seed 42 holds back all three of these engines.
+
+The same network was trained under each schedule with nothing held back, at
+commit `8b487ab-dirty`, as A-20's correction describes. Under the old schedule
+every figure in the table above came back exactly. Under the current one:
+
+| Engine | Windows | `P15` rank | mean \|φ\| for `P15` | median \|φ\| | max \|φ\| | top sensor |
+|---|---|---|---|---|---|---|
+| 5  | 240 | 14 of 14 | 0.750 | 0.363 | 6.814 | 11.146 (`T24`) |
+| 25 | 201 | 14 of 14 | 0.464 | 0.445 | 1.675 | 9.383 (`Nc`) |
+| 82 | 185 | 14 of 14 | 0.731 | 0.420 | 6.287 | 14.799 (`Nc`) |
+
+The rank survives this change too. The sizes do not all move alike. `P15`'s
+largest contribution fell by 27.9 % on engine 5 and 34.0 % on engine 82, the
+two engines whose reading crosses between its levels, but only 5.3 % on engine
+25, where it never does. Its average contribution moved by between −2.1 % and
++8.0 %, and the top sensor's by at most 5.1 %.
+
+Every argument that follows still holds under the current schedule, with its
+numbers changed:
+
+- the medians still do not single out engine 25 as the quiet one: 0.445 against
+  0.363 and 0.420;
+- the maxima still do, 6.814 and 6.287 against 1.675;
+- nothing on engine 25 reaches 1.8 cycles.
+
+Where the text below quotes 9.449, 9.526 or "9.5 cycles", those are figures
+under the old schedule. As in A-20, this is one network, seed 42, and how much a
+different seed moves it is not measured.
 
 **The magnitudes fell by roughly a factor of six**, and the shape of the
 failure changed with them. Under min-max the same three engines gave mean
@@ -1304,7 +1380,8 @@ what the original entry said would happen.
    scalings and both architectures — it is the most durable result in this
    file. "`P15`'s attribution should be near zero" is not confirmed: under
    z-score its worst window still reaches 9.5 cycles on the engines whose
-   reading crosses between its two levels.
+   reading crosses between its two levels (6.8 under the learning-rate
+   schedule in force since 2026-09-01; see the correction above).
 2. **Rescaling by any per-sensor statistic is unsafe for a sensor whose real
    variation sits at the resolution limit**, because it maps quantisation onto
    the same range as genuine signal. This was written as a prediction about
@@ -1320,7 +1397,10 @@ what the original entry said would happen.
    factor of six when only the scaling changed, while its position never moved
    at all. Any SHAP magnitude quoted from this project — or from the paper —
    is meaningless without the scaling that produced it, which is the same
-   conclusion A-20 reaches from the baseline side.
+   conclusion A-20 reaches from the baseline side. The correction of
+   2026-09-14 adds the training to the scaling: changing only the learning-rate
+   schedule moved `P15`'s largest contribution by up to a third, and again its
+   rank did not move.
 4. This is a concrete case of an explanation exposing a **preprocessing**
    defect rather than a model defect, which is a useful thing for a thesis on
    explainability to be able to demonstrate.
@@ -2594,6 +2674,79 @@ paper.
 `reports/fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f82c76c-dirty_20260909T123135Z`
 and
 `reports/fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_f82c76c-dirty_20260909T125552Z`.
+
+---
+
+### F-17 — Fig. 10 is drawn from Table 12, except in two of its fifteen graphs
+
+**What Fig. 10 shows.** Fifteen small graphs, numbered 1 to 5, 78 to 82 and 187
+to 191. Each places the fourteen sensors round a circle, joins them with edges,
+and colours them the way Section 4.4 describes: "the four most influential
+sensors" red, "the remaining sensors" blue, each shade by importance. The text
+says Fig. 10 "visualizes these importance patterns", meaning those of Table 12,
+whose columns carry the same fifteen numbers.
+
+**How it was checked, on 2026-09-14.**
+
+- Page 14 rendered with `pypdfium2` at scale 8. The node circles were found as
+  connected patches of coloured pixels, and a circle fitted through the node
+  centres of each graph; the fitted radius is 317 or 318 pixels in all fifteen,
+  so no graph was mis-located. Each node's colour is the median of the pixels
+  within 30 pixels of its centre, leaving out the white label and the black
+  outline. A node counts as red when its red channel exceeds its blue one.
+- The order round the circle was read by eye from graph 1, and from the graph in
+  Fig. 9, both at scale 8, and is the same in both: clockwise from the node just
+  left of the top, P30, P15, T50, T30, T24, W32, W31, htBleed, BPR, NRf, phi,
+  Ps30, Nc, Nf.
+- Which cells of Table 12 are bold was read from the font of each cell in the
+  PDF's text layer: bold cells are set in `CharisSIL-Bold`, the rest in
+  `CharisSIL`.
+
+**What agrees.**
+
+- **Table 12 agrees with itself.** In all fifteen columns the four bold cells
+  are the four largest values.
+- **Thirteen graphs have exactly Table 12's four largest in red**, and their
+  shades follow the values. Ordering the red nodes by how dark they are, and
+  separately the blue ones, and comparing each order with Table 12's by
+  Spearman's rank correlation — 1 when two orderings agree exactly — gives 1.00
+  for both groups in eleven of the thirteen, and for the blue group 0.95 in
+  graph 188 and 0.88 in graph 190.
+- **The edges are Table 3's.** For every pair of sensors, the pixels along the
+  straight line between their nodes were tested for a dark line. No graph shows
+  an edge Table 3 lacks, and graph 4 shows all 41 of Table 3's. In the other
+  fourteen, one to three edges went undetected, always among the same three
+  pairs, each joining two sensors two places apart on the circle: Nf and P15,
+  Nc and phi, W32 and htBleed. Such a line passes 317 × (1 − cos 25.7°) ≈ 31
+  pixels from the node between its ends, inside that node's radius of about 40
+  pixels, so the node is drawn over it.
+
+**What does not agree.** Graphs 81 and 82, confirmed by eye on a crop at scale 8:
+
+| Graph | Red in Fig. 10 | Four largest in Table 12, and its bold cells |
+|---|---|---|
+| 81 | P30, Ps30, **T30**, T50 | P30, **phi**, Ps30, T50 |
+| 82 | **Nc**, Ps30, **T30**, T50 | **P30**, **phi**, Ps30, T50 |
+
+In graph 81, Table 12 puts T30 fifth, at 2.46 against phi's 2.58, and the figure
+draws phi in deep blue. In graph 82, T30 and Nc tie for fifth at 2.21, below
+phi's 2.29 and P30's 2.34, and the figure draws both of those blue. The prose
+sides with the table: it names "T50, P30, Ps30, and phi" for graphs 78 to 82.
+
+**What cannot be concluded.** Which is right about those two moments. The paper
+keeps no other record of them.
+
+**Consequences for this project.**
+
+1. Of the paper's two pictures of its explanation, **Fig. 10 follows Table 12
+   and Fig. 9 does not** (F-15). A comparison with "the paper's ranking" can use
+   Table 12 and Fig. 10 as one source, except at graphs 81 and 82.
+2. The documentation site's playground redraws Fig. 10 from Table 12's numbers,
+   above a stored explanation of one engine at the same graph numbers, and says
+   beside it that the printed figure differs at graphs 81 and 82. Table 12, its
+   graph numbers and the order round the circle are in
+   `evaluation/published.py`; `tests/test_playground.py` checks the
+   transcription against F-08's column sums and against the bold cells.
 
 ---
 

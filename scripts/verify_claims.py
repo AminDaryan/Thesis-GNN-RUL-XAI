@@ -52,10 +52,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
 from itertools import combinations
 from pathlib import Path
 
@@ -86,6 +84,7 @@ from thesis_gnn_rul_xai.graph.adjacency import (
 )
 from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
 from thesis_gnn_rul_xai.utils.paths import raw_data_dir, reports_dir
+from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
 
 
 @dataclass
@@ -345,14 +344,39 @@ def check_ordering() -> list[Claim]:
 # --- the checks that need a trained network ------------------------------
 
 
-def _trained_model(config: PreprocessingConfig):
-    """Train one network on the given settings, seed 42, and return it with its data."""
+# A-20 and F-05 were measured on 2026-08-31 with z-score scaling, row
+# rescaling and no engines held back, and both entries say so. Neither named the
+# learning-rate schedule, because it was the default of that date, and the
+# default changed from "exponential" to "step" the next day. Reading today's
+# defaults made both checks fail for a reason that had nothing to do with the
+# code: all three of F-05's engines, 5, 25 and 82, are among the engines seed 42
+# holds back since 2026-09-08, and the step schedule trains a different network. Trained with the old schedule, the code of
+# 2026-09-14 reproduced all eighteen recorded figures exactly. So the settings
+# are fixed here, and each entry now records its table under both schedules.
+_SHAPLEY_SETTINGS = {
+    "normalization": "zscore",
+    "adjacency_normalization": "row",
+    "validation_fraction": 0.0,
+}
+_SCHEDULES = ("exponential", "step")
+_TRAINED: dict[tuple[str, str], tuple[object, object]] = {}
+
+
+def _trained_model(config: PreprocessingConfig, lr_schedule: str):
+    """Train seed 42 under the settings the Shapley entries record, once per schedule."""
     import torch
 
     from thesis_gnn_rul_xai.models import ESTGNN
     from thesis_gnn_rul_xai.models.temporal import build_temporal_stage
     from thesis_gnn_rul_xai.training import TrainingConfig, train
 
+    config = replace(config, **_SHAPLEY_SETTINGS)
+    key = (json.dumps(config.to_dict(), sort_keys=True, default=str), lr_schedule)
+    if key in _TRAINED:
+        return _TRAINED[key]
+
+    print(f"    training seed 42: {lr_schedule} learning-rate schedule, "
+          f"{config.normalization}, {config.adjacency_normalization}, nothing held back")
     prepared = run_preprocessing(config, data_dir=raw_data_dir(), keep_frames=True)
     torch.manual_seed(42)
     model = ESTGNN(
@@ -364,8 +388,10 @@ def _trained_model(config: PreprocessingConfig):
         ),
         rul_max=config.rul_max,
     )
-    train(model, prepared.train, None, TrainingConfig(seed=42, device="cpu"))
-    return model, prepared
+    train(model, prepared.train, None,
+          TrainingConfig(seed=42, device="cpu", lr_schedule=lr_schedule))
+    _TRAINED[key] = (model, prepared)
+    return _TRAINED[key]
 
 
 def check_baselines(config: PreprocessingConfig) -> list[Claim]:
@@ -374,65 +400,69 @@ def check_baselines(config: PreprocessingConfig) -> list[Claim]:
 
     from thesis_gnn_rul_xai.explain import mean_window_baseline, shap_values
 
-    model, prepared = _trained_model(config)
-    symbols = list(prepared.sensor_symbols)
-    windows = prepared.test.features[:20]
+    recorded = {
+        "exponential": {"mean window": "['T50', 'Nc', 'W31', 'T24']",
+                        "median window": "['T50', 'T24', 'W31', 'Nc']",
+                        "all zeros": "['T50', 'Nc', 'W31', 'T24']",
+                        "spearman median": 0.952, "spearman zeros": 0.996},
+        "step": {"mean window": "['Nc', 'T50', 'W31', 'T24']",
+                 "median window": "['T50', 'T24', 'W31', 'Nc']",
+                 "all zeros": "['T50', 'Nc', 'W31', 'T24']",
+                 "spearman median": 0.956, "spearman zeros": 0.965},
+    }
+    claims: list[Claim] = []
+    for schedule in _SCHEDULES:
+        model, prepared = _trained_model(config, schedule)
+        symbols = list(prepared.sensor_symbols)
+        windows = prepared.test.features[:20]
 
-    mean_window = mean_window_baseline(prepared.train)
-    baselines = {
-        "mean window": mean_window,
-        "median window": np.median(prepared.train.features, axis=0).astype(np.float32),
-        "all zeros": np.zeros_like(mean_window),
-    }
-    importance = {
-        name: np.abs(shap_values(model, windows, base)).mean(axis=0)
-        for name, base in baselines.items()
-    }
-    top4 = {
-        name: [symbols[i] for i in np.argsort(-imp)[:4]]
-        for name, imp in importance.items()
-    }
-    reference = importance["mean window"]
-
-    return [
-        Claim("A-20", "top four, mean window",
-              "['T50', 'Nc', 'W31', 'T24']", str(top4["mean window"])),
-        Claim("A-20", "top four, median window",
-              "['T50', 'T24', 'W31', 'Nc']", str(top4["median window"])),
-        Claim("A-20", "top four, all zeros",
-              "['T50', 'Nc', 'W31', 'T24']", str(top4["all zeros"])),
-        Claim("A-20", "Spearman, median window vs mean window", 0.952,
-              round(float(spearmanr(reference, importance["median window"]).statistic), 3),
-              tolerance=0.02),
-        Claim("A-20", "Spearman, all zeros vs mean window", 0.996,
-              round(float(spearmanr(reference, importance["all zeros"]).statistic), 3),
-              tolerance=0.02),
-    ]
+        mean_window = mean_window_baseline(prepared.train)
+        baselines = {
+            "mean window": mean_window,
+            "median window": np.median(prepared.train.features, axis=0).astype(np.float32),
+            "all zeros": np.zeros_like(mean_window),
+        }
+        importance = {
+            name: np.abs(shap_values(model, windows, base)).mean(axis=0)
+            for name, base in baselines.items()
+        }
+        reference = importance["mean window"]
+        expected = recorded[schedule]
+        for name, imp in importance.items():
+            claims.append(Claim("A-20", f"top four, {name} [{schedule}]", expected[name],
+                                str([symbols[i] for i in np.argsort(-imp)[:4]])))
+        for name, label in (("median window", "median"), ("all zeros", "zeros")):
+            rho = float(spearmanr(reference, importance[name]).statistic)
+            claims.append(Claim("A-20", f"Spearman, {name} vs mean [{schedule}]",
+                                expected[f"spearman {label}"], round(rho, 3), tolerance=0.02))
+    return claims
 
 
 def check_p15(config: PreprocessingConfig) -> list[Claim]:
     """F-05: where P15 ranks, what it is worth, and the quantisation behind it."""
     from thesis_gnn_rul_xai.explain import dynamic_shap, mean_window_baseline
 
-    model, prepared = _trained_model(config)
-    symbols = list(prepared.sensor_symbols)
-    baseline = mean_window_baseline(prepared.train)
-    p15 = symbols.index("P15")
-
+    recorded_max = {
+        "exponential": {5: 9.449, 25: 1.769, 82: 9.526},
+        "step": {5: 6.814, 25: 1.675, 82: 6.287},
+    }
     claims: list[Claim] = []
-    recorded_rank = {5: 14, 25: 14, 82: 14}
-    recorded_max = {5: 9.449, 25: 1.769, 82: 9.526}
-    for unit in (5, 25, 82):
-        table = dynamic_shap(model, prepared.train, baseline, unit=unit, symbols=symbols)
-        values = table[symbols].to_numpy()
-        mean_abs = np.abs(values).mean(axis=0)
-        rank = int(np.where(np.argsort(-mean_abs) == p15)[0][0]) + 1
-        claims.append(Claim("F-05", f"engine {unit}: P15 rank of 14",
-                            recorded_rank[unit], rank))
-        claims.append(Claim("F-05", f"engine {unit}: largest |phi| for P15",
-                            recorded_max[unit],
-                            round(float(np.abs(values[:, p15]).max()), 3),
-                            tolerance=0.2))
+    for schedule in _SCHEDULES:
+        model, prepared = _trained_model(config, schedule)
+        symbols = list(prepared.sensor_symbols)
+        baseline = mean_window_baseline(prepared.train)
+        p15 = symbols.index("P15")
+        for unit in (5, 25, 82):
+            table = dynamic_shap(model, prepared.train, baseline, unit=unit, symbols=symbols)
+            values = table[symbols].to_numpy()
+            mean_abs = np.abs(values).mean(axis=0)
+            rank = int(np.where(np.argsort(-mean_abs) == p15)[0][0]) + 1
+            claims.append(Claim("F-05", f"engine {unit}: P15 rank of 14 [{schedule}]",
+                                14, rank))
+            claims.append(Claim("F-05", f"engine {unit}: largest |phi| for P15 [{schedule}]",
+                                recorded_max[schedule][unit],
+                                round(float(np.abs(values[:, p15]).max()), 3),
+                                tolerance=0.2))
 
     raw = prepared.raw.train
     column = symbol_to_column("P15")
@@ -476,26 +506,6 @@ CHECKS = [
 ]
 
 
-def _commit_stamp() -> str:
-    """The short commit, with -dirty when a tracked file has been modified."""
-    def git(*args: str) -> str:
-        try:
-            return subprocess.run(
-                ["git", *args], capture_output=True, text=True, check=True
-            ).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
-            return ""
-
-    commit = git("rev-parse", "--short", "HEAD") or "unknown"
-    # Untracked files count, the same way scripts/train.py counts them. An
-    # untracked file under src/ is a module the commit does not describe, so
-    # the package on disk is not the package the commit names. This is
-    # deliberately conservative: it produces false alarms for a stray file in
-    # docs/, which is a cheaper mistake than quoting a number from a tree
-    # nobody can reconstruct.
-    return commit + ("-dirty" if git("status", "--porcelain") else "")
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--only", nargs="+", metavar="NAME",
@@ -521,8 +531,10 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.fast:
         selected = [c for c in selected if not c.needs_model]
 
-    commit = _commit_stamp()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # The same stamp scripts/train.py uses, untracked files counting towards
+    # -dirty; utils/README.md explains why.
+    commit = current_commit()
+    stamp = utc_stamp()
     print(f"Verifying against {config_path.name} "
           f"({config.normalization}, {config.adjacency_normalization}, "
           f"validation_fraction={config.validation_fraction})")
