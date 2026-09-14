@@ -25,8 +25,14 @@ window of 30 cycles  ->  temporal stage  ->  graph layers  ->  dense
 By default that stage is `LastCycle`: keep the most recent reading, drop the
 other 29, learn nothing (**A-07**). With `--temporal lstm` it is the paper's
 own stage instead, whose size the paper never states (**A-26**). Finding
-**F-16** measures what the difference is worth: 3.19 cycles on FD001, against
-the 3.15 the paper's own Table 11 prints.
+**F-16** measures what the difference is worth, and the answer depends on how
+the model is trained. With this project's procedure — a fifth of the engines
+held back and the best checkpoint restored — the stage is worth 3.19 cycles on
+FD001, close to the 3.15 the paper's Table 11 prints. With **the paper's own**
+procedure — nothing held back, 200 epochs, the final weights — it is worth 0.77,
+which five seeds cannot tell apart from nothing. The recurrent model is twice the
+size and over-trains badly over 200 epochs; restoring the best checkpoint
+rescues it, and the paper never says it does that.
 
 Everything below is the part Table 4 does print, and it is the same either way.
 

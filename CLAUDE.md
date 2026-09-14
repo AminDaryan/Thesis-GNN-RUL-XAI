@@ -141,7 +141,10 @@ produced it**, and a run records that in its directory name and in
   never its headline.
 - `--temporal lstm` builds the stage of the paper's Section 2.2, so the
   headline row (11.78) becomes the right comparison — but only under the size
-  A-26 had to choose, which the paper never states.
+  A-26 had to choose, which the paper never states, and **only if the run
+  follows the paper's procedure**. F-16 measured the stage at +3.19 cycles with
+  the best checkpoint restored and +0.77 (p = 0.117) with the epoch-200
+  weights the paper describes. Say which one a number is.
 
 Neither is a reproduction. The first omits a stage the paper has; the second
 fills in numbers the paper does not give.
@@ -842,8 +845,12 @@ python -m nbconvert --to notebook --execute --inplace notebooks/02_model_fd001.i
 
 - The 14 sensors and their order come from Table 3 and are load-bearing: the
   adjacency matrix is indexed by position. Import-time assertions guard this.
-- The LSTM stage is omitted on purpose (A-11). Implementing it would be
-  invention; the paper never states its size, depth or output projection.
+- The LSTM stage is not the default (A-11). It exists as `LSTMStage`, and
+  its fourteen dedicated networks are a citation of the paper's Section 2.2,
+  not a choice; its size, depth and projection are A-26, because the paper
+  never states them. What it is worth depends on a training procedure the
+  paper does not describe (F-16), so never quote its benefit without naming
+  whether the best checkpoint was restored.
 - Test labels are capped at 125 (A-02) because the sigmoid output makes higher
   predictions impossible. This can only move reported numbers favourably, and
   that must be stated whenever they are compared with published ones.
