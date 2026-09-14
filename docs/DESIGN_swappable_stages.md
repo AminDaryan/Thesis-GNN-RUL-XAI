@@ -101,7 +101,7 @@ Thesis GNN RUL XAI/
 ├── config/
 │   ├── fd001.yaml                                UNCHANGED
 │   ├── fd001_uncapped.yaml                       UNCHANGED
-│   ├── fd001_validated.yaml                      UNCHANGED
+│   │   (fd001_validated.yaml stood here; deleted 2026-09-14, identical to fd001.yaml)
 │   └── model/                                    NEW  (one file per architecture)
 │       ├── table4.yaml                           NEW  ModelConfig() written out
 │       ├── lstm32.yaml                           NEW  step 5

@@ -300,6 +300,12 @@ A-22 records one choice (A-21) that had to be made on the test set for exactly
 this reason. The reasoning below is unchanged and still governs how the split
 must be used when it is used.
 
+*Note added 2026-09-14.* Once the split returned to `config/fd001.yaml`, the
+separate file became identical to it in every setting, and it was deleted.
+Comparisons between configurations now use `config/fd001.yaml` itself. Stored
+runs made with the old file are unaffected: each run folder keeps its own
+copy of the settings it ran with, in `preprocessing_config.yaml`.
+
 ---
 
 ### Original entry
@@ -1520,7 +1526,8 @@ follow.
 What the audit was right about is that `config/fd001_validated.yaml` carried
 the same comment, and there it *was* wrong: that file holds engines back, so
 "under this configuration" the figures are the second row, not the first. That
-comment has been corrected.
+comment has been corrected. (The file itself was deleted on 2026-09-14, after
+it had become identical to `config/fd001.yaml`.)
 
 All four rows are reproducible from the stored runs:
 
@@ -1591,9 +1598,13 @@ all of which bear on how the number may be described.
 2. **A-21 was decided on test error.** Removing the validation split (A-06)
    leaves no honest basis for choosing between configurations, so the
    symmetric-versus-row comparison was made on the test set. That is the thing
-   a validation split exists to prevent, and it is why
-   `config/fd001_validated.yaml` still exists: **any future comparison between
-   configurations must be run with that file, not this one.**
+   a validation split exists to prevent. `config/fd001_validated.yaml` was
+   kept for that reason while the default held nothing back; since the split
+   returned to `config/fd001.yaml` the two files were identical, and the
+   separate one was deleted on 2026-09-14. **Any future comparison between
+   configurations must hold engines back**, which the default now does — and
+   must be decided on the held-back error, not on the test error (the
+   independent audit of 2026-09-08 reports that this has not always been so).
 3. **Following the paper more closely made the result worse, not better.**
    Removing the validation split and the best-checkpoint restore — which is
    what Table 6's "200 epochs" actually implies — costs about 0.45 cycles.

@@ -104,14 +104,16 @@ it is `normalize_adjacency` in `graph/adjacency.py`.
 
 ### Things that will catch you out
 
-**`validation_fraction` defaults to `0.0`, which means there is no validation
-split at all.** Unless a configuration file asks for one, every engine is used
-for training. This is deliberate: the paper describes no held-out set and
-trains for a fixed 200 epochs (its Table 6). Holding engines out and then
-restoring the best-validation checkpoint would be validation-based model
-selection, which the paper never describes, so the reproduction does not do it.
-The file `config/fd001_validated.yaml` puts the split back, and exists for
-comparing one configuration against another.
+**`validation_fraction` defaults to `0.2`, which is not what the paper does.**
+Twenty percent of the training engines are held back, and training keeps the
+network's parameters from the pass over the data that did best on them and
+stops early once they stop improving. The paper describes no held-back engines
+and trains for a fixed 200 passes (its Table 6). Setting the field to `0.0`
+gives the paper's arrangement. Holding engines back is kept as the default
+because it is the only honest basis for choosing between configurations: the
+alternative is choosing on the test engines, which the test score is meant to
+be independent of. (This setting was `0.0` for a while and has been changed
+back; the log records both decisions under assumption A-06.)
 
 **When there *is* a split, it is split by engine unit, not by window.** Windows
 from the same engine overlap heavily, so splitting by window would leak

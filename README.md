@@ -633,7 +633,8 @@ Thesis GNN RUL XAI/
 ├── environment.yml               Dependencies, for conda
 │
 ├── config/
-│   └── fd001.yaml                Settings for the FD001 sub-dataset
+│   ├── fd001.yaml                Settings for the FD001 sub-dataset
+│   └── fd001_uncapped.yaml       The same, with the test labels left uncapped
 │
 ├── data/
 │   ├── raw/                      The NASA files go here (not in git)
