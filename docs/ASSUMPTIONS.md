@@ -2364,7 +2364,119 @@ of the two it is made against.
 
 ---
 
-### F-16 — Building the paper's LSTM reproduces its stated benefit almost exactly, and leaves a constant gap that has nothing to do with it
+### F-16 — What the paper's LSTM is worth depends on a training procedure the paper does not describe
+
+**Corrected 2026-09-14.** This entry was first written on 2026-09-09 under the
+title *"Building the paper's LSTM reproduces its stated benefit almost exactly,
+and leaves a constant gap that has nothing to do with it"*. Both halves of that
+title were true only under this project's training procedure, and two further
+runs showed that the paper's own procedure gives a different answer. What the
+entry first said is kept below, under its own heading, because the way it was
+wrong is instructive.
+
+**How it was found.** The original entry noticed that early stopping fired at
+epochs 10, 13, 9, 14 and 21 of a nominal 200, and suspected it was cutting the
+recurrent stage short. Two arms were run to test that. Neither result was the
+one expected.
+
+| Arm | Held back | Training | Reported model | RMSE (5 seeds) |
+|---|---|---|---|---|
+| A | 20 % | stops early | best-validation checkpoint | 13.307 ± 0.532 |
+| C | 20 % | full 200 epochs | best-validation checkpoint | 13.307 ± 0.532 |
+| D | nothing | full 200 epochs | **epoch 200 — the paper's procedure** | **16.052 ± 0.975** |
+
+**Arm C is bit-identical to arm A**, seed for seed, with the same best epochs.
+Early stopping was not cutting anything short: the recurrent stage's
+validation error genuinely bottoms out between epochs 9 and 21 and never
+improves over the remaining 180. It is also a clean demonstration of the trap
+A-18 records — `--no-early-stopping` alone does not change the reported model
+while a validation set exists, because the run still ends by restoring the
+best checkpoint.
+
+**Arm D is the paper's procedure**, and it is where the correction comes from.
+Table 6 states 200 epochs; the paper describes no held-out set and no early
+stopping (A-06, A-18), so its reported model is the weights at the end of
+training. Set beside the stand-in under the same procedure, paired by seed:
+
+| Training procedure | `last_cycle` | `lstm` | LSTM worth | paired p |
+|---|---|---|---|---|
+| **the paper's**: nothing held back, 200 epochs, final weights | 16.818 ± 0.157 | 16.052 ± 0.975 | **+0.766** | **0.117** |
+| this project's: 20 % held back, best checkpoint | 16.496 ± 0.415 | 13.307 ± 0.532 | +3.189 | 0.0009 |
+| *the paper's Table 11, FD001* | *14.93* | *11.78* | *+3.150* | — |
+
+**Under the paper's own procedure the stage is worth 0.77 cycles, and that
+does not survive even the seed-to-seed spread.** The 3.19 that agreed so
+closely with Table 11's 3.15 appears only when the best checkpoint is
+restored — a step the paper never mentions.
+
+**Why the two procedures disagree so much for this stage.** Restoring the best
+checkpoint is worth very different amounts to the two models:
+
+| | best checkpoint worth | paired p |
+|---|---|---|
+| `last_cycle`, 61,729 parameters | +0.321 | 0.234 |
+| `lstm`, 124,482 parameters | **+2.745** | **0.004** |
+
+The recurrent model is twice the size, and over 200 epochs it gets much worse
+after its best epoch; the smaller model barely does. So checkpoint selection is
+not a neutral bookkeeping choice here. It interacts with the temporal stage,
+and it accounts for most of what the stage appeared to be worth. The spread
+says the same thing from another side: at epoch 200 the recurrent model's
+seed-to-seed standard deviation is 0.975, against 0.157 for the stand-in.
+
+That the recurrent model overfits is **inferred**, from where its best epochs
+fall and from how much worse its final weights are — not observed. The
+per-epoch training and validation curves that would show it directly are built
+during training and never saved, a gap the audit of 2026-09-08 raises as D-10.
+
+**What this does and does not establish.**
+
+- It does **not** show the paper's stage is worthless. It shows that under the
+  one procedure the paper describes, this implementation of it — with the
+  hidden size A-26 had to choose — cannot be told apart from the stand-in
+  across five seeds.
+- It does **not** show the paper selected checkpoints without saying so. That
+  would explain the agreement with Table 11, and it is the obvious suspicion,
+  but the paper does not say, so it is speculation and must be written that
+  way wherever it appears.
+- **Every p-value above answers only "is this an artefact of initialisation?"**
+  The independent audit of 2026-09-08 (`docs/AUDIT_2026-09-08_scientific_validity.md`,
+  D-8) makes the point that the five seeds share one test set of 100 engines,
+  so seed spread is not uncertainty over engines, and a paired test across
+  seeds says nothing about engines the model has not seen. The per-engine
+  uncertainty cannot be computed from these runs at all: each run directory
+  holds `preprocessing_config.yaml`, `results.csv` and `summary.json`, and no
+  per-engine prediction.
+- **The "w/o LSTM" row is not a clean comparison for `last_cycle`**, for a
+  reason the same audit gives in D-6: the paper's ablation removes a recurrent
+  stage from a model that still reads a 30-cycle window somewhere, while
+  `last_cycle` discards the window as well.
+
+**Provenance.** Arms A and C, and the `last_cycle` run at 20 %, are at commit
+`f82c76c-dirty`, whose uncommitted changes were the component architecture
+later committed as `3a62e7b`. Arm D is at `c703693-dirty`. The `last_cycle`
+run at nothing-held-back is at `ae59bc1-dirty`, before that refactor; the
+refactor was gated on reproducing the previous five-seed run bit-identically
+and did, so the training path is the same, but the pairing does cross it and a
+re-run at one commit would remove the question. The run directories:
+
+- `reports/fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_f82c76c-dirty_20260909T125552Z` (A)
+- `reports/fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfgba82e3_f82c76c-dirty_20260909T154345Z` (C)
+- `reports/fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_c703693-dirty_20260909T193330Z` (D)
+- `reports/fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f82c76c-dirty_20260909T123135Z` (`last_cycle`, 20 %)
+- `reports/fd001_physics_row_cap_5seed_varsplit_cfg00be26_ae59bc1-dirty_20260908T224841Z` (`last_cycle`, nothing held back)
+
+---
+
+#### What this entry said on 2026-09-09, before arms C and D
+
+**Superseded 2026-09-14.** The analysis below is correct as far as it goes —
+every number in it is right for the procedure it was measured under — but it
+did not know the answer depended on that procedure, and so it drew two
+conclusions the paper's own procedure does not support: that the stage's
+contribution "reproduces to within 0.04 cycles", and that "the remaining gap is
+a constant". Under the paper's procedure the contribution is 0.77, and the gap
+to Table 11 is 1.89 without the stage and 4.27 with it.
 
 `models/temporal/LSTMStage` builds the stage of the paper's Section 2.2:
 fourteen dedicated recurrent networks, one per sensor, which is what the paper
