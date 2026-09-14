@@ -451,7 +451,11 @@ def check_p15(config: PreprocessingConfig) -> list[Claim]:
     claims.append(Claim("F-05", "median level changes across engines",
                         2, int(np.median(changes))))
 
-    spread = {s: float(prepared.train.features[:, symbols.index(s), :].std())
+    # The spread of what reaches the graph layers, which under the default
+    # stage is the last cycle of each window. Until 2026-09-09 the features
+    # held only that cycle; since then they hold all thirty, and taking the
+    # spread over `[:, i, :]` measured something else without complaint.
+    spread = {s: float(prepared.train.features[:, symbols.index(s), -1].std())
               for s in ("P15", "Nc", "T50", "T24")}
     claims.append(Claim("F-05", "scaled spread of P15", 0.862,
                         round(spread["P15"], 3), tolerance=0.02))

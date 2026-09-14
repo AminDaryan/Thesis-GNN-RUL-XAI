@@ -787,7 +787,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 216 tests; must all pass
+pytest                # 260 tests; must all pass (one does not yet: see below)
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -812,21 +812,29 @@ has drifted from the code more than once — see the header of that script.
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing, leaving
-146 passing and 70 skipped. The model, training and explanation tests
-additionally need PyTorch; without it they are not collected at all, so 159
-of the 216 are collected, 157 pass, and two skip — the figure test that
-prints the model's real parameter count.
+178 passing and 81 skipped. The model, training and explanation tests
+additionally need PyTorch; without it they are not collected at all, so 195
+of the 260 are collected, 191 pass, and three skip.
 
 Both of those counts assume the training runs stored in `reports/`, which are
 not committed. A clone that has none also skips the tests about them: with no
-data and no stored runs, which is what the CI runner has, it is 141 passing
-and 75 skipped.
+data and no stored runs, which is what the CI runner has, it is 172 passing
+and 87 skipped; without PyTorch as well, 137 passing and 57 skipped.
+
+Every count above was measured on 2026-09-14, and in each of those settings
+one further test fails: stopping a running playground job does not work on
+Windows. It failed before that day's changes too, and `docs/PENDING.md`
+records it.
 
 If a change touches a notebook, re-execute it before committing, so its stored
-outputs match its code:
+outputs match its code. The notebooks in `notebooks/xai/` load a stored
+five-seed run of `config/fd001.yaml` with saved networks, so they need one in
+`reports/`; a change to the network, the training or the preprocessing means
+re-training that run first:
 
 ```bash
 python -m nbconvert --to notebook --execute --inplace notebooks/02_model_fd001.ipynb
+python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd001.ipynb notebooks/xai/02_occlusion_fd001.ipynb
 ```
 
 ---
