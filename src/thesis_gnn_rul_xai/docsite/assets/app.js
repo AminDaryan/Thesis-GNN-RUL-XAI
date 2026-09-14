@@ -426,7 +426,9 @@
       card("#/notebook/notebooks/01_preprocessing_fd001.ipynb", "Notebook 01",
            "The raw text files becoming model-ready arrays, with every number shown.") +
       card("#/notebook/notebooks/02_model_fd001.ipynb", "Notebook 02",
-           "Building the network, training it, scoring it and explaining it.") +
+           "Building the network, training it, scoring it, and testing its sensor graph.") +
+      card("#/notebook/notebooks/xai/01_shap_fd001.ipynb", "Explaining the network",
+           "Exact Shapley values for every sensor, at every cycle of one engine's life.") +
       card("#/explore/graph", "The sensor graph",
            "All 14 sensors, their 41 edges, and what three layers can reach.") +
       card("#/explore/architecture", "The network",
@@ -607,6 +609,12 @@
     if (name === "architecture") { return exploreArchitecture(); }
     if (name === "results") { return exploreResults(); }
     if (name === "assumptions") { return exploreAssumptions(); }
+    if (name === "playground" && window.thesisPlayground) {
+      return window.thesisPlayground(content, {
+        get: get, toast: toast, fixed: fixed, escapeHtml: escapeHtml, chip: chip,
+        crumbs: crumbs, buildToc: buildToc
+      });
+    }
     showError("No explorer called " + name, "");
     return Promise.resolve();
   }

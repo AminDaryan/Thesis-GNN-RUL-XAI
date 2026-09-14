@@ -66,6 +66,22 @@ _LEARN_PAGES: tuple[tuple[str, str], ...] = (
     ("07_evidence.md", "Telling the paper, a choice and a measurement apart"),
 )
 
+# The notebooks, in reading order: the two that run the chain, then the folder
+# of explanation methods, its README first. A README here is listed as a page,
+# a notebook as a notebook; a file that does not exist yet is skipped.
+_NOTEBOOKS: tuple[tuple[str, str, str], ...] = (
+    ("notebooks/01_preprocessing_fd001.ipynb", "01 — Preprocessing FD001",
+     "Steps 1 to 8: the raw text files become model-ready arrays"),
+    ("notebooks/02_model_fd001.ipynb", "02 — Building, training and scoring",
+     "Steps 9 to 11, then the paper's sensor graph set beside two others"),
+    ("notebooks/xai/README.md", "Explaining a trained network",
+     "What every explanation notebook shares, and why they load a stored network"),
+    ("notebooks/xai/01_shap_fd001.ipynb", "xai 01 — Exact Shapley values",
+     "The paper's method, for one prediction and at every cycle of one engine's life"),
+    ("notebooks/xai/02_occlusion_fd001.ipynb", "xai 02 — Occlusion",
+     "A cheaper method that is not in the paper, set beside the Shapley values"),
+)
+
 _HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _CODE_FENCE = re.compile(r"```[\s\S]*?```")
 _MARKUP = re.compile(r"[*_`>#\[\]()!|]")
@@ -198,26 +214,22 @@ def build_catalog(root: Path | None = None) -> Catalog:
         ]
     )
 
-    notebooks = collect(
-        [
-            Document(
-                path="notebooks/01_preprocessing_fd001.ipynb",
-                title="01 — Preprocessing FD001",
-                blurb="Steps 1 to 8: the raw text files become model-ready arrays",
-                kind="notebook",
+    notebook_entries: list[Document | None] = [
+        _describe(
+            root,
+            "notebooks/README.md",
+            "What every notebook shares: how it is laid out, and where its code lives",
+            "reference",
+        ),
+    ]
+    for path, title, blurb in _NOTEBOOKS:
+        if path.endswith(".md"):
+            notebook_entries.append(_describe(root, path, blurb, "reference"))
+        elif (root / path).is_file():
+            notebook_entries.append(
+                Document(path=path, title=title, blurb=blurb, kind="notebook")
             )
-            if (root / "notebooks/01_preprocessing_fd001.ipynb").is_file()
-            else None,
-            Document(
-                path="notebooks/02_model_fd001.ipynb",
-                title="02 — Training and explaining",
-                blurb="Steps 9 to 12: build the network, train it, score it, explain it",
-                kind="notebook",
-            )
-            if (root / "notebooks/02_model_fd001.ipynb").is_file()
-            else None,
-        ]
-    )
+    notebooks = collect(notebook_entries)
 
     overview = collect(
         [
@@ -310,6 +322,13 @@ def build_catalog(root: Path | None = None) -> Catalog:
             "Figures and tables the site computes from this repository, now.",
             (
                 Document(
+                    path="explore/playground",
+                    title="Playground",
+                    blurb="Choose the data, preprocessing, temporal stage and explanation; "
+                    "train, remove parts and compare",
+                    kind="explore",
+                ),
+                Document(
                     path="explore/graph",
                     title="The sensor graph",
                     blurb="All 14 sensors, their 41 edges and what each layer reaches",
@@ -330,7 +349,7 @@ def build_catalog(root: Path | None = None) -> Catalog:
                 Document(
                     path="explore/assumptions",
                     title="Assumptions and findings",
-                    blurb="A-01 to A-22 and F-01 to F-12, as cards you can filter",
+                    blurb="Every numbered choice and finding, as cards you can filter",
                     kind="explore",
                 ),
             ),

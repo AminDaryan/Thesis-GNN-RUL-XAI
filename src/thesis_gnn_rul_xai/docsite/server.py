@@ -8,6 +8,7 @@ project directory.
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import json
 import subprocess
 import threading
@@ -21,6 +22,7 @@ from urllib.parse import parse_qs, urlparse
 from ..graph.adjacency import adjacency_report
 from ..utils.logging_setup import get_logger
 from ..utils.paths import project_root
+from . import playground
 from .catalog import build_catalog, read_document, search
 from .figures import figure_names, render_figure
 from .markup import pygments_stylesheet, render_markdown
@@ -75,6 +77,22 @@ _CONTENT_TYPES = {
 # rather than starting a second one.
 _jupyter: dict[str, JupyterProcess] = {}
 _jupyter_lock = threading.Lock()
+
+# One queue of playground jobs per project root, created on first use, so two
+# runs never train at once and compete for the same processor.
+_job_managers: dict[Path, playground.JobManager] = {}
+
+# The largest request body the playground accepts. Its settings are a few
+# hundred bytes; anything near this is not a request from the page.
+_BODY_LIMIT = 64_000
+
+
+def job_manager(root: Path) -> playground.JobManager:
+    """The playground's job queue for this project."""
+    with _jupyter_lock:
+        if root not in _job_managers:
+            _job_managers[root] = playground.JobManager(root)
+        return _job_managers[root]
 
 
 def _commit(root: Path) -> str:
@@ -263,6 +281,19 @@ class DocsHandler(BaseHTTPRequestHandler):
                 self._json({"hits": search(one("q"), build_catalog(self.root), self.root)})
             elif route == "/api/jupyter":
                 self._json(self._jupyter_state())
+            elif route == "/api/playground/options":
+                self._json(playground.options())
+            elif route == "/api/playground/runs":
+                self._json({"runs": playground.list_runs(self.root)})
+            elif route == "/api/playground/run":
+                self._json(playground.run_detail(self.root, one("name")))
+            elif route == "/api/playground/explanation":
+                self._json(playground.explanation_detail(self.root, one("run"), one("name")))
+            elif route == "/api/playground/compare":
+                self._json(playground.compare_runs(self.root, one("first"), one("second")))
+            elif route == "/api/playground/jobs":
+                self._json({"jobs": job_manager(self.root).snapshot(),
+                            "torch": _module_present("torch")})
             else:
                 self._error(f"No route at {route!r}.", HTTPStatus.NOT_FOUND)
         except (ValueError, FileNotFoundError) as refused:
@@ -272,8 +303,12 @@ class DocsHandler(BaseHTTPRequestHandler):
             self._error(f"{failure.__class__.__name__}: {failure}", 500)
 
     def do_POST(self) -> None:
-        """Answer one POST request. Only starting JupyterLab uses this."""
-        if urlparse(self.path).path != "/api/jupyter":
+        """Answer one POST request: starting JupyterLab, or the playground."""
+        route = urlparse(self.path).path
+        if route.startswith("/api/playground/"):
+            self._playground_post(route)
+            return
+        if route != "/api/jupyter":
             self._error("Nothing here accepts POST.", HTTPStatus.NOT_FOUND)
             return
         try:
@@ -282,6 +317,66 @@ class DocsHandler(BaseHTTPRequestHandler):
             self._error(str(refused), HTTPStatus.SERVICE_UNAVAILABLE)
         except Exception as failure:  # pragma: no cover - defensive
             logger.exception("Starting JupyterLab failed.")
+            self._error(f"{failure.__class__.__name__}: {failure}", 500)
+
+    def _same_origin(self) -> bool:
+        """Whether a request that starts work came from this site's own page.
+
+        A browser attaches Origin to every POST, and any web page the reader has
+        open could otherwise ask this server to start a training run.
+        """
+        origin = self.headers.get("Origin")
+        same = origin is None or origin == f"http://{self.headers.get('Host', '')}"
+        # Started with --host set to something reachable from the network, the
+        # site still starts work only for someone sitting at this computer.
+        return same and ipaddress.ip_address(self.client_address[0]).is_loopback
+
+    def _body(self) -> dict[str, object]:
+        """The JSON object sent with a POST."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > _BODY_LIMIT:
+            raise playground.SettingsError("The request is too large.")
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise playground.SettingsError("The request is not valid JSON.") from None
+        if not isinstance(body, dict):
+            raise playground.SettingsError("The request must be a JSON object.")
+        return body
+
+    def _playground_post(self, route: str) -> None:
+        """Check settings, preview a network, or start and stop jobs."""
+        if not self._same_origin():
+            self._error("Refused: the request did not come from this site.",
+                        HTTPStatus.FORBIDDEN)
+            return
+        try:
+            body = self._body()
+            if route == "/api/playground/preview":
+                self._json(playground.preview(playground.validate_settings(body)))
+            elif route == "/api/playground/train":
+                if not _module_present("torch"):
+                    raise playground.SettingsError(
+                        "Training needs PyTorch, which is not installed here."
+                    )
+                settings = playground.validate_settings(body.get("settings", {}))
+                label = str(body.get("label") or "Training run")[:120]
+                self._json(job_manager(self.root).submit_training(settings, label).to_dict())
+            elif route == "/api/playground/explain":
+                request = playground.validate_explain(body, self.root)
+                label = str(body.get("label") or "Explanation")[:120]
+                self._json(
+                    job_manager(self.root).submit_explanation(request, label).to_dict()
+                )
+            elif route == "/api/playground/cancel":
+                self._json(job_manager(self.root).cancel(str(body.get("id", ""))).to_dict())
+            else:
+                self._error(f"No route at {route!r}.", HTTPStatus.NOT_FOUND)
+        except playground.SettingsError as refused:
+            self._error(str(refused), HTTPStatus.BAD_REQUEST)
+        except Exception as failure:  # pragma: no cover - defensive
+            logger.exception("Playground request %s failed.", route)
             self._error(f"{failure.__class__.__name__}: {failure}", 500)
 
     # -- what each route does ----------------------------------------------
@@ -433,3 +528,5 @@ def serve(
             running = _jupyter.pop("process", None)
         if running is not None:
             running.stop()
+        if root in _job_managers:
+            _job_managers[root].stop()
