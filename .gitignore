@@ -42,3 +42,12 @@ Thumbs.db
 
 # Scratch files. A commit message written here once got committed itself.
 *.tmp
+
+# Scratch folders: page renders and text dumps of the paper made while checking
+# it. Copies of the paper's pages must not be committed.
+tmp/
+
+# Claude Code's per-machine settings: the local preview server it starts for
+# the documentation site, and permissions granted on this computer.
+.claude/launch.json
+.claude/settings.local.json
