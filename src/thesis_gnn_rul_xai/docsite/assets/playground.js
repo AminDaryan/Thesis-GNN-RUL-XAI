@@ -547,6 +547,17 @@
       (settings.seeds === 1 ? "" : "s");
   }
 
+  // layer_summary() lists the temporal stage, then Table 4's "Input" row. Both
+  // describe the same (B, 14, 1) tensor: Table 4's Input row is the stage's
+  // output, with no parameters of its own. Shown as one row, as Table 4 has.
+  function table4Rows(layers) {
+    if (layers.length > 1 && layers[0].layer === "Temporal" && layers[1].layer === "Input") {
+      var stage = layers[0];
+      return { stage: stage.type, rows: [{ layer: "Input", stage: stage.type, out: stage.out, parameters: stage.parameters }].concat(layers.slice(2)) };
+    }
+    return { stage: null, rows: layers };
+  }
+
   function drawSummary(box, preview, error) {
     if (error) {
       box.innerHTML = '<div class="pg-card pg-card--error"><strong>These settings cannot be run</strong><p>' +
@@ -570,14 +581,18 @@
     if (preview.network_error) {
       network = '<div class="pg-card pg-card--error"><h3>The network</h3><p>' + esc(preview.network_error) + "</p></div>";
     } else {
+      var layers = table4Rows(preview.layers);
       network = '<div class="pg-card"><h3>The network, built now</h3><div class="pg-big">' +
         preview.parameters.toLocaleString("en") + ' <span>learned numbers</span></div>' +
         '<table class="pg-mini"><thead><tr><th>Layer</th><th>Out</th><th class="num">Learned</th></tr></thead><tbody>' +
-        preview.layers.map(function (l) {
-          return "<tr><td>" + esc(l.layer) + (l.layer === "Temporal" ? ' <span class="pg-faint">' + esc(l.type) + "</span>" : "") +
+        layers.rows.map(function (l) {
+          return "<tr><td>" + esc(l.layer) + (l.stage ? ' <span class="pg-faint">from ' + esc(l.stage) + "</span>" : "") +
             "</td><td><code>" + esc(l.out) + '</code></td><td class="num">' + Number(l.parameters).toLocaleString("en") + "</td></tr>";
         }).join("") + "</tbody></table>" +
-        '<div class="pg-faint">B is the number of windows in a batch. Table 4 prints no parameter counts; these are counted from the model.</div></div>';
+        '<div class="pg-faint">B is the number of windows in a batch. ' +
+        (layers.stage ? "The Input row is where Table 4 starts: one number per sensor, which the temporal stage, " + esc(layers.stage) +
+          ", makes from each sensor's 30-cycle window and hands to the first graph layer. Table 4 gives that stage no row of its own, so its learned numbers are counted here. " : "") +
+        "Table 4 prints no parameter counts; every count here is read from the model.</div></div>";
     }
 
     var canRun = S.torch !== false && !preview.network_error && counted;
@@ -978,6 +993,7 @@
           ", predicted " + fixed(current.predicted, 1) + "</span></label></figcaption>" +
           '<div class="pg-split">' + sensorGraph(current, sensorOrder) + signedBars(current, sensorOrder) + "</div>" +
           '<p class="pg-faint">The paper colours its four most influential sensors red, with intensity by contribution, and the rest blue from deep to light. It does not say whether influence is the size of the value or the value itself; here it is the size, ignoring the sign.</p></figure>' +
+          (exact ? paperComparison(rows, sensorOrder, sum) : "") +
           '<figure class="pg-figure"><figcaption>Average size over the windows shown</figcaption>' + bars + "</figure></div></section>";
       } else {
         var mean = {};
@@ -1019,27 +1035,114 @@
     return out + '</svg></div><div class="pg-faint">Strongest colour: ' + peak.toFixed(2) + " cycles.</div>";
   }
 
-  // Fig. 9's scheme: the four sensors with the largest values in red, deeper
-  // for larger; the other ten in blue, from deep to light as they matter less.
-  function sensorGraph(values, sensors) {
-    var g = S.options.graph;
+  // Fig. 9 and Fig. 10's scheme: the four sensors with the largest values in
+  // red, deeper for larger; the other ten in blue, from deep to light as they
+  // matter less. Ranked by size, ignoring the sign.
+  function fig10Style(values, sensors) {
     var ranked = sensors.slice().sort(function (a, b) { return Math.abs(values[b]) - Math.abs(values[a]); });
     var top = Math.abs(values[ranked[0]]) || 1;
+    var style = {};
+    ranked.forEach(function (s, rank) {
+      style[s] = { rank: rank, colour: rank < 4 ? "var(--fig-burn)" : "var(--fig-fan)",
+        opacity: rank < 4 ? 0.45 + 0.55 * Math.abs(values[s]) / top : 1 - (rank - 4) / 10 * 0.8 };
+    });
+    return { ranked: ranked, style: style };
+  }
+
+  function sensorGraph(values, sensors) {
+    var g = S.options.graph, st = fig10Style(values, sensors);
     var scale = 0.62;
     var out = '<svg class="pg-graph" viewBox="0 0 ' + g.width * scale + " " + (g.height - 30) * scale + '">';
     g.edges.forEach(function (edge) {
       var a = g.positions[edge[0]], b = g.positions[edge[1]];
       out += '<line x1="' + a[0] * scale + '" y1="' + a[1] * scale + '" x2="' + b[0] * scale + '" y2="' + b[1] * scale + '" stroke="var(--fig-edge)" stroke-width="1.2"/>';
     });
-    ranked.forEach(function (s, rank) {
-      var p = g.positions[s];
-      var colour = rank < 4 ? "var(--fig-burn)" : "var(--fig-fan)";
-      var opacity = rank < 4 ? 0.45 + 0.55 * Math.abs(values[s]) / top : 1 - (rank - 4) / 10 * 0.8;
+    st.ranked.forEach(function (s, rank) {
+      var p = g.positions[s], k = st.style[s];
       out += '<g><title>' + esc(s + ": rank " + (rank + 1) + ", " + (values[s] >= 0 ? "+" : "") + Number(values[s]).toFixed(3) + " cycles") + "</title>" +
-        '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale + '" r="17" fill="' + colour + '" fill-opacity="' + opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/>' +
+        '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale + '" r="17" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/>' +
         '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
     });
     return out + "</svg>";
+  }
+
+  // How many times a sensor joins the red four, going from each graph in the
+  // list to the next.
+  function redFourEntries(list, sensors) {
+    var count = 0;
+    for (var i = 1; i < list.length; i++) {
+      var before = fig10Style(list[i - 1], sensors).ranked.slice(0, 4);
+      count += fig10Style(list[i], sensors).ranked.slice(0, 4).filter(function (s) { return before.indexOf(s) < 0; }).length;
+    }
+    return count;
+  }
+
+  // One small graph with the sensors round a circle in Fig. 10's order and
+  // Table 3's edges between them. unit is "" for the paper's unitless values.
+  function ringGraph(values, sensors, label, unit) {
+    var ring = S.options.table12.ring, n = ring.length, c = 50, R = 40;
+    var at = {};
+    ring.forEach(function (s, i) {
+      var a = (-90 - 180 / n + i * 360 / n) * Math.PI / 180;
+      at[s] = [c + R * Math.cos(a), c + R * Math.sin(a)];
+    });
+    var out = '<figure class="pg-ring"><svg viewBox="0 0 100 100" role="img" aria-label="' + esc(label) + '">';
+    if (!values) {
+      return out + '<text x="50" y="52" text-anchor="middle" class="pg-ring-missing">not explained</text></svg><figcaption>' + esc(label) + "</figcaption></figure>";
+    }
+    S.options.graph.edges.forEach(function (edge) {
+      var a = at[edge[0]], b = at[edge[1]];
+      out += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="var(--fig-edge)" stroke-width="0.45"/>';
+    });
+    var st = fig10Style(values, sensors);
+    ring.forEach(function (s) {
+      var p = at[s], k = st.style[s], v = Number(values[s]);
+      out += "<g><title>" + esc(label + " · " + s + ": rank " + (k.rank + 1) + " of " + n + ", " + (unit && v >= 0 ? "+" : "") + v.toFixed(2) + (unit ? " " + unit : "")) + "</title>" +
+        '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-ink)" stroke-width="0.35"/>' +
+        '<text x="' + p[0].toFixed(1) + '" y="' + (p[1] + 1.9).toFixed(1) + '" text-anchor="middle" class="pg-ring-label">' + esc(s) + "</text></g>";
+    });
+    return out + "</svg><figcaption>" + esc(label) + "</figcaption></figure>";
+  }
+
+  // The paper's Fig. 10, redrawn from Table 12, above this engine at the same
+  // graph numbers. Graph g is the g-th window, so with every n-th window
+  // explained only graphs 1, 1 + n, 1 + 2n ... exist here.
+  function paperComparison(rows, sensors, sum) {
+    var t = S.options.table12, every = Number(sum.every) || 1;
+    var names = ["Early", "Middle", "Late"];
+    var paperSteps = 0, oursSteps = 0, oursAll = true;
+    var blocks = [0, 5, 10].map(function (first, k) {
+      var graphs = t.graphs.slice(first, first + 5);
+      var paper = graphs.map(function (g, j) {
+        var v = {};
+        sensors.forEach(function (s) { v[s] = t.values[s][first + j]; });
+        return v;
+      });
+      var ours = graphs.map(function (g) {
+        var i = (g - 1) / every;
+        return i === Math.floor(i) && i < rows.length ? rows[i] : null;
+      });
+      paperSteps += redFourEntries(paper, sensors);
+      if (ours.every(Boolean)) { oursSteps += redFourEntries(ours, sensors); } else { oursAll = false; }
+      return '<div class="pg-fig10-stage"><div class="pg-fig10-head">' + names[k] + ": graphs " + graphs[0] + " to " + graphs[4] + "</div>" +
+        '<div class="pg-fig10-row"><span class="pg-fig10-who">Paper, Table 12</span>' +
+        paper.map(function (v, j) { return ringGraph(v, sensors, "graph " + graphs[j], ""); }).join("") + "</div>" +
+        '<div class="pg-fig10-row"><span class="pg-fig10-who">Engine ' + esc(sum.unit) + ", seed " + esc(sum.seed) + "</span>" +
+        ours.map(function (r, j) { return ringGraph(r, sensors, r ? "cycle " + r.end_cycle : "graph " + graphs[j], "cycles"); }).join("") + "</div></div>";
+    }).join("");
+    var allSteps = every === 1 && rows.length > 1 ? redFourEntries(rows, sensors) : null;
+    return '<figure class="pg-figure pg-figure--wide"><figcaption>Beside the paper\'s Fig. 10. Each small graph is one window: the four sensors with the largest values red, the rest blue, ' +
+      "each shade by rank, round the circle in the order the paper draws them. The top row of each stage is the paper's, redrawn from the numbers of its Table 12; " +
+      "the row below is this engine at the same graph numbers, where graph 1 is the first window.</figcaption>" + blocks +
+      '<p class="pg-fig10-count"><strong>How often the red four changes.</strong> Inside the three stages there are 12 steps from one graph to the next. ' +
+      "Over those steps a sensor joins the red four " + paperSteps + " time" + (paperSteps === 1 ? "" : "s") + " in the paper's table" +
+      (oursAll ? ", and " + oursSteps + " time" + (oursSteps === 1 ? "" : "s") + " for this engine." : "; this engine is missing some of those graphs, so it is not counted.") +
+      (allSteps !== null ? " Over all " + (rows.length - 1) + " steps between this engine's neighbouring windows: " + allSteps + " times." : "") + "</p>" +
+      '<p class="pg-faint">The paper\'s row is drawn from Table 12, not copied from its printed figure. The two agree on the red four in 13 of the 15 graphs; ' +
+      "in graph 81 the printed figure colours T30 red in place of phi, and in graph 82 T30 and Nc in place of P30 and phi (" + refLink("F-17") + "). " +
+      "Table 12 describes one engine the paper does not name, so the engine below it is a different one. " +
+      "Every value in Table 12 is positive, which signed Shapley values cannot all be (" + refLink("F-08") + "), " +
+      "so here a sensor that pulled the prediction down by many cycles is red as well: the ranking uses the size of the value.</p></figure>";
   }
 
   function signedBars(row, sensors) {

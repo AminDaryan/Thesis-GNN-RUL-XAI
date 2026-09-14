@@ -23,6 +23,9 @@ import yaml
 
 from ..evaluation.published import (
     DATASET_DESCRIPTION,
+    FIG_10_RING,
+    SHAP_TABLE_12,
+    SHAP_TABLE_12_GRAPHS,
     SUBSETS,
     TRAINING_SETTINGS,
     published_row,
@@ -613,6 +616,11 @@ def options() -> dict[str, Any]:
             "degrees": degrees,
             "width": 860,
             "height": 520,
+        },
+        "table12": {
+            "graphs": list(SHAP_TABLE_12_GRAPHS),
+            "values": {sensor: list(values) for sensor, values in SHAP_TABLE_12.items()},
+            "ring": list(FIG_10_RING),
         },
     }
 

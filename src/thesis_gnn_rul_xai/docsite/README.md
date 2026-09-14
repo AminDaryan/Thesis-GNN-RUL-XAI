@@ -314,6 +314,12 @@ Some things need no training, and the page shows them as the settings change:
 - **The network these settings build**, built for real by `models/`, with each
   layer's output shape and how many numbers it learns. For the paper's LSTM
   stage at hidden size 32 that is 124,482; with the stage removed it is 61,729.
+  The table has Table 4's seven rows. `ESTGNN.layer_summary()` lists the
+  temporal stage and then Table 4's "Input" row, but both describe the same
+  `(B, 14, 1)` tensor — Table 4's Input row, with no parameters of its own, is
+  what the stage hands to the first graph layer — so the page shows them as one
+  Input row, names the stage beside it, and counts the stage's learned numbers
+  there.
   Settings the network refuses — thirty raw cycles handed straight to a graph
   layer, for one — are refused here with the network's own message.
 - **The row of the paper a result may be set beside.** Which row is decided by
@@ -425,6 +431,27 @@ the way the paper's Fig. 9 colours it: the four largest in red, the rest in blue
 from deep to light. It also checks Equation 14 on every stored explanation — a
 window's Shapley values must add up to its prediction minus the prediction at
 the baseline — and prints the largest gap.
+
+**Beside the paper's Fig. 10.** For an engine explained with Shapley values, the
+page also draws thirty small graphs in three stages. In each stage the top row
+is the paper's Fig. 10, graphs 1 to 5, 78 to 82 or 187 to 191, redrawn from the
+numbers of its Table 12; the row below is the stored engine at the same graph
+numbers, where graph `g` is the engine's `g`-th window. Both put the sensors
+round a circle in the paper's order, with Table 3's edges, and colour them the
+paper's way. The paper's engine is not named, so the two rows are different
+engines; the page says so, and says that the printed Fig. 10 differs from Table
+12 at graphs 81 and 82 (finding F-17).
+
+Under the graphs it counts **how often a sensor joins the red four** from one
+graph to the next. Within the three stages there are 12 such steps. On the
+paper's own table the count is 1. At graph 190 the four largest are Nc 2.37,
+Ps30 2.29, BPR 1.84 and T50 1.65, with phi fifth at 1.59. At graph 191 BPR has
+fallen to 1.18 and the four largest are Ps30 4.23, Nc 2.60, phi 1.51 and T50
+1.42. So phi joins the red four there, once, and in the other eleven steps
+nothing joins. The page counts the stored engine the same way, and, when
+every window was explained, over all of that engine's steps as well. A large
+count means the sensors this network leans on move from one window to the next,
+which is not something the paper's table shows.
 
 ---
 

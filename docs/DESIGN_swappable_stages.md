@@ -686,6 +686,13 @@ when it is written.
 
 **Findings to expect, recorded once measured and not before:** F-16, the refactor changed nothing (the §6 gate); F-17, what `raw_window` scores under *today's* preprocessing — because A-07's 13.45 was measured at `cdcc827` under min-max scaling, symmetric normalisation and the exponential schedule, and is not a number about the current configuration.
 
+*Note added 2026-09-14.* These two finding numbers were provisional too, and
+both have been taken by other entries: F-16 records what the paper's recurrent
+stage is worth under two training procedures, and F-17 records that the paper's
+Fig. 10 is drawn from its Table 12 except in two graphs. The `raw_window`
+re-measurement, and every other "F-17" below, takes the next free finding
+number when it is written.
+
 ---
 
 ## 6. MIGRATION

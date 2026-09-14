@@ -44,6 +44,35 @@ def test_table_11_prints_rmse_only_so_nothing_else_is_invented_for_it():
     assert (row.rmse, row.score, row.r2, row.asue) == (23.34, None, None, None)
 
 
+def test_table_12_covers_the_paper_sensors_once_each_at_fifteen_graphs():
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS
+
+    assert set(published.SHAP_TABLE_12) == set(PAPER_SENSOR_SYMBOLS)
+    assert sorted(published.FIG_10_RING) == sorted(PAPER_SENSOR_SYMBOLS)
+    assert len(published.SHAP_TABLE_12_GRAPHS) == 15
+    assert all(len(v) == 15 for v in published.SHAP_TABLE_12.values())
+
+
+def test_table_12_column_sums_are_the_ones_finding_f08_prints():
+    """F-08 summed seven of the printed columns; a typo in one cell would move its sum."""
+    printed = {1: 45.51, 2: 41.33, 5: 33.92, 82: 26.38, 189: 18.16, 190: 16.67, 191: 17.60}
+    for graph, total in printed.items():
+        column = published.SHAP_TABLE_12_GRAPHS.index(graph)
+        assert round(sum(v[column] for v in published.SHAP_TABLE_12.values()), 2) == total
+
+
+def test_table_12_top_four_in_each_column_are_the_cells_the_paper_sets_in_bold():
+    """The bold cells were read from the font of each cell in the PDF on 2026-09-14."""
+    bold = {
+        **{g: {"T50", "Nc", "Ps30", "phi"} for g in (1, 2, 3, 4, 5, 191)},
+        **{g: {"T50", "P30", "Ps30", "phi"} for g in (78, 79, 80, 81, 82)},
+        **{g: {"T50", "Nc", "Ps30", "BPR"} for g in (187, 188, 189, 190)},
+    }
+    for column, graph in enumerate(published.SHAP_TABLE_12_GRAPHS):
+        ranked = sorted(published.SHAP_TABLE_12, key=lambda s: -published.SHAP_TABLE_12[s][column])
+        assert set(ranked[:4]) == bold[graph], graph
+
+
 # -- settings ------------------------------------------------------------------
 
 
