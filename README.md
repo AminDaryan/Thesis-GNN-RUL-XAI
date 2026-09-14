@@ -695,7 +695,7 @@ Thesis GNN RUL XAI/
 │       ├── utils/
 │       └── docsite/              The documentation website (computes nothing)
 │
-└── tests/                        260 tests
+└── tests/                        268 tests
 ```
 
 ### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
@@ -913,18 +913,19 @@ value, and exits non-zero on a disagreement. That is **62 claims** in seconds,
 including the tables of the graph built from correlations (assumption A-27).
 Dropping `--fast` adds two checks that train a network to regenerate the tables
 of Shapley values the log quotes (assumption A-20 and finding F-05), bringing it
-to **80 claims** in a few minutes. Every run writes its results and its commit
-into `reports/`, so a verification is itself reproducible.
+to **91 claims**, which takes minutes rather than seconds. Every run writes its
+results and its commit into `reports/`, so a verification is itself
+reproducible.
 
-**On 2026-09-14 the 62 fast claims pass and the two trained checks do not.**
-Under `config/fd001.yaml` the second stops with an error, because the engine it
-examines is now one of the held-back engines. Under the settings those entries
-were measured with, nothing held back, 14 of their 18 figures agree and 4 do
-not, all four computed from a trained network (two more disagreed until the
-check itself was corrected the same day). The runs of the same day reproduce the runs of 2026-09-08 exactly, so the
-drift is older than that; `docs/PENDING.md` records what disagrees. This script
-exists because entries drift: before it was written, five of the entries it
-checks had already drifted from the code. The eleven newest come
+**On 2026-09-14 all 91 pass**, the trained ones at `8b487ab-dirty`. They did
+not that morning. The two trained checks read today's default settings. The
+entries they check were measured on 2026-08-31, under that day's
+learning-rate schedule and with nothing held back. Trained under the old
+schedule, the code reproduced every figure exactly. Under the current one, four
+figures moved. Both checks now train under the settings their entries name, and
+check each entry's table under both schedules. Both entries carry a correction
+saying what changed. This script exists because entries drift: before it was
+written, five of the entries it checks had already drifted from the code. The eleven newest come
 from the audit of 2026-08-31 — see
 [`docs/AUDIT_2026-08-31_paper_against_code.md`](docs/AUDIT_2026-08-31_paper_against_code.md),
 which checked every equation, table and figure of the paper against this code
@@ -941,16 +942,16 @@ nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
 
-With the data and the stored runs, all 260 tests are collected and all 260
-pass, measured on 2026-09-14.
+With the data and the stored runs, all 268 tests are collected and all 268
+pass, measured on 2026-09-15.
 
 The suite covers each preprocessing step, the sensor graph, the network, the
 training loop, the four measures, the Shapley values and occlusion, loading a
 stored run back, and the pipeline end to end. The model, training and
 explanation tests need PyTorch; without it they are not collected at all rather
-than failing, which leaves 195 of the 260. Measured before the stop fix, 191
-of those passed, three skipped and the stop test failed; it needs no PyTorch,
-so with the fix 192 should pass, not yet re-measured.
+than failing. On 2026-09-14, when the suite had 260 tests, that left 195 of
+them collected: 191 passed, three skipped and one, since fixed, failed. That
+count has not been re-measured since eight tests were added.
 
 `tests/test_examples.py` and `tests/test_examples_torch.py` hold one small
 worked example of each function — the kind of thing that would once have gone

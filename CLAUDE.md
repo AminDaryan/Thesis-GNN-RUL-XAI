@@ -799,7 +799,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 260 tests; must all pass
+pytest                # 268 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -822,24 +822,27 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
+With everything present — the data, PyTorch and the stored runs — all 268
+pass (measured 2026-09-15).
+
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
-data-dependent tests skip with a download link rather than failing, leaving
-178 passing and 81 skipped. The model, training and explanation tests
-additionally need PyTorch; without it they are not collected at all, so 195
-of the 260 are collected, 191 pass, and three skip.
+data-dependent tests skip with a download link rather than failing. The model,
+training and explanation tests additionally need PyTorch; without it they are
+not collected at all. The counts below for those settings were measured on
+2026-09-14, when the suite had 260 tests and one of them failed, and have not
+been re-measured since: without the data, 178 passing and 81 skipped; without
+PyTorch, 195 of the 260 collected, 191 passing and three skipped.
 
 Both of those counts assume the training runs stored in `reports/`, which are
 not committed. A clone that has none also skips the tests about them: with no
 data and no stored runs, which is what the CI runner has, it is 172 passing
 and 87 skipped; without PyTorch as well, 137 passing and 57 skipped.
 
-With everything present, all 260 pass (measured 2026-09-14, after the fix
-below). The other counts were measured earlier that day, when one further test
-failed in every setting: stopping a playground job that had just been marked
-running did nothing, because its process did not exist yet. That test needs
-neither the data, nor PyTorch, nor a stored run, so with the fix each of those
-settings should show one more passing test than written above; those settings
-have not been re-measured.
+The failing test was stopping a playground job that had just been marked
+running, which did nothing because its process did not exist yet. It is fixed,
+and it needs neither the data, nor PyTorch, nor a stored run. Eight tests have
+been added since those counts, so each of them is now low by an amount nobody
+has measured: re-measure them before quoting one.
 
 If a change touches a notebook, re-execute it before committing, so its stored
 outputs match its code. The notebooks in `notebooks/xai/` load a stored
