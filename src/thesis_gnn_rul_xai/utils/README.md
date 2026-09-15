@@ -197,6 +197,70 @@ scripts create their folder with `exist_ok=True` — carry on if it already
 exists — the second would write its files over the first rather than stop. One
 run at a time, which is how the playground runs its jobs, never meets this.
 
+### What else a run records, and why the commit is not enough
+
+The commit says which code a run came from. Three more things decide the
+number, and none of them is in the commit, so `scripts/train.py` records all
+three beside every run, in `summary.json` and in the run's folder.
+
+**`environment()`** — the machine and the libraries. It returns the Python
+version, the operating system, the processor, and the installed version of
+NumPy, pandas, scikit-learn, SciPy, PyTorch and PyYAML, with how many processor
+threads PyTorch uses. A trained network is not bit-for-bit the same on another
+PyTorch version or another processor: the independent audit of 2026-09-08
+re-trained this project's default on a different machine and got the same
+answer only to within the seed-to-seed spread, not to the last digit. A run
+written on 2026-09-15 recorded:
+
+```text
+python 3.11.9   platform Windows-10-10.0.26200-SP0   processor AMD64 Family 25 Model 117
+numpy 2.4.6   pandas 3.0.3   scikit-learn 1.9.0   scipy 1.17.1   torch 2.13.0+cpu
+torch_threads 8   cuda_available False
+```
+
+**`file_fingerprints(paths)`** — which data files were read. A fingerprint here
+is the SHA-256 digest of a file: a 64-character code computed from every byte of
+it. The same bytes always give the same code, and changing a single byte
+changes the code completely, so two files with the same fingerprint are, for
+every practical purpose, the same file. The known answer, from the standard that
+defines SHA-256, is that the three bytes `abc` give
+`ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`, and
+`tests/test_run_records.py` checks the function against it. The FD001 files in
+`data/raw/` on 2026-09-15:
+
+```text
+train_FD001.txt  963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8
+test_FD001.txt   3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851
+RUL_FD001.txt    a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca
+```
+
+A re-downloaded file, a file converted to other line endings, or one edited by
+hand would each show a different code, and the reload test in
+`tests/test_run_records.py` stops with "the NASA files differ" instead of
+reporting a confusing change in the predictions.
+
+**`capture_code_state(cwd=None)` and `write_code_state(directory, state)`** —
+what `-dirty` actually meant. `-dirty` says the code differed from the commit,
+not how. `capture_code_state` asks git for every file under `src/`, `scripts/`,
+`config/` and `pyproject.toml` that differs from the commit (the list is
+`CODE_PATHS`), for the differences themselves as a **patch** — a text file
+listing, for each changed file, the lines removed and the lines added — and for
+the full content of any file there that git has never seen, since a patch cannot
+hold one. Changes to documents are left out on purpose: they cannot change a
+number.
+
+It is called when the run **starts**, while the code on disk is the code the
+process has just loaded; editing a file during a long run would otherwise be
+recorded as though the run had used it. `write_code_state` writes what was
+captured into the run's `code_state/` folder at the end — `status.txt`, the list
+of changed files; `uncommitted.patch`; and `untracked/` for new files — and
+returns the list, which also goes into `summary.json` as `uncommitted_code`.
+When nothing under those paths differs, it writes nothing.
+
+To rebuild the code of such a run: check out its commit, then
+`git apply code_state/uncommitted.patch`, then copy anything in `untracked/`
+back into place.
+
 ## Judgement calls
 
 None. This folder makes no choices that depart from the paper, so it has no

@@ -343,3 +343,43 @@ would hand back engines the network learned from under the name "held back".
 | `read_run(path)` | One run, as a `StoredRun`: its folder, its `summary.json`, its preprocessing and model settings, and its per-seed results table. Refuses a folder missing any of those files. |
 | `load_seed(run, seed, data_dir=None)` | The trained network of one seed, switched to evaluation, and the `PreparedData` rebuilt as that network saw it. Refuses a seed the run never trained, or a run from before weights were saved. |
 | `StoredRun` | What `read_run` returns. `seeds` lists the seeds in training order, `weights(seed)` is where one seed's weights live, and `has_weights()` says whether every seed saved them. |
+
+#### Everything a run folder holds
+
+Written by `scripts/train.py`. The last group has been written since 2026-09-15;
+older runs lack it, and nothing reads it as required.
+
+| File | What it records |
+|---|---|
+| `summary.json` | The commit, the settings' digest, when it finished, the mean and spread of the four measures, and every setting that changes the number. |
+| `results.csv` | One row per seed: the four measures, the best pass, the held-back error, how many passes ran. |
+| `preprocessing_config.yaml`, `model_config.yaml` | The data and network settings in full. |
+| `seed_N/model.pt` | That seed's trained weights. |
+| `seed_N/training_history.csv`, `seed_N/training_config.yaml` | The error after every pass, and the training settings. |
+| `seed_N/test_predictions.csv` | One row per test engine: its number, last cycle, label and prediction. |
+| `summary.json` → `command` | The command line the run was started with. |
+| `summary.json` → `environment` | Python, the operating system, the processor, and every library version a number depends on (`utils/README.md`). |
+| `summary.json` → `data_files` | The fingerprint of each NASA file read, so a changed file is caught. |
+| `summary.json` → `uncommitted_code`, and `code_state/` | Which code files differed from the commit, and the differences themselves as a patch. |
+| `seed_N/split.json` | The engine numbers this seed trained on, held back and was scored on. |
+| `seed_N/scaling.csv` | The average, spread, lowest and highest value the scaling measured for each sensor on this seed's training engines. |
+
+#### A stored run must still reproduce
+
+A number in the documents is quoted from a stored run, and a stored run is a
+network plus the data rebuilt for it. If the preprocessing or the network code
+later changes what it computes, the stored number silently stops describing the
+program. `tests/test_run_records.py` checks, for every run in `reports/` that
+saved its networks, that today's code rebuilds each seed's data, reloads its
+weights, and gives the saved test predictions back to within 0.001 cycles —
+the file keeps a handful of decimals, so an exact match is not expected — and,
+where the run recorded them, the same engine split, the same scaling statistics
+and the same data files.
+
+On 2026-09-15 it passed for all eight stored runs with saved networks, 34
+networks in all.
+
+When it fails, the run no longer describes the code. Either the change was a
+mistake, or it was intended and the run has to be trained again before anything
+from it is quoted. With no stored runs, as on the automated checks on GitHub, it
+skips.

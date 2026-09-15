@@ -58,8 +58,15 @@ from thesis_gnn_rul_xai.evaluation.published import published_row
 from thesis_gnn_rul_xai.models import ModelConfig, build_model
 from thesis_gnn_rul_xai.training import TrainingConfig, predict, train
 from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
-from thesis_gnn_rul_xai.utils.paths import reports_dir
-from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
+from thesis_gnn_rul_xai.utils.paths import raw_data_dir, reports_dir
+from thesis_gnn_rul_xai.utils.provenance import (
+    capture_code_state,
+    current_commit,
+    environment,
+    file_fingerprints,
+    utc_stamp,
+    write_code_state,
+)
 
 # The rows of the paper's results a run can be set beside, for orientation
 # while it is in progress. These are not targets to tune towards; they are
@@ -201,6 +208,8 @@ def main() -> int:
              subset=preprocessing.subset, temporal=arguments.temporal)
 
     commit = current_commit()
+    # Read now, while the code on disk is the code this process imported.
+    code_state = capture_code_state()
     print(f"commit {commit}   graph {preprocessing.graph}   "
           f"normalisation {preprocessing.adjacency_normalization}   "
           f"split {'fixed' if arguments.fixed_split else 'varies with seed'}")
@@ -259,6 +268,16 @@ def main() -> int:
         artefacts.append({
             "seed": seed,
             "history": history,
+            # Which engines this seed trained on, held back and was scored on,
+            # and what the scaling measured on its training engines: both follow
+            # from the seed, and are kept so a reload can check it rebuilt them.
+            "split": {
+                name: sorted(int(unit) for unit in set(dataset.units.tolist()))
+                for name, dataset in (("train", prepared.train),
+                                      ("validation", prepared.validation),
+                                      ("test", prepared.test))
+            },
+            "scaling": prepared.normalizer.statistics_,
             "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
             "predictions": pd.DataFrame({
                 "unit": prepared.test.units,
@@ -401,12 +420,25 @@ def main() -> int:
         kept["history"].save(folder)
         torch.save(kept["state"], folder / "model.pt")
         kept["predictions"].to_csv(folder / "test_predictions.csv", index=False)
+        (folder / "split.json").write_text(json.dumps(kept["split"]), encoding="utf-8")
+        if kept["scaling"] is not None:
+            kept["scaling"].to_csv(folder / "scaling.csv", index=False)
+    # A "-dirty" commit says the code differed from the commit, not how. The
+    # difference itself is kept, so the run can be rebuilt from the commit.
+    changed_code = write_code_state(output, code_state)
+    data_dir = Path(arguments.data_dir) if arguments.data_dir else raw_data_dir()
+    data_files = [data_dir / f"{kind}_{preprocessing.subset}.txt"
+                  for kind in ("train", "test", "RUL")]
     (output / "summary.json").write_text(
         json.dumps(
             {
                 "commit": commit,
                 "config_digest": config_digest,
                 "finished_utc": stamp,
+                "command": [Path(sys.argv[0]).name, *sys.argv[1:]],
+                "environment": environment(),
+                "data_files": file_fingerprints(data_files),
+                "uncommitted_code": changed_code,
                 "subset": preprocessing.subset,
                 "graph": preprocessing.graph,
                 "adjacency_normalization": preprocessing.adjacency_normalization,
