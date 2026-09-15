@@ -25,6 +25,7 @@ from thesis_gnn_rul_xai.models import (
     LastCycle,
     LSTMStage,
     MeanWindow,
+    WindowSummary,
 )
 
 # --- models/layers.py ---------------------------------------------------
@@ -144,6 +145,8 @@ def test_example_how_many_numbers_the_network_learns_with_each_temporal_stage():
       (32 weights and 1 bias). 61,729 + 14 x 4,480 + 33 = 124,482.
     - raw_window learns nothing but hands over all 30 readings, so W(1) grows
       from 32 multipliers to 960: 61,729 - 32 + 960 = 62,657.
+    - window_summary learns nothing and hands over three numbers, so W(1) is
+      3 x 32 = 96 multipliers: 61,729 - 32 + 96 = 61,793.
     """
     from thesis_gnn_rul_xai.models import ModelConfig, build_model
 
@@ -151,13 +154,14 @@ def test_example_how_many_numbers_the_network_learns_with_each_temporal_stage():
     sizes = {
         stage: build_model(graph, ModelConfig(temporal=stage),
                            window_size=30, rul_max=125).count_parameters()
-        for stage in ("last_cycle", "mean_window", "lstm", "raw_window")
+        for stage in ("last_cycle", "mean_window", "lstm", "raw_window", "window_summary")
     }
 
     assert sizes["last_cycle"] == 61_729
     assert sizes["mean_window"] == 61_729
     assert sizes["lstm"] == 61_729 + 14 * 4 * (32 + 32 * 32 + 32 + 32) + (32 + 1) == 124_482
     assert sizes["raw_window"] == 61_729 - 1 * 32 + 30 * 32 == 62_657
+    assert sizes["window_summary"] == 61_729 - 1 * 32 + 3 * 32 == 61_793
 
 
 # --- explain/shap.py ----------------------------------------------------
@@ -233,6 +237,14 @@ def test_example_temporal_stages_on_two_hand_checkable_sensors():
     # (1 + 2 + 3 + 4) / 4 = 2.5 and (10 + 20 + 30 + 40) / 4 = 25.0
     torch.testing.assert_close(mean, torch.tensor([[[2.5], [25.0]]]))
 
+    summary = WindowSummary(4)(windows)
+    # Cycles numbered from the middle: t = -1.5, -0.5, +0.5, +1.5, and sum t^2 = 5.
+    # Sensor 0: sum t * reading = -1.5 - 1.0 + 1.5 + 6.0 = 5, slope 5 / 5 = 1 per
+    # cycle, and the change from the first cycle to the last is 1 x 3 = 3.
+    # Sensor 1 is the same series times ten, so every number is ten times larger.
+    torch.testing.assert_close(summary, torch.tensor([[[4.0, 2.5, 3.0],
+                                                      [40.0, 25.0, 30.0]]]))
+
     learned = LSTMStage(window_size=4, n_nodes=2, hidden_size=8)
     assert tuple(learned(windows).shape) == (1, 2, 1)
     assert last.shape == mean.shape == learned(windows).shape
@@ -266,3 +278,34 @@ def test_example_the_stage_decides_the_width_of_the_first_graph_matrix(raw_dir):
     # number, on top of the same 61,729-parameter graph stage.
     assert paper.count_parameters() == 61_729 + 62_753
     assert tuple(paper(batch).shape) == (8,)
+
+
+def test_example_window_summary_on_one_real_sensor_window(raw_dir):
+    """T50 of engine 1 over its cycles 1 to 30: the three numbers, worked by hand.
+
+    The readings are after smoothing and z-score scaling. The slope is the best
+    straight line's rise per cycle, with the cycles numbered from the window's
+    middle so that the average drops out: slope = sum(t * reading) / sum(t^2),
+    where t runs -14.5, -13.5, ..., +14.5 and sum(t^2) = 2247.5. The change is the
+    slope times the 29 cycles from the first reading to the last.
+    """
+    from dataclasses import replace
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    prepared = run_preprocessing(replace(PreprocessingConfig(), seed=42), data_dir=raw_dir)
+    first = int(np.where(prepared.train.units == 1)[0][0])
+    sensor = list(prepared.sensor_symbols).index("T50")
+    readings = prepared.train.features[first, sensor].astype(np.float64)
+    assert prepared.train.end_cycles[first] == 30
+
+    steps = [cycle - 14.5 for cycle in range(30)]
+    assert sum(step * step for step in steps) == 2247.5
+    slope = sum(step * reading for step, reading in zip(steps, readings, strict=True)) / 2247.5
+    by_hand = [readings[-1], sum(readings) / 30, slope * 29]
+    assert [round(value, 4) for value in by_hand] == [-1.2938, -1.0449, -0.3598]
+    assert round(slope, 6) == -0.012408
+
+    stage = WindowSummary(30)(torch.from_numpy(prepared.train.features[first:first + 1]))
+    np.testing.assert_allclose(stage[0, sensor].numpy(), by_hand, atol=1e-5)

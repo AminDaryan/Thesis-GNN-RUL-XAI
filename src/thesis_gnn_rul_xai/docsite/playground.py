@@ -166,6 +166,8 @@ FIELDS: tuple[dict[str, Any], ...] = (
           "source": _extension("a smaller recurrent cell; not in the paper")},
          {"value": "mean_window", "label": "Average over the window",
           "source": _extension("no learned parameters; not in the paper")},
+         {"value": "window_summary", "label": "Last reading, average and change over the window",
+          "source": _extension("three numbers per sensor, no learned parameters; not in the paper (A-28)")},
          {"value": "raw_window", "label": "All 30 cycles straight into the graph layer",
           "source": _extension("the arrangement the last-cycle stage replaced; not in the paper")},
      ],
@@ -399,7 +401,7 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, str]]:
     if settings.get("temporal") == "last_cycle":
         add("info", "D-6", "Removing the stage this way also discards 29 of the 30 "
             "cycles, which the paper's \"w/o LSTM\" model may not have done.")
-    if settings.get("temporal") in ("gru", "mean_window", "raw_window"):
+    if settings.get("temporal") in ("gru", "mean_window", "window_summary", "raw_window"):
         add("info", "", "This temporal stage is not in the paper, so no published row applies.")
     if settings.get("shared_across_sensors") and settings.get("temporal") in ("lstm", "gru"):
         add("info", "Section 2.2", "One shared network is not the paper's stage, which "

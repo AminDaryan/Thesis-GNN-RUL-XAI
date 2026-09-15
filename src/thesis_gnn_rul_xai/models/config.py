@@ -114,6 +114,8 @@ def build_model(
         gcn_hidden=config.gcn_hidden,
         fc_hidden=config.fc_hidden,
         gcn_bias=config.gcn_bias,
-        # Asked for by name, so this is the one stage the guard lets through.
-        allow_time_in_the_graph_layer=config.temporal == "raw_window",
+        # Asked for by name, so these are the stages the guard lets through.
+        # ASSUMPTION A-28: the window summary hands the first graph layer three
+        # numbers made from the cycles, so its weights mix time; named, not hidden.
+        allow_time_in_the_graph_layer=config.temporal in ("raw_window", "window_summary"),
     )

@@ -54,12 +54,37 @@ The recurrent-stage network against the last row: +1.174 cycles, the booster
 ahead on all five seeds (paired p = 0.0099), interval over engines
 [−0.13, +2.45].
 
+**Which summary does it**, measured the same way the next day (five seeds, no
+paired tests run): boosting on the last value alone 17.253 ± 0.329, the mean
+alone 21.207 ± 0.447, **the slope alone 13.693 ± 0.488**, last and mean
+15.086 ± 0.595, **last and slope 11.835 ± 0.391**, mean and slope
+12.827 ± 0.320; and **linear regression** on all 42, 14.520 ± 0.120, against
+20.457 ± 0.219 on the last value. The slope carries the gain, and a linear
+model given it beats the network, so it is the information the default network
+never receives, not the boosting algorithm.
+
+**The graph network given the same three numbers per sensor has since been
+measured properly** (assumption A-28): 13.586 ± 0.675, 2.910 cycles below the
+last-cycle default on the same code and seeds. So the default's gap to the
+booster above is mostly the information it is not given. How it compares with
+the booster itself stays open until the booster is committed and paired with it.
+
 Read with care, and not quoted anywhere until finished:
 
-- **The pipeline is not producing chance numbers.** Shuffled labels land on the
-  constant, so no path other than the sensor-to-life relationship produces a
-  good score through the shared data preparation. This used the booster, not
-  the network's own training loop.
+- **The scores are not chance.** A model trained on shuffled labels lands on the
+  constant: what the fitted models achieve needs the link between readings and
+  remaining life. That is all the shuffled-label row shows.
+
+  **Correction, 2026-09-15.** This bullet first said the shuffled row showed
+  "no path other than the sensor-to-life relationship produces a good score",
+  and the reply that proposed it said a leak from the test engines would let a
+  model trained on shuffled labels score well. Both overstate it. If the answer
+  leaked into the inputs, a model trained on shuffled labels would not learn to
+  read it, and would still land on the constant. The row therefore rules out a
+  scoring bug that rewards any prediction, not a leak. The author questioned it
+  on 2026-09-15, rightly. A check that does catch a leak from the test answers
+  is to change `RUL_FD001.txt` and require every test input, and every
+  prediction of a trained network, to stay identical; only the scores may move.
 - **The graph network's edge over an ordinary model on the same fourteen
   numbers is not established.** It wins on every seed against the three
   flexible models, but every one of those intervals over engines contains zero.
@@ -73,8 +98,8 @@ of them is used.
 
 **What finishing looks like:** a committed `scripts/baselines.py` that reads a
 stored run, rebuilds each seed's split, fits the ladder above and writes its
-own run directory with commit and timestamp; a test that a model fitted on
-shuffled labels scores no better than the constant; the table written into
+own run directory with commit and timestamp; the answer-file test in the
+correction above; the table written into
 `docs/ASSUMPTIONS.md` as a finding with both kinds of uncertainty; the rows
 added to `README.md` section 8; and the same ladder run for the recurrent stage
 under the epoch-200 procedure (F-16) and for any configuration the thesis
@@ -333,7 +358,7 @@ is: a folder per swappable part of the model, one notebook per alternative.
 folders still to come.
 
 - **`notebooks/temporal/`** — one notebook per temporal stage (`last_cycle`,
-  `mean_window`, `lstm`, `gru`, and the gated `raw_window`), each showing on
+  `mean_window`, `window_summary`, `lstm`, `gru`, and the gated `raw_window`), each showing on
   the real windows what the stage does to one sensor's 30 readings and what it
   costs in parameters.
 - **`notebooks/graph/`** — one per sensor graph: the paper's Table 3, every

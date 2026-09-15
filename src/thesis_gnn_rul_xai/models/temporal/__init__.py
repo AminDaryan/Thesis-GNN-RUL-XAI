@@ -21,13 +21,16 @@ __all__ = [
     "RawWindow",
     "TemporalStage",
     "TemporalStageName",
+    "WindowSummary",
     "build_temporal_stage",
 ]
 
 logger = get_logger(__name__)
 
 # Every stage the configuration may name. README.md describes each one.
-TemporalStageName = Literal["last_cycle", "mean_window", "raw_window", "lstm", "gru"]
+TemporalStageName = Literal[
+    "last_cycle", "mean_window", "window_summary", "raw_window", "lstm", "gru"
+]
 
 
 class TemporalStage(nn.Module):
@@ -95,6 +98,33 @@ class MeanWindow(TemporalStage):
     def forward(self, windows: Tensor) -> Tensor:
         self._check(windows)
         return windows.mean(dim=2, keepdim=True)
+
+
+class WindowSummary(TemporalStage):
+    """Give each sensor three numbers: its last reading, its average, and its change."""
+
+    def __init__(self, window_size: int) -> None:
+        super().__init__()
+        if window_size < 2:
+            raise ValueError(
+                f"window_size must be at least 2 to have a change, got {window_size}."
+            )
+        self.window_size = int(window_size)
+        self.out_features = 3
+
+    # ASSUMPTION A-28: not in the paper. Each sensor node carries its last
+    # reading, the average of its window, and how far the best straight line
+    # through the window rises from the first cycle to the last, in the same
+    # units as the readings rather than per cycle, so all three start on one
+    # scale. The paper's nodes carry one number, from a per-sensor LSTM; this
+    # is a hand-made stand-in used to measure what the trend is worth.
+    def forward(self, windows: Tensor) -> Tensor:
+        self._check(windows)
+        steps = torch.arange(self.window_size, dtype=windows.dtype, device=windows.device)
+        steps = steps - steps.mean()
+        slope = (windows * steps).sum(dim=2) / (steps * steps).sum()
+        change = slope * (self.window_size - 1)
+        return torch.stack([windows[:, :, -1], windows.mean(dim=2), change], dim=2)
 
 
 class RawWindow(TemporalStage):
@@ -217,6 +247,8 @@ def build_temporal_stage(
         return LastCycle(window_size)
     if name == "mean_window":
         return MeanWindow(window_size)
+    if name == "window_summary":
+        return WindowSummary(window_size)
     if name == "raw_window":
         return RawWindow(window_size)
     if name in ("lstm", "gru"):

@@ -558,6 +558,7 @@ when it is given only one.
 | **Current default** — z-score scaling, row rescaling, 20 % of engines held back, the paper's graph | **16.50 ± 0.42** | 540 ± 45 | 0.830 ± 0.008 | 11.65 ± 1.00 |
 | the same, every sensor joined to every other | 19.28 ± 0.43 | 796 ± 79 | 0.768 ± 0.010 | 13.76 ± 0.49 |
 | the same, the 41 most strongly correlated sensor pairs | 16.59 ± 0.35 | 1033 ± 292 | 0.829 ± 0.007 | 9.87 ± 0.15 |
+| the same graph as the default, each sensor carrying its last reading, average and change over the window — **not in the paper** | 13.59 ± 0.68 | 375 ± 71 | 0.885 ± 0.012 | 8.64 ± 0.56 |
 | z-score, row, **nothing held back** — the default until 2026-09-02 | 16.82 ± 0.16 | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
 | the same, every sensor joined to every other | 19.21 ± 0.06 | 782 ± 9 | 0.770 ± 0.001 | 13.94 ± 0.15 |
 | **min-max** scaling, symmetric rescaling, 20 % held back — the default until 2026-08-29 | 20.35 ± 0.75 | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
@@ -572,6 +573,17 @@ most strongly — the same number of edges as the paper's — costs 0.10 cycles 
 So most of what the every-sensor comparison costs is that graph's averaging of
 every sensor together, not the loss of the engineering knowledge. That is
 written up in `docs/ASSUMPTIONS.md` (assumption A-27).
+
+**Most of what the default is missing is the direction the readings are moving
+in.** The default hands each sensor node only its last reading. Handing it three
+numbers from the same thirty readings instead — the last, the average, and how
+far the best straight line through them rises across the window — lowers the
+error by 2.91 cycles on the same code and the same seeds, on every seed, paired
+`p = 0.00025`; resampling the 100 test engines keeps the whole difference below
+zero. That arrangement is not the paper's, which gives each node one number from
+its own LSTM, so no published row applies to it, and on the test engines it
+cannot be told apart from this project's run of the paper's recurrent stage
+(assumption A-28).
 
 **The every-sensor comparison has also given opposite answers under settings
 the paper does not specify**: 2.78 and 2.40 cycles with z-score scaling, 0.044

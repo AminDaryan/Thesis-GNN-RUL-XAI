@@ -227,7 +227,7 @@ program before any training starts rather than after an hour of it:
 
 ```text
 ModelConfig(temporal="transformer")
-  -> ValueError: temporal must be one of ['last_cycle', 'mean_window', 'raw_window', 'lstm', 'gru'], got 'transformer'.
+  -> ValueError: temporal must be one of ['last_cycle', 'mean_window', 'window_summary', 'raw_window', 'lstm', 'gru'], got 'transformer'.
 ModelConfig(fc_hidden=0)
   -> ValueError: fc_hidden must be at least 1, got 0.
 ```
@@ -325,6 +325,7 @@ window of 30, the stages give these sizes, from `count_parameters()`:
 |---|---|
 | `last_cycle` | 61,729 |
 | `mean_window` | 61,729 |
+| `window_summary` | 61,793 |
 | `lstm` | 124,482 |
 | `raw_window` | 62,657 |
 
@@ -332,13 +333,18 @@ The first two match because neither stage learns anything: one keeps the last
 reading and the other averages the thirty, and both hand over one number per
 sensor. `raw_window` hands over all 30, so the first graph weight matrix grows
 from 1 × 32 = 32 numbers to 30 × 32 = 960, and 61,729 + 960 − 32 = 62,657.
+`window_summary` hands over three numbers made from the thirty — the last
+reading, the average and the change across the window — so the matrix is
+3 × 32 = 96 numbers and the total 61,729 + 96 − 32 = 61,793. It is not in the
+paper (assumption A-28).
 
 That last stage is the one `ESTGNN` refuses to build unless told
 `allow_time_in_the_graph_layer=True`, for the reason given in
 [One number per sensor, and why 30 would be wrong](#one-number-per-sensor-and-why-30-would-be-wrong).
-`build_model` passes `True` only when `config.temporal` is `"raw_window"`:
-naming that stage in a record counts as asking for it on purpose, and every
-other stage is still checked.
+`window_summary` trips the same check, because it hands over three numbers and
+learns nothing. `build_model` passes `True` only when `config.temporal` is
+`"raw_window"` or `"window_summary"`: naming one of those stages in a record
+counts as asking for it on purpose, and every other stage is still checked.
 
 ## Judgement calls made in this folder
 

@@ -48,6 +48,7 @@ identifier below.
 | A-26 | Size and depth of the recurrent stage | Table 4 has **no recurrent row**; Table 6 lists no hidden size, depth or projection | One layer, hidden size 32, a linear projection to the one number Table 4 prints; **fourteen dedicated cells**, which the paper does state |
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
 | A-27 | A sensor graph built from the data | Never builds one; its Conclusions claim its own graph goes "beyond data-driven correlations" | The 41 most strongly correlated pairs on the training engines, as many edges as Table 3; **indistinguishable from Table 3 by test RMSE** (+0.096, p = 0.655), 2.0 cycles better on the held-back engines (p = 0.012), but its test predictions run later |
+| A-28 | Each sensor's last reading, average and change as node features | Never considered; Table 4 prints one number per sensor, from the LSTM stage | A stage outside the paper, not the default; **2.910 cycles below the last cycle** (p = 0.00025, engine interval [−5.19, −0.63]), indistinguishable from the recurrent stage on test error |
 
 ---
 
@@ -2982,6 +2983,127 @@ The first reproduces the `ae59bc1-dirty` run of 2026-09-08 on all four measures
 and all five seeds, so the tree it ran from trains the network as before. The
 threshold table and the per-seed graph table are recomputed by
 `python scripts/verify_claims.py --only correlation` for seed 42.
+
+---
+
+## A-28 — The window-summary stage gives each sensor its last reading, its average and its change
+
+**Where:** `models/temporal/WindowSummary`, `scripts/train.py --temporal window_summary`
+
+**The gap.** This is not a gap in the paper; it is a stage the paper does not
+have, added to answer a question the paper raises. Table 4 prints one number per
+sensor entering the first graph layer, `W(1) ∈ ℝ(1×32)`, and Section 2.3.2 says
+where that number comes from: *"X represents the input node features from LSTM
+networks"*. The default here passes the last reading instead (assumption A-07),
+which throws away 29 of the 30 cycles. The recurrent stage keeps them but brings
+in sizes the paper never states (assumption A-26). Neither answers the plain
+question: does the direction a reading is moving in carry information the last
+reading alone does not?
+
+**What we chose.** A stage with no learned parameters that gives each sensor
+node three numbers from its own 30 readings:
+
+1. the last reading;
+2. the average of the 30;
+3. the **change**: how far the best straight line through the 30 readings rises
+   from the first cycle to the last, which is its slope per cycle times 29.
+
+The first graph weight matrix becomes `(3, 32)`, so the network learns 61,793
+numbers against Table 4's 61,729. It is not the default, and a run using it says
+so in its directory name and in `summary.json`.
+
+**Why these three, and why the change rather than the slope.** They are the
+simplest description of a short series: where it ends, where it sits, and which
+way it is going. The change is given in the readings' own units rather than per
+cycle because all three enter one weight matrix whose starting values are drawn
+on the same scale for every input (assumption A-14), and there is no bias in the
+graph layers to absorb a difference in size (assumption A-12). Measured on seed
+42's training windows for `T50`, averaged over each band of remaining life:
+
+| Remaining life | Windows | Last reading | Average | Change |
+|---|---|---|---|---|
+| 0–25 | 2000 | +1.787 | +1.181 | +1.066 |
+| 25–50 | 2000 | +0.815 | +0.457 | +0.673 |
+| 50–75 | 2000 | +0.215 | +0.003 | +0.386 |
+| 75–100 | 1999 | −0.131 | −0.268 | +0.264 |
+| 100–124 | 1920 | −0.368 | −0.479 | +0.196 |
+| 125, the capped plateau | 4540 | −0.659 | −0.708 | +0.089 |
+
+Per cycle the same change would be the last column divided by 29, from +0.003 to
++0.037, while the last reading's band averages run from −0.659 to +1.787. That
+the scale matters is an argument, not a measurement: the per-cycle version was
+not trained. The scale was fixed before
+either run below was started, and no other version was tried.
+
+**Is it physically admissible on C-MAPSS?** Yes, on three counts. All three
+numbers are computed from readings up to the cycle being predicted at and none
+after it; the smoothing before them only looks backwards
+(`tests/test_smoothing.py::test_the_filter_only_looks_backwards`). Every FD001
+test engine has at least 31 cycles (finding F-03), so every test window is a
+full 30 readings. And an operator predicting an engine's remaining life at a
+given flight has that engine's last 30 flights of readings.
+
+**How much it matters.** Measured, five seeds each, both runs at commit
+`5602773-dirty` from the same tree, under `config/fd001.yaml`: z-score scaling,
+row rescaling, capped test labels, a fifth of the engines held back with early
+stopping and the best pass restored, the step schedule.
+
+| Stage | Test RMSE | NASA score | R² | ASUE | Held-back RMSE |
+|---|---|---|---|---|---|
+| last cycle (default) | 16.496 ± 0.415 | 539.8 ± 44.7 | 0.830 | 11.651 | 21.168 ± 0.870 |
+| **window summary** | **13.586 ± 0.675** | **374.7 ± 71.1** | **0.885** | **8.643** | **15.823 ± 0.461** |
+
+Paired by seed, the window summary is **2.910 cycles lower** on test RMSE, lower
+on all five seeds, paired `p = 0.00025`. Resampling the 100 test engines 20,000
+times gives a 95 % interval for the difference of **[−5.19, −0.63]**, lower in
+99.4 % of resamples, so the difference is not a matter of which engines happen
+to be in the test set. On the held-back engines, which is the error a choice of
+configuration should rest on, it is 5.345 lower (`p = 0.00002`); that figure
+also chose which pass was kept, for both stages, so it is flattered for both.
+
+Against the recurrent stage's stored run
+(`…_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`, 13.307 ± 0.532, the same
+settings, one commit earlier), the window summary is +0.279 on test RMSE, lower on
+2 of 5 seeds, `p = 0.506`, interval over engines [−1.62, +2.29]: the two cannot be
+told apart on the test engines. On the held-back engines the recurrent stage is
+1.689 lower, on all five seeds (`p = 0.0018`). The pairing crosses one commit;
+the last-cycle run above reproduced the stored last-cycle run of `f386291-dirty`
+exactly on every seed, and every stored network, the recurrent ones included,
+reloads to its saved predictions under
+`tests/test_run_records.py::test_a_stored_network_still_gives_the_predictions_it_saved`.
+
+**What this does and does not show.**
+
+- It shows that, under this configuration, most of the gap between the default
+  and the recurrent stage is information the default never receives: a
+  parameter-free summary closes it on the test engines.
+- It does not show that the paper's recurrent stage is unnecessary. The paper's
+  claim is about its own stage and procedure, and on the held-back engines the
+  recurrent stage is still ahead.
+- It does not show which of the three numbers the network uses. No explanation
+  method has been run on this stage.
+- It is one configuration. Two of this project's comparisons reversed when the
+  configuration moved (working rule 3).
+- It inherits the paper's graph. Sensors whose rows of the rescaled matrix are
+  identical still reach the network only as sums, now of three numbers each
+  instead of one (the audit of 2026-09-08, its item D-1).
+
+**Which published row it may be set beside.** None. Every row of Tables 7 to 11
+describes either a model with the paper's recurrent stage or one with no
+temporal stage at all.
+
+**Reproduce with:**
+
+```bash
+python scripts/train.py --config config/fd001.yaml --temporal window_summary --seeds 5
+python scripts/train.py --config config/fd001.yaml --seeds 5
+```
+
+The stored runs are
+`fd001_physics_row_cap_5seed_varsplit_window_summary_cfgba82e3_5602773-dirty_20260914T233435Z`
+and `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`,
+each carrying its command, library versions, data-file fingerprints, the
+uncommitted code as a patch, and each seed's engine split and scaling.
 
 ---
 

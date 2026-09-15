@@ -121,12 +121,14 @@ def main() -> int:
                                  "constant"),
                         default="step", help="See assumption A-17")
     parser.add_argument("--temporal", default="last_cycle",
-                        choices=["last_cycle", "mean_window", "raw_window",
-                                 "lstm", "gru"],
+                        choices=["last_cycle", "mean_window", "window_summary",
+                                 "raw_window", "lstm", "gru"],
                         help="Which temporal stage sits in front of the graph "
                              "layers. 'last_cycle' is the stand-in of A-07; "
                              "'lstm' is the paper's own Section 2.2 stage, one "
-                             "network per sensor")
+                             "network per sensor; 'window_summary' gives each "
+                             "sensor its last reading, average and change over "
+                             "the window, which the paper does not (A-28)")
     parser.add_argument("--temporal-hidden", type=int, default=32,
                         help="Hidden size of the recurrent stage (A-26; the "
                              "paper states none)")
@@ -341,6 +343,7 @@ def main() -> int:
         "\nWhich row above this run may be set beside depends on its temporal\n"
         "stage. Without one -- the default -- it is 'ESTGNN w/o LSTM'; with\n"
         "--temporal lstm it is the full ESTGNN, under the size A-26 chose.\n"
+        "Any other stage is not in the paper, and no row above applies to it.\n"
         "See docs/ASSUMPTIONS.md for every way this pipeline differs from the\n"
         "paper."
     )

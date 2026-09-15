@@ -10,6 +10,7 @@
   var PALETTE = ["var(--fig-accent)", "var(--fig-warn)", "var(--fig-lpt)", "var(--fig-lpc)",
     "var(--fig-core)", "var(--fig-cool)", "var(--fig-burn)", "var(--fig-fan)"];
   var TEMPORAL = { lstm: "LSTM", gru: "GRU", last_cycle: "removed", mean_window: "window mean",
+    window_summary: "window summary",
     raw_window: "raw window" };
   var MEASURES = [["rmse", "RMSE", 3], ["score", "Score", 1], ["r2", "R²", 3], ["asue", "ASUE", 3]];
 

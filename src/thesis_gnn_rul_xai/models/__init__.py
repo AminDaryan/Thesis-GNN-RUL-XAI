@@ -14,6 +14,7 @@ from .temporal import (
     MeanWindow,
     RawWindow,
     TemporalStage,
+    WindowSummary,
     build_temporal_stage,
 )
 
@@ -26,6 +27,7 @@ __all__ = [
     "ModelConfig",
     "RawWindow",
     "TemporalStage",
+    "WindowSummary",
     "build_model",
     "build_temporal_stage",
     "load_model_config",

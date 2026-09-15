@@ -118,6 +118,20 @@ def test_raw_cycles_reaching_the_graph_layer_are_refused_unless_asked_for():
     assert allowed.time_folded_into_graph_layer is True
 
 
+def test_the_window_summary_is_built_only_when_named():
+    """Three numbers made from the cycles, learning nothing: refused unless asked for by name."""
+    from thesis_gnn_rul_xai.models import ModelConfig, WindowSummary, build_model
+
+    normalized = normalize_adjacency(build_physics_adjacency()[0], method="row")
+    with pytest.raises(ValueError, match="without learning anything across"):
+        ESTGNN(normalized, temporal=WindowSummary(30))
+    named = build_model(normalized, ModelConfig(temporal="window_summary"),
+                        window_size=30, rul_max=125)
+    assert named.in_features == 3
+    assert tuple(named.graph_layers[0].weight.shape) == (3, 32)
+    assert tuple(named(torch.zeros(2, 14, 30)).shape) == (2,)
+
+
 def test_a_learned_stage_is_not_treated_as_raw_cycles():
     """An LSTM holds parameters, so widening past one number is not the trap."""
     matrix, _ = build_physics_adjacency()

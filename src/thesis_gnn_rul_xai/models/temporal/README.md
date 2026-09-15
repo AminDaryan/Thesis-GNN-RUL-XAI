@@ -55,6 +55,7 @@ follows from the stage.
 |---|---|---|---|
 | `last_cycle` | the most recent reading of the window | no | 1 |
 | `mean_window` | the average of the window | no | 1 |
+| `window_summary` | the last reading, the average, and the change across the window | no | 3 |
 | `raw_window` | every cycle, untouched | no | 30 |
 | `lstm` | what a recurrent network read out of the window | yes | 1 by default |
 | `gru` | the same, with a simpler recurrent cell | yes | 1 by default |
@@ -86,6 +87,40 @@ lists the learning rate, 200 epochs, batch size 32, thirty time steps, Adam and
 MSE loss. There is no hidden size, no depth, and no projection. Those three are
 this project's choices (assumption A-26).
 
+### `window_summary` — three numbers a person could read off a plot
+
+Not in the paper (assumption A-28). For each sensor it hands on the last
+reading, the average of the thirty, and the **change**: how far the best
+straight line through the thirty readings rises from the first cycle to the
+last.
+
+That line is the one that makes the squared vertical distances from the points
+smallest. With the cycles numbered from the middle of the window, so that
+`t = −14.5, −13.5, …, +14.5` and those numbers add up to zero, its slope is
+
+```
+slope  = Σ t × reading  /  Σ t²          (Σ t² = 2247.5 for 30 cycles)
+change = slope × 29
+```
+
+`t` is how many cycles a reading sits after the window's middle, `reading` is
+the scaled value at that cycle, and the sum runs over all thirty. Numbering from
+the middle is what lets the average drop out of the formula: moving every
+reading up by the same amount adds that amount times `Σ t`, which is zero, so
+the slope ignores where the series sits and measures only which way it goes.
+The change is multiplied back up by 29, the number of cycles from the first
+reading to the last, so it is in the readings' own units, like the other two.
+
+On the real data, `T50` of engine 1 over its cycles 1 to 30 (after smoothing and
+scaling) ends at −1.2938, averages −1.0449, and its line falls by 0.3598 across
+the window: a slope of −0.012408 per cycle, times 29. `WindowSummary(30)` gives
+`[−1.2938, −1.0449, −0.3598]` for that sensor, and
+`tests/test_examples_torch.py` checks it term by term.
+
+It learns nothing and hands over three numbers, so it trips the same check as
+`raw_window` below and `build_model` lets it through only when it is named.
+`W(1)` becomes `3 × 32`.
+
 ### `raw_window` — kept, named, and gated
 
 This is the arrangement removed on 2026-08-28. It is kept because the comparison
@@ -115,8 +150,9 @@ self.time_folded_into_graph_layer = self.in_features > 1 and not learns_across_t
 A stage cannot lie about this, because nothing is asked of it. `LastCycle` and
 `MeanWindow` are one number wide, so the answer is no. `LSTMStage` holds
 parameters, so the answer is no and correctly so — the graph layer is then
-mixing what an encoder produced, not raw cycles. `RawWindow` is the only thing
-that trips it, and so would a hand-written passthrough someone added later.
+mixing what an encoder produced, not raw cycles. `RawWindow` trips it, and so
+does `WindowSummary`, which is three numbers wide and learns nothing; both are
+built only when named. So would a hand-written passthrough someone added later.
 
 **Its one honest limit.** A stage that holds parameters *and* still passes
 cycles through — a learned per-cycle scaling, say — would get past the check.
@@ -131,6 +167,7 @@ Measured, not estimated. `sum(p.numel() ...)` on the real objects:
 | Configuration | Parameters |
 |---|---|
 | The network alone, Table 4 | 61,729 |
+| The network with `window_summary` | 61,793 |
 | One `nn.LSTM(input_size=1, hidden_size=32)` | 4,480 |
 | One `nn.GRU(input_size=1, hidden_size=32)` | 3,360 |
 | `LSTMStage`, fourteen cells at hidden 32, projected to 1 | 62,753 |
