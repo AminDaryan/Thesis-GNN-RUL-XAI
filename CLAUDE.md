@@ -799,7 +799,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 268 tests; must all pass
+pytest                # 288 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -822,8 +822,9 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — all 268
-pass (measured 2026-09-15).
+With everything present — the data, PyTorch and the stored runs — all 288
+pass (measured 2026-09-15, after the run-record and paper-to-code tests were
+added).
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing. The model,
