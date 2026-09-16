@@ -48,6 +48,17 @@ is imported.
 
 **After this step: 14 sensor columns instead of 21.**
 
+{{figure:correlation}}
+
+The paper's Fig. 5 shows how it chose: a table of the correlation between
+every pair of columns of FD001 — the engine number, the cycle, the two
+operating settings that vary, and the sensors — computed after the columns
+that never change were dropped, and its Section 3.2.2 says the selection then
+removed features whose correlation with another was above 0.95. The figure
+above is the same table computed here from the training file, with the
+paper's fourteen sensors in its order. The paper prints one value per cell, so
+the two can be set beside each other cell by cell.
+
 ## 4 — Cap the labels
 
 The piecewise-linear ceiling from page 1 is applied: while the engine is

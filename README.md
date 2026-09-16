@@ -412,7 +412,7 @@ python scripts/docs_ui.py
 This opens a browser showing everything written in this repository — this file,
 the eight folder READMEs, the assumptions log, the audits and both notebooks —
 together with eight taught pages that build the method from nothing for a
-reader who has never seen it, and thirteen figures.
+reader who has never seen it, and fifteen figures.
 
 It is not a copy. Every page is rendered from the file on disk at the moment
 you ask for it, and every figure is **computed** rather than drawn: the sensor

@@ -97,9 +97,21 @@ def main(argv: list[str] | None = None) -> int:
             open_browser=not arguments.no_browser,
         )
     except OSError as error:
+        # Almost always an older documentation server of this project, left
+        # running. Starting a second one on another port is what produced
+        # three at once here on 2026-09-16, and the oldest of them served
+        # today's page with two-day-old Python behind it.
+        # Plain ASCII: a Windows console prints an em dash here as a black
+        # diamond, and this is the message a reader meets while confused.
         print(
-            f"\n  Could not listen on {arguments.host}:{arguments.port} — {error}\n"
-            "  Something else is probably using that port. Try another one:\n"
+            f"\n  Could not listen on {arguments.host}:{arguments.port}\n"
+            f"  {error}\n\n"
+            "  A documentation server is probably already running on that port.\n"
+            "  Stop it (Ctrl+C in the terminal it is running in) and start this\n"
+            "  one again, rather than starting a second server beside it: a server\n"
+            "  loads this project's Python once, so an old one keeps answering with\n"
+            "  old code while serving the current page.\n\n"
+            "  If you meant to run two at once, choose another port:\n"
             f"      python scripts/docs_ui.py --port {arguments.port + 1}\n"
         )
         return 1

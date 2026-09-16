@@ -435,18 +435,6 @@ measured under, and the 20 %-held-back rows of A-21 re-run at one commit.
 
 ---
 
-## P-04 — Nothing links to the figures gallery
-
-`docsite/assets/app.js` serves a gallery of all thirteen figures at the address
-`#/figures`, and `grep -rn "#/figures"` finds no link to it anywhere — not in
-the sidebar, not in `shell.html`, not in any document. It is reachable only by
-typing the address.
-
-**What finishing looks like:** a link in the sidebar built from
-`figure_names()`, so the list cannot go stale.
-
----
-
 ## P-07 — nbconvert silently drops SVG outputs
 
 Guarded by a test now

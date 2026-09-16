@@ -58,6 +58,62 @@
       ? "—" : Number(value).toFixed(places === undefined ? 2 : places);
   }
 
+  // The heading block every generated page starts with: a small label saying
+  // where the page's contents come from, the title, and one lead sentence.
+  function pageHead(eyebrow, title, lead, extra) {
+    return '<div class="page-head">' +
+      (eyebrow ? '<div class="eyebrow">' + escapeHtml(eyebrow) + "</div>" : "") +
+      '<h1 class="page-title">' + title + "</h1>" +
+      (lead ? '<p class="page-lead">' + lead + "</p>" : "") +
+      (extra || "") + "</div>";
+  }
+
+  // ----------------------------------------------------------- navigation
+
+  // The navigation is open or closed, recorded on <html> as data-nav. On a
+  // wide screen the choice is remembered; on a narrow one it is a drawer that
+  // starts closed and closes again whenever a page is chosen.
+  var narrowScreen = window.matchMedia("(max-width: 900px)");
+
+  function navIsOpen() {
+    return document.documentElement.getAttribute("data-nav") !== "closed";
+  }
+
+  function setNav(open) {
+    document.documentElement.setAttribute("data-nav", open ? "open" : "closed");
+    var button = document.getElementById("nav-button");
+    button.setAttribute("aria-expanded", String(open));
+    button.title = open ? "Hide the navigation" : "Show the navigation";
+    if (!narrowScreen.matches) {
+      try { localStorage.setItem("docsite-nav", open ? "open" : "closed"); } catch (e) { /* private mode */ }
+    }
+  }
+
+  function closeDrawer() {
+    if (narrowScreen.matches && navIsOpen()) { setNav(false); }
+  }
+
+  function initNav() {
+    var remembered = "open";
+    try { remembered = localStorage.getItem("docsite-nav") || "open"; } catch (e) { /* private mode */ }
+    setNav(narrowScreen.matches ? false : remembered !== "closed");
+
+    document.getElementById("nav-button").addEventListener("click", function () {
+      setNav(!navIsOpen());
+    });
+    document.getElementById("scrim").addEventListener("click", closeDrawer);
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") { closeDrawer(); }
+    });
+    // Crossing the width where the drawer takes over, or back, re-applies the
+    // right state: a drawer never starts open, a wide screen keeps its choice.
+    narrowScreen.addEventListener("change", function () {
+      var kept = "open";
+      try { kept = localStorage.getItem("docsite-nav") || "open"; } catch (e) { /* ignore */ }
+      setNav(narrowScreen.matches ? false : kept !== "closed");
+    });
+  }
+
   // ---------------------------------------------------------------- theme
 
   function applyTheme(choice) {
@@ -202,6 +258,19 @@
       group.appendChild(body);
       sidebar.appendChild(group);
     });
+
+    // The gallery of every figure is built from the same list the server
+    // draws from, so this link cannot point at a figure that does not exist.
+    var figures = state.figures || [];
+    if (figures.length) {
+      sidebar.appendChild(el("div", { class: "nav-footer" }, [
+        el("a", {
+          class: "nav-link", href: "#/figures", "data-path": "figures",
+          html: "<span class='nav-meta'>" + figures.length + "</span>Every figure" +
+                "<span class='nav-blurb-inline'>All the diagrams, drawn from the repository as it stands</span>"
+        })
+      ]));
+    }
   }
 
   // A page the reader has navigated to must be visible in the menu, even if
@@ -346,7 +415,7 @@
 
     window.scrollTo(0, 0);
     tocPanel.innerHTML = "";
-    sidebar.classList.remove("open");
+    closeDrawer();
     content.innerHTML = '<div class="loading">Loading…</div>';
 
     var done;
@@ -359,7 +428,7 @@
     else if (route.view === "figures") { done = viewFigures(); }
     else { done = Promise.resolve(showError("No page at " + route.view, "")); }
 
-    markActive(argument);
+    markActive(route.view === "figures" ? "figures" : argument);
     Promise.resolve(done).then(function () {
       if (fragment) {
         var target = document.getElementById(fragment);
@@ -538,12 +607,10 @@
 
       content.innerHTML =
         crumbs([{ label: "Home", href: "#/" }, { label: "Notebooks" }, { label: notebook.title }]) +
-        '<div class="page-head"><div class="eyebrow">Notebook</div>' +
-        "<h1 style='font-family:var(--sans);font-size:31px;margin:0 0 10px;letter-spacing:-0.02em'>" +
-        escapeHtml(titleOf(path) || notebook.title) + "</h1>" +
-        "<p style='color:var(--ink-soft);margin:0 0 14px'>You are reading the outputs this notebook " +
-        "was saved with, produced on the real FD001 files. Nothing is being executed here.</p>" +
-        '<div class="chips">' + runHere + "</div></div>" +
+        pageHead("Notebook", escapeHtml(titleOf(path) || notebook.title),
+          "You are reading the outputs this notebook was saved with, produced on the real " +
+          "FD001 files. Nothing is being executed here.",
+          '<div class="chips">' + runHere + "</div>") +
         '<div class="notebook-frame">' + notebook.html + "</div>";
 
       var button = document.getElementById("open-in-jupyter");
@@ -591,10 +658,8 @@
     return get("/api/source?path=" + encodeURIComponent(path)).then(function (file) {
       content.innerHTML =
         crumbs([{ label: "Home", href: "#/" }, { label: "Source" }, { label: file.title }]) +
-        '<div class="page-head"><div class="eyebrow">Source file</div>' +
-        "<h1 style='font-family:var(--sans);font-size:26px;margin:0'><code>" +
-        escapeHtml(file.path) + "</code></h1>" +
-        '<div class="page-meta">' + file.lines + " lines</div></div>" +
+        pageHead("Source file", "<code>" + escapeHtml(file.path) + "</code>", "",
+          '<div class="page-meta">' + file.lines + " lines</div>") +
         '<article class="prose">' + file.html + "</article>";
       document.title = file.title + " — Thesis documentation";
     }).catch(function (error) {
@@ -612,7 +677,7 @@
     if (name === "playground" && window.thesisPlayground) {
       return window.thesisPlayground(content, {
         get: get, toast: toast, fixed: fixed, escapeHtml: escapeHtml, chip: chip,
-        crumbs: crumbs, buildToc: buildToc
+        crumbs: crumbs, buildToc: buildToc, pageHead: pageHead
       });
     }
     showError("No explorer called " + name, "");
@@ -637,19 +702,18 @@
 
       content.innerHTML =
         crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "The sensor graph" }]) +
-        '<div class="page-head"><div class="eyebrow">Computed now, from graph/adjacency.py</div>' +
-        "<h1 style='font-family:var(--sans);font-size:31px;margin:0 0 8px;letter-spacing:-0.02em'>The sensor graph</h1>" +
-        "<p style='color:var(--ink-soft);max-width:74ch;margin:0'>The paper prints this graph twice — " +
-        "as Table 3 and again as Fig. 3 — and the two agree. Everything below is measured from the " +
-        "transcription in this repository, not copied from the paper's text.</p>" +
-        '<div class="chips">' +
-          chip("", report.n_nodes + " sensors") +
-          chip("", report.n_edges + " edges") +
-          chip("", "density " + fixed(report.density, 3)) +
-          chip("", "diameter " + report.diameter) +
-          chip(report.is_connected ? "good" : "warn", report.is_connected ? "connected" : "disconnected") +
-          chip("warn", "articulation point: " + report.articulation_points.join(", ")) +
-        "</div></div>" +
+        pageHead("Computed now, from graph/adjacency.py", "The sensor graph",
+          "The paper prints this graph twice — as Table 3 and again as Fig. 3 — and the two agree. " +
+          "Everything below is measured from the transcription in this repository, not copied from " +
+          "the paper's text.",
+          '<div class="chips">' +
+            chip("", report.n_nodes + " sensors") +
+            chip("", report.n_edges + " edges") +
+            chip("", "density " + fixed(report.density, 3)) +
+            chip("", "diameter " + report.diameter) +
+            chip(report.is_connected ? "good" : "warn", report.is_connected ? "connected" : "disconnected") +
+            chip("warn", "articulation point: " + report.articulation_points.join(", ")) +
+          "</div>") +
         figureBlock("sensor-graph", "<strong>The graph itself.</strong> Node size is the number of " +
           "neighbours; colour is the engine station the sensor sits at. T24 is circled because removing " +
           "it would split the graph in two — the bypass-side sensors reach the core through it and " +
@@ -694,17 +758,15 @@
 
       content.innerHTML =
         crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "The network" }]) +
-        '<div class="page-head"><div class="eyebrow">Built now, from models/estgnn.py</div>' +
-        "<h1 style='font-family:var(--sans);font-size:31px;margin:0 0 8px;letter-spacing:-0.02em'>The network</h1>" +
-        "<p style='color:var(--ink-soft);max-width:74ch;margin:0'>This page builds the model in memory " +
-        "and reads its layers back. The parameter counts below are what the code really has, not what " +
-        "the documentation claims it has.</p>" +
-        '<div class="chips">' +
-          chip("good", Number(data.parameters).toLocaleString("en") + " trainable parameters") +
-          chip("", data.nodes + " nodes") +
-          chip("", data.in_features + " feature per node") +
-          chip("", "ceiling " + data.rul_max + " cycles") +
-        "</div></div>" +
+        pageHead("Built now, from models/estgnn.py", "The network",
+          "This page builds the model in memory and reads its layers back. The parameter counts " +
+          "below are what the code really has, not what the documentation claims it has.",
+          '<div class="chips">' +
+            chip("good", Number(data.parameters).toLocaleString("en") + " trainable parameters") +
+            chip("", data.nodes + " nodes") +
+            chip("", data.in_features + " feature per node") +
+            chip("", "ceiling " + data.rul_max + " cycles") +
+          "</div>") +
         figureBlock("architecture", "<strong>Every layer of the paper's Table 4.</strong> The " +
           "per-sensor LSTM the paper places in front of the graph layers is deliberately absent " +
           "(assumption A-11), so results from this network compare against the paper's own " +
@@ -752,17 +814,15 @@
 
       content.innerHTML =
         crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "Stored runs" }]) +
-        '<div class="page-head"><div class="eyebrow">Read from reports/</div>' +
-        "<h1 style='font-family:var(--sans);font-size:31px;margin:0 0 8px;letter-spacing:-0.02em'>Stored runs</h1>" +
-        "<p style='color:var(--ink-soft);max-width:74ch;margin:0'>Every run this repository has kept, " +
-        "newest first, each with the commit that produced it. A run whose commit ends in " +
-        "<code>-dirty</code> was made from a working tree with uncommitted changes, so it cannot be " +
-        "reproduced exactly from any committed state.</p>" +
-        '<div class="chips">' +
-          chip("", runs.length + " stored runs") +
-          chip("good", multi + " over five or more seeds") +
-          chip(dirty ? "warn" : "good", dirty + " from a dirty tree") +
-        "</div></div>" +
+        pageHead("Read from reports/", "Stored runs",
+          "Every run this repository has kept, newest first, each with the commit that produced " +
+          "it. A run whose commit ends in <code>-dirty</code> was made from a working tree with " +
+          "uncommitted changes, so it cannot be reproduced exactly from any committed state.",
+          '<div class="chips">' +
+            chip("", runs.length + " stored runs") +
+            chip("good", multi + " over five or more seeds") +
+            chip(dirty ? "warn" : "good", dirty + " from a dirty tree") +
+          "</div>") +
         '<div class="callout callout--choice"><div class="callout-title">One seed is not a result</div>' +
         "Anything quoted as a result of this project is a mean over at least five seeds, with its " +
         "standard deviation. The seed varies the train/validation split as well as the initialisation " +
@@ -799,19 +859,18 @@
 
       content.innerHTML =
         crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "Assumptions and findings" }]) +
-        '<div class="page-head"><div class="eyebrow">Parsed from docs/ASSUMPTIONS.md</div>' +
-        "<h1 style='font-family:var(--sans);font-size:31px;margin:0 0 8px;letter-spacing:-0.02em'>Assumptions and findings</h1>" +
-        "<p style='color:var(--ink-soft);max-width:74ch;margin:0'>An <strong>assumption</strong> is a " +
-        "choice this project had to make because the paper does not specify it. A <strong>finding</strong> " +
-        "is something established about the paper from the data. They are kept apart on purpose: one is " +
-        "ours, the other is a fact about the source.</p>" +
-        '<div class="chips">' +
-          chip("", assumptions.length + " assumptions") +
-          chip("", findings.length + " findings") +
-          chip("warn", entries.filter(function (e) { return e.status !== "active"; }).length +
-               " withdrawn, reversed or superseded") +
-          verificationChip(data.verification) +
-        "</div></div>" +
+        pageHead("Parsed from docs/ASSUMPTIONS.md", "Assumptions and findings",
+          "An <strong>assumption</strong> is a choice this project had to make because the paper " +
+          "does not specify it. A <strong>finding</strong> is something established about the paper " +
+          "from the data. They are kept apart on purpose: one is ours, the other is a fact about the " +
+          "source.",
+          '<div class="chips">' +
+            chip("", assumptions.length + " assumptions") +
+            chip("", findings.length + " findings") +
+            chip("warn", entries.filter(function (e) { return e.status !== "active"; }).length +
+                 " withdrawn, reversed or superseded") +
+            verificationChip(data.verification) +
+          "</div>") +
         '<div class="section-head"><h2>Assumptions — choices we made</h2>' +
         "<p>Each appears in the code as a comment beginning <code>ASSUMPTION</code>, at the point where it is used.</p></div>" +
         '<div class="grid grid--2">' + assumptions.map(cardFor).join("") + "</div>" +
@@ -860,9 +919,8 @@
 
   function viewFigures() {
     content.innerHTML =
-      '<div class="page-head"><div class="eyebrow">Every figure</div>' +
-      "<h1 style='font-family:var(--sans);font-size:31px;margin:0'>Figures</h1>" +
-      "<p style='color:var(--ink-soft)'>Each is drawn from this repository when the page loads.</p></div>" +
+      crumbs([{ label: "Home", href: "#/" }, { label: "Figures" }]) +
+      pageHead("Every figure", "Figures", "Each is drawn from this repository when the page loads.") +
       (state.figures || []).map(function (name) {
         return "<div class='section-head'><h2>" + escapeHtml(name) + "</h2></div>" +
           figureBlock(name, "");
@@ -1026,12 +1084,13 @@
     state = loaded[0];
     catalog = loaded[1];
     order = readingOrder();
+    // A server too old to say when it started cannot run the check at all,
+    // and is older than this page, which is the same thing.
+    document.getElementById("stale").hidden = !(state.stale || state.started === undefined);
     buildSidebar();
+    initNav();
     initSearch();
     initJupyter();
-    document.getElementById("menu-button").addEventListener("click", function () {
-      sidebar.classList.toggle("open");
-    });
     window.addEventListener("hashchange", navigate);
     navigate();
   }).catch(function (error) {

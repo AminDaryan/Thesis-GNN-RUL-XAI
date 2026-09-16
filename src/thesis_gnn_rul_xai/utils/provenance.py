@@ -30,13 +30,13 @@ def current_commit(cwd: Path | None = None) -> str:
     try:
         head = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=10, cwd=where,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, cwd=where,
         )
         if head.returncode != 0:
             return "unknown"
         status = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, timeout=10, cwd=where,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, cwd=where,
         )
         return head.stdout.strip() + ("-dirty" if status.stdout.strip() else "")
     except Exception:  # pragma: no cover - git absent, or not a clone
@@ -92,18 +92,18 @@ def capture_code_state(cwd: Path | None = None) -> dict[str, object]:
     try:
         top = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=10, cwd=where,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, cwd=where,
         )
         if top.returncode != 0:
             return empty
         root = Path(top.stdout.strip())
         status = subprocess.run(
             ["git", "status", "--porcelain", "--untracked-files=all", "--", *CODE_PATHS],
-            capture_output=True, text=True, timeout=10, cwd=root,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, cwd=root,
         ).stdout.splitlines()
         patch = subprocess.run(
             ["git", "diff", "HEAD", "--", *CODE_PATHS],
-            capture_output=True, text=True, timeout=60, cwd=root,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, cwd=root,
         ).stdout
     except Exception:  # pragma: no cover - git absent, or not a clone
         return empty

@@ -147,6 +147,16 @@ that dominates the explanation only in the last twenty cycles is describing a
 late-stage failure mode; one that matters throughout is describing gradual
 wear. That distinction is what a maintenance engineer can actually act on.
 
+The playground's Explain tab draws this for a stored run, with the paper's own
+figures as the pattern: every sensor's values as a swarm of dots ranked by size
+and coloured by what the sensor was reading, as its Fig. 9, and the same
+ranking as a row of sensors beside it. Explain one engine at every cycle and it
+adds the prediction along that engine's life with the error shaded, as its
+Fig. 7, and one window on the sensor graph with the four largest values in red.
+Ask for Shapley values rather than occlusion and it adds the fifteen graphs of
+its Fig. 10, redrawn from its Table 12, above the same graphs of the stored
+engine.
+
 ---
 
 ## A finding worth meeting

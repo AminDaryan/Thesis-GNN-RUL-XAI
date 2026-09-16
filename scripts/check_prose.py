@@ -311,7 +311,8 @@ def main(argv: list[str] | None = None) -> int:
             print("Borrowed words used without an explanation beside them:\n")
             for item in sorted(findings, key=lambda f: (f.path, f.line)):
                 print(f"  {item.path}:{item.line}")
-                print(f"      {item.word} — {WORDS[item.word]}")
+                # Plain ASCII: a Windows console shows an em dash here as a black diamond.
+                print(f"      {item.word} - {WORDS[item.word]}")
                 print(f"      {item.text}\n")
             print(
                 "Explain each one where it stands, or add a `prose-ok: <word>` "

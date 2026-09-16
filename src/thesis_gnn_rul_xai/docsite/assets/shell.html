@@ -1,15 +1,33 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="auto" data-nav="open">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Thesis GNN RUL XAI — documentation</title>
 <link rel="stylesheet" href="/assets/app.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='9' cy='9' r='4' fill='%232f7fd1'/%3E%3Ccircle cx='23' cy='13' r='4' fill='%231c7a5e'/%3E%3Ccircle cx='14' cy='24' r='4' fill='%23c2521f'/%3E%3Cpath d='M9 9L23 13L14 24Z' stroke='%238a93a0' stroke-width='1.5' fill='none'/%3E%3C/svg%3E">
+<script>
+  // Applied before the first paint so a reader who closed the navigation, or
+  // chose a theme, does not see the other state flash first. The site's own
+  // script repeats both decisions once it loads; this only removes the flash.
+  (function () {
+    var root = document.documentElement;
+    try {
+      var narrow = window.matchMedia("(max-width: 900px)").matches;
+      root.setAttribute("data-nav", narrow ? "closed" : (localStorage.getItem("docsite-nav") || "open"));
+      var theme = localStorage.getItem("docsite-theme") || "auto";
+      if (theme === "auto") { theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
+      root.setAttribute("data-theme", theme);
+    } catch (e) { /* storage refused: the defaults stand */ }
+  })();
+</script>
 </head>
 <body>
 
 <header class="topbar">
+  <button id="nav-button" class="button icon-button" type="button" aria-controls="sidebar" aria-expanded="true" title="Hide the navigation" aria-label="Show or hide the navigation">
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4v12" stroke="currentColor" stroke-width="1.5"/></svg>
+  </button>
   <a class="brand" href="#/">
     <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
       <path d="M9 9L23 13L14 24Z M9 9L14 24 M23 13L14 24" stroke="currentColor" stroke-width="1.4" fill="none" opacity="0.5"/>
@@ -30,24 +48,28 @@
 
   <div class="topbar-actions">
     <button id="jupyter-button" class="button" type="button" title="Open the notebooks in JupyterLab">
-      <span class="dot" id="jupyter-dot"></span> JupyterLab
+      <span class="dot" id="jupyter-dot"></span> <span class="button-text">JupyterLab</span>
     </button>
     <button id="theme-button" class="button icon-button" type="button" title="Switch between light and dark" aria-label="Switch between light and dark">
       <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.3 0-.6-.05-.9A6.5 6.5 0 0 1 12.9 3.05C12.6 3 12.3 3 12 3Z"/></svg>
     </button>
-    <button id="menu-button" class="button icon-button menu-only" type="button" aria-label="Show or hide the navigation">
-      <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z"/></svg>
-    </button>
   </div>
 </header>
 
+<div id="stale" class="stale" role="alert" hidden>
+  <strong>This server is out of date.</strong> Its Python code was changed after it started, and
+  a server loads that code only once, so pages may not match. Stop it with Ctrl+C in its terminal
+  and run <code>python scripts/docs_ui.py</code> again.
+</div>
+
 <div class="layout">
   <nav id="sidebar" class="sidebar" aria-label="Documentation contents"></nav>
+  <div id="scrim" class="scrim" aria-hidden="true"></div>
   <main id="content" class="content" tabindex="-1"></main>
   <aside id="toc" class="toc" aria-label="On this page"></aside>
 </div>
 
-<div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
 
 <script src="/assets/playground.js"></script>
 <script src="/assets/app.js"></script>

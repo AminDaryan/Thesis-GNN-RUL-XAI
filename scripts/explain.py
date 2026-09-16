@@ -31,6 +31,19 @@ and two things can be explained:
 ``test``
     The last window of every test engine, once each.
 
+What is written
+---------------
+``values.csv`` holds one row per window: the engine, the cycle the window ends
+at, the true and the predicted remaining life, the prediction at the baseline,
+one column per sensor with its value in cycles, and one column
+``reading_<sensor>`` per sensor holding what that sensor was reading at the
+window's last cycle, so that a chart can colour each value by whether the
+sensor read high or low, as the paper's Fig. 9 does. That reading is the one
+the model was given: after the noise filter and the rescaling, not the raw
+number. ``summary.json`` holds the settings, the
+time taken, the largest gap in Equation 14's sum, and every sensor's average
+size.
+
 Examples
 --------
 The paper's dynamic explanation, for the engine with the longest history::
@@ -173,6 +186,12 @@ def main() -> int:
     table.insert(0, "rul", source.targets[order])
     table.insert(0, "end_cycle", source.end_cycles[order])
     table.insert(0, "unit", source.units[order])
+    # What each sensor was reading at the window's last cycle, as the model was
+    # given it: smoothed, then rescaled. The paper's Fig. 9 colours every
+    # Shapley value by whether the sensor read high or low, and a chart cannot
+    # do that from the values alone.
+    for index, symbol in enumerate(symbols):
+        table[f"reading_{symbol}"] = features[:, index, -1]
 
     # Equation 14's promise, checked: the Shapley values of one window add up
     # to its prediction minus the prediction at the baseline. Occlusion makes

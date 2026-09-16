@@ -31,13 +31,13 @@ and `scripts/explain.py`, but what they compute is theirs, stored by them in
 | `server.py` | The web server. Receives a request for an address such as `/api/doc?path=README.md` and sends back the answer. |
 | `catalog.py` | Finds every document in the repository and arranges them into the groups the menu shows. |
 | `markup.py` | Turns one Markdown file into the HTML the browser displays. |
-| `figures.py` | Draws the thirteen diagrams, each from this repository's own data. |
+| `figures.py` | Draws the fifteen diagrams, each from this repository's own data. |
 | `results.py` | Reads the stored runs in `reports/` and the entries in `docs/ASSUMPTIONS.md`. |
 | `notebooks.py` | Turns a notebook into HTML for reading, and starts JupyterLab for running. |
 | `playground.py` | Checks the playground's settings, builds the command that runs them, queues the jobs, and reads stored runs and explanations back. |
 | `assets/playground.js` | The playground page: its form, its job list, its charts. |
 | `assets/shell.html` | The page the browser loads first: a menu, a search box, and an empty middle. |
-| `assets/app.css` | How it looks. |
+| `assets/app.css` | How it looks. The settings at the top decide it; the rules below only apply them. |
 | `assets/app.js` | What happens when you click something. |
 
 ---
@@ -159,10 +159,12 @@ code sample stays plain text.
 
 ---
 
-## The figures, and the two that cannot always be drawn
+## The figures, and the ones that cannot always be drawn
 
-There are thirteen: eight need nothing but the repository, four read the real
-NASA files, and one needs PyTorch.
+There are fifteen: nine need nothing but the repository, five read the real
+NASA files, and one needs PyTorch. All of them are on one page at `#/figures`,
+linked from the foot of the menu with a count taken from the same list the
+server draws from, so the link cannot promise a figure that does not exist.
 
 | Figure | What it shows |
 |---|---|
@@ -175,6 +177,8 @@ NASA files, and one needs PyTorch.
 | `reach` | How far apart every pair of sensors is |
 | `shapley` | Every order three players could join a group in |
 | `architecture` | Every layer of the network, with its real parameter count |
+| `lstm-cell` | The paper's Fig. 2: one memory cell, its three gates and its six equations |
+| `correlation` | The paper's Fig. 5: the correlation between every pair of columns of the FD001 training file |
 | `rul-curve`, `smoothing`, `windowing`, `notebook-map` | The label, the filter, the window, and the whole of notebook 01 |
 
 `notebook-map` is the one that answers "what does the preprocessing notebook
@@ -182,7 +186,8 @@ actually do?" in a single picture. It runs the pipeline while the page loads
 and prints the count the data really has at every step, so it cannot drift away
 from the notebook it describes the way a hand-drawn diagram would.
 
-The last four read the **real NASA files**. If those files are not in
+Five of them read the **real NASA files**: `rul-curve`, `correlation`,
+`smoothing`, `windowing` and `notebook-map`. If those files are not in
 `data/raw/`, the figure is replaced by a note saying so and pointing at the
 download. It does **not** draw an invented signal that happens to have the right
 shape. That is the same rule the rest of the project follows, applied to
@@ -273,17 +278,29 @@ look.
 ## The playground: choose, train, compare, explain
 
 The page at `#/explore/playground` is where the parts of the method can be
-swapped and the effect seen. It has three tabs, in the order the work happens:
+swapped and the effect seen. It has three tabs, in the order the work happens,
+and a fourth for the jobs (see below):
 
 1. **Design a run.** Choose the sub-dataset, the preprocessing, the temporal
    stage, the widths of the graph layers and the training settings. The graph
    layers themselves stay the three of the paper's Table 4; only their sizes
    change.
-2. **Results and comparisons.** Every stored run, its four measures beside the
-   paper's, every seed's curve and predictions, and any two runs paired seed by
-   seed.
-3. **Explanations.** Pick a stored run and a seed, choose the method and what to
+2. **Results.** Every stored run, its four measures beside the paper's, every
+   seed's curve and predictions, and any two runs paired seed by seed.
+3. **Explain.** Pick a stored run and a seed, choose the method and what to
    explain, and read back how much each sensor moved the predictions.
+
+The first tab has twenty-nine settings, and shown all at once they ran to five
+screens. So the form opens with the four variants of Table 11 and the two
+training procedures as cards, and below them the settings in six groups that
+fold. A folded group's heading says what it holds right now — "30-cycle
+windows, stride 1 · ceiling 125 …" — and how many of its settings differ from
+their defaults, so nothing is hidden by folding it; a setting that differs is
+marked and carries a Reset. Which groups are open is remembered in the
+reader's own browser, as the menu's folds are. The column on the right does
+not scroll away: it holds the button that starts the run, the cautions, the
+row of the paper the result may be set beside, and the network the settings
+build.
 
 ### Why the page never computes a result of its own
 
@@ -373,11 +390,28 @@ A `JobManager`, the queue behind the page, runs one command at a time in the
 order they were asked for. Two trainings at once would compete for the same
 processor and both finish later. Each job has a folder in
 `reports/.playground/` holding the settings file it wrote, everything the
-command printed, and a progress file of one JSON line per event — a pass
-finished, a seed finished, a window explained. The page reads that file every
-two seconds to draw the progress bar and the held-back error of the current
-seed. The folder starts with a dot so the run listing never mistakes it for a
-run.
+command printed, a progress file of one JSON line per event — a pass
+finished, a seed finished, a window explained — and, since 2026-09-16, a
+`job.json` with its name, its command and how it ended. The page reads the
+progress file every two seconds to draw the progress bar and the held-back
+error of the current seed. The folder starts with a dot so the run listing
+never mistakes it for a run.
+
+The page shows the job running now in one line above whichever tab is open,
+with what waits behind it and a Stop button, and nothing at all when nothing
+is running, so the tabs never move. Everything else is in the **Jobs** tab:
+every job this server ran and every one an earlier server left on disk, read
+back from its folder and marked so. A job whose server stopped before it
+finished is listed as interrupted, since a run writes nothing until its last
+seed is done. One that **another server is still running** is listed as
+running instead, and refused for removal: every job writes down the number of
+the process running it, and a server that finds that process still alive knows
+the command is writing into that folder at this moment. Without that check the
+job would read as ended, and removing all the ended ones would delete the
+folder from under a running command. The tab filters by kind and by state, and
+a job that has ended can be removed, singly or all at once; removing one
+deletes its folder under `reports/.playground/` and nothing else, so the run or
+explanation it wrote stays where it is.
 
 **Stopping a job writes nothing to `reports/`.** `scripts/train.py` keeps every
 seed's weights, curves and predictions in memory and writes them only when the
@@ -390,8 +424,10 @@ the Results tab can pair them seed by seed.
 
 ### Comparing two runs
 
-Tick two runs and the page lists **every setting that differs** between them,
-then pairs their seeds. For each seed it takes the second run's number minus
+Click a run and it opens on its own, in place of the list, with a button back
+to every run; the list is long, and a run's curves and predictions drawn
+underneath it were a screen's scroll away. Tick two runs and the page lists
+**every setting that differs** between them, then pairs their seeds. For each seed it takes the second run's number minus
 the first's; the paired *t* statistic is the average of those differences
 divided by how much they vary, and *p* is how often a *t* that large would turn
 up if the true average difference were zero.
@@ -424,13 +460,38 @@ Two methods, and the page labels which is the paper's:
   baseline, 15 evaluations per window. `explain/README.md` explains both.
 
 Either can explain **one engine at every cycle** — the dynamic explanation of
-the paper's Section 4.4 — or **the last window of every test engine**. For one
-engine the page draws the prediction along its life, every sensor at every
-window as a grid of colours, and one chosen window on the sensor graph coloured
-the way the paper's Fig. 9 colours it: the four largest in red, the rest in blue
-from deep to light. It also checks Equation 14 on every stored explanation — a
-window's Shapley values must add up to its prediction minus the prediction at
-the baseline — and prints the largest gap.
+the paper's Section 4.4 — or **the last window of every test engine**. What a
+stored explanation holds is one row per window: the true and predicted
+remaining life, one value per sensor in cycles, and, since 2026-09-16, what
+each sensor was reading at the window's last cycle, because the paper's Fig. 9
+colours every value by whether the sensor read high or low and nothing else in
+the file could say which. That last number is the reading **after** the noise
+filter and the rescaling, not the raw one: it is what the model was given, and
+it is the only version of it the stored windows hold.
+
+The page then draws the paper's own figures from it, each captioned with the
+figure it follows:
+
+- **Fig. 7**: the prediction along the engine's life against the true
+  remaining life, with the difference shaded about zero the way the paper
+  shades its "new error area".
+- **Fig. 9, left**: every value of every sensor as one dot, the sensors ranked
+  by the average size of their values, the four largest framed in red and the
+  rest in blue, each dot coloured blue to red by the sensor's reading. An
+  explanation stored before the readings were kept is coloured by the window's
+  place in the sequence instead, and its legend says so.
+- **Fig. 9, middle**: the same ranking as a row of sensors, the four largest
+  red and the rest blue from deep to light, with the averages as bars.
+- **Fig. 9, right**: one chosen window on the sensor graph, coloured the same
+  way.
+- **Fig. 10**: described below.
+
+One chart is not in the paper and is labelled so: every sensor at every window
+as a grid of colours. The page also checks Equation 14 on every stored
+explanation — a window's Shapley values must add up to its prediction minus the
+prediction at the baseline — and prints the largest gap. A run's own page
+draws its Fig. 8 too: every test engine's true and predicted remaining life,
+by unit number as the paper has it, or ordered by true remaining life.
 
 **Beside the paper's Fig. 10.** For an engine explained with Shapley values, the
 page also draws thirty small graphs in three stages. In each stage the top row
@@ -474,7 +535,7 @@ Four rules keep it that way:
   the project is far below that; the raw NASA files are far above it, and a
   3.5 MB table of numbers is not something to read in a browser.
 - **Only the addresses that start work accept a POST**: the one that starts
-  JupyterLab, and the playground's four (below). Everything else is read-only.
+  JupyterLab, and the playground's five (below). Everything else is read-only.
 - **A request that starts work must come from this site's own page and from
   this computer.** A browser attaches the address of the page that sent a POST
   in a header called `Origin`, so any other web page open in the same browser
@@ -507,6 +568,51 @@ reader folds is remembered in their own browser, so the menu opens the way they
 left it — except that navigating to a page inside a folded section always
 unfolds it, since a menu that hides the page you are reading is worse than one
 that ignores your preference.
+
+**The server loads its Python once, and says so when that is out of date.**
+Documents and the page's own scripts are read from disk on every request, so
+an edit to them shows on the next reload. The Python behind the addresses is
+loaded when the server starts and never again. Edit `playground.py` and a
+running server keeps answering with the old code while serving the new script,
+which then asks for things the old code does not send. That happened here on
+2026-09-16: a server started two days earlier served a page that expected the
+paper's Table 12 and did not get it. The server now compares the modification
+time of every Python file in the package with the moment it started, reports
+the answer as `stale` in `/api/state`, and the page shows a banner under the
+top bar telling the reader to restart it. A server too old to report the
+answer at all is treated as out of date, since the page asking is newer than
+it — that is the case the banner was first needed for. Every reply has always
+carried `Cache-Control: no-store`, which covers the other half of the same
+promise: the browser must ask again each time rather than keep its own copy of
+a script or a figure, or the page would be stale on the reader's side instead
+of the server's.
+
+**Two servers could hold one port, and Windows would not complain.** This is
+what made the trap above hard to see, and it was found on 2026-09-16 with
+three documentation servers listening on the same port at once, the oldest
+started two days earlier. Python's own web server turns on a network setting
+called SO_REUSEADDR so that a server stopped and started again can reclaim its
+port immediately instead of waiting for the operating system to let go of it.
+On Windows that setting means something else: take the port **even if another
+program is listening on it**. So starting a second server printed the usual
+address and looked fine, while each request went to whichever server Windows
+picked — sometimes the one started days ago, answering with the code it loaded
+then. `DocsServer` now leaves that setting off on Windows and turns on its
+exclusive counterpart, so a second server fails to start and `docs_ui.py`
+says to stop the first rather than to pick another port, which is what its
+advice used to say. `tests/test_docsite.py` holds a server on a port and
+requires a second one to be refused.
+
+**The menu can be closed, and the two screen sizes close it differently.** The
+button at the left of the top bar hides or shows it. On a wide screen the page
+takes the width the menu gave up, and the choice is remembered in the browser,
+so a reader who works in the playground with the menu shut finds it shut next
+time. On a narrow screen the menu is a drawer over the page: it starts closed,
+opens over a dimmed page, and closes when the dimmed page is tapped, when
+Escape is pressed, or when a page is chosen from it. The state is one
+attribute on the document, `data-nav`, and a few lines in `shell.html` set it
+before the first paint so a closed menu does not flash open while the page
+loads.
 
 **"About n minutes" is a word count, not a promise.** It divides the prose word
 count by 220 words a minute. It is there to warn you that the assumptions log
@@ -650,8 +756,10 @@ together with the reason there is none.
 
 The queue of the playground's commands for one project directory. Its
 `submit_training` and `submit_explanation` add a job and return it, `cancel`
-removes a queued job or ends a running one, and `snapshot` returns every job
-with its progress, for the page to draw.
+removes a queued job or ends a running one, `forget` removes ended jobs and
+deletes their folders, and `snapshot` returns every job with its progress —
+this server's and those read back from earlier servers' folders by
+`job_history` — for the page to draw.
 
 ### `list_runs(root)`, `run_detail(root, name)` and `compare_runs(root, first, second)`
 

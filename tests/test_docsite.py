@@ -317,6 +317,26 @@ def test_a_figure_needing_the_nasa_files_says_so_when_they_are_absent(
     assert "<svg" not in drawn
 
 
+def test_the_correlation_figure_is_the_papers_eighteen_by_eighteen_table(raw_dir: Path):
+    """The paper's Fig. 5 has eighteen rows: engine, cycle, two settings, fourteen sensors."""
+    import numpy as np
+
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS
+
+    labels, matrix = figures.correlation_table()
+    assert len(labels) == 18
+    assert matrix.shape == (18, 18)
+    assert labels[:2] == ["unit", "cycle"]
+    assert labels[-14:] == list(PAPER_SENSOR_SYMBOLS)
+    assert np.allclose(np.diag(matrix), 1.0)
+    assert np.allclose(matrix, matrix.T)
+    drawn = figures.render_figure("correlation")
+    assert drawn.startswith("<svg")
+    assert "figure-notice" not in drawn
+    for label in labels:
+        assert label in drawn
+
+
 def test_the_sensor_graph_figure_reports_what_the_code_measures():
     from thesis_gnn_rul_xai.graph.adjacency import (
         adjacency_report,
@@ -446,6 +466,31 @@ def test_the_site_reports_what_this_machine_can_do(root: Path):
     from thesis_gnn_rul_xai.docsite.server import site_state
 
     state = site_state(root)
-    assert set(state) >= {"commit", "torch", "jupyter", "hasFD001", "figures"}
+    assert set(state) >= {"commit", "torch", "jupyter", "hasFD001", "figures", "stale"}
     assert isinstance(state["hasFD001"], bool)
+    assert isinstance(state["stale"], bool)
     assert json.dumps(state)  # the browser has to be able to read it
+
+
+def test_a_second_server_cannot_take_a_port_another_server_already_holds():
+    """Windows would otherwise let both listen, and the older one can answer with older code."""
+    from thesis_gnn_rul_xai.docsite.server import DocsHandler, DocsServer
+
+    first = DocsServer(("127.0.0.1", 0), DocsHandler)
+    try:
+        with pytest.raises(OSError):
+            # If this ever succeeds the port is shared, which is the bug; close
+            # it so the test fails on the assertion rather than on a leak.
+            DocsServer(("127.0.0.1", first.server_address[1]), DocsHandler).server_close()
+    finally:
+        first.server_close()
+
+
+def test_the_site_notices_when_its_own_code_changed_after_it_started():
+    """A server loads its Python once; a file edited after that is a change it is not serving."""
+    import time
+
+    from thesis_gnn_rul_xai.docsite.server import code_changed_since
+
+    assert code_changed_since(0.0) is True
+    assert code_changed_since(time.time() + 3600) is False

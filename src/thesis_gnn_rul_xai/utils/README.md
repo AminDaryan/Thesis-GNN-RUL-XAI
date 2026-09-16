@@ -257,6 +257,16 @@ of changed files; `uncommitted.patch`; and `untracked/` for new files — and
 returns the list, which also goes into `summary.json` as `uncommitted_code`.
 When nothing under those paths differs, it writes nothing.
 
+**A trap that hid until 2026-09-16.** Git prints the patch as the bytes of the
+files themselves, which in this repository are UTF-8. The call that reads it
+used to let Python pick the decoding, and on Windows that is the old
+single-byte code page, which has no character for a handful of byte values.
+Every earlier patch happened to avoid them; the first "←" in a source file did
+not, the read failed inside Python's own reader thread, and the run recorded
+the word `None` as its patch. Every git call here now decodes as UTF-8, and a
+byte that still cannot be decoded becomes a replacement character rather than
+a failure, since a patch with one odd character beats no patch at all.
+
 To rebuild the code of such a run: check out its commit, then
 `git apply code_state/uncommitted.patch`, then copy anything in `untracked/`
 back into place.

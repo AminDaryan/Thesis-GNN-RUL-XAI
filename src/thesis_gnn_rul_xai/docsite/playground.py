@@ -6,9 +6,13 @@ through scripts/train.py and lands in reports/, and what the page shows.
 
 from __future__ import annotations
 
+import calendar
+import contextlib
 import json
 import math
+import os
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -649,9 +653,12 @@ def _clean(value: Any) -> Any:
 
 def _run_directory(root: Path, name: str) -> Path:
     """A run folder in reports/, refusing any name that is not one."""
-    if not name or "/" in name or "\\" in name or name.startswith("."):
+    reports = (root / "reports").resolve()
+    path = (root / "reports" / name).resolve()
+    # Looking for separators is not enough on Windows: a name carrying a
+    # drive, "C:x", holds none of them, and joining it throws the base away.
+    if not name or name.startswith(".") or path.parent != reports:
         raise SettingsError(f"{name!r} is not the name of a run.")
-    path = root / "reports" / name
     if not (path / "summary.json").is_file():
         raise SettingsError(f"There is no finished run called {name!r} in reports/.")
     return path
@@ -784,10 +791,11 @@ def run_detail(root: Path, name: str) -> dict[str, Any]:
 
 def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
     """One stored explanation: its summary and every value it computed."""
-    path = _run_directory(root, run) / "explanations"
-    if not name or "/" in name or "\\" in name or name.startswith("."):
+    path = (_run_directory(root, run) / "explanations").resolve()
+    folder = (path / name).resolve()
+    # The same hazard as a run name: a drive carried in the name escapes.
+    if not name or name.startswith(".") or folder.parent != path:
         raise SettingsError(f"{name!r} is not the name of an explanation.")
-    folder = path / name
     if not (folder / "summary.json").is_file():
         raise SettingsError(f"Run {run!r} has no explanation called {name!r}.")
     return _clean({
@@ -859,6 +867,102 @@ def compare_runs(root: Path, first: str, second: str) -> dict[str, Any]:
 # -- jobs -------------------------------------------------------------------
 
 
+# The states a job can no longer leave.
+_ENDED = ("done", "failed", "cancelled", "interrupted")
+
+_STAGE_NAMES = {"lstm": "LSTM", "gru": "GRU", "last_cycle": "w/o LSTM", "mean_window": "window mean",
+                "window_summary": "window summary", "raw_window": "raw window"}
+
+
+def job_label(settings: Mapping[str, Any]) -> str:
+    """The short name a training job is listed under: what it trains, on what, how many times."""
+    temporal = settings.get("temporal")
+    stage = _STAGE_NAMES.get(str(temporal), str(temporal))
+    if temporal in ("lstm", "gru"):
+        stage += f" {settings.get('temporal_hidden')}"
+    seeds = int(settings.get("seeds") or 0)
+    kept = "best pass" if float(settings.get("validation_fraction") or 0.0) > 0 else "final pass"
+    return (f"{settings.get('subset')} · {stage} · {settings.get('graph') or 'physics'} graph · "
+            f"{kept} · {seeds} seed{'' if seeds == 1 else 's'}")
+
+
+def read_progress(folder: Path) -> dict[str, Any]:
+    """What a job's progress file says so far, summarised for the page."""
+    path = folder / "progress.jsonl"
+    if not path.is_file():
+        return {}
+    events = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue  # the last line may be half-written
+    summary: dict[str, Any] = {"seeds_done": [], "curve": []}
+    for event in events:
+        kind = event.get("event")
+        if kind == "start":
+            summary.update({k: v for k, v in event.items() if k != "event"})
+        elif kind == "seed":
+            summary["seed"], summary["seed_index"], summary["curve"] = (
+                event.get("seed"), event.get("index"), [])
+        elif kind == "epoch":
+            summary["epoch"] = event.get("epoch")
+            summary["curve"].append({
+                "epoch": event.get("epoch"),
+                "train_loss": event.get("train_loss"),
+                "validation_rmse": event.get("validation_rmse_cycles"),
+            })
+        elif kind == "seed_done":
+            summary["seeds_done"].append({k: v for k, v in event.items() if k != "event"})
+        elif kind == "window":
+            summary.update(done=event.get("done"), total=event.get("total"),
+                           seconds=event.get("seconds"))
+        elif kind == "done":
+            summary["result"] = {k: v for k, v in event.items() if k != "event"}
+    return summary
+
+
+def _process_alive(pid: Any) -> bool:
+    """Whether a process with this number is still running on this machine."""
+    # The number is read back from a file, so it may be anything at all. A
+    # damaged one means "nothing is running", never an error raised out of
+    # the listing that every job on the page is drawn from.
+    try:
+        number = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if number <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+
+        # 0x1000 asks only "does this exist and how did it end", which needs no
+        # right over the process; 259 is what Windows reports while it runs.
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, number)
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            asked = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return bool(asked) and code.value == 259
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(number, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _log_tail(folder: Path, lines: int = 25) -> str:
+    """The last lines a command printed, which is where a failure explains itself."""
+    path = folder / "output.txt"
+    if not path.is_file():
+        return ""
+    return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:])
+
+
 @dataclass
 class Job:
     """One command the playground started, or will start when the one before it ends."""
@@ -878,45 +982,25 @@ class Job:
 
     def progress(self) -> dict[str, Any]:
         """What the job's progress file says so far, summarised for the page."""
-        path = self.folder / "progress.jsonl"
-        if not path.is_file():
-            return {}
-        events = []
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue  # the last line may be half-written
-        summary: dict[str, Any] = {"seeds_done": [], "curve": []}
-        for event in events:
-            kind = event.get("event")
-            if kind == "start":
-                summary.update({k: v for k, v in event.items() if k != "event"})
-            elif kind == "seed":
-                summary["seed"], summary["seed_index"], summary["curve"] = (
-                    event.get("seed"), event.get("index"), [])
-            elif kind == "epoch":
-                summary["epoch"] = event.get("epoch")
-                summary["curve"].append({
-                    "epoch": event.get("epoch"),
-                    "train_loss": event.get("train_loss"),
-                    "validation_rmse": event.get("validation_rmse_cycles"),
-                })
-            elif kind == "seed_done":
-                summary["seeds_done"].append({k: v for k, v in event.items() if k != "event"})
-            elif kind == "window":
-                summary.update(done=event.get("done"), total=event.get("total"),
-                               seconds=event.get("seconds"))
-            elif kind == "done":
-                summary["result"] = {k: v for k, v in event.items() if k != "event"}
-        return summary
+        return read_progress(self.folder)
 
     def log_tail(self, lines: int = 25) -> str:
         """The last lines the command printed, which is where a failure explains itself."""
-        path = self.folder / "output.txt"
-        if not path.is_file():
-            return ""
-        return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:])
+        return _log_tail(self.folder, lines)
+
+    def record(self) -> None:
+        """Write what the page shows about this job beside its files, so a later server can list it."""
+        summary = {
+            "id": self.id, "kind": self.kind, "label": self.label, "command": self.display,
+            "created": self.created, "status": self.status, "started": self.started,
+            "finished": self.finished, "returncode": self.returncode,
+            # So that a later server can tell a job still running under the
+            # server that started it from one whose server died with it.
+            "pid": self.process.pid if self.process is not None else None,
+        }
+        # If the folder was removed meanwhile, the listing is the loss, not the run.
+        with contextlib.suppress(OSError):
+            (self.folder / "job.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     def to_dict(self) -> dict[str, Any]:
         """The job as the page shows it."""
@@ -928,7 +1012,85 @@ class Job:
             "elapsed": (self.finished or now) - self.started if self.started else None,
             "progress": self.progress(),
             "log": self.log_tail() if self.status in ("failed", "cancelled") else "",
+            "from_disk": False,
         })
+
+
+def _stamp_to_time(stamp: str) -> float | None:
+    """The moment a job folder's name records, as seconds since the epoch."""
+    try:
+        return float(calendar.timegm(time.strptime(stamp, "%Y%m%dT%H%M%S")))
+    except ValueError:
+        return None
+
+
+def _label_from_folder(path: Path, kind: str, progress: Mapping[str, Any]) -> str:
+    """A name for a job whose server never wrote one, from what its folder holds."""
+    if kind == "train" and (path / "settings.json").is_file():
+        try:
+            settings = json.loads((path / "settings.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            settings = {}
+        if settings:
+            return job_label(settings)
+    if kind == "explain":
+        result = progress.get("result") or {}
+        bits = [str(progress[key]) for key in ("method", "scope") if progress.get(key)]
+        if result.get("directory"):
+            bits.append(str(result["directory"]))
+        return " · ".join(bits) or "Explanation"
+    return f"{kind} job"
+
+
+def _describe_job_folder(path: Path) -> dict[str, Any] | None:
+    """One job an earlier server left behind, read from its folder."""
+    parts = path.name.split("_")
+    if len(parts) < 3:
+        return None
+    recorded: dict[str, Any] = {}
+    if (path / "job.json").is_file():
+        try:
+            recorded = json.loads((path / "job.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            recorded = {}
+    progress = read_progress(path)
+    kind = str(recorded.get("kind") or parts[1])
+    status = str(recorded.get("status") or "")
+    if status not in _ENDED:
+        if "result" in progress:
+            status = "done"
+        elif _process_alive(recorded.get("pid")):
+            # The server that started it is still running it. Calling this
+            # ended would offer it to "remove all ended", which would delete
+            # the folder the command is at that moment writing into.
+            status = "running"
+        else:
+            # A job still running when its server stopped never wrote its end.
+            status = "interrupted"
+    started, finished = recorded.get("started"), recorded.get("finished")
+    return _clean({
+        "id": path.name,
+        "kind": kind,
+        "label": str(recorded.get("label") or _label_from_folder(path, kind, progress)),
+        "status": status,
+        "command": str(recorded.get("command") or ""),
+        "created": recorded.get("created") or _stamp_to_time(parts[0]) or path.stat().st_mtime,
+        "started": started,
+        "finished": finished,
+        "elapsed": (finished - started) if started and finished else None,
+        "progress": progress,
+        "log": _log_tail(path) if status == "failed" else "",
+        "from_disk": True,
+    })
+
+
+def job_history(root: Path) -> list[dict[str, Any]]:
+    """Every job any server left in reports/.playground/, read from the folders."""
+    folder = root / JOBS_FOLDER
+    if not folder.is_dir():
+        return []
+    return [described for path in sorted(folder.iterdir())
+            if path.is_dir() and (described := _describe_job_folder(path)) is not None]
 
 
 class JobManager:
@@ -992,6 +1154,9 @@ class JobManager:
         with self.lock:
             self.jobs[job.id] = job
             self.queue.append(job.id)
+            # Written under the lock: the worker can take this job the moment
+            # the lock is released, and its own record must land after this one.
+            job.record()
         self._ensure_worker()
         self.wake.set()
         return job
@@ -1005,6 +1170,7 @@ class JobManager:
             if job.status == "queued":
                 self.queue.remove(identifier)
                 job.status, job.finished = "cancelled", time.time()
+                job.record()
             elif job.status == "running":
                 job.status = "cancelling"
                 # A job is marked running a moment before its process exists.
@@ -1014,11 +1180,54 @@ class JobManager:
                     job.process.terminate()
         return job
 
+    def forget(self, identifier: str = "", *, all_finished: bool = False) -> list[str]:
+        """Drop finished jobs from the list and delete their folders. A running or queued job stays."""
+        if all_finished:
+            targets = [item["id"] for item in self.snapshot() if item["status"] in _ENDED]
+        else:
+            targets = [identifier]
+        forgotten = []
+        jobs_folder = (self.root / JOBS_FOLDER).resolve()
+        for target in targets:
+            # The name has to be one plain folder name inside the jobs folder.
+            # Looking for separators is not enough: a Windows name carrying a
+            # drive, "C:x", has none, and joining it throws the base away.
+            folder = (self.root / JOBS_FOLDER / target).resolve()
+            if not target or target.startswith(".") or folder.parent != jobs_folder:
+                raise SettingsError(f"{target!r} is not the name of a job.")
+            with self.lock:
+                job = self.jobs.get(target)
+                if job is not None:
+                    if job.status not in _ENDED:
+                        raise SettingsError(
+                            f"Job {target!r} is {job.status}; stop it before removing it."
+                        )
+                    del self.jobs[target]
+            if job is None:
+                # Not this server's job. It may still belong to a running one.
+                described = _describe_job_folder(folder)
+                if described is not None and described["status"] not in _ENDED:
+                    raise SettingsError(
+                        f"Job {target!r} is {described['status']}; stop it before removing it."
+                    )
+            if folder.is_dir():
+                # The job's own folder only: what it printed and its progress.
+                # The run it produced lives elsewhere in reports/ and stays.
+                shutil.rmtree(folder, ignore_errors=True)
+            elif job is None:
+                raise SettingsError(f"There is no job called {target!r}.")
+            forgotten.append(target)
+        return forgotten
+
     def snapshot(self) -> list[dict[str, Any]]:
-        """Every job this server has been asked for, newest first."""
+        """Every job this server was asked for, then those earlier servers left on disk, newest first."""
         with self.lock:
-            jobs = sorted(self.jobs.values(), key=lambda job: job.created, reverse=True)
-        return [job.to_dict() for job in jobs]
+            jobs = list(self.jobs.values())
+        listed = [job.to_dict() for job in jobs]
+        known = {job.id for job in jobs}
+        listed += [item for item in job_history(self.root) if item["id"] not in known]
+        listed.sort(key=lambda item: item["created"], reverse=True)
+        return listed
 
     def get(self, identifier: str) -> Job | None:
         with self.lock:
@@ -1065,6 +1274,9 @@ class JobManager:
                             env={**_environment(), "PYTHONIOENCODING": "utf-8"},
                         )
                 if job.process is not None:
+                    # Recorded now the process exists, so its number reaches
+                    # the file while the command is still running.
+                    job.record()
                     job.returncode = job.process.wait()
             except OSError as failure:
                 output.write(f"Could not start the command: {failure}\n".encode())
@@ -1076,6 +1288,7 @@ class JobManager:
             else:
                 job.status = "done" if job.returncode == 0 else "failed"
             job.process = None
+        job.record()
 
 
 def _environment() -> dict[str, str]:

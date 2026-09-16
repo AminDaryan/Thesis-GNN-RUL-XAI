@@ -237,6 +237,121 @@ def test_a_running_job_can_be_stopped(tmp_path: Path):
     manager.stop()
 
 
+def test_a_finished_job_can_be_removed_and_a_running_one_cannot(tmp_path: Path):
+    manager = playground.JobManager(tmp_path)
+    done = manager.submit_command("check", "print", [sys.executable, "-c", "print('ran')"])
+    _wait(manager, done.id)
+    assert json.loads((done.folder / "job.json").read_text(encoding="utf-8"))["status"] == "done"
+    running = manager.submit_command("check", "sleep", [sys.executable, "-c", "import time; time.sleep(60)"])
+    deadline = time.time() + 20
+    while manager.get(running.id).status != "running" and time.time() < deadline:
+        time.sleep(0.1)
+    with pytest.raises(playground.SettingsError):
+        manager.forget(running.id)
+    assert manager.forget(done.id) == [done.id]
+    assert not done.folder.exists()
+    assert manager.get(done.id) is None
+    manager.cancel(running.id)
+    _wait(manager, running.id, 20)
+    manager.stop()
+
+
+def test_a_job_another_server_is_still_running_is_not_reported_as_ended(tmp_path: Path):
+    """Reported ended, its folder would be offered to "remove all ended" and deleted under it."""
+    import os
+
+    folder = tmp_path / "reports" / ".playground" / "20260916T120000_train_abcdef"
+    folder.mkdir(parents=True)
+    (folder / "progress.jsonl").write_text('{"event": "start", "seeds": 1}\n', encoding="utf-8")
+    (folder / "job.json").write_text(json.dumps({
+        "id": folder.name, "kind": "train", "label": "still going", "command": "x",
+        "created": 1.0, "status": "running", "started": 1.0, "finished": None,
+        "returncode": None, "pid": os.getpid(),
+    }), encoding="utf-8")
+
+    manager = playground.JobManager(tmp_path)
+    assert {item["id"]: item["status"] for item in manager.snapshot()}[folder.name] == "running"
+    with pytest.raises(playground.SettingsError):
+        manager.forget(folder.name)
+    assert manager.forget(all_finished=True) == []
+    assert folder.is_dir()
+
+    # The same folder, once nothing is running it, is an interrupted job again.
+    (folder / "job.json").write_text(json.dumps({
+        "id": folder.name, "kind": "train", "label": "stopped with its server",
+        "command": "x", "created": 1.0, "status": "running", "pid": 0,
+    }), encoding="utf-8")
+    assert {item["id"]: item["status"] for item in manager.snapshot()}[folder.name] == "interrupted"
+    assert manager.forget(all_finished=True) == [folder.name]
+    assert not folder.exists()
+
+
+@pytest.mark.parametrize(
+    "name", ["C:", "C:x", "C:Windows", "../secret", "..", "", ".hidden", "sub/dir"]
+)
+def test_a_job_name_that_points_outside_the_jobs_folder_is_refused(tmp_path: Path, name: str):
+    """Joining the name onto the jobs folder must stay inside it: "C:x" carries a drive and does not."""
+    manager = playground.JobManager(tmp_path)
+    with pytest.raises(playground.SettingsError):
+        manager.forget(name)
+
+
+def test_a_job_record_with_a_damaged_process_number_does_not_break_the_listing(tmp_path: Path):
+    """Every job on the page comes from this listing, so one bad field must not raise."""
+    folder = tmp_path / "reports" / ".playground" / "20260916T130000_train_badpid"
+    folder.mkdir(parents=True)
+    (folder / "progress.jsonl").write_text('{"event": "start", "seeds": 1}\n', encoding="utf-8")
+    (folder / "job.json").write_text(json.dumps({
+        "id": folder.name, "kind": "train", "label": "damaged", "status": "running",
+        "created": 1.0, "pid": "not a number",
+    }), encoding="utf-8")
+
+    listed = {item["id"]: item for item in playground.JobManager(tmp_path).snapshot()}
+    assert listed[folder.name]["status"] == "interrupted"
+
+
+@pytest.mark.parametrize("name", ["C:", "C:Windows", "../secret", "..", "", ".hidden", "sub/dir"])
+def test_a_run_name_that_points_outside_reports_is_refused(tmp_path: Path, name: str):
+    """The same hazard as a job name: a name carrying a drive throws the base away."""
+    with pytest.raises(playground.SettingsError):
+        playground.run_detail(tmp_path, name)
+
+
+def test_an_explanation_name_that_points_outside_its_run_is_refused(tmp_path: Path):
+    """An explanation is read from inside its run's folder and nowhere else."""
+    run = tmp_path / "reports" / "somerun"
+    run.mkdir(parents=True)
+    (run / "summary.json").write_text("{}", encoding="utf-8")
+    for bad in ("C:", "C:Windows", "..", "sub/dir", "", ".hidden"):
+        with pytest.raises(playground.SettingsError):
+            playground.explanation_detail(tmp_path, "somerun", bad)
+
+
+def test_jobs_an_earlier_server_left_on_disk_are_listed_from_their_folders(tmp_path: Path):
+    import calendar
+
+    folder = tmp_path / "reports" / ".playground" / "20260914T125018_train_046c54"
+    folder.mkdir(parents=True)
+    (folder / "settings.json").write_text(json.dumps(
+        {"subset": "FD001", "temporal": "last_cycle", "graph": "physics",
+         "validation_fraction": 0.2, "seeds": 2}), encoding="utf-8")
+    (folder / "progress.jsonl").write_text(
+        '{"event": "start", "seeds": 2}\n{"event": "done", "directory": "some_run"}\n', encoding="utf-8")
+    # One that never wrote its end is reported as interrupted, not as done.
+    other = tmp_path / "reports" / ".playground" / "20260914T132855_train_15d73a"
+    other.mkdir()
+    (other / "progress.jsonl").write_text('{"event": "start", "seeds": 5}\n', encoding="utf-8")
+
+    listed = {item["id"]: item for item in playground.JobManager(tmp_path).snapshot()}
+    finished = listed["20260914T125018_train_046c54"]
+    assert finished["status"] == "done"
+    assert finished["from_disk"] is True
+    assert finished["label"] == "FD001 · w/o LSTM · physics graph · best pass · 2 seeds"
+    assert finished["progress"]["result"] == {"directory": "some_run"}
+    assert finished["created"] == calendar.timegm((2026, 9, 14, 12, 50, 18, 0, 0, 0))
+    assert listed["20260914T132855_train_15d73a"]["status"] == "interrupted"
+
+
 # -- end to end, on the real data ----------------------------------------------------
 
 
@@ -291,3 +406,6 @@ def test_a_playground_run_stores_everything_the_page_reads_back(raw_dir, tmp_pat
     # Equation 14: a window's Shapley values add up to its distance from the baseline.
     assert values["summary"]["sum_gap_max"] < 1e-3
     assert len(values["values"]) == values["summary"]["windows"]
+    # The paper's Fig. 9 colours each value by the sensor's own reading, so
+    # every window stores the reading beside the value.
+    assert all(f"reading_{symbol}" in values["values"][0] for symbol in values["summary"]["mean_abs"])

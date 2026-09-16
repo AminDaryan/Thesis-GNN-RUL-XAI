@@ -10,8 +10,10 @@ from __future__ import annotations
 import contextlib
 import ipaddress
 import json
+import socket
 import subprocess
 import threading
+import time
 import webbrowser
 from dataclasses import asdict
 from http import HTTPStatus
@@ -35,12 +37,29 @@ from .notebooks import (
 from .notebooks import render_notebook as convert_notebook
 from .results import latest_verification, load_entries, load_runs
 
-__all__ = ["DEFAULT_PORT", "DocsHandler", "serve", "site_state"]
+__all__ = ["DEFAULT_PORT", "DocsHandler", "DocsServer", "serve", "site_state"]
 
 logger = get_logger(__name__)
 
 # The port the site listens on. Chosen well away from Jupyter's 8888.
 DEFAULT_PORT = 8010
+
+# When this server's Python was loaded. Its documents and page scripts are
+# read from disk on every request, but its Python only once, so a source
+# file edited after this moment is a change the server is not serving.
+_STARTED = time.time()
+
+
+def code_changed_since(started: float) -> bool:
+    """Whether any of this package's Python files was modified after the given moment."""
+    package = Path(__file__).resolve().parents[1]
+    for path in package.rglob("*.py"):
+        # A file that goes away between the listing and the question is not a
+        # reason to fail the request this answers.
+        with contextlib.suppress(OSError):
+            if path.stat().st_mtime > started:
+                return True
+    return False
 
 # The port JupyterLab is started on when the site is asked to launch it.
 JUPYTER_PORT = 8899
@@ -150,6 +169,8 @@ def site_state(root: Path | None = None) -> dict[str, object]:
             for part in ("train", "test", "RUL")
         ),
         "figures": list(figure_names()),
+        "started": _STARTED,
+        "stale": code_changed_since(_STARTED),
     }
 
 
@@ -211,6 +232,8 @@ class DocsHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        # Everything here is read from disk as it is asked for, so a copy kept
+        # by the browser would be the stale copy this site exists to avoid.
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         with contextlib.suppress(BrokenPipeError, ConnectionResetError):
@@ -371,6 +394,11 @@ class DocsHandler(BaseHTTPRequestHandler):
                 )
             elif route == "/api/playground/cancel":
                 self._json(job_manager(self.root).cancel(str(body.get("id", ""))).to_dict())
+            elif route == "/api/playground/forget":
+                forgotten = job_manager(self.root).forget(
+                    str(body.get("id", "")), all_finished=bool(body.get("all_finished"))
+                )
+                self._json({"forgotten": forgotten})
             else:
                 self._error(f"No route at {route!r}.", HTTPStatus.NOT_FOUND)
         except playground.SettingsError as refused:
@@ -490,6 +518,29 @@ class DocsHandler(BaseHTTPRequestHandler):
             return {"installed": True, "running": True, "url": started.url}
 
 
+class DocsServer(ThreadingHTTPServer):
+    """The web server, refusing to start on a port another server already holds."""
+
+    # Python's own web server turns on the network setting called SO_REUSEADDR,
+    # and on Windows that setting means "take this port even if another program
+    # is already listening on it". Two documentation servers then hold one port,
+    # each request reaches whichever of them Windows picks, and a server started
+    # days ago can answer with the code it loaded then. That happened here on
+    # 2026-09-16, and nothing anywhere said so. On Windows the setting is left
+    # off and its exclusive counterpart turned on instead, so a second server
+    # fails to start and says so; everywhere else it is kept, because there it
+    # only ever reuses an address that is still closing down, never one that
+    # another server is listening on.
+    _WINDOWS = hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+    allow_reuse_address = not _WINDOWS
+
+    def server_bind(self) -> None:
+        """Claim the port, on Windows exclusively."""
+        if self._WINDOWS:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def serve(
     port: int = DEFAULT_PORT,
     *,
@@ -501,7 +552,7 @@ def serve(
     root = (root or project_root()).resolve()
 
     handler = type("BoundDocsHandler", (DocsHandler,), {"root": root})
-    server = ThreadingHTTPServer((host, port), handler)
+    server = DocsServer((host, port), handler)
     address = f"http://{host}:{server.server_address[1]}/"
 
     state = site_state(root)

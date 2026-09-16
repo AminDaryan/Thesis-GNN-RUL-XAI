@@ -1354,6 +1354,195 @@ def draw_notebook_map() -> str:
     )
 
 
+def correlation_table() -> tuple[list[str], np.ndarray]:
+    """The correlation between every pair of columns of FD001's training file, laid out as the paper's Fig. 5."""
+    from ..data.loading import load_subset
+    from ..data.sensors import CYCLE_COL, OP_SETTING_COLS, UNIT_COL
+
+    _require_data()
+    frame = load_subset("FD001", data_dir=raw_data_dir()).train
+    # The paper's figure keeps the two operating settings that vary in FD001
+    # and drops the third with the sensors that never change.
+    settings = [column for column in OP_SETTING_COLS if frame[column].nunique() > 1][:2]
+    kept = [UNIT_COL, CYCLE_COL, *settings]
+    labels = [*kept, *PAPER_SENSOR_SYMBOLS]
+    columns = [*kept, *(symbol_to_column(symbol) for symbol in PAPER_SENSOR_SYMBOLS)]
+    matrix = frame[columns].corr(method="pearson").to_numpy(dtype=float)
+    return labels, matrix
+
+
+def _diverging(value: float) -> str:
+    """White at zero, deepening to red above and blue below, like the paper's Fig. 5."""
+    strength = min(1.0, abs(float(value)))
+    target = (178, 24, 43) if value >= 0 else (33, 102, 172)
+    red, green, blue = (round(255 - (255 - channel) * strength) for channel in target)
+    return f"rgb({red},{green},{blue})"
+
+
+def draw_correlation() -> str:
+    """The paper's Fig. 5, recomputed: eighteen columns of FD001 against each other."""
+    labels, matrix = correlation_table()
+    count = len(labels)
+    cell, left, top = 34.0, 112.0, 24.0
+    size = cell * count
+    bar_x = left + size + 26
+    total_height = top + size + 100
+
+    out = _open(_WIDTH, total_height) + (
+        '<defs><linearGradient id="corr-scale" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="rgb(178,24,43)"/>'
+        '<stop offset="0.5" stop-color="rgb(255,255,255)"/>'
+        '<stop offset="1" stop-color="rgb(33,102,172)"/></linearGradient></defs>'
+    )
+    for row, row_label in enumerate(labels):
+        y = top + row * cell
+        out += _text(left - 8, y + cell / 2 + 3.5, row_label, size=10, anchor="end")
+        for column in range(count):
+            value = float(matrix[row, column])
+            x = left + column * cell
+            out += (
+                f'<rect x="{x:.1f}" y="{y:.1f}" width="{cell}" height="{cell}" '
+                f'fill="{_diverging(value)}" stroke="var(--fig-bg, #ffffff)" stroke-width="1">'
+                f"<title>{html.escape(row_label)} against {html.escape(labels[column])}: "
+                f"{value:.3f}</title></rect>"
+                + _mono(x + cell / 2, y + cell / 2 + 3, f"{value:.2f}", size=7.5,
+                        fill="#ffffff" if abs(value) > 0.55 else "#16191d")
+            )
+    for column, column_label in enumerate(labels):
+        x = left + column * cell + cell / 2
+        out += (
+            f'<g transform="translate({x:.1f},{top + size + 10:.1f}) rotate(-50)">'
+            + _text(0, 0, column_label, size=10, anchor="end")
+            + "</g>"
+        )
+    out += (
+        f'<rect x="{bar_x}" y="{top}" width="16" height="{size}" fill="url(#corr-scale)" '
+        f'stroke="var(--fig-edge, #c3cad4)" stroke-width="1"/>'
+    )
+    for tick in (1.0, 0.5, 0.0, -0.5, -1.0):
+        y = top + size * (1 - tick) / 2
+        out += _mono(bar_x + 22, y + 3.5, f"{tick:+.2f}", size=9, anchor="start", opacity=0.7)
+    out += _text(
+        _WIDTH / 2, total_height - 14,
+        "Pearson correlation over every row of the FD001 training file, the fourteen "
+        "sensors in the paper's order; the paper's Fig. 5 prints the same table.",
+        size=11.5, opacity=0.65,
+    )
+    return out + "</svg>"
+
+
+def draw_lstm_cell() -> str:
+    """One LSTM cell, as the paper's Fig. 2 draws it and its Equations 1 to 6 describe it."""
+    ink = "var(--fig-ink, #16191d)"
+    wire_colour = "var(--fig-axis, #8a93a0)"
+    accent = "var(--fig-accent, #1f5fa8)"
+    memory = "var(--fig-lpc, #6b4fbb)"
+    green = "var(--fig-lpt, #1c7a5e)"
+    warm = "var(--fig-warn, #c2521f)"
+
+    def wire(x1: float, y1: float, x2: float, y2: float, colour: str = wire_colour,
+             arrow: bool = False, width: float = 1.7) -> str:
+        head = ' marker-end="url(#lstm-head)"' if arrow else ""
+        return (f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{colour}" '
+                f'stroke-width="{width}"{head} />')
+
+    def gate(cx: float, cy: float, symbol: str, label: str, colour: str) -> str:
+        # The name sits inside the box, so the wire arriving from below never
+        # runs through it.
+        return (
+            f'<rect x="{cx - 43}" y="{cy - 23}" width="86" height="46" rx="8" '
+            f'fill="{colour}" fill-opacity="0.14" stroke="{colour}" stroke-width="1.6" />'
+            + _text(cx, cy - 2, symbol, size=12.5, weight="700", fill=colour)
+            + _text(cx, cy + 14, label, size=9, opacity=0.75)
+        )
+
+    def op(cx: float, cy: float, symbol: str) -> str:
+        return (
+            f'<circle cx="{cx}" cy="{cy}" r="13" fill="var(--fig-bg, #ffffff)" '
+            f'stroke="{ink}" stroke-width="1.6" />'
+            + _text(cx, cy + 5.5, symbol, size=15, weight="700")
+        )
+
+    out = _open(_WIDTH, _HEIGHT) + (
+        '<defs><marker id="lstm-head" viewBox="0 0 10 10" refX="9" refY="5" '
+        'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+        f'<path d="M0,0 L10,5 L0,10 z" fill="{wire_colour}"/></marker></defs>'
+    )
+    # The cell itself.
+    out += (f'<rect x="150" y="98" width="570" height="322" rx="18" fill="{accent}" '
+            f'fill-opacity="0.05" stroke="{accent}" stroke-width="1.6" />'
+            + _text(435, 84, "one LSTM cell, at one cycle t", size=12.5, weight="600",
+                    fill=accent))
+    # The memory line along the top, from the last cycle to this one.
+    out += (
+        _text(52, 154, "C(t-1)", size=13, weight="700", fill=memory)
+        + wire(88, 150, 237, 150, memory, width=2.4)
+        + op(250, 150, "⊗")
+        + wire(263, 150, 372, 150, memory, width=2.4)
+        + op(385, 150, "⊕")
+        + wire(398, 150, 790, 150, memory, arrow=True, width=2.4)
+        + _text(818, 154, "C(t)", size=13, weight="700", fill=memory)
+        + _text(385, 126, "new memory (4)", size=10.5, opacity=0.7)
+    )
+    # The three gates and the candidate, fed from the joined input below.
+    out += (
+        gate(250, 300, "sigmoid", "forget gate (1)", warm)
+        + gate(340, 300, "sigmoid", "input gate (2)", green)
+        + gate(430, 300, "tanh", "candidate C̃ (3)", green)
+        + gate(620, 300, "sigmoid", "output gate (5)", accent)
+        + wire(250, 277, 250, 165, warm, arrow=True)
+        + wire(340, 277, 377, 233, green)
+        + wire(430, 277, 393, 233, green)
+        + op(385, 222, "⊗")
+        + wire(385, 209, 385, 165, green, arrow=True)
+    )
+    # The output: the new memory squashed, then scaled by the output gate.
+    out += (
+        wire(540, 150, 540, 205, memory, arrow=True)
+        + f'<rect x="512" y="207" width="56" height="30" rx="7" fill="{memory}" '
+        f'fill-opacity="0.14" stroke="{memory}" stroke-width="1.6" />'
+        + _text(540, 227, "tanh", size=13, weight="700", fill=memory)
+        + wire(568, 222, 605, 222, memory)
+        + op(620, 222, "⊗")
+        + wire(620, 277, 620, 237, accent, arrow=True)
+        + wire(633, 222, 790, 222, accent, arrow=True, width=2.2)
+        + _text(818, 226, "h(t)", size=13, weight="700", fill=accent)
+        + _text(700, 210, "output (6)", size=10.5, opacity=0.7)
+    )
+    # The joined input: the last output and this cycle's reading.
+    out += (
+        _text(52, 354, "h(t-1)", size=13, weight="700", fill=accent)
+        + _text(52, 396, "x(t)", size=13, weight="700")
+        + wire(88, 350, 160, 350, accent, width=2)
+        + wire(88, 392, 160, 392, ink, width=2)
+        + wire(160, 392, 160, 350, ink, width=2)
+        + wire(160, 350, 640, 350, ink, width=2)
+        + "".join(wire(x, 350, x, 325, ink, arrow=True) for x in (250, 340, 430, 620))
+        + _text(400, 372, "[h(t-1), x(t)]: the last output and this cycle's reading, joined",
+                size=10.5, opacity=0.7)
+    )
+    # What the symbols mean, for a reader who has not met them.
+    out += (
+        _text(_WIDTH / 2, 452,
+              "A sigmoid squashes a weighted sum to between 0 and 1: 0 shuts the gate, "
+              "1 opens it. ⊗ multiplies element by element; ⊕ adds.",
+              size=11.5, opacity=0.7)
+        + _text(_WIDTH / 2, 474,
+                "New memory (4): the forget gate times the old memory, plus the input gate "
+                "times the candidate. Output (6): the output gate times tanh of the new memory.",
+                size=11.5, opacity=0.7)
+        + _text(_WIDTH / 2, 496,
+                "Each of the 14 sensors has its own cell (Section 2.2): the window's 30 "
+                "readings pass through it one cycle at a time,",
+                size=11.5, opacity=0.55)
+        + _text(_WIDTH / 2, 512,
+                "and the last h(t) goes through one more layer of weights, which makes the "
+                "number the graph receives (assumption A-26). Equation numbers are the paper's.",
+                size=11.5, opacity=0.55)
+    )
+    return out + "</svg>"
+
+
 FIGURES: tuple[Figure, ...] = (
     Figure(
         "engine",
@@ -1366,6 +1555,13 @@ FIGURES: tuple[Figure, ...] = (
         "The piecewise-linear label",
         "What the model is asked to predict, on a real engine's true length.",
         draw_rul_curve,
+        needs_data=True,
+    ),
+    Figure(
+        "correlation",
+        "How every column moves with every other",
+        "The paper's Fig. 5, recomputed from the FD001 training file.",
+        draw_correlation,
         needs_data=True,
     ),
     Figure(
@@ -1431,6 +1627,12 @@ FIGURES: tuple[Figure, ...] = (
         "Every layer of Table 4, with the parameter counts it really has.",
         draw_architecture,
         needs_torch=True,
+    ),
+    Figure(
+        "lstm-cell",
+        "One memory cell",
+        "The paper's Fig. 2: the three gates of an LSTM cell and its six equations.",
+        draw_lstm_cell,
     ),
     Figure(
         "shapley",

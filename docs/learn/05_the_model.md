@@ -109,6 +109,16 @@ recurrent stage — a **long short-term memory** network, or **LSTM**, a kind of
 network built for sequences that keeps an internal memory of what it has
 already seen — is built, but it is not the default (assumption A-11).
 
+{{figure:lstm-cell}}
+
+The figure is the cell the paper's Fig. 2 draws and its Equations 1 to 6
+describe. Three **gates** — each a number between 0 and 1, made by squashing a
+weighted sum of the new reading and the last output — decide how much of the
+old memory to keep, how much of a freshly proposed value to add to it, and how
+much of the result to pass on as this cycle's output. The memory line along
+the top is what lets the cell carry a slow trend across thirty cycles without
+it being overwritten at every step.
+
 The reason is that the paper never states its size, its depth, or how it turns
 a 30-cycle window into the single number Table 4 requires. The version built
 here fills those in with a choice of this project's (assumption A-26), so a

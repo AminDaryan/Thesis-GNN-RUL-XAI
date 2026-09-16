@@ -793,13 +793,48 @@ and explain it. A slower answer with one tiny example, one equation explained
 carefully and one connection to the code in this repository is worth more than
 a fast paragraph containing fifteen technical terms.
 
+### 11. The interface is one system, and it is measured
+
+The website in `src/thesis_gnn_rul_xai/docsite/` is read by examiners, so it is
+held to the same standard as the prose. Its appearance is decided by the
+settings at the top of `assets/app.css` and nowhere else. Change those, not the
+individual rules, or the system stops being one system.
+
+What the settings hold, and why each number is what it is:
+
+- **Text sizes**: 11, 12, 13, 14, 16, 18, 20, 24, 30 and 38. Built the way the
+  *UI Design Principles* ebook builds a scale, and floored at 11 because
+  Apple's guidance puts the smallest readable size on a Mac at 10 points and
+  the default at 13. Nothing smaller appears anywhere on screen. Text drawn
+  **inside** a diagram is exempt: there a number is a unit of the drawing that
+  the browser scales, not a size on the screen.
+- **Weights**: 400, 600 and 700. Three, because a reader cannot tell more
+  apart, and no light weight, which Apple's guidance says to avoid.
+- **Spacing**: 4, 8, 12, 16, 20, 24, 32, 40 and 48, every one a multiple of
+  four. The space inside a group must be smaller than the space around it;
+  that is what makes a group look like a group.
+- **Corner radii**: 6 for a control, 10 for a panel, and the two shapes that
+  are not steps on a scale, a full circle and a pill.
+- **Colour**: every pair of foreground and background clears the contrast
+  the guidelines ask for, which is 4.5 to 1 for ordinary text and 3 to 1 for
+  the edge of a control. A control's border is `--line-strong`; a divider
+  between two pieces of text is the quieter `--line` on purpose, because a
+  decorative rule is exempt and making it darker only adds noise.
+
+Two habits go with it. **Measure before and after**, because "cleaner" is not
+a claim anyone can check: count the distinct text sizes, weights, radii and
+spacing values, and compute every contrast ratio. When this was first counted
+there were 30 text sizes, 11 weights, 15 radii and 30 spacing values, and five
+colour pairs were unreadable. And **take a picture before and after**, since
+that is how the author reviews it.
+
 ---
 
 ## Before saying a task is done
 
 ```bash
 ruff check .          # must be clean
-pytest                # 288 tests; must all pass
+pytest                # 311 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -822,9 +857,10 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — all 288
-pass (measured 2026-09-15, after the run-record and paper-to-code tests were
-added).
+With everything present — the data, PyTorch and the stored runs — all 311
+pass (measured 2026-09-16, after the tests for the two new figures, the job
+history, removing a job, a name that points outside the folder it names, a
+damaged process number, and refusing a port another server already holds).
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing. The model,
