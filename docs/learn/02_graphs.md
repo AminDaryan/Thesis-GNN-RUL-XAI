@@ -3,56 +3,37 @@
 ## A graph is points and connections
 
 A **graph** is a set of points, called **nodes**, with connections between
-them, called **edges**. That is the whole definition. A social network is a
-graph — people are nodes, friendships are edges. A road map is a graph —
-junctions are nodes, roads are edges.
+them, called **edges**. A road map is a graph: junctions are nodes, roads are
+edges.
 
 Here, **every sensor is a node**, and an edge between two sensors means "these
 two measurements are physically related". There are 14 sensors, so 14 nodes.
 
 ## The adjacency matrix is the graph written as a table
 
-An **adjacency matrix** is a graph written as a grid of numbers. For 14 sensors
-it is a 14-by-14 table where the entry in row *i*, column *j* is 1 if sensors
-*i* and *j* are connected and 0 if they are not. The graph and the matrix are
-the same object in two notations; the matrix is the one a computer can multiply.
+For 14 sensors the **adjacency matrix** is a 14-by-14 table: the entry in row
+*i*, column *j* is 1 if sensors *i* and *j* are connected and 0 if not. It holds
+the same information as a drawing of the graph, in a form a computer can
+multiply.
 
 {{figure:adjacency}}
 
-The left panel is the graph as the paper prints it, in its Table 3. It is
-**symmetric** — if `T24` is a neighbour of `P30` then `P30` is a neighbour of
-`T24` — and its diagonal is zero, because a sensor is not listed as its own
-neighbour. Both of those are checked the moment this project's code is
-imported, because a silent transcription error in the table would corrupt every
-downstream result while leaving the code apparently working.
-
-The right panel is the same matrix after **normalisation**, which is explained
-further down.
+The matrix is **symmetric**: if `T24` is a neighbour of `P30`, then `P30` is a
+neighbour of `T24`. Its diagonal is zero, because a sensor is not listed as its
+own neighbour. The code checks both when it is imported.
 
 ---
 
 ## The graph this project uses
 
-{{figure:sensor-graph}}
-
-This is the paper's graph, drawn. Measured from the transcription in this
-repository: **14 nodes, 41 edges**, connected, with a **diameter of 4** —
-meaning the two most distant sensors are four edges apart.
-
-Two features of it are worth pausing on, because both come back later.
-
-**`T24` is the only articulation point.** An articulation point is a node whose
-removal would split the graph into disconnected pieces. Here, the four
-bypass-side sensors on the left — `P15`, `Nf`, `NRf`, `BPR` — reach the engine
-core through `T24` and through nothing else. That is not an artefact of the
-drawing; it is a property of the matrix, computed by the code.
+Counted from this project's copy of the paper's Table 3, the graph has 41 edges
+between its 14 sensors. It is drawn further down, carrying information from one
+sensor to the rest.
 
 **The graph is a physical claim, not a statistical one.** The edges were
 hand-designed by the paper's authors from engine physics, not learned from
 correlations in the data. That makes it a **prior**: knowledge put into the
-model from outside, before it sees any measurements. Whether that prior earns
-its place is a question the paper answers with an ablation, and one this
-project has measured for itself — see page 6.
+model from outside, before it sees any measurements.
 
 ---
 
@@ -69,132 +50,99 @@ steps:
    in the graph — to produce its new value.
 
 Every node does this at the same time. One round is one **layer**. Stack three
-layers and information travels up to three edges.
+layers and information travels up to three edges, or hops, because in each
+round a node takes in values that already hold what its neighbours collected in
+the round before.
 
 {{figure:message-passing}}
 
-Watch a single value leave `P15` and spread. After one layer it has reached
-`P15`'s immediate neighbours. After two, their neighbours. After three, almost
-everything.
+The drawing is the graph of Table 3 itself: each circle is a sensor, a larger
+circle has more neighbours, and each line is an edge. **`T24` is the only
+sensor whose removal splits the graph**, which is what its dashed ring marks:
+the four fan and bypass sensors, `P15`, `Nf`, `NRf` and `BPR`, reach the other
+nine only through `T24`, so everything `P15` sends to them passes `T24` first.
 
-**Almost.** `W32` is four edges from `P15`, and three layers cannot cross four
-edges. No amount of training fixes this — it is a property of the architecture,
-not of the weights. `P15` and `W32` are never mixed, and neither are three
-other pairs.
+However long the network trains, three graph layers reach no further. Two
+sensors four edges apart, such as `P15` and the one the drawing marks "never",
+do not affect each other inside the graph layers at all; they meet only in the
+layers after them, which take all fourteen sensors' results together. The next
+figure counts every pair of sensors by how far apart the two are.
 
 {{figure:reach}}
 
-Of the 91 pairs of sensors, 41 are directly connected, 25 are two edges apart,
-21 are three apart, and **four are four apart** — `BPR`–`W32`, `NRf`–`W32`,
-`Nf`–`W32` and `P15`–`W32`. This project has a test whose whole job is to check
-that the network really does respect this limit, called
-`test_three_layers_cannot_reach_four_hops`. If message passing ever leaked
-further than the graph allows, that test would catch it.
-
-This is the kind of thing worth knowing about a model before trusting it: not
-what it can do, but what it structurally cannot.
-
 ---
 
-## The formula, and the one word doing the work
-
-One graph convolution layer is this:
+## One graph layer, as a formula
 
 $$H' = \mathrm{ReLU}\left(\hat{A} H W\right)$$
 
-Read it right to left. `H` is the current table of node values — one row per
-sensor. `W` is a matrix of numbers the network learns; multiplying by it is the
-"update" step, and it is the *same* `W` for every node, which is why the layer
-works on a graph of any size. `Â` is the adjacency matrix, and multiplying by
-it is the "collect and combine" step: row *i* of `ÂH` is a weighted sum of the
-rows belonging to sensor *i*'s neighbours. `ReLU` is the non-linearity, which
-simply replaces every negative number with zero.
+`H` is the current table of node values: one row per sensor, holding that
+sensor's current numbers. `Â` is the adjacency matrix after the normalisation
+below, and multiplying by it is the collect-and-combine step: row *i* of `ÂH` is
+a weighted sum of the rows of sensor *i* and its neighbours. `W` is a matrix of
+numbers the network learns; multiplying by it is the update step, turning each
+row into a new row with as many numbers as `W` has columns. It is the *same*
+`W` for every node, which is why the layer works on a graph of any size. `ReLU`
+replaces every negative number with zero, and the result, `H′`, is the new
+table of node values that the next layer starts from.
 
-The hat on `Â` is the normalisation:
+The hat on `Â` is the normalisation this project uses, drawn in the right panel
+of the adjacency matrix figure:
 
-$$\hat{A} = D^{-1/2} (A + I) D^{-1/2}$$
+$$\hat{A} = D^{-1} (A + I)$$
 
-Two things happen there. Adding the identity matrix `I` puts a **self-loop** on
-every node, so that a sensor's own value survives the mixing instead of being
-replaced entirely by its neighbours'. Dividing by the degrees `D` stops
-well-connected nodes from dominating: without it, a sensor with eight
-neighbours would contribute twice as much as one with four simply by being
-popular.
+Adding the identity matrix `I`, which has ones on its diagonal and zeros
+elsewhere, gives every node an edge to itself, called a **self-loop**, so a
+sensor's own value survives the mixing instead of being replaced by its
+neighbours'. `D` holds each row total of `A + I` on its diagonal and zeros
+elsewhere, so multiplying by $D^{-1}$ divides every row by its total. `P15` has
+four neighbours, so its row of `A + I` holds five ones and becomes five entries
+of 0.2: row `P15` of `ÂH` is the average of the rows of `P15`, `T24`, `Nf`,
+`NRf` and `BPR`. `T24`, with seven neighbours, gets eight entries of 0.125, the
+average of eight rows. Without the division `T24` would receive a sum of eight
+rows and `P15` a sum of five, so a sensor's value would grow with its number of
+neighbours.
 
 > **A choice hides here.** The paper says its matrix is "normalized ...
-> incorporating self-loops" and never prints the formula. Two standard formulas
-> fit that description — the symmetric one above, and the simpler row form
-> $D^{-1}(A+I)$, which divides each row by its own degree so the row sums to 1.
-> This project measured both. Row normalisation came out 0.35 cycles closer to
-> the paper's figure with nothing held back (paired *p* = 0.047), and is the
-> default. The full reasoning, including the fact that the advantage does *not*
-> survive holding engines out, is in the log (assumption A-21).
+> incorporating self-loops" and never prints the formula. The symmetric form
+> $D^{-1/2}(A+I)D^{-1/2}$ fits that description as well as the row form above:
+> it divides the entry joining two sensors by the square root of the product of
+> their two row totals, so the `P15`–`T24` entry becomes 1/√(5 × 8) ≈ 0.158 in
+> both their rows. Over five training runs on all 100 training engines, the row
+> form's error on the test engines was 0.25 cycles lower, a difference five runs
+> cannot tell from zero (*p* = 0.068). The default keeps a fifth of the training
+> engines out of training, and no difference between the two forms has been
+> shown there either (assumption A-21).
 
 ---
 
 ## Why a graph at all
 
-The honest answer is that it is a hypothesis, not a certainty. The claim is
-that telling the model which sensors are physically related helps it more than
-letting it work that out from data. The paper reports an ablation supporting
-that claim, at a cost of 0.56 cycles.
+It is a hypothesis, not a certainty: telling the model which sensors are
+physically related should help it more than leaving it to work that out from
+the data. The paper's evidence is one experiment: without the physics graph,
+its model's error rises by 0.56 cycles, from 11.78 to 12.34 (its Table 11).
 
-This project has now measured the same ablation — an ablation being a run with
-one part removed, here by joining every sensor to every other — **four times,
-and got four answers**:
+This project has repeated that comparison, replacing the physics graph with one
+joining every sensor to every other, on its default network, which leaves out
+one stage of the paper's model (assumption A-11). Under three configurations it
+measured the error rising by 0.044, 2.396 and, under the current default
+settings, 2.784 cycles. The physics graph was the same each time. What moved
+were settings the paper does not state, among them the input scaling, the
+normalisation of the graph and how many training engines were kept out of
+training, so a reader cannot tell whether the paper's 0.56 would survive a
+different choice of them (finding F-04).
 
-| Configuration | With the physics graph | Fully connected | Cost of removing it |
-|---|---|---|---|
-| Current default — z-score, row normalisation, 20 % held back | 16.496 ± 0.415 | 19.281 ± 0.432 | **+2.784** (*p* = 0.0005) |
-| z-score, row normalisation, nothing held back — the default until 2026-09-02 | 16.818 ± 0.157 | 19.214 ± 0.056 | +2.396 (*p* = 0.000002) |
-| Min-max scaling, symmetric normalisation, 20 % held back | 20.353 ± 0.752 | 20.397 ± 0.395 | +0.044 (*p* = 0.913) |
-| A since-removed node-feature mode | 13.45 ± 0.20 | 19.17 ± 0.45 | +5.7 |
-
-A fifth measurement changed what the question means. Under the current
-default, a graph built from the data — the 41 sensor pairs whose readings move
-together most strongly, as many edges as the paper's graph — scores
-16.592 ± 0.354, only +0.096 cycles from the physics graph (*p* = 0.655). The
-fully connected graph averages every sensor together, and that, not the missing
-engineering knowledge, is most of what its extra error measures (assumption
-A-27).
-
-Decisive, then nothing, then decisive again. **Nothing about the graph changed
-between those measurements.** What changed was the preprocessing and the
-split — choices the paper does not specify at all.
-
-That instability is itself the finding (finding F-04). An
-ablation is normally reported as a property of an architecture: *the physics
-prior is worth X*. These measurements say it is not that. It is a property of
-the architecture **and** the preprocessing **and** the split, and the paper
-specifies only the first.
-
-The consequence is sharper than any of the individual numbers: it makes the
-paper's own ablation table unreproducible **in principle**, not merely in
-practice. A reader cannot tell whether its 0.56 cycles would survive a
-different input scaling, because the paper never says what its input scaling
-was.
-
-So the rule this project follows is: **a comparison is a fact about one whole
-configuration, not about the two options being compared.** Name the
-configuration whenever you quote one, and re-run it whenever anything moves.
-
----
-
-## What you now know
-
-- A **graph** is nodes and edges; the **adjacency matrix** is the same thing as
-  a table of numbers.
-- The sensor graph has **14 nodes and 41 edges**, is connected, has diameter 4,
-  and `T24` is its only articulation point.
-- **Message passing** is collect–combine–update, one round per layer, and three
-  layers reach exactly three edges.
-- **Four sensor pairs are beyond reach** of this architecture, permanently.
-- The `Â` in the formula carries **self-loops** and a **degree normalisation**,
-  and which normalisation to use was a choice (A-21).
-- What the physics graph is worth, against a graph joining every sensor to
-  every other, has been measured **with four different answers** — 5.7, 0.044,
-  2.396 and 2.784 cycles — under settings the paper leaves open (finding F-04).
-  Against a graph built from the data with as many edges, it is worth nothing
-  five seeds can detect (assumption A-27).
-
-Next: how to make the model explain itself.
+Joining every sensor to every other removes more than the knowledge. Every row
+of `A + I` becomes fourteen ones, so every row of `Â` is fourteen entries of
+1/14, and every sensor receives the same average. The paper's graph repeats
+some rows too: `P15`, `Nf`, `NRf` and `BPR` are each joined to `T24` and to the
+other three, so all four get the row of five entries of 0.2 worked out above,
+and the paper's 14 rows hold only 9 different ones. A graph built from the data
+instead, joining the 41 sensor pairs whose readings move together most
+strongly, has as many edges as the paper's; rebuilt from each training run's
+own engines, it had 10 to 12 different rows over five runs. Under the current
+default its error is only 0.096 cycles higher than the physics graph's, a
+difference five runs cannot tell from zero (*p* = 0.655). So, in that
+configuration, most of the 2.784 measures the averaging into one row rather
+than the missing knowledge (assumption A-27).

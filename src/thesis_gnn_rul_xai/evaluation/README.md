@@ -56,67 +56,50 @@ theirs (assumption A-15 in `docs/ASSUMPTIONS.md`).
 
 ## The four measures
 
-### `rmse` — root mean squared error (the paper's Equation 22)
+What each measure means, its formula and a worked example of each are taught
+on the page [Reading a result](../../../docs/learn/06_reading_results.md). This
+section keeps what only the code adds: which of the paper's equations each
+function stands for (two of them on purpose not as printed: the score follows
+the NASA sign convention, assumption A-15, and R² divides by the spread of the
+true values, assumption A-16), and how three of them behave at their edges.
 
-In flight cycles. Symmetric: it does not care whether an error is early or late.
-This is the headline number in most papers on this dataset.
+| Function | Measure | Stands for the paper's equation |
+|---|---|---|
+| `rmse` | root mean squared error | 22 |
+| `nasa_score` | the 2008 challenge score | 21 |
+| `r_squared` | coefficient of determination | 23 |
+| `asue` | Average Safe Underestimation Error | 24 |
 
 ### `nasa_score` — the 2008 challenge score (the paper's Equation 21)
 
-Per engine:
-
-```
-d < 0   (early, safe)      ->  exp(-d / 13) - 1
-d >= 0  (late, dangerous)  ->  exp( d / 10) - 1
-```
-
-Lower is better; a perfect set of predictions scores 0.
-
-Two traps here.
-
-1. **It is a sum, not an average.** It grows with the size of the test set, so
-   a score is only meaningful next to another score computed on the same
-   sub-dataset. Never compare scores across test sets of different sizes.
-2. **The penalty is exponential, so one badly wrong engine can outweigh every
-   other one.** That is deliberate rather than a flaw: in maintenance, a single
-   missed failure matters more than many small errors. But it does mean the
-   score is far less stable than RMSE.
+Its exponential penalty, which lets one badly wrong engine outweigh all the
+others, is deliberate rather than a flaw: in maintenance, a single missed
+failure matters more than many small errors. It does make the score far less
+stable than RMSE.
 
 ### `r_squared` — coefficient of determination (the paper's Equation 23)
 
-The fraction of the variance in the true labels that the model explains. 1 is
-perfect; 0 is no better than always predicting the mean.
-
-We compute it the standard way:
+The paper's version divides by how far the *predictions* spread around the
+truth's mean, not by how far the truth itself does, and that rewards spreading
+the predictions without making them any more accurate. A worked case:
+predicting `[-5, 15, 35, 55]` for a truth of `[10, 20, 30, 40]`, whose mean is
+25.
 
 ```
-1 - sum((predicted - actual)^2) / sum((actual - mean_of_actual)^2)
+prediction minus truth, squared              15² +  5² +  5² + 15² =   500
+truth minus its mean, squared                15² +  5² +  5² + 15² =   500   standard:  1 - 500/500  = 0.0
+prediction minus the truth's mean, squared   30² + 10² + 10² + 30² = 2 000   paper's:   1 - 500/2000 = 0.75
 ```
 
-The paper's Equation 23 prints the denominator as
-`sum((predicted_i - mean)^2)` instead — that is, how far the *predictions*
-spread around the mean of the observations, rather than how far the
-*observations* spread around it. That is not the coefficient of determination,
-and it rewards the wrong thing: a model can raise its score simply by spreading
-its output more widely, without becoming any more accurate. Predicting
-`[-5, 15, 35, 55]` for a truth of `[10, 20, 30, 40]` is no better than
-predicting the mean — the standard formula scores it 0.0 — but the paper's
-version scores it 0.75. We use the standard definition, which is also what the
-text beside the equation describes (assumption A-16 in
+The standard formula scores it 0.0, no better than predicting the mean every
+time; the paper's version scores it 0.75. The code uses the standard definition,
+which is also what the text beside the equation describes (assumption A-16 in
 `docs/ASSUMPTIONS.md`).
 
 `r_squared` raises a `ValueError` when every true label is the same value,
 because the denominator is then zero and the measure is undefined.
 
 ### `asue` — Average Safe Underestimation Error (the paper's Equation 24)
-
-The mean of `actual - predicted`, counted only over the engines where the model
-predicted *less* life than there was. Engines the model was optimistic about do
-not contribute at all.
-
-Underestimating is the safe direction, but doing it by a wide margin means
-servicing engines that still had plenty of life left, so this measures the cost
-of excess caution.
 
 If the model never underestimated anything, `asue` returns `0.0`. That is the
 **best possible value** of this measure, not a missing result. Because a bare

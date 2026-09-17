@@ -3,9 +3,8 @@
 The notebooks run this project's code on the real NASA C-MAPSS files and show
 every intermediate table, shape and picture on the way. They are meant to be
 read as well as run. This page holds what all of them share, so that none of
-them has to repeat it: how they are laid out, who they are written for, how
-they keep the paper, a choice and a measurement apart, and where the code they
-call actually lives.
+them has to repeat it: how they are laid out, who they are written for, and
+where the code they call actually lives.
 
 ## Which notebook, in which order
 
@@ -40,8 +39,8 @@ way of turning a sensor's 30-cycle window into what the graph layers read, and
 ## How every notebook is laid out
 
 Every notebook opens the same way — what it is for, what it does *not* do, and
-a table of its steps with what goes into each and what comes out — so a reader
-who has understood one can read the next. Then:
+a list of its steps — so a reader who has understood one can read the next.
+Then:
 
 1. **Background**, the ideas the notebook depends on, taught before they are
    used.
@@ -67,33 +66,18 @@ technical term is defined the first time a notebook uses it. Where a notebook
 depends on an earlier one, it says which idea it is borrowing and where that
 idea was explained.
 
-## Telling the paper, a choice and a measurement apart
+## Paper, choice or measurement
 
-This project re-implements one published paper, Wen et al. (2026), which does
-not describe every detail of its own method. Every sentence in a notebook is
-one of three kinds, and the notebooks keep them visibly apart:
+Every sentence in a notebook says what the paper states, what this project
+chose where the paper is silent, or what this code measured, kept apart the way
+[Paper, choice or measurement](../docs/learn/07_evidence.md) describes. In a
+notebook a measurement is a number printed by a cell in the same notebook, or a
+stored result named with the commit of the code that produced it.
 
-- **The paper says so.** Cited to its table, equation or figure: "Table 6 gives
-  a window of 30 cycles".
-- **This project chose.** The paper is silent or ambiguous, so a choice had to
-  be made. The choice is said in words, and followed in parentheses by a pointer
-  to where it is argued: "each sensor's most recent reading (assumption A-07)".
-- **This project measured.** A number printed by a cell in the same notebook, or
-  a stored result named with the commit of the code that produced it.
-
-The pointers lead to `docs/ASSUMPTIONS.md`. An **assumption** there is a
-choice this project had to make; a **finding** is a fact about the paper
-established from its text or from the data, such as a table that contradicts its
-own equation. A notebook never asks you to remember what a pointer stands for:
-the sentence before it always says. `python scripts/check_prose.py` fails if a
-code is used as a word instead.
-
-**A single run is not a result.** A notebook trains or explains one network,
-fixed by one random seed, and a different seed gives different numbers. The
-figures this project reports are means over at least five seeds with their
-spread, produced by `scripts/train.py --seeds 5` and stored in `reports/` with
-the commit that produced them. Where a notebook shows a stored result, it says
-which run it read.
+**A notebook trains or explains one network**, fixed by one random seed, and a
+different seed gives different numbers, so a number it prints is not a result
+on its own. Where a notebook shows a stored result instead, it says which run
+it read.
 
 ## Where the code actually is
 

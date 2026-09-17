@@ -81,14 +81,41 @@ def test_every_default_passes_its_own_check():
     assert settings == {f["key"]: f["default"] for f in playground.FIELDS}
 
 
-def test_every_setting_says_where_its_default_comes_from():
+def test_where_a_default_comes_from_is_said_once_per_setting():
+    """A source sits on the row or on its options, never both, so the page draws one tag per fact."""
     kinds = {"paper", "assumption", "project", "extension"}
+    untagged_rows = set()
     for field in playground.FIELDS:
-        assert field["source"]["kind"] in kinds, field["key"]
-        if field["source"]["kind"] in ("paper", "assumption"):
-            assert field["source"]["ref"], field["key"]
-        for choice in field.get("choices", []):
-            assert choice["source"]["kind"] in kinds, (field["key"], choice["value"])
+        sources = [field["source"]] + [c["source"] for c in field.get("choices", [])]
+        for source in sources:
+            if source is None:
+                continue
+            assert source["kind"] in kinds, field["key"]
+            if source["kind"] in ("paper", "assumption"):
+                assert source["ref"], field["key"]
+        if field["source"] is None:
+            untagged_rows.add(field["key"])
+        else:
+            assert all(c["source"] is None for c in field.get("choices", [])), field["key"]
+    # Two settings whose options come from different places, and two nothing sets.
+    assert untagged_rows == {"graph", "temporal", "seed", "device"}
+    for key in ("graph", "temporal"):
+        spec = next(f for f in playground.FIELDS if f["key"] == key)
+        assert all(c["source"] is not None for c in spec["choices"]), key
+
+
+def test_the_procedure_cards_are_the_only_control_for_what_is_held_back():
+    groups = {f["key"]: f["group"] for f in playground.FIELDS}
+    assert {key for key, group in groups.items() if group == "procedure"} == {
+        "validation_fraction", "early_stopping", "early_stopping_patience"}
+    # Not a section of the form: the page draws these under the cards.
+    assert "procedure" not in {key for key, _ in playground.GROUPS}
+    paper, held_back = playground.PROCEDURES
+    assert paper["settings"] == {"validation_fraction": 0.0, "early_stopping": False}
+    assert held_back["label"] == "Held back, best pass"
+    assert held_back["settings"] == {"validation_fraction": 0.2, "early_stopping": True}
+    for procedure in playground.PROCEDURES:
+        playground.validate_settings(procedure["settings"])
 
 
 def test_the_defaults_the_paper_states_are_the_ones_it_prints():
@@ -136,12 +163,97 @@ def test_a_configuration_is_set_beside_the_one_row_it_may_be(temporal, graph, ex
     assert bool(reason) == (expected is None)
 
 
-def test_fewer_than_five_seeds_is_marked_exploratory():
-    notes = playground.caveats(playground.validate_settings({"seeds": 1}))
-    assert any(note["ref"] == "rule 3" for note in notes)
-    assert not any(
-        note["ref"] == "rule 3" for note in playground.caveats(playground.validate_settings({}))
-    )
+def _cautions(**changes) -> list[dict]:
+    return playground.caveats(playground.validate_settings(changes))
+
+
+def test_fewer_than_five_seeds_is_marked_exploratory_in_words():
+    [one] = [note for note in _cautions(seeds=1) if "exploratory" in note["text"]]
+    assert one["text"] == ("1 seed is exploratory: quote nothing from it. A result is a mean "
+                           "over at least five seeds, with its spread.")
+    assert (one["ref"], one["where"]) == ("", ["design", "run"])
+    assert any(note["text"].startswith("2 seeds is exploratory:") for note in _cautions(seeds=2))
+    assert not any("exploratory" in note["text"] for note in _cautions())
+
+
+def test_only_the_two_conflicts_a_reader_may_not_see_are_shown_beside_train():
+    """Every caution qualifies a stored run; seeds and a plateau with nothing held back also flag the design."""
+    combinations = [
+        {}, {"seeds": 2}, {"temporal": "last_cycle"}, {"temporal": "gru", "shared_across_sensors": True},
+        {"graph": "complete", "fc_hidden": 64}, {"graph": "correlation", "fixed_split": True},
+        {"validation_fraction": 0.0, "lr_schedule": "plateau"},
+    ]
+    shown_beside_train = set()
+    for changes in combinations:
+        for note in _cautions(**changes):
+            assert "run" in note["where"], note
+            if "design" in note["where"]:
+                shown_beside_train.add(note["ref"] or note["text"].split(" is ")[0])
+    assert shown_beside_train == {"2 seeds", "A-17"}
+
+
+def test_the_cautions_are_worded_as_decided():
+    [best] = [note for note in _cautions() if note["ref"] == "F-16"]
+    assert best["text"] == ("The paper never describes restoring the best pass; on FD001 it moved "
+                            "what the LSTM is worth from 0.77 to 3.19 cycles.")
+    # Written with no window length in it, so a 20-cycle window reads true too.
+    [last] = [note for note in _cautions(temporal="last_cycle", window_size=20) if note["ref"] == "D-6"]
+    assert not any(character.isdigit() for character in last["text"])
+    # The recurrent stage's sizes are this project's choice for the GRU as much as the LSTM.
+    assert [note["ref"] for note in _cautions(temporal="gru")].count("A-26") == 1
+    # The run's page already says why no published row applies.
+    for stage in ("gru", "mean_window", "window_summary", "raw_window"):
+        assert not any("not in the paper" in note["text"] for note in _cautions(temporal=stage))
+    assert not any("seed(s)" in note["text"] for note in _cautions(seeds=3))
+
+
+def test_left_out_engines_are_counted_from_the_files_not_guessed_from_the_name(raw_dir: Path):
+    """FD002 is not always short of engines, and FD001 is not always whole: the window decides."""
+    import pandas as pd
+
+    if not (raw_dir / "test_FD002.txt").is_file():
+        pytest.skip(f"test_FD002.txt is not in {raw_dir}.")
+
+    def left_out(subset: str, window: int) -> list[dict]:
+        return [note for note in _cautions(subset=subset, window_size=window) if note["ref"] == "A-23"]
+
+    assert left_out("FD002", 20) == []
+    # Counted here with pandas alone, apart from the package's own reader.
+    frame = pd.read_csv(raw_dir / "test_FD001.txt", sep=r"\s+", header=None)
+    lengths = frame.groupby(0)[1].max()
+    short = int((lengths < 40).sum())
+    assert short > 0
+    [note] = left_out("FD001", 40)
+    assert note["text"].startswith(f"{short} of {len(lengths)} test engines ")
+    assert note["text"].endswith("so the score cannot be set beside Table 7.")
+    assert note["where"] == ["run"]
+
+
+def test_the_preview_carries_only_what_the_design_tab_draws():
+    import importlib.util
+
+    answer = playground.preview(playground.validate_settings({}))
+    assert "command" not in answer and "caveats" not in answer
+    assert set(answer["dataset"]) == {"table5", "counted"}
+    assert answer["design_cautions"] == []
+    assert answer["torch"] is (importlib.util.find_spec("torch") is not None)
+    if answer["torch"]:
+        assert answer["parameters"] > 0 and answer["layers"]
+        assert "network_error" not in answer
+    few = playground.preview(playground.validate_settings({"seeds": 2}))
+    assert [note["text"].split(":")[0] for note in few["design_cautions"]] == [
+        "2 seeds is exploratory"]
+
+
+def test_without_pytorch_the_preview_says_so_by_a_flag_not_as_a_network_error(monkeypatch):
+    """The page disables Train on the flag; a network error is kept for settings the network refuses."""
+    monkeypatch.setitem(sys.modules, "torch", None)  # "import torch" now fails
+    # Imported already, the network's modules would not import PyTorch again.
+    for name in [n for n in sys.modules if n.startswith("thesis_gnn_rul_xai.models")]:
+        monkeypatch.delitem(sys.modules, name)
+    answer = playground.preview(playground.validate_settings({}))
+    assert answer["torch"] is False
+    assert not {"network_error", "layers", "parameters"} & set(answer)
 
 
 def test_the_command_is_a_list_of_arguments_never_a_shell_string():
@@ -202,6 +314,28 @@ def test_the_site_explains_a_refused_setting(site: str):
     status, answer = _post(site + "/api/playground/preview", {"seeds": 0}, origin=site)
     assert status == 400
     assert "Seeds" in answer["error"]
+
+
+def test_the_server_names_a_job_the_page_asks_for_whatever_name_the_request_carries(
+    site: str, tmp_path: Path
+):
+    """The page sends no name; an older page's name is ignored, so a job has one name only."""
+    run = tmp_path / "reports" / "somerun"
+    (run / "seed_42").mkdir(parents=True)
+    (run / "summary.json").write_text("{}", encoding="utf-8")
+    (run / "seed_42" / "model.pt").write_bytes(b"")
+    request = {"run": "somerun", "seed": 42, "method": "occlusion", "scope": "engine",
+               "engine": 7, "every": 1, "label": "a name the page made up"}
+    status, job = _post(site + "/api/playground/explain", request, origin=site)
+    try:
+        assert status == 200, job
+        assert job["id"]
+        assert job["label"] == "Occlusion · engine 7 · seed 42"
+    finally:
+        # The command cannot start in this empty folder, so it ends at once.
+        manager = server.job_manager(tmp_path)
+        _wait(manager, job["id"])
+        manager.stop()
 
 
 # -- jobs ----------------------------------------------------------------------
@@ -350,6 +484,39 @@ def test_jobs_an_earlier_server_left_on_disk_are_listed_from_their_folders(tmp_p
     assert finished["progress"]["result"] == {"directory": "some_run"}
     assert finished["created"] == calendar.timegm((2026, 9, 14, 12, 50, 18, 0, 0, 0))
     assert listed["20260914T132855_train_15d73a"]["status"] == "interrupted"
+
+
+def test_a_job_is_named_in_the_same_words_live_and_read_back_from_its_folder(tmp_path: Path):
+    """One builder names every job, so a later server lists a folder under the name the page first showed."""
+    manager = playground.JobManager(tmp_path)
+    # Neither command can start in an empty folder, which has no scripts/,
+    # so both end at once as failed and leave only their folders behind.
+    train = manager.submit_training(
+        playground.validate_settings({"seeds": 2, "adjacency_normalization": "symmetric"}))
+    explain = manager.submit_explanation(
+        {"run": "somerun", "seed": 42, "method": "shap", "scope": "engine", "engine": None, "every": 1})
+    for job in (train, explain):
+        _wait(manager, job.id)
+    manager.stop()
+
+    def names(listing: list[dict]) -> dict[str, str]:
+        return {item["id"]: item["label"] for item in listing}
+
+    live = names(manager.snapshot())
+    assert live[train.id] == "FD001 · LSTM 32 · physics · symmetric graph · best pass · 2 seeds"
+    assert live[explain.id] == "Exact Shapley values · longest engine · seed 42"
+    assert names(playground.JobManager(tmp_path).snapshot()) == live
+
+    # Finished, an explanation's own summary names the engine the script chose.
+    stored = tmp_path / "reports" / "somerun" / "explanations" / "shap_engine_unit5_seed42"
+    stored.mkdir(parents=True)
+    (stored / "summary.json").write_text(json.dumps(
+        {"method": "shap", "scope": "engine", "unit": 5, "seed": 42}), encoding="utf-8")
+    (explain.folder / "progress.jsonl").write_text(json.dumps(
+        {"event": "done", "directory": stored.name, "run": "somerun"}) + "\n", encoding="utf-8")
+    live = names(manager.snapshot())
+    assert live[explain.id] == "Exact Shapley values · engine 5 · seed 42"
+    assert names(playground.JobManager(tmp_path).snapshot()) == live
 
 
 # -- end to end, on the real data ----------------------------------------------------

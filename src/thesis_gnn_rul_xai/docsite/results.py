@@ -1,25 +1,23 @@
-"""Reads the stored runs in reports/ and the assumptions log, for the website.
+"""Reads the assumptions log and the last re-check of its numbers, for the website.
 
-Read README.md in this folder. It explains everything this file does, and why
-a run whose commit is unknown is shown as such rather than hidden.
+Read README.md in this folder. It explains everything this file does. The
+stored training runs are read by playground.py, which the playground draws from.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..utils.paths import project_root
 
 __all__ = [
     "Entry",
-    "Run",
     "Verification",
     "latest_verification",
     "load_entries",
-    "load_runs",
 ]
 
 # A heading in docs/ASSUMPTIONS.md that introduces one entry, such as
@@ -39,25 +37,6 @@ _RETIRED = re.compile(r"^\s*(WITHDRAWN(\s+AND\s+REVERSED)?|REVERSED|SUPERSEDED)\
 
 
 @dataclass(frozen=True)
-class Run:
-    """One stored training run: its settings, its four numbers and its commit."""
-
-    directory: str
-    commit: str
-    finished: str
-    subset: str
-    graph: str
-    adjacency_normalization: str
-    seeds: int
-    split: str
-    clip_test_labels: bool
-    early_stopping: bool
-    mean: dict[str, float | None]
-    std: dict[str, float | None]
-    dirty: bool
-
-
-@dataclass(frozen=True)
 class Verification:
     """One run of scripts/verify_claims.py: how many claims it re-checked."""
 
@@ -70,7 +49,7 @@ class Verification:
 
 @dataclass(frozen=True)
 class Entry:
-    """One assumption or finding, as the website lists it on a card."""
+    """One assumption or finding in the log: its heading, its anchor and whether it still stands."""
 
     identifier: str
     kind: str
@@ -79,70 +58,6 @@ class Entry:
     where: str
     status: str
     summary: str
-
-
-def _numbers(block: object) -> dict[str, float | None]:
-    """One of the mean or standard-deviation blocks of a summary file.
-
-    A run over a single seed writes null for every standard deviation, because
-    one run has no spread. That is kept as null rather than turned into a zero,
-    which would read as "measured, and it was zero".
-    """
-    if not isinstance(block, dict):
-        return {}
-    out: dict[str, float | None] = {}
-    for key, value in block.items():
-        try:
-            out[str(key)] = None if value is None else float(value)
-        except (TypeError, ValueError):
-            out[str(key)] = None
-    return out
-
-
-def load_runs(root: Path | None = None) -> list[Run]:
-    """Every run in reports/ that wrote a summary, newest first."""
-    root = root or project_root()
-    reports = root / "reports"
-    if not reports.is_dir():
-        return []
-
-    runs: list[Run] = []
-    for summary_path in sorted(reports.glob("*/summary.json")):
-        try:
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-
-        # reports/ holds two kinds of directory. A training run writes a
-        # per-seed results.csv beside its summary; scripts/verify_claims.py
-        # writes a claims.csv and no scores at all. Only the first kind is a
-        # run, and showing the second as one with every column blank would
-        # read as a training run that failed.
-        if not (summary_path.parent / "results.csv").is_file():
-            continue
-        if "mean" not in summary:
-            continue
-
-        commit = str(summary.get("commit", "unknown"))
-        runs.append(
-            Run(
-                directory=summary_path.parent.name,
-                commit=commit,
-                finished=str(summary.get("finished_utc", "")),
-                subset=str(summary.get("subset", "")),
-                graph=str(summary.get("graph", "")),
-                adjacency_normalization=str(summary.get("adjacency_normalization", "")),
-                seeds=int(summary.get("seeds", 0)),
-                split=str(summary.get("split", "")),
-                clip_test_labels=bool(summary.get("clip_test_labels", False)),
-                early_stopping=bool(summary.get("early_stopping", False)),
-                mean=_numbers(summary.get("mean")),
-                std=_numbers(summary.get("std")),
-                dirty=commit.endswith("-dirty"),
-            )
-        )
-    runs.sort(key=lambda run: run.finished, reverse=True)
-    return runs
 
 
 def latest_verification(root: Path | None = None) -> Verification | None:
@@ -244,10 +159,3 @@ def _anchor_for(heading_line: str) -> str:
 
     return slugify(heading_line.lstrip("#").strip())
 
-
-def to_json(root: Path | None = None) -> dict[str, object]:
-    """Runs and entries together, as the browser asks for them."""
-    return {
-        "runs": [asdict(run) for run in load_runs(root)],
-        "entries": [asdict(entry) for entry in load_entries(root)],
-    }

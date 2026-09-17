@@ -361,43 +361,9 @@ what is missing and where to get it, rather than failing.
 
 ## 5. Getting the data
 
-The NASA files are **not** included in this repository. NASA distributes them
-under its own terms, and a research project should cite the original source
-rather than ship a copy that may fall out of date.
-
-1. Open the NASA Prognostics Center of Excellence data repository:
-   <https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/>
-2. Download **Turbofan Engine Degradation Simulation Data Set**.
-3. Copy these three files into `data/raw/`:
-   ```
-   data/raw/train_FD001.txt
-   data/raw/test_FD001.txt
-   data/raw/RUL_FD001.txt
-   ```
-4. Verify them:
-   ```bash
-   python scripts/prepare_data.py --check
-   ```
-   This reports whether each file is present and whether it has the row and
-   engine counts published for the official release (20 631 training rows over
-   100 engines, and 100 test engines, for FD001).
-
-### Keeping the dataset somewhere else
-
-If you already have the files outside this project, point the script at them
-instead of copying:
-
-```bash
-python scripts/prepare_data.py --run --data-dir /path/to/CMAPSSData
-```
-
-The same applies to `run_preprocessing(config, data_dir=...)` in Python.
-
-> **There is no substitute for the real files.** This project does not
-> generate stand-in data, on purpose. A pipeline that appears to work on
-> invented signals tells you nothing about whether it works on engines, and a
-> number computed from invented signals is not a result. If the files are
-> missing, every command and every test says so and points at the download.
+The NASA files are not included in this repository; where to download them,
+how to check them and how to keep them elsewhere is in
+[`data/raw/README.md`](data/raw/README.md), the folder they go into.
 
 ---
 
@@ -409,27 +375,27 @@ The same applies to `run_preprocessing(config, data_dir=...)` in Python.
 python scripts/docs_ui.py
 ```
 
-This opens a browser showing everything written in this repository — this file,
-the eight folder READMEs, the assumptions log, the audits and both notebooks —
-together with eight taught pages that build the method from nothing for a
-reader who has never seen it, and fifteen figures.
+This opens a browser on the playground, where a run is designed, trained,
+compared with the paper and explained. Its menu holds eight taught pages that
+build the method from nothing for a reader who has never seen it, the
+notebooks, the folder READMEs, the assumptions log and the audits.
 
 It is not a copy. Every page is rendered from the file on disk at the moment
-you ask for it, and every figure is **computed** rather than drawn: the sensor
-graph is laid out from the transcribed Table 3 and measured with the same
+you ask for it, and every figure is **computed** rather than drawn: the graph
+drawings are laid out from the transcribed Table 3 and measured with the same
 `adjacency_report()` the tests use, and the network diagram is produced by
-building a real `ESTGNN` and reading its layers back. The three figures that
-need the NASA files say so when the files are absent rather than drawing an
-invented signal.
+building a real `ESTGNN` and reading its layers back. The figures that need the
+NASA files say so when the files are absent rather than drawing an invented
+signal.
 
-The site also shows every run in `reports/` with the commit that produced it,
-and turns `docs/ASSUMPTIONS.md` into cards you can scan. It serves on
+Every run the playground starts is `scripts/train.py` or `scripts/explain.py`,
+stored in `reports/` with the commit that produced it. The site serves on
 `127.0.0.1` only and publishes nothing. See
 [`src/thesis_gnn_rul_xai/docsite/README.md`](src/thesis_gnn_rul_xai/docsite/README.md).
 
 Notebooks can be **read** on the site with the outputs they were saved with,
-which needs nothing extra. To **run** them, the site's JupyterLab button starts
-JupyterLab for you, which needs `pip install -e .[notebook]`.
+which needs nothing extra. To **run** one, the Open in JupyterLab button on its
+page starts JupyterLab for you, which needs `pip install -e .[notebook]`.
 
 ### From the notebooks
 

@@ -59,8 +59,8 @@ class JupyterProcess:
                 self.process.kill()
 
 
-def render_notebook(path: str, root: Path | None = None) -> tuple[str, str]:
-    """Turn one notebook into the HTML body and the CSS the website inlines."""
+def render_notebook(path: str, root: Path | None = None) -> str:
+    """Turn one notebook into the HTML of its cells, with the outputs it was saved with."""
     root = (root or project_root()).resolve()
     target = (root / path).resolve()
     if not target.is_relative_to(root):
@@ -81,9 +81,10 @@ def render_notebook(path: str, root: Path | None = None) -> tuple[str, str]:
     notebook = nbformat.read(target, as_version=4)
     exporter = HTMLExporter(template_name="basic")
     exporter.exclude_input_prompt = False
-    body, resources = exporter.from_notebook_node(notebook)
-    styles = "\n".join(resources.get("inlining", {}).get("css", []))
-    return body, styles
+    # nbconvert also hands back a stylesheet, but it colours code in light
+    # colours only; the site's own stylesheet colours notebooks in both themes.
+    body, _ = exporter.from_notebook_node(notebook)
+    return body
 
 
 def jupyter_command() -> list[str] | None:
@@ -117,11 +118,11 @@ def start_jupyter(port: int = 8899, root: Path | None = None) -> JupyterProcess:
     """Start JupyterLab on the notebooks folder and return where it is serving."""
     command = jupyter_command()
     if command is None:
+        # No restart is asked for: jupyter_command() looks again on every
+        # request, and a package installed while the site runs is found.
         raise NotebookUnavailable(
-            "JupyterLab is not installed in this environment, so the notebooks "
-            "cannot be run here. They can still be read on this site, with the "
-            "outputs they were saved with. To run them, install JupyterLab with "
-            "'pip install -e .[notebook]' and start this site again."
+            "JupyterLab is not installed in this environment. To run the notebooks, "
+            "install it with 'pip install -e .[notebook]'."
         )
 
     root = root or project_root()

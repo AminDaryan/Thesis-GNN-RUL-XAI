@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 311 tests; must all pass
+pytest                # 331 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -857,10 +857,11 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — all 311
-pass (measured 2026-09-16, after the tests for the two new figures, the job
-history, removing a job, a name that points outside the folder it names, a
-damaged process number, and refusing a port another server already holds).
+With everything present — the data, PyTorch and the stored runs — all 331
+pass (measured 2026-09-17, after the website was rebuilt so that nothing on it
+is said twice: five generated pages and one figure went, and tests for the
+cautions, the counted left-out engines, the one job label, the menu-named
+headings and the code colours came).
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing. The model,

@@ -18,21 +18,35 @@
   var SECTIONS = "thesis-playground-sections";
   var PALETTE = ["var(--fig-accent)", "var(--fig-warn)", "var(--fig-lpt)", "var(--fig-lpc)",
     "var(--fig-core)", "var(--fig-cool)", "var(--fig-burn)", "var(--fig-fan)"];
-  var TEMPORAL = { lstm: "LSTM", gru: "GRU", last_cycle: "removed", mean_window: "window mean",
-    window_summary: "window summary", raw_window: "raw window" };
+  // The one vocabulary for temporal stages, job states and methods: the same
+  // words in every label, chip, filter, toast and table cell.
+  var TEMPORAL = { lstm: "LSTM", gru: "GRU", last_cycle: "w/o LSTM", mean_window: "window average",
+    window_summary: "window summary", raw_window: "whole window" };
+  var STATUS = { queued: "Queued", running: "Running", cancelling: "Stopping", done: "Done",
+    failed: "Failed", cancelled: "Stopped", interrupted: "Interrupted" };
+  var METHODS = { shap: "Exact Shapley values", occlusion: "Occlusion" };
+  var ENGINE_SOURCE = { validation: "held-back", training: "training", test: "test" };
   var MEASURES = [["rmse", "RMSE", 3], ["score", "Score", 1], ["r2", "R²", 3], ["asue", "ASUE", 3]];
+  // The paper's own precision for each measure, read from Tables 7 to 10: RMSE
+  // to two places, R² and ASUE to three, and the score to one place or none
+  // ("278.6", "1438").
+  var PAPER_PLACES = { rmse: 2, r2: 3, asue: 3 };
+  // The engine the paper's Fig. 7 draws for each sub-dataset, from its caption:
+  // "(a) FD001-Unit38, (b) FD002-Unit48, (c) FD003-Unit30, and (d) FD004-Unit58".
+  var FIG7_UNIT = { FD001: 38, FD002: 48, FD003: 30, FD004: 58 };
+  // What each source tag means, shown when the pointer rests on the tag.
+  var SOURCE_NAMES = { paper: "Paper", assumption: "Our choice", project: "Project rule", extension: "Not in the paper" };
+  var SOURCE_TITLES = { paper: "The paper prints this value", assumption: "The paper is silent, so this project chose",
+    project: "A rule of this repository", extension: "An option offered for comparison" };
   // Choices short enough to sit side by side in one control. Every other
   // choice is a list of options, each with the source of its value.
   var SEGMENTED = { subset: true, device: true };
   var SUBSETS = ["FD001", "FD002", "FD003", "FD004"];
+  // Groups of settings that are not drawn as folding sections: the sub-dataset
+  // stands alone at the top of the form, and the procedure cards hold theirs.
+  var UNSECTIONED = { data: true, procedure: true };
   var CHEVRON = '<svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 L8 6 L4 9.5" ' +
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  var ABOUT = "Choose a sub-dataset, the preprocessing, the temporal stage and the graph layers' sizes, " +
-    "then train. Remove a part of the model to see what it was worth, and explain what a trained model " +
-    "relies on. Nothing is computed in the browser. Every run started here is <strong>scripts/train.py</strong> " +
-    "with the command shown, stored in <code>reports/</code> under the commit that produced it, exactly as " +
-    "if it had been typed; an explanation is <strong>scripts/explain.py</strong> in the same way. Beside every " +
-    "setting is where its value comes from: the paper, a numbered choice of ours, or neither.";
 
   var T;          // the helpers app.js hands over
   var root;       // the element the page is drawn into
@@ -60,11 +74,35 @@
   function onPage() { return window.location.hash.indexOf(ROUTE) === 0; }
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+  function plural(n, word) { return count(n) + " " + word + (n === 1 ? "" : "s"); }
 
+  // A whole number with a space between thousands, "61 729", as the figures print it.
+  function count(n) {
+    return typeof n === "number" && isFinite(n) ? Number(n).toLocaleString("en").replace(/,/g, " ") : String(n);
+  }
+
+  // A measured number to a fixed number of places, thousands spaced the same way.
+  function number(value, places) {
+    var text = fixed(value, places);
+    return /^-?\d{4,}/.test(text) ? text.replace(/^(-?)(\d+)/, function (all, sign, whole) {
+      return sign + whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    }) : text;
+  }
+
+  // A published figure at the precision the paper prints it.
+  function paperNumber(key, value) {
+    var places = PAPER_PLACES[key] !== undefined ? PAPER_PLACES[key] : (Number.isInteger(value) ? 0 : 1);
+    return { text: number(value, places), places: places };
+  }
+
+  // Every time the page shows: "2026-09-14 23:39 UTC".
   function when(stamp) {
-    var m = /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)/.exec(stamp || "");
-    return m ? m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] : (stamp || "—");
+    var m = /^(\d{4})-?(\d\d)-?(\d\d)T(\d\d):?(\d\d)/.exec(stamp || "");
+    return m ? m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + " UTC" : (stamp || "—");
+  }
+
+  function whenSeconds(seconds) {
+    return seconds ? when(new Date(seconds * 1000).toISOString()) : "";
   }
 
   function duration(seconds) {
@@ -86,16 +124,62 @@
   // Where a default comes from: the paper, a numbered choice, a project rule,
   // or an option the paper does not have. README.md lists the four.
   function sourceTag(source) {
+    if (!source || !SOURCE_NAMES[source.kind]) { return ""; }
+    return '<span class="src src--' + source.kind + '" title="' + esc(SOURCE_TITLES[source.kind]) + '">' +
+      SOURCE_NAMES[source.kind] + (source.ref ? " · " + refLink(source.ref) : "") + "</span>";
+  }
+
+  // A source's tag followed by its words, or nothing when the JSON gives neither.
+  function sourceNote(source) {
     if (!source) { return ""; }
-    var names = { paper: "Paper", assumption: "Our choice", project: "Project rule",
-      extension: "Not in the paper" };
-    return '<span class="src src--' + source.kind + '">' + names[source.kind] +
-      (source.ref ? " · " + refLink(source.ref) : "") + "</span>";
+    return [sourceTag(source), source.text ? esc(source.text) : ""].filter(Boolean).join(" ");
   }
 
   function temporalName(value) {
     return value === null || value === undefined ? "not recorded" : (TEMPORAL[value] || value);
   }
+
+  // The stage with its size where it has one: "LSTM 32", "w/o LSTM".
+  function stageName(temporal, hidden) {
+    return temporalName(temporal) + ((temporal === "lstm" || temporal === "gru") && hidden ? " " + hidden : "");
+  }
+
+  // The graph with its rescaling, when that is not the default: "physics", "physics · symmetric".
+  // A run that recorded no graph gets nothing.
+  function graphName(graph, rescaling) {
+    return graph ? graph + (rescaling && rescaling !== "row" ? " · " + rescaling : "") : "";
+  }
+
+  function statusWord(status) { return STATUS[status] || status; }
+
+  // A setting two runs differ in, named as the form names it, with its value in
+  // the form's own words. A record the form has no field for keeps its name.
+  var RECORD_LABELS = { seeds: "Seeds", split: "Held-back engines", commit: "Commit" };
+  var RECORD_WORDS = { varies_with_seed: "a different draw for every seed", fixed: "the same for every seed" };
+
+  function settingLabel(setting) {
+    var field = S.fields && S.fields[setting.split(".").pop()];
+    return field ? field.label : (RECORD_LABELS[setting] || setting);
+  }
+
+  function settingWords(setting, value) {
+    var field = S.fields && S.fields[setting.split(".").pop()];
+    var choice = field && (field.choices || []).filter(function (c) { return c.value === value; })[0];
+    if (choice) { return choice.label; }
+    if (value === true || value === false) { return value ? "on" : "off"; }
+    if (value === null || value === undefined) { return "not recorded"; }
+    if (Array.isArray(value)) { return value.join(" · "); }
+    return RECORD_WORDS[value] || String(value);
+  }
+
+  // Whether a caution belongs in a view: "run" for a stored run's page, "design" beside Train.
+  function cautionFor(caution, where) {
+    var w = caution.where;
+    if (w === undefined || w === null) { return where === "run"; }
+    return Array.isArray(w) ? w.indexOf(where) >= 0 : String(w).split(/[\s,]+/).indexOf(where) >= 0;
+  }
+
+  function errorBox(message) { return '<div class="error-box">' + esc(message) + "</div>"; }
 
   function remember(key, value) {
     try { window.localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private window */ }
@@ -294,32 +378,35 @@
     var scale = '<span><i style="background:linear-gradient(to right,' + mixColour(0) + "," + mixColour(1) + ')"></i>' +
       (hasReadings ? "the sensor's reading as the model was given it, low to high"
         : "the window's place in the sequence, first to last") + "</span>";
-    return out + '<div class="pg-legend"><span><i style="background:transparent;border:1.5px solid var(--fig-burn)"></i>the four largest on average</span>' +
+    return out + '<div class="pg-legend"><span><i style="background:transparent;border:1.5px solid var(--fig-burn)"></i>the four largest</span>' +
       '<span><i style="background:transparent;border:1.5px solid var(--fig-accent)"></i>the other ten</span>' + scale + "</div>";
   }
 
   // The sensors in rank order, the way the paper's Fig. 9 (middle) draws
   // them: the four with the largest average values red, deeper for larger;
-  // the other ten blue, from deep to light as they matter less.
+  // the other ten blue, from deep to light as they matter less. Each circle
+  // has the average it is ranked by written under it.
   function rankedStrip(meanAbs, ranked) {
     var st = fig10Style(meanAbs, ranked);
-    var perRow = Math.ceil(ranked.length / 2), gap = 88, r = 19, W = 640;
+    // Each row is tall enough for a circle and the average written under it,
+    // so the frame round the four largest encloses both.
+    var perRow = Math.ceil(ranked.length / 2), gap = 88, r = 19, W = 640, rowH = 68;
     var x0 = (W - (perRow - 1) * gap) / 2;
-    var H = 2 * 56 + 10;
+    var H = 2 * rowH + 4;
     var out = '<svg class="pg-plot pg-strip" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="The sensors ranked">';
     var box = function (from, to, colour) {
       var row = Math.floor(from / perRow), col = from % perRow, cols = to - from;
-      return '<rect x="' + (x0 + col * gap - r - 7) + '" y="' + (row * 56 + 4) + '" width="' + ((cols - 1) * gap + 2 * r + 14) +
-        '" height="' + (2 * r + 14) + '" rx="8" fill="none" stroke="' + colour + '" stroke-width="1.4" stroke-dasharray="4 3"/>';
+      return '<rect x="' + (x0 + col * gap - r - 12) + '" y="' + (row * rowH + 4) + '" width="' + ((cols - 1) * gap + 2 * r + 24) +
+        '" height="' + (2 * r + 24) + '" rx="8" fill="none" stroke="' + colour + '" stroke-width="1.4" stroke-dasharray="4 3"/>';
     };
     out += box(0, Math.min(4, perRow), "var(--fig-burn)");
     ranked.forEach(function (s, rank) {
       var row = Math.floor(rank / perRow), col = rank % perRow;
-      var cx = x0 + col * gap, cy = row * 56 + 30, k = st.style[s];
-      out += '<g><title>' + esc((rank + 1) + ". " + s + ": average size " + Number(meanAbs[s]).toFixed(2) + " cycles") + "</title>" +
+      var cx = x0 + col * gap, cy = row * rowH + 30, k = st.style[s];
+      out += '<g><title>' + esc(s + ": rank " + (rank + 1) + " of " + ranked.length) + "</title>" +
         '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/>' +
         '<text x="' + cx + '" y="' + (cy + 3) + '" text-anchor="middle" class="pg-strip-label">' + esc(s) + "</text>" +
-        '<text x="' + cx + '" y="' + (cy + r + 12) + '" text-anchor="middle" class="pg-tick">' + (rank + 1) + "</text></g>";
+        '<text x="' + cx + '" y="' + (cy + r + 12) + '" text-anchor="middle" class="pg-tick">' + fixed(meanAbs[s], 2) + "</text></g>";
     });
     return out + "</svg>";
   }
@@ -350,9 +437,11 @@
   function optionList(name, choices, current, data, noteOf, labelledBy) {
     return '<div class="opts" role="radiogroup"' + (labelledBy ? ' aria-labelledby="' + labelledBy + '"' : "") + ">" +
       choices.map(function (c) {
+        var note = noteOf(c);
         return '<label class="opt' + (c.value === current ? " is-active" : "") + '"><input type="radio" name="' + name +
           '" value="' + esc(c.value) + '"' + (c.value === current ? " checked" : "") + " " + data + ">" +
-          '<span class="opt-label">' + esc(c.label) + '</span><span class="opt-note">' + noteOf(c) + "</span></label>";
+          '<span class="opt-label">' + esc(c.label) + "</span>" +
+          (note ? '<span class="opt-note">' + note + "</span>" : "") + "</label>";
       }).join("") + "</div>";
   }
 
@@ -366,15 +455,19 @@
   // One setting: its name and where it comes from on the left, its control on
   // the right. A list of options is too wide to sit beside its name, so it
   // goes underneath instead.
+  // A setting whose list of options is named by the section head above it
+  // has no label of its own, and then no name column either.
   function row(spec) {
-    var name = spec.id
+    var name = !spec.label ? "" : spec.id
       ? '<label for="' + spec.id + '" id="' + spec.id + '-label">' + esc(spec.label) + "</label>"
       : '<span id="' + spec.key + '-label">' + esc(spec.label) + "</span>";
-    return '<div class="pg-row' + (spec.stacked ? " pg-row--stack" : "") + (spec.changed ? " is-changed" : "") + '"' +
+    var nameColumn = name || spec.hint
+      ? '<div class="pg-row-name">' + (name ? '<div class="pg-row-label">' + name + "</div>" : "") +
+        '<div class="pg-row-hint"' + (spec.hint ? "" : " hidden") + ">" + (spec.hint || "") + "</div></div>"
+      : "";
+    return '<div class="pg-row' + (spec.stacked ? " pg-row--stack" : "") + '"' +
       (spec.key ? ' data-row="' + spec.key + '"' : "") + (spec.hidden ? " hidden" : "") + ">" +
-      '<div class="pg-row-name"><div class="pg-row-label">' + name + "</div>" +
-      (spec.hint ? '<div class="pg-row-hint">' + spec.hint + "</div>" : "") + "</div>" +
-      '<div class="pg-row-control">' + spec.control + (spec.reset || "") + "</div></div>";
+      nameColumn + '<div class="pg-row-control">' + spec.control + (spec.reset || "") + "</div></div>";
   }
 
   function chip(kind, label) { return T.chip(kind, label); }
@@ -385,13 +478,16 @@
     T = tools;
     root = target;
     if (window.__thesisPlaygroundTimer) { clearTimeout(window.__thesisPlaygroundTimer); }
-    S = { tab: S.tab || "design", jobs: [], seen: {}, runs: null, selected: null, detail: null,
-      compare: [], comparison: null, filter: { subset: "all", results: false, weights: false },
+    // seen: the last state each job was polled in. mine: the jobs this page
+    // started, whose end is announced even when the first poll finds them ended.
+    S = { tab: S.tab || "design", jobs: [], seen: {}, mine: {}, runs: null, selected: null, detail: null,
+      compare: [], filter: { subset: "all", results: false, weights: false },
       jobFilter: { kind: "all", status: "all" },
       sections: recall(SECTIONS) || {},
       explain: { run: null, detail: null, seed: null, method: "shap", scope: "engine", engine: "",
         every: 1, shown: null, values: null, index: 0 } };
 
+    // The browser tab is named by app.js, from the menu, as every page is.
     return tools.get("/api/playground/options").then(function (options) {
       S.options = options;
       S.fields = {};
@@ -400,21 +496,16 @@
       frame();
       showTab(S.tab);
       pollJobs();
-      document.title = "Playground — Thesis documentation";
       T.buildToc([]);
     }).catch(function (error) {
-      root.innerHTML = '<div class="error-box"><strong>The playground could not load</strong>' +
-        esc(error.message) + "</div>";
+      root.innerHTML = errorBox("The playground could not load: " + error.message);
     });
   }
 
+  // The page's name is a heading for screen readers only; the tab strip is
+  // the first thing seen, and the menu already names the page.
   function frame() {
-    root.innerHTML = '<div class="pg">' +
-      T.crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "Playground" }]) +
-      T.pageHead("Explore", "Playground",
-        "Design a run, train it with the project's own script, read the stored result, and explain " +
-        "what the trained network relies on.",
-        '<details class="pg-about"><summary>How this page works</summary><p>' + ABOUT + "</p></details>") +
+    root.innerHTML = '<div class="pg"><h1 class="visually-hidden">Playground</h1>' +
       '<div id="pg-current" class="pg-current" aria-live="polite" hidden></div>' +
       '<div class="pg-steps" role="tablist" aria-label="The three steps, and the jobs">' +
       tabButton("design", 1, "Design a run") + tabButton("results", 2, "Results") + tabButton("explain", 3, "Explain") +
@@ -427,9 +518,9 @@
     root.addEventListener("input", onInput);
   }
 
-  function tabButton(key, number, label) {
+  function tabButton(key, step, label) {
     return '<button type="button" role="tab" class="pg-step-tab" data-tab="' + key + '" aria-controls="pg-panel">' +
-      '<span class="pg-step-n">' + number + "</span>" + label + "</button>";
+      '<span class="pg-step-n">' + step + "</span>" + label + "</button>";
   }
 
   function showTab(tab) {
@@ -437,6 +528,9 @@
     $all(".pg-step-tab").forEach(function (button) {
       button.setAttribute("aria-selected", String(button.getAttribute("data-tab") === tab));
     });
+    // The banner is hidden while the Jobs tab lists the same job, so it is
+    // checked again whenever the tab changes, not only when jobs are polled.
+    paintBanner();
     if (tab === "design") { drawDesign(); }
     else if (tab === "results") { drawResults(); }
     else if (tab === "jobs") { drawJobsTab(); }
@@ -453,7 +547,7 @@
     if (!target || !root.contains(target)) { return; }
     if (target.hasAttribute("data-tab")) { showTab(target.getAttribute("data-tab")); return; }
     if (target.hasAttribute("data-ablation")) { applyPreset(S.options.ablations, target.getAttribute("data-ablation")); return; }
-    if (target.hasAttribute("data-procedure")) { applyPreset(S.options.procedures, target.getAttribute("data-procedure")); return; }
+    if (target.hasAttribute("data-procedure")) { chooseProcedure(target.getAttribute("data-procedure")); return; }
     if (target.hasAttribute("data-section")) { toggleSection(target.getAttribute("data-section")); return; }
     if (target.hasAttribute("data-reset")) { resetField(target.getAttribute("data-reset")); return; }
     // The named action is looked for first. A button in the job list carries
@@ -476,15 +570,10 @@
   }
 
   var ACTIONS = {
-    "expand": function () { setAllSections(true); },
-    "collapse": function () { setAllSections(false); },
+    // One button that opens every folded section, or folds them all once none is folded.
+    "toggle-sections": function () { setAllSections(!allSectionsOpen()); },
     "reset-all": function () { S.settings = copy(S.options.defaults); saveSettings(); drawDesign(); },
-    "run": function () { submit([S.settings]); },
-    "twin": function () {
-      var ablated = copy(S.settings);
-      ablated.temporal = "last_cycle";
-      submit([S.settings, ablated]);
-    },
+    "run": function () { submit(S.settings); },
     "cancel": function (button) {
       post("/api/playground/cancel", { id: button.getAttribute("data-id") }).then(repoll)
         .catch(function (e) { T.toast(e.message); });
@@ -497,11 +586,9 @@
         .catch(function (e) { T.toast(e.message); });
     },
     "forget-finished": function () {
-      if (!window.confirm("Remove every finished, failed, stopped and interrupted job from the list? Their logs are deleted; the runs and explanations they wrote stay.")) { return; }
-      post("/api/playground/forget", { all_finished: true }).then(function (answer) {
-        T.toast(plural(answer.forgotten.length, "job") + " removed.");
-        repoll();
-      }).catch(function (e) { T.toast(e.message); });
+      if (!window.confirm("Remove every done, failed, stopped and interrupted job from the list? Their logs are deleted; the runs and explanations they wrote stay.")) { return; }
+      post("/api/playground/forget", { all_finished: true }).then(repoll)
+        .catch(function (e) { T.toast(e.message); });
     },
     "open-run": function (button) {
       S.selected = button.getAttribute("data-run"); S.detail = null; S.runs = null; showTab("results");
@@ -514,6 +601,11 @@
     "again": function () { S.settings = settingsFromRun(S.detail); saveSettings(); showTab("design"); },
     "explain-this": function () {
       S.explain.run = S.detail.name; S.explain.detail = null; S.explain.shown = null; showTab("explain");
+    },
+    // The Explain tab has no run picker: another run is chosen in Results,
+    // among the runs that kept their weights.
+    "choose-run": function () {
+      S.selected = null; S.filter.weights = true; showTab("results");
     },
     "explain": function () { submitExplanation(); }
   };
@@ -539,6 +631,7 @@
     if (input.hasAttribute("data-job-filter")) {
       S.jobFilter[input.getAttribute("data-job-filter")] = input.value;
       drawJobsTab();
+      paintBanner();
       return;
     }
     if (input.hasAttribute("data-pred-seed")) { S.predSeed = input.value; drawDetail(); return; }
@@ -557,10 +650,11 @@
     var caption = $("[data-window-caption]");
     var row = rows && rows[S.explain.index];
     if (row && caption) { caption.textContent = windowCaption(row); }
+    if (historyCursor) { historyCursor(S.explain.index); }
   }
 
   function windowCaption(row) {
-    return "cycle " + row.end_cycle + ", true life " + fixed(row.rul, 0) +
+    return "cycle " + row.end_cycle + ", true remaining life " + fixed(row.rul, 0) +
       ", predicted " + fixed(row.predicted, 1);
   }
 
@@ -570,23 +664,26 @@
   // leave a second chain of polling running beside the first.
   function repoll() {
     clearTimeout(window.__thesisPlaygroundTimer);
-    pollJobs();
+    return pollJobs();
   }
 
+  function isLive(job) { return job.status === "running" || job.status === "cancelling" || job.status === "queued"; }
+
+  // A job that has ended is announced once, by name, unless the Jobs tab is
+  // open, where its card changes in front of the reader. A job is announced
+  // when a poll finds it ended after an earlier poll saw it live, or, for a
+  // job this page started, when the very first poll already finds it ended:
+  // a short explanation can finish between the request and the next poll.
   function pollJobs() {
-    if (!onPage()) { return; }
-    T.get("/api/playground/jobs").then(function (data) {
+    if (!onPage()) { return Promise.resolve(); }
+    return T.get("/api/playground/jobs").then(function (data) {
       S.torch = data.torch;
       var busy = false;
       data.jobs.forEach(function (job) {
         var before = S.seen[job.id];
-        if ((job.status === "running" || job.status === "queued" || job.status === "cancelling")) { busy = true; }
-        if (before && before !== job.status && job.status === "done") {
-          T.toast(job.label + " finished.");
-          S.runs = null;
-          if (S.tab === "results") { drawResults(); }
-          if (S.tab === "explain" && job.kind === "explain") { S.explain.detail = null; drawExplain(); }
-        }
+        if (isLive(job)) { busy = true; }
+        var wasLive = before ? isLive({ status: before }) : !!S.mine[job.id];
+        if (!isLive(job) && wasLive) { announceEnd(job); }
         S.seen[job.id] = job.status;
       });
       S.jobs = data.jobs;
@@ -597,39 +694,59 @@
     });
   }
 
+  function announceEnd(job) {
+    if (S.tab !== "jobs") { T.toast(statusWord(job.status) + ": " + job.label); }
+    if (job.status !== "done") { return; }
+    S.runs = null;
+    if (S.tab === "results") { drawResults(); }
+    if (S.tab === "explain" && job.kind === "explain") { S.explain.detail = null; drawExplain(); }
+  }
+
+  // What the status word cannot say: while a run trains, which seed it is on
+  // and its latest held-back error; once a job was stopped, that nothing was
+  // kept. The pass count is left to the bar, and a finished job to its button.
   function jobLine(job) {
     var p = job.progress || {};
-    if (job.status === "failed") { return "The command failed. Its last lines are below."; }
-    if (job.status === "cancelled") { return "Stopped. Nothing was written to reports/."; }
-    if (job.status === "interrupted") { return "The server it ran on stopped before it finished, so nothing was written to reports/."; }
-    if (job.status === "queued") { return "Waiting for the job before it to finish."; }
+    if (job.status === "cancelled") { return "Nothing was written to reports/."; }
+    if (job.status === "interrupted") { return "Its server stopped; nothing was written to reports/."; }
+    if (job.status !== "running") { return ""; }
     if (job.kind === "train") {
-      if (p.seeds === undefined) { return "Preparing the data…"; }
-      var text = "Seed " + ((p.seed_index || 0) + 1) + " of " + p.seeds;
-      if (p.epoch) { text += " · pass " + p.epoch + " of " + p.epochs; }
+      if (p.seeds === undefined) { return "Preparing the data and model…"; }
+      var text = "Seed " + ((p.seed_index || 0) + 1);
       var last = p.curve && p.curve.length ? p.curve[p.curve.length - 1] : null;
       if (last && last.validation_rmse !== null && last.validation_rmse !== undefined) {
         text += " · held-back error " + fixed(last.validation_rmse, 2) + " cycles";
       }
-      if (p.seeds_done && p.seeds_done.length) {
-        text += " · test RMSE so far: " + p.seeds_done.map(function (d) { return fixed(d.rmse, 2); }).join(", ");
-      }
       return text;
     }
-    if (p.total) { return p.done + " of " + p.total + " windows explained"; }
-    return "Preparing the data and model…";
+    return p.total ? "" : "Preparing the data and model…";
   }
 
   function jobFraction(job) {
     var p = job.progress || {};
-    if (job.status === "done") { return 1; }
     if (job.kind === "train" && p.seeds) {
       return Math.min(1, ((p.seed_index || 0) + (p.epoch || 0) / (p.epochs || 1)) / p.seeds);
     }
     return p.total ? p.done / p.total : 0;
   }
 
-  function isLive(job) { return job.status === "running" || job.status === "cancelling" || job.status === "queued"; }
+  // The bar only moves while a job runs or is being stopped.
+  function jobBar(job) {
+    return job.status === "running" || job.status === "cancelling"
+      ? '<div class="pg-bar"><span style="width:' + Math.round(jobFraction(job) * 100) + '%"></span></div>' : "";
+  }
+
+  function statusPill(job) {
+    return '<span class="pg-status">' + esc(statusWord(job.status)) + "</span>";
+  }
+
+  // A running job can be stopped and a queued one cancelled; one already
+  // stopping has nothing left to press.
+  function stopButton(job) {
+    if (job.status !== "running" && job.status !== "queued") { return ""; }
+    return '<button type="button" class="button button--small" data-action="cancel" data-id="' + esc(job.id) + '">' +
+      (job.status === "queued" ? "Cancel" : "Stop") + "</button>";
+  }
 
   // What is happening now first, then what will happen next in the order it
   // will happen, then what has finished, newest first.
@@ -643,36 +760,52 @@
     });
   }
 
-  // The strip above the tabs shows the one job running now and how many wait
-  // behind it; the Jobs tab holds everything, and is redrawn if it is open.
+  function jobShown(job) {
+    var f = S.jobFilter;
+    var stateGroup = isLive(job) ? "live" : job.status === "done" ? "done" : job.status === "failed" ? "failed" : "stopped";
+    return (f.kind === "all" || job.kind === f.kind) && (f.status === "all" || stateGroup === f.status);
+  }
+
+  // The banner above the tabs shows the one job running now, and the Jobs
+  // tab's badge counts the jobs queued behind it. The Jobs tab holds
+  // everything, and is redrawn if it is open.
   function drawJobs() {
-    var box = $("#pg-current"), badge = $("#pg-jobs-badge");
-    if (!box) { return; }
-    var live = orderedJobs().filter(isLive);
-    var current = live[0];
-    box.hidden = !current;
-    if (current) {
-      var p = current.progress || {};
-      var waiting = live.length - 1;
-      box.innerHTML = '<div class="pg-job-main"><div class="pg-job-head"><span class="pg-status">' + esc(current.status) + "</span><strong>" +
-        esc(current.label) + "</strong>" + (current.elapsed ? '<span class="pg-faint">' + duration(current.elapsed) + "</span>" : "") + "</div>" +
-        '<div class="pg-bar"><span style="width:' + Math.round(jobFraction(current) * 100) + '%"></span></div>' +
-        '<div class="pg-job-line">' + esc(jobLine(current)) +
-        (p.seeds_done && p.seeds_done.length ? "" : "") + "</div></div>" +
-        '<div class="pg-current-side">' +
-        (waiting ? '<span class="pg-faint">' + plural(waiting, "more job") + " queued</span>" : "") +
-        '<button type="button" class="button button--small" data-action="cancel" data-id="' + esc(current.id) + '">' +
-        (current.status === "queued" ? "Remove" : "Stop") + "</button>" +
-        '<button type="button" class="button button--small button--quiet" data-tab="jobs">All jobs</button></div>';
-    } else {
-      box.innerHTML = "";
-    }
+    paintBanner();
+    var badge = $("#pg-jobs-badge");
     if (badge) {
-      badge.textContent = live.length ? String(live.length) : (S.jobs.length ? String(S.jobs.length) : "");
-      badge.setAttribute("data-live", String(live.length > 0));
-      badge.title = live.length ? plural(live.length, "job") + " running or queued" : plural(S.jobs.length, "job") + " kept";
+      var current = orderedJobs().filter(isLive)[0];
+      var waiting = S.jobs.filter(function (job) { return job.status === "queued" && job !== current; }).length;
+      badge.textContent = waiting ? count(waiting) : "";
+      badge.title = waiting ? plural(waiting, "job") + " waiting" : "";
     }
     if (S.tab === "jobs") { drawJobsTab(); }
+  }
+
+  // Hidden while the Jobs tab is open with filters that list the same job.
+  function paintBanner() {
+    var box = $("#pg-current");
+    if (!box) { return; }
+    var current = orderedJobs().filter(isLive)[0];
+    var listed = current && S.tab === "jobs" && jobShown(current);
+    box.hidden = !current || listed;
+    box.className = "pg-current" + (current ? " pg-job--" + current.status : "");
+    if (!current || listed) { box.innerHTML = ""; return; }
+    var line = jobLine(current);
+    box.innerHTML = '<div class="pg-job-main"><div class="pg-job-head">' + statusPill(current) + "<strong>" +
+      esc(current.label) + "</strong>" + (current.elapsed ? '<span class="pg-faint">' + duration(current.elapsed) + "</span>" : "") + "</div>" +
+      jobBar(current) + (line ? '<div class="pg-job-line">' + esc(line) + "</div>" : "") + "</div>" +
+      '<div class="pg-current-side">' + stopButton(current) + "</div>";
+  }
+
+  // Whether the banner can be seen without scrolling. Queuing a job raises a
+  // toast only when it cannot, since otherwise the banner already says so.
+  function bannerInView() {
+    var box = $("#pg-current");
+    if (!box || box.hidden) { return false; }
+    var r = box.getBoundingClientRect();
+    var bar = document.querySelector(".topbar");
+    var top = bar ? bar.getBoundingClientRect().bottom : 0;
+    return r.bottom > top && r.top < window.innerHeight;
   }
 
   // The Jobs tab: every job this server ran and every one an earlier server
@@ -682,36 +815,23 @@
     if (!panel) { return; }
     var f = S.jobFilter;
     var all = orderedJobs();
-    var shown = all.filter(function (job) {
-      var stateGroup = isLive(job) ? "live" : job.status === "done" ? "done" : job.status === "failed" ? "failed" : "stopped";
-      return (f.kind === "all" || job.kind === f.kind) && (f.status === "all" || stateGroup === f.status);
-    });
+    var shown = all.filter(jobShown);
     var ended = all.filter(function (job) { return !isLive(job); }).length;
     panel.innerHTML =
       '<div class="pg-toolbar">' +
-      segmented("pg-jf-kind", [{ value: "all", label: "All" }, { value: "train", label: "Training runs" }, { value: "explain", label: "Explanations" }],
+      segmented("pg-jf-kind", [{ value: "all", label: "Any kind" }, { value: "train", label: "Training runs" }, { value: "explain", label: "Explanations" }],
         f.kind, 'data-job-filter="kind"') +
-      segmented("pg-jf-status", [{ value: "all", label: "Any state" }, { value: "live", label: "Running or queued" }, { value: "done", label: "Finished" },
+      segmented("pg-jf-status", [{ value: "all", label: "Any state" }, { value: "live", label: "Running or queued" }, { value: "done", label: "Done" },
         { value: "failed", label: "Failed" }, { value: "stopped", label: "Stopped or interrupted" }], f.status, 'data-job-filter="status"') +
-      '<span class="pg-faint">' + shown.length + " of " + plural(all.length, "job") + "</span>" +
-      (ended ? '<button type="button" class="button button--small" data-action="forget-finished">Remove all ended</button>' : "") +
+      (shown.length && shown.length < all.length ? '<span class="pg-faint">' + count(shown.length) + " of " + plural(all.length, "job") + "</span>" : "") +
+      (ended ? '<button type="button" class="button button--small" data-action="forget-finished">Remove ended jobs</button>' : "") +
       "</div>" +
       (shown.length ? '<div class="pg-jobs">' + shown.map(jobHtml).join("") + "</div>"
-        : '<div class="pg-empty">' + (all.length ? "No job matches these filters." :
-          "No jobs yet. Runs and explanations you start appear here, one at a time, in the order you asked for them.") + "</div>") +
-      '<p class="pg-faint">Every job has a folder in reports/.playground holding what it printed and its progress. ' +
-      "A job from an earlier server is read back from that folder. Removing a job deletes its folder and nothing else: " +
-      "the run or explanation it wrote into reports/ stays.</p>";
+        : '<div class="pg-empty">' + (all.length ? "No job matches these filters." : "No jobs yet.") + "</div>");
   }
 
   function jobHtml(job) {
     var p = job.progress || {};
-    var curve = (p.curve || []).map(function (c) {
-      return [c.epoch, c.validation_rmse !== null && c.validation_rmse !== undefined ? c.validation_rmse : c.train_loss];
-    });
-    var spark = job.kind === "train" && job.status === "running" && curve.length > 1
-      ? '<div class="pg-spark">' + plot({ width: 200, height: 60, series: [{ points: curve, colour: "var(--fig-accent)" }] })
-        .replace(/<text[^>]*>[^<]*<\/text>/g, "") + "</div>" : "";
     var open = "";
     if (job.status === "done" && p.result) {
       open = job.kind === "train"
@@ -719,29 +839,34 @@
         : '<button type="button" class="button button--small" data-action="open-explanation" data-run="' + esc(p.result.run) +
           '" data-name="' + esc(p.result.directory) + '">Open explanation</button>';
     }
-    var stop = job.status === "running" || job.status === "queued"
-      ? '<button type="button" class="button button--small" data-action="cancel" data-id="' + esc(job.id) + '">' +
-        (job.status === "queued" ? "Remove" : "Stop") + "</button>" : "";
     var forget = !isLive(job)
-      ? '<button type="button" class="button button--small button--quiet" data-action="forget" data-id="' + esc(job.id) + '" title="Delete this job\'s log and progress; what it wrote to reports/ stays">Remove</button>' : "";
-    var when_ = job.created ? new Date(job.created * 1000).toISOString().slice(0, 16).replace("T", " ") : "";
+      ? '<button type="button" class="button button--small button--quiet" data-action="forget" data-id="' + esc(job.id) + '">Remove</button>' : "";
+    var line = jobLine(job);
     return '<div class="pg-job pg-job--' + job.status + '">' +
-      '<div class="pg-job-main"><div class="pg-job-head"><span class="pg-status">' + esc(job.status) +
-      "</span><strong>" + esc(job.label) + "</strong>" +
-      (when_ ? '<span class="pg-faint">' + when_ + " UTC</span>" : "") +
-      (job.elapsed ? '<span class="pg-faint">' + duration(job.elapsed) + "</span>" : "") +
-      (job.from_disk ? '<span class="chip" title="Read back from its folder; the server that ran it has stopped">earlier server</span>' : "") + "</div>" +
-      '<div class="pg-bar"><span style="width:' + Math.round(jobFraction(job) * 100) + '%"></span></div>' +
-      '<div class="pg-job-line">' + esc(jobLine(job)) + "</div>" +
+      '<div class="pg-job-main"><div class="pg-job-head">' + statusPill(job) +
+      "<strong>" + esc(job.label) + "</strong>" +
+      (job.created ? '<span class="pg-faint">' + whenSeconds(job.created) + "</span>" : "") +
+      (job.elapsed ? '<span class="pg-faint">' + duration(job.elapsed) + "</span>" : "") + "</div>" +
+      jobBar(job) + (line ? '<div class="pg-job-line">' + esc(line) + "</div>" : "") +
       (job.log ? '<pre class="pg-log">' + esc(job.log) + "</pre>" : "") +
-      (job.command ? '<details class="pg-command"><summary>Command</summary><code>' + esc(job.command) + "</code></details>" : "") +
-      '</div><div class="pg-job-side">' + spark + '<div class="pg-job-actions">' + open + stop + forget + "</div></div></div>";
+      (job.command ? '<details class="pg-details"><summary>Command</summary><code class="pg-code">' + esc(job.command) + "</code></details>" : "") +
+      '</div><div class="pg-job-actions">' + open + stopButton(job) + forget + "</div></div>";
   }
 
   // ---------------------------------------------------------------- design
 
   function fieldsOf(group) {
     return S.options.fields.filter(function (f) { return f.group === group; });
+  }
+
+  // The folding sections: every group except those drawn somewhere else.
+  function sectionGroups() {
+    return S.options.groups.filter(function (g) { return !UNSECTIONED[g.key]; });
+  }
+
+  function groupLabel(key) {
+    var found = S.options.groups.filter(function (g) { return g.key === key; })[0];
+    return found ? found.label : "";
   }
 
   function visible(key) {
@@ -764,6 +889,22 @@
     return Object.keys(settings).every(function (k) { return S.settings[k] === settings[k]; });
   }
 
+  // The procedure card the settings follow. A card decides two things,
+  // whether any engines are held back and whether training stops early, so a
+  // held-back fraction other than the card's own still counts as that card.
+  // Settings that fit neither card (read back from an older run, say) count
+  // as the card that holds engines back, whose inputs then show them.
+  function chosenProcedure() {
+    var list = S.options.procedures;
+    var found = list.filter(function (p) {
+      return Object.keys(p.settings).every(function (k) {
+        var want = p.settings[k], have = S.settings[k];
+        return typeof want === "number" ? (Number(have) > 0) === (want > 0) : have === want;
+      });
+    })[0];
+    return found || list.filter(function (p) { return p.settings.validation_fraction > 0; })[0] || list[0];
+  }
+
   function choiceLabel(key, value) {
     var found = (S.fields[key].choices || []).filter(function (c) { return c.value === value; })[0];
     return found ? found.label : String(value);
@@ -775,17 +916,15 @@
     return m ? { label: m[1], unit: m[2] } : { label: label, unit: "" };
   }
 
-  // What a folded group holds right now, in one line.
+  // What a folded section holds right now, in one line. It is shown only
+  // while the section is folded; an open one shows the controls themselves.
   function groupSummary(group) {
     var s = S.settings;
     switch (group) {
-      case "data":
-        return s.subset;
       case "preprocessing":
         return s.window_size + "-cycle windows, stride " + s.window_stride + " · ceiling " + s.rul_max +
           " · " + choiceLabel("normalization", s.normalization).toLowerCase() +
-          " · " + (s.smoothing ? "smoothed" : "not smoothed") +
-          " · " + Math.round(s.validation_fraction * 100) + " % held back · " +
+          " · " + (s.smoothing ? "smoothed" : "not smoothed") + " · " +
           choiceLabel("graph", s.graph).toLowerCase() + " · " + choiceLabel("adjacency_normalization", s.adjacency_normalization).toLowerCase();
       case "temporal":
         if (s.temporal === "lstm" || s.temporal === "gru") {
@@ -797,66 +936,107 @@
         return "GCN " + s.gcn_hidden.join(" · ") + " → FC " + s.fc_hidden + (s.gcn_bias ? " · with bias" : "");
       case "training":
         return s.epochs + " passes · " + s.batch_size + " per update · " + s.learning_rate + " → " + s.final_learning_rate +
-          ", " + choiceLabel("lr_schedule", s.lr_schedule).toLowerCase() +
-          (s.early_stopping ? " · stops after " + s.early_stopping_patience + " passes without improvement" : "");
+          ", " + choiceLabel("lr_schedule", s.lr_schedule).toLowerCase();
       case "repeats":
-        return plural(s.seeds, "seed") + " from " + s.seed + (s.fixed_split ? " · same split for every seed" : "") + " · " + s.device;
+        return "from " + s.seed + (s.fixed_split ? " · same split for every seed" : "") + " · " + s.device;
       default:
         return "";
     }
   }
 
   function sectionOpen(group) {
-    return S.sections[group] === undefined ? group === "data" : !!S.sections[group];
+    return !!S.sections[group];
+  }
+
+  function allSectionsOpen() {
+    return sectionGroups().every(function (g) { return sectionOpen(g.key); });
   }
 
   function drawDesign() {
-    var o = S.options;
     $("#pg-panel").innerHTML =
-      '<div class="pg-design"><div class="pg-form">' + presetsHtml() +
+      '<div class="pg-design"><div class="pg-form">' + dataHtml() + presetsHtml() +
       '<div class="pg-sections-bar"><h2 class="pg-block-title">Every setting</h2>' +
-      '<button type="button" class="button button--quiet button--small" data-action="expand">Expand all</button>' +
-      '<button type="button" class="button button--quiet button--small" data-action="collapse">Collapse all</button>' +
-      '<button type="button" class="button button--quiet button--small" data-action="reset-all">Reset all</button></div>' +
-      o.groups.map(sectionHtml).join("") +
-      '</div><aside class="pg-summary" id="pg-summary"><div class="loading">Building the network…</div></aside></div>';
+      '<button type="button" class="button button--quiet button--small" data-action="toggle-sections" id="pg-toggle-sections">' +
+      (allSectionsOpen() ? "Collapse all" : "Expand all") + "</button>" +
+      '<button type="button" class="pg-reset" data-action="reset-all">Reset all</button></div>' +
+      sectionGroups().map(sectionHtml).join("") +
+      '</div><aside class="pg-summary pg-block" id="pg-summary"></aside></div>';
+    drawSummary($("#pg-summary"), null, null);
     refreshPreview();
   }
 
-  function presetsHtml() {
+  // The sub-dataset stands at the top of the form on its own: one setting
+  // needs no section around it.
+  function dataHtml() {
+    return '<section class="pg-block pg-data">' + fieldsOf("data").map(fieldRow).join("") + "</section>";
+  }
+
+  // The variants of Table 11 as one-click presets, each with the RMSE the
+  // paper prints for it on the chosen sub-dataset.
+  function variantsHtml() {
     var o = S.options, subset = S.settings.subset;
-    var variants = o.ablations.map(function (a) {
-      var paperRow = o.paper[subset][a.key];
-      return '<button type="button" class="pg-variant' + (a.settings && matches(a.settings) ? " is-active" : "") + '"' +
-        (a.settings ? ' data-ablation="' + a.key + '"' : " disabled") + ' title="' + esc(a.reason || "") + '">' +
+    return o.ablations.map(function (a) {
+      var paperRow = (o.paper[subset] || {})[a.key];
+      var active = !!(a.settings && matches(a.settings));
+      return '<button type="button" class="pg-variant' + (active ? " is-active" : "") + '"' +
+        (a.settings ? ' data-ablation="' + esc(a.key) + '" aria-pressed="' + active + '"' : " disabled") +
+        (a.reason ? ' title="' + esc(a.reason) + '"' : "") + ">" +
         "<strong>" + esc(a.label) + "</strong>" +
-        (paperRow ? "<span>paper RMSE " + fixed(paperRow.rmse, 2) + " on " + esc(subset) + "</span>" : "") +
+        (paperRow ? "<span>paper RMSE " + fixed(paperRow.rmse, 2) + "</span>" : "") +
         (a.settings ? "" : "<em>not buildable here</em>") + "</button>";
     }).join("");
-    var procedures = o.procedures.map(function (p) {
-      return '<button type="button" class="pg-variant' + (matches(p.settings) ? " is-active" : "") + '" data-procedure="' + p.key + '">' +
-        "<strong>" + esc(p.label) + "</strong><span>" + esc(p.text) + "</span></button>";
+  }
+
+  // The two procedures are the only control for holding engines back. The
+  // one that holds them back carries the inputs for how many, and for how
+  // long training may go without improving, while it is the one chosen.
+  function presetsHtml() {
+    var chosen = chosenProcedure();
+    var procedures = S.options.procedures.map(function (p) {
+      var active = p === chosen;
+      var inputs = p.settings.validation_fraction > 0
+        ? '<div class="pg-procedure-fields" id="pg-procedure-fields"' + (active ? "" : " hidden") + ">" +
+          fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; }).map(fieldRow).join("") + "</div>"
+        : "";
+      return '<div class="pg-procedure">' +
+        '<button type="button" class="pg-variant' + (active ? " is-active" : "") + '" data-procedure="' + esc(p.key) +
+        '" aria-pressed="' + active + '"><strong>' + esc(p.label) + "</strong><span>" + esc(p.text) + "</span></button>" +
+        inputs + "</div>";
     }).join("");
     return '<section class="pg-block" id="pg-presets">' +
       '<h2 class="pg-block-title">Which model · the variants of Table 11</h2>' +
-      '<div class="pg-variants">' + variants + "</div>" +
-      '<h2 class="pg-block-title">How it is trained · the choice that moved what the LSTM was worth ' +
-      '<span class="pg-ref">(' + refLink("F-16") + ")</span></h2>" +
+      '<div class="pg-variants" id="pg-variants">' + variantsHtml() + "</div>" +
+      '<p class="pg-faint pg-no-row" id="pg-no-row" hidden></p>' +
+      '<h2 class="pg-block-title">How it is trained</h2>' +
       '<div class="pg-variants pg-variants--two">' + procedures + "</div></section>";
   }
 
-  function sectionHtml(g, index) {
+  function sectionHtml(g) {
     var open = sectionOpen(g.key);
+    var changed = changedIn(g.key);
     return '<section class="pg-section" data-group="' + g.key + '">' +
       '<button type="button" class="pg-section-head" data-section="' + g.key + '" aria-expanded="' + open +
       '" aria-controls="pg-section-' + g.key + '">' +
-      '<span class="pg-step-n">' + (index + 1) + "</span>" +
-      '<span class="pg-section-title">' + esc(g.label) + "</span>" +
+      '<span class="pg-section-title" id="pg-section-title-' + g.key + '">' + esc(g.label) + "</span>" +
       '<span class="pg-section-summary">' + esc(groupSummary(g.key)) + "</span>" +
-      '<span class="pg-section-changed"' + (changedIn(g.key) ? "" : " hidden") + ">" + changedIn(g.key) + " changed</span>" +
+      '<span class="pg-section-changed"' + (changed ? "" : " hidden") + ">" + changed + " changed</span>" +
       CHEVRON + "</button>" +
       '<div class="pg-section-body" id="pg-section-' + g.key + '"' + (open ? "" : " hidden") + ">" +
       fieldsOf(g.key).map(fieldRow).join("") + "</div></section>";
+  }
+
+  // The words under a setting's name: where its default comes from and, for
+  // the sub-dataset, what Table 5 says the chosen one holds.
+  function hintFor(f) {
+    var parts = [sourceNote(f.source)];
+    if (f.key === "subset") {
+      var t5 = (S.options.dataset || {})[S.settings.subset];
+      if (t5) {
+        parts.push(count(t5.train_engines) + " training and " + count(t5.test_engines) + " test engines, " +
+          plural(t5.conditions, "operating condition") + ", " + plural(t5.fault_modes, "fault mode"));
+      }
+    }
+    return parts.filter(Boolean).join(" ");
   }
 
   function fieldRow(f) {
@@ -864,6 +1044,8 @@
     var id = "pg-" + f.key;
     var data = 'data-field="' + f.key + '"';
     var parts = splitUnit(f.label);
+    // A list of options whose name is its section's name is labelled by the section head.
+    var bare = f.kind === "choice" && !SEGMENTED[f.key] && f.label === groupLabel(f.group);
     var stacked = false, control;
     if (f.kind === "bool") {
       control = switchControl(id, !!value, data);
@@ -872,9 +1054,8 @@
       id = null;
     } else if (f.kind === "choice") {
       stacked = true;
-      control = optionList(id, f.choices, value, data, function (c) {
-        return sourceTag(c.source) + " " + esc(c.source.text);
-      }, id + "-label");
+      control = optionList(id, f.choices, value, data, function (c) { return sourceNote(c.source); },
+        bare ? "pg-section-title-" + f.group : id + "-label");
       id = null;
     } else if (f.kind === "widths") {
       control = '<div class="pg-widths">' + value.map(function (w, i) {
@@ -886,8 +1067,8 @@
       control = numberField(id, f, value, data, parts.unit);
     }
     return row({
-      key: f.key, id: id, label: parts.label, stacked: stacked, changed: isChanged(f), hidden: !visible(f.key),
-      hint: sourceTag(f.source) + " " + esc(f.source.text),
+      key: f.key, id: id, label: bare ? "" : parts.label, stacked: stacked, hidden: !visible(f.key),
+      hint: hintFor(f),
       control: control,
       reset: resetHtml(f)
     });
@@ -913,6 +1094,12 @@
     drawDesign();
   }
 
+  // Choosing the card already chosen leaves its inputs as they are.
+  function chooseProcedure(key) {
+    if (chosenProcedure().key === key) { return; }
+    applyPreset(S.options.procedures, key);
+  }
+
   function resetField(key) {
     S.settings[key] = copy(S.fields[key].default);
     saveSettings();
@@ -923,11 +1110,18 @@
     S.sections[group] = !sectionOpen(group);
     remember(SECTIONS, S.sections);
     paintSection(group);
+    paintSectionsToggle();
   }
 
   function setAllSections(open) {
-    S.options.groups.forEach(function (g) { S.sections[g.key] = open; paintSection(g.key); });
+    sectionGroups().forEach(function (g) { S.sections[g.key] = open; paintSection(g.key); });
     remember(SECTIONS, S.sections);
+    paintSectionsToggle();
+  }
+
+  function paintSectionsToggle() {
+    var button = $("#pg-toggle-sections");
+    if (button) { button.textContent = allSectionsOpen() ? "Collapse all" : "Expand all"; }
   }
 
   function paintSection(group) {
@@ -939,15 +1133,15 @@
     body.hidden = !open;
     head.querySelector(".pg-section-summary").textContent = groupSummary(group);
     var badge = head.querySelector(".pg-section-changed");
-    var count = changedIn(group);
-    badge.hidden = !count;
-    badge.textContent = count + " changed";
+    var changed = changedIn(group);
+    badge.hidden = !changed;
+    badge.textContent = changed + " changed";
   }
 
   // A control changed. The setting is read from it, then only what depends
   // on it is redrawn: its row, the rows it can show or hide, the preset
-  // cards, the group heads and the summary column. The control itself is
-  // left alone, so a number being typed keeps its focus.
+  // cards, the section heads and the run card. The control itself is left
+  // alone, so a number being typed keeps its focus.
   function fieldChanged(input) {
     var key = input.getAttribute("data-field");
     var f = S.fields[key];
@@ -965,7 +1159,7 @@
       if (box) { box.hidden = !visible(other.key); }
     });
     paintPresets();
-    S.options.groups.forEach(function (g) { paintSection(g.key); });
+    sectionGroups().forEach(function (g) { paintSection(g.key); });
     refreshPreview();
   }
 
@@ -973,16 +1167,45 @@
     var f = S.fields[key];
     var box = $('[data-row="' + key + '"]');
     if (!box) { return; }
-    box.classList.toggle("is-changed", isChanged(f));
     box.querySelector(".pg-reset-slot").outerHTML = resetHtml(f);
     Array.prototype.forEach.call(box.querySelectorAll(".opt"), function (option) {
       option.classList.toggle("is-active", option.querySelector("input").checked);
     });
+    var hint = box.querySelector(".pg-row-hint");
+    if (hint) {
+      var text = hintFor(f);
+      hint.innerHTML = text;
+      hint.hidden = !text;
+    }
   }
 
+  // The cards are repainted in place rather than rebuilt: the procedure
+  // card holds inputs, and rebuilding it would take the focus from one.
   function paintPresets() {
-    var box = $("#pg-presets");
-    if (box) { box.outerHTML = presetsHtml(); }
+    var variants = $("#pg-variants");
+    if (variants) { variants.innerHTML = variantsHtml(); }
+    var chosen = chosenProcedure();
+    $all("[data-procedure]").forEach(function (button) {
+      var active = button.getAttribute("data-procedure") === chosen.key;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    var inputs = $("#pg-procedure-fields");
+    if (inputs) { inputs.hidden = !(chosen.settings.validation_fraction > 0); }
+    paintNoRow();
+  }
+
+  // When no variant card fits the settings, the reason the paper has no row
+  // for them is said once, under the cards. It comes with the preview, so it
+  // is shown only once the preview describes the settings on screen.
+  function paintNoRow() {
+    var slot = $("#pg-no-row");
+    if (!slot) { return; }
+    var fits = S.options.ablations.some(function (a) { return a.settings && matches(a.settings); });
+    var current = S.preview && S.previewFor === JSON.stringify(S.settings);
+    var reason = !fits && current && !S.preview.paper_row ? S.preview.no_row_reason : "";
+    slot.textContent = reason || "";
+    slot.hidden = !reason;
   }
 
   function refreshPreview() {
@@ -990,121 +1213,102 @@
     S.previewTimer = setTimeout(function () {
       var box = $("#pg-summary");
       if (!box) { return; }
+      var asked = JSON.stringify(S.settings);
       post("/api/playground/preview", S.settings).then(function (preview) {
+        if (asked !== JSON.stringify(S.settings)) { return; }  // a newer request is on its way
         S.preview = preview;
+        S.previewFor = asked;
         drawSummary(box, preview, null);
+        paintNoRow();
       }).catch(function (error) {
+        if (asked !== JSON.stringify(S.settings)) { return; }
         S.preview = null;
         drawSummary(box, null, error.message);
+        paintNoRow();
       });
     }, 220);
   }
 
-  function paperTable(paperRow, measured) {
-    if (!paperRow) { return ""; }
-    return '<table class="pg-mini"><thead><tr><th></th>' + MEASURES.map(function (m) { return '<th class="num">' + m[1] + "</th>"; }).join("") +
-      "</tr></thead><tbody><tr><td>" + esc(paperRow.label) + "</td>" + MEASURES.map(function (m) {
-        return '<td class="num">' + (paperRow[m[0]] === null || paperRow[m[0]] === undefined ? "—" : fixed(paperRow[m[0]], m[2])) + "</td>";
-      }).join("") + "</tr>" + (measured ? measured : "") + "</tbody></table>" +
-      '<div class="pg-faint">' + esc(paperRow.source) + (paperRow.score === null ? " prints RMSE only." : ".") + "</div>";
-  }
-
+  // A list of cautions, each said first in words, its code after it as a pointer.
   function caveatList(caveats) {
     if (!caveats || !caveats.length) { return ""; }
     return '<ul class="pg-caveats">' + caveats.map(function (c) {
-      // The thing is said first; its code follows as a pointer to where it is argued.
-      return '<li class="pg-caveat pg-caveat--' + c.level + '">' + esc(c.text) +
+      return '<li class="pg-caveat pg-caveat--' + (c.level || "info") + '">' + (c.html || esc(c.text)) +
         (c.ref ? ' <span class="pg-ref">(' + refLink(c.ref) + ")</span>" : "") + "</li>";
     }).join("") + "</ul>";
   }
 
-  function jobLabel(settings) {
-    return settings.subset + " · " + (settings.temporal === "last_cycle" ? "w/o LSTM" : temporalName(settings.temporal) +
-      (settings.temporal === "lstm" || settings.temporal === "gru" ? " " + settings.temporal_hidden : "")) +
-      " · " + (settings.graph || "physics") + " graph" + " · " +
-      (settings.validation_fraction > 0 ? "best pass" : "final pass") + " · " + plural(settings.seeds, "seed");
-  }
-
   // layer_summary() lists the temporal stage, then Table 4's "Input" row. Both
-  // describe the same (B, 14, 1) tensor: Table 4's Input row is the stage's
-  // output, with no parameters of its own. Shown as one row, as Table 4 has.
+  // describe the same tensor: Table 4's Input row is the stage's output, with
+  // no parameters of its own. Shown as one row, as Table 4 has, and named by
+  // the stage only when the stage learns numbers of its own.
   function table4Rows(layers) {
     if (layers.length > 1 && layers[0].layer === "Temporal" && layers[1].layer === "Input") {
-      var stage = layers[0];
-      return { stage: stage.type, rows: [{ layer: "Input", stage: stage.type, out: stage.out, parameters: stage.parameters }].concat(layers.slice(2)) };
+      var temporal = S.settings.temporal;
+      var from = temporal === "lstm" || temporal === "gru" ? TEMPORAL[temporal] : "";
+      return [{ layer: "Input", from: from, out: layers[0].out, parameters: layers[0].parameters }].concat(layers.slice(2));
     }
-    return { stage: null, rows: layers };
+    return layers;
   }
 
+  // The right-hand card: the one action, then only what stops it or
+  // qualifies it, then the network these settings build.
   function drawSummary(box, preview, error) {
-    if (error) {
-      box.innerHTML = '<div class="pg-card pg-card--error"><strong>These settings cannot be run</strong><p>' +
-        esc(error) + "</p></div>";
-      return;
+    if (!box) { return; }
+    var counted = preview && preview.dataset ? preview.dataset.counted : null;
+    var torch = S.torch !== false && !(preview && preview.torch === false);
+    var canRun = !!preview && torch && !preview.network_error && !!counted;
+    var notes = [];
+    if (error) { notes.push({ level: "warn", text: error }); }
+    if (!torch) { notes.push({ level: "warn", text: "PyTorch is not installed, so nothing can be trained." }); }
+    if (preview) {
+      if (!counted) {
+        notes.push({ level: "warn", text: "The NASA files are not in data/raw/, so nothing can be counted or trained." });
+      }
+      if (torch && preview.network_error) { notes.push({ level: "warn", text: preview.network_error }); }
+      if (counted && counted.left_out > 0) {
+        var one = counted.left_out === 1;
+        notes.push({ level: "warn", ref: "A-23", text: count(counted.left_out) + " of " + count(counted.test_engines) +
+          " test engines " + (one ? "is" : "are") + " shorter than the window and will be left out, " +
+          "so the score cannot be set beside Table 7." });
+      }
+      notes = notes.concat(preview.design_cautions || []);
     }
-    var d = preview.dataset, t5 = d.table5, counted = d.counted;
-    var canRun = S.torch !== false && !preview.network_error && counted;
-    var twin = S.settings.temporal !== "last_cycle";
 
-    var run = '<div class="pg-card pg-card--run">' +
-      '<div class="pg-actions"><button type="button" class="button button--primary" data-action="run"' + (canRun ? "" : " disabled") +
-      ">Train " + plural(S.settings.seeds, "seed") + "</button>" +
-      (twin ? '<button type="button" class="button" data-action="twin"' + (canRun ? "" : " disabled") +
-        ' title="The same settings twice, once with the temporal stage removed, so the two can be paired seed by seed">Train it and its w/o LSTM twin</button>' : "") +
-      "</div>" +
-      (S.torch === false ? '<p class="pg-faint">PyTorch is not installed, so nothing can be trained here.</p>' : "") +
-      caveatList(preview.caveats) +
-      '<details class="pg-command pg-details"><summary>The command this runs</summary><code>' + esc(preview.command) + "</code></details></div>";
-
-    var compare = '<div class="pg-card"><h3>A result may be set beside</h3>' +
-      (preview.paper_row ? paperTable(preview.paper_row) : "<p>" + esc(preview.no_row_reason) + "</p>") + "</div>";
-
-    var network;
-    if (preview.network_error) {
-      network = '<div class="pg-card pg-card--error"><h3>The network</h3><p>' + esc(preview.network_error) + "</p></div>";
-    } else {
-      var layers = table4Rows(preview.layers);
-      network = '<div class="pg-card"><h3>The network these settings build</h3><div class="pg-big">' +
-        preview.parameters.toLocaleString("en") + " <span>learned numbers</span></div>" +
+    var network = "";
+    if (!preview && !error) {
+      network = '<div class="loading">Building the network…</div>';
+    } else if (preview && torch && !preview.network_error && preview.layers) {
+      network = '<div class="pg-network"><h2 class="pg-block-title">Network</h2>' +
+        '<div class="pg-big">' + count(preview.parameters) + " <span>learned numbers</span></div>" +
         '<details class="pg-details"><summary>Layer by layer</summary>' +
-        '<table class="pg-mini"><thead><tr><th>Layer</th><th>Out</th><th class="num">Learned</th></tr></thead><tbody>' +
-        layers.rows.map(function (l) {
-          return "<tr><td>" + esc(l.layer) + (l.stage ? ' <span class="pg-faint">from ' + esc(l.stage) + "</span>" : "") +
-            "</td><td><code>" + esc(l.out) + '</code></td><td class="num">' + Number(l.parameters).toLocaleString("en") + "</td></tr>";
+        '<table class="pg-mini"><thead><tr><th>Layer</th><th>Out</th><th class="num">Learned numbers</th></tr></thead><tbody>' +
+        table4Rows(preview.layers).map(function (l) {
+          return "<tr><td>" + esc(l.layer) + (l.from ? ' <span class="pg-faint">from ' + esc(l.from) + "</span>" : "") +
+            "</td><td><code>" + esc(l.out) + '</code></td><td class="num">' + count(Number(l.parameters)) + "</td></tr>";
         }).join("") + "</tbody></table>" +
-        '<div class="pg-faint">B is the number of windows in a batch. ' +
-        (layers.stage ? "The Input row is where Table 4 starts: one number per sensor, which the temporal stage, " + esc(layers.stage) +
-          ", makes from each sensor's 30-cycle window and hands to the first graph layer. Table 4 gives that stage no row of its own, so its learned numbers are counted here. " : "") +
-        "Table 4 prints no parameter counts; every count here is read from the model.</div></details></div>";
+        '<p class="pg-faint">B is the number of windows in a batch. Table 4 prints no counts; each is read from the built model.</p>' +
+        "</details></div>";
     }
 
-    var data = '<div class="pg-card"><h3>The data</h3><p>' + esc(S.settings.subset) + ": " + t5.train_engines +
-      " training and " + t5.test_engines + " test engines, " + plural(t5.conditions, "operating condition") + ", " +
-      plural(t5.fault_modes, "fault mode") + ' <span class="pg-faint">(Table 5)</span>.</p>' +
-      (counted ? "<p>Counted from the files: the shortest test history is " + counted.shortest_test_history +
-        " cycles, so <strong>" + counted.left_out + "</strong> of " + counted.test_engines +
-        " test engines are shorter than a " + S.settings.window_size + "-cycle window and are left out " +
-        '<span class="pg-faint">(' + refLink("A-23") + ")</span>.</p>"
-        : '<p class="pg-faint">The NASA files are not in data/raw/, so nothing can be counted or trained.</p>') + "</div>";
-
-    box.innerHTML = run + compare + network + data;
+    box.innerHTML = '<button type="button" class="button button--primary pg-train" data-action="run"' + (canRun ? "" : " disabled") +
+      ">Train " + plural(S.settings.seeds, "seed") + "</button>" + caveatList(notes) + network;
   }
 
-  function submit(list) {
-    var chain = Promise.resolve();
-    list.forEach(function (settings) {
-      chain = chain.then(function () {
-        return post("/api/playground/train", { settings: settings, label: jobLabel(settings) });
-      });
-    });
-    chain.then(function () {
-      T.toast(list.length > 1 ? "Two runs queued. They train one after the other." : "Run queued.");
-      clearTimeout(window.__thesisPlaygroundTimer);
-      pollJobs();
+  // Queue a run. The server names the job. A toast confirms it only when the
+  // banner that shows the queue is scrolled out of sight.
+  function submit(settings) {
+    post("/api/playground/train", { settings: settings }).then(function (job) {
+      if (job && job.id) { S.mine[job.id] = true; }
+      return repoll();
+    }).then(function () {
+      if (!bannerInView()) { T.toast("Run queued."); }
     }).catch(function (error) { T.toast(error.message, 8000); });
   }
 
   // --------------------------------------------------------------- results
+
+  var DIRTY = "-dirty: uncommitted changes, so no committed state reproduces this run";
 
   function loadRuns() {
     if (S.runs) { return Promise.resolve(S.runs); }
@@ -1117,23 +1321,26 @@
     var panel = $("#pg-panel");
     panel.innerHTML = '<div class="loading">Reading reports/…</div>';
     loadRuns().then(function (runs) {
+      if (S.tab !== "results") { return; }
       if (S.selected) { drawDetail(); return; }
       var f = S.filter;
       var shown = runs.filter(function (r) {
         return (f.subset === "all" || r.subset === f.subset) && (!f.results || !r.exploratory) && (!f.weights || r.has_weights);
       });
+      // The count is said only when a filter hides some runs and shows some.
+      var counted = shown.length && shown.length < runs.length ? count(shown.length) + " of " + plural(runs.length, "run") + " · " : "";
       panel.innerHTML =
         '<div class="pg-toolbar">' +
         segmented("pg-f-subset", [{ value: "all", label: "All" }].concat(SUBSETS.map(function (s) { return { value: s, label: s }; })),
           f.subset, 'data-filter="subset"') +
-        "<label>" + switchControl("pg-f-results", f.results, 'data-filter="results"') + "Results only: five seeds or more</label>" +
+        "<label>" + switchControl("pg-f-results", f.results, 'data-filter="results"') + "Five seeds or more</label>" +
         "<label>" + switchControl("pg-f-weights", f.weights, 'data-filter="weights"') + "Kept their weights</label>" +
-        '<span class="pg-faint">' + shown.length + " of " + plural(runs.length, "run") + " · click one to open it, tick two to compare them</span></div>" +
+        (shown.length ? '<span class="pg-faint">' + counted + "click a row to open it</span>" : "") + "</div>" +
         '<div id="pg-compare"></div>' +
-        (shown.length ? runsTable(shown) : '<div class="pg-empty">No stored run matches. Design one in the first tab.</div>');
+        (shown.length ? runsTable(shown) : '<div class="pg-empty">No stored run matches these filters.</div>');
       drawComparison();
     }).catch(function (error) {
-      panel.innerHTML = '<div class="error-box"><strong>The runs could not be read</strong>' + esc(error.message) + "</div>";
+      panel.innerHTML = errorBox(error.message);
     });
   }
 
@@ -1142,24 +1349,31 @@
     drawDetail();
   }
 
+  // One row per run. The sub-dataset has a column only while the list holds
+  // more than one; ticked rows are marked, and a commit with uncommitted
+  // changes is coloured, its meaning given once on the column's head.
   function runsTable(runs) {
-    return '<div class="pg-runs"><table class="data-table"><thead><tr><th></th><th>Finished (UTC)</th><th>Data</th>' +
-      "<th>Temporal</th><th>Graph</th><th>Weights</th><th>Seeds</th><th class=\"num\">RMSE</th>" +
-      "<th class=\"num\">Paper</th><th class=\"num\">Score</th><th class=\"num\">R²</th><th>Commit</th></tr></thead><tbody>" +
+    var subsets = {};
+    runs.forEach(function (r) { subsets[r.subset] = true; });
+    var showData = S.filter.subset === "all" && Object.keys(subsets).length > 1;
+    return '<div class="pg-runs"><table class="data-table"><thead><tr><th><span class="visually-hidden">Compare</span></th><th>Finished</th>' +
+      (showData ? "<th>Data</th>" : "") +
+      '<th>Temporal stage</th><th>Graph</th><th>Seeds</th><th>Weights</th><th class="num">RMSE</th><th class="num">Paper</th>' +
+      '<th title="' + esc(DIRTY) + '">Commit</th></tr></thead><tbody>' +
       runs.map(function (r) {
         var m = r.mean || {}, sd = r.std || {};
-        return '<tr data-run="' + esc(r.name) + '"><td><input type="checkbox" data-compare="' + esc(r.name) + '"' +
-          (S.compare.indexOf(r.name) >= 0 ? " checked" : "") + ' aria-label="Compare this run"></td>' +
-          "<td>" + when(r.finished) + "</td><td>" + esc(r.subset) + "</td><td>" + esc(temporalName(r.temporal)) +
-          (r.temporal_hidden ? " " + r.temporal_hidden : "") + "</td><td>" + esc(r.graph || "") + "</td><td>" +
-          (r.reported_weights === "final_epoch" ? "final pass" : "best pass") + "</td><td>" +
-          '<span class="chip' + (r.exploratory ? " chip--warn" : "") + '">' + r.seeds + "</span></td>" +
-          '<td class="num">' + fixed(m.rmse, 3) + (sd.rmse !== null && sd.rmse !== undefined ? ' <span class="sd">± ' + fixed(sd.rmse, 3) + "</span>" : "") + "</td>" +
+        var ticked = S.compare.indexOf(r.name) >= 0;
+        return '<tr data-run="' + esc(r.name) + '"' + (ticked ? ' class="is-selected"' : "") + '><td><input type="checkbox" data-compare="' +
+          esc(r.name) + '"' + (ticked ? " checked" : "") + ' aria-label="Compare this run"></td>' +
+          "<td>" + when(r.finished) + "</td>" + (showData ? "<td>" + esc(r.subset) + "</td>" : "") +
+          "<td>" + esc(stageName(r.temporal, r.temporal_hidden)) + "</td><td>" + esc(graphName(r.graph, r.adjacency_normalization)) + "</td>" +
+          '<td><span class="chip' + (r.exploratory ? " chip--warn" : "") + '">' + count(r.seeds) + "</span></td>" +
+          "<td>" + (r.reported_weights === "final_epoch" ? "final pass" : "best pass") + "</td>" +
+          '<td class="num">' + number(m.rmse, 3) + (sd.rmse !== null && sd.rmse !== undefined ? ' <span class="sd">± ' + number(sd.rmse, 3) + "</span>" : "") + "</td>" +
           '<td class="num" title="' + esc(r.paper_row ? r.paper_row.label + ", " + r.paper_row.source : r.no_row_reason) + '">' +
           (r.paper_row ? fixed(r.paper_row.rmse, 2) : "—") + "</td>" +
-          '<td class="num">' + fixed(m.score, 1) + '</td><td class="num">' + fixed(m.r2, 3) + "</td>" +
-          "<td><code>" + esc(r.commit) + "</code>" + (r.has_weights ? ' <span class="chip chip--good" title="This run kept its weights, curves and predictions">files</span>' : "") +
-          "</td></tr>";
+          '<td><code class="pg-commit' + (r.dirty ? " pg-commit--dirty" : "") + '">' + esc(r.commit) + "</code>" +
+          (r.has_weights ? ' <span class="chip chip--good">files</span>' : "") + "</td></tr>";
       }).join("") + "</tbody></table></div>";
   }
 
@@ -1169,45 +1383,59 @@
     if (box.checked) { S.compare.push(name); }
     if (S.compare.length > 2) { S.compare = S.compare.slice(-2); }
     $all("input[data-compare]").forEach(function (b) { b.checked = S.compare.indexOf(b.getAttribute("data-compare")) >= 0; });
+    $all("tr[data-run]").forEach(function (tr) { tr.classList.toggle("is-selected", S.compare.indexOf(tr.getAttribute("data-run")) >= 0); });
     drawComparison();
+  }
+
+  // A run named by when it finished, as the runs table prints it.
+  function runTime(name) {
+    var run = (S.runs || []).filter(function (r) { return r.name === name; })[0];
+    if (run && run.finished) { return when(run.finished); }
+    var m = /_(\d{8}T\d{6}Z)$/.exec(name || "");
+    return m ? when(m[1]) : name;
   }
 
   function drawComparison() {
     var box = $("#pg-compare");
     if (!box) { return; }
     if (S.compare.length !== 2) {
-      box.innerHTML = S.compare.length === 1 ? '<div class="pg-hint">Tick one more run to pair the two seed by seed.</div>' : "";
+      box.innerHTML = S.compare.length === 1 ? '<p class="pg-hint">Tick one more run to compare.</p>' : "";
       return;
     }
     box.innerHTML = '<div class="loading">Pairing the seeds…</div>';
     T.get("/api/playground/compare?first=" + encodeURIComponent(S.compare[0]) + "&second=" + encodeURIComponent(S.compare[1]))
       .then(function (c) {
         var real = c.differences.filter(function (d) { return d.setting !== "commit"; });
+        var cautions = [];
+        if (real.length === 0 && c.differences.length) {
+          cautions.push({ level: "warn", text: "Only the commit differs, so any difference comes from the code or the machine." });
+        }
+        if (real.length > 1) {
+          cautions.push({ level: "warn", text: real.length + " settings differ, so the difference below cannot be put down to any one of them. Change one setting at a time." });
+        }
+        if (!c.shared_seeds.length) {
+          cautions.push({ level: "warn", text: "The two runs share no seed, so they cannot be paired." });
+        }
         var rows = MEASURES.map(function (m) {
           var e = c.measures[m[0]];
-          return "<tr><td>" + m[1] + '</td><td class="num">' + fixed(c.first.mean[m[0]], m[2]) + '</td><td class="num">' +
-            fixed(c.second.mean[m[0]], m[2]) + '</td><td class="num"><strong>' + (e.mean_difference > 0 ? "+" : "") +
-            fixed(e.mean_difference, m[2]) + '</strong></td><td class="num">' + fixed(e.t, 2) + '</td><td class="num">' +
-            (e.p === null ? "—" : e.p < 0.001 ? e.p.toExponential(1) : fixed(e.p, 3)) + "</td></tr>";
+          return "<tr><td>" + m[1] + '</td><td class="num"><strong>' + (e.mean_difference > 0 ? "+" : "") +
+            number(e.mean_difference, m[2]) + '</strong></td><td class="num">' + fixed(e.t, 2) + '</td><td class="num">' +
+            (e.p === null || e.p === undefined ? "—" : e.p < 0.001 ? e.p.toExponential(1) : fixed(e.p, 3)) + "</td></tr>";
         }).join("");
-        box.innerHTML = '<section class="pg-card pg-compare"><h3>First against second, seed by seed</h3>' +
-          '<p class="pg-faint">First: <code>' + esc(c.first.name) + "</code><br>Second: <code>" + esc(c.second.name) + "</code></p>" +
-          (real.length === 0 ? '<p class="pg-caveat pg-caveat--warn">No setting differs, so any difference comes from the code or the machine: the commits are ' +
-            esc(c.first.name.split("_").slice(-2, -1)[0]) + " and " + esc(c.second.name.split("_").slice(-2, -1)[0]) + ".</p>" : "") +
-          (real.length > 1 ? '<p class="pg-caveat pg-caveat--warn">' + real.length + " settings differ, so the difference below cannot be put down to any one of them. An ablation changes one thing.</p>" : "") +
-          '<table class="pg-mini"><thead><tr><th>Setting that differs</th><th>First</th><th>Second</th></tr></thead><tbody>' +
-          c.differences.map(function (d) {
-            return "<tr><td>" + esc(d.setting) + "</td><td><code>" + esc(JSON.stringify(d.first)) + "</code></td><td><code>" +
-              esc(JSON.stringify(d.second)) + "</code></td></tr>";
-          }).join("") + "</tbody></table>" +
-          (c.shared_seeds.length ? '<table class="pg-mini"><thead><tr><th>Measure</th><th class="num">First</th><th class="num">Second</th>' +
+        box.innerHTML = '<section class="pg-card pg-compare"><h2 class="pg-block-title">Comparison</h2>' + caveatList(cautions) +
+          '<table class="pg-mini"><thead><tr><th>Setting that differs</th><th>First, ' + esc(runTime(c.first.name)) +
+          "</th><th>Second, " + esc(runTime(c.second.name)) + "</th></tr></thead><tbody>" +
+          (c.differences.length ? c.differences.map(function (d) {
+            return "<tr><td>" + esc(settingLabel(d.setting)) + "</td><td>" + esc(settingWords(d.setting, d.first)) +
+              "</td><td>" + esc(settingWords(d.setting, d.second)) + "</td></tr>";
+          }).join("") : '<tr><td colspan="3">Nothing, not even the commit.</td></tr>') + "</tbody></table>" +
+          (c.shared_seeds.length ? '<table class="pg-mini"><thead><tr><th>Measure</th>' +
             '<th class="num">Second − first</th><th class="num">paired t</th><th class="num">p</th></tr></thead><tbody>' + rows + "</tbody></table>" +
             '<p class="pg-faint">Paired over seeds ' + c.shared_seeds.join(", ") + ". For RMSE, ASUE and score lower is better; for R² higher is. " +
-            "A paired p answers only whether the difference could be an accident of initialisation: every seed is scored on the same test engines, so it says nothing about engines not seen " +
-            "(" + refLink("D-8") + ").</p>"
-            : '<p class="pg-caveat pg-caveat--warn">The two runs share no seed, so they cannot be paired.</p>') + "</section>";
+            "A paired p answers only whether the difference could be luck of the seed: every seed is scored on the same test engines, so it says nothing about engines not seen " +
+            "(" + refLink("D-8") + ").</p>" : "") + "</section>";
       }).catch(function (error) {
-        box.innerHTML = '<div class="error-box">' + esc(error.message) + "</div>";
+        box.innerHTML = errorBox(error.message);
       });
   }
 
@@ -1218,21 +1446,33 @@
     var load = S.detail && S.detail.name === S.selected ? Promise.resolve(S.detail)
       : T.get("/api/playground/run?name=" + encodeURIComponent(S.selected));
     load.then(function (d) {
+      if (S.tab !== "results") { return; }
       S.detail = d;
       var seeds = Object.keys(d.per_seed);
       var paperRow = d.paper_row;
+      // Each measure with its spread, and the paper's figure at the paper's
+      // own precision with the gap to it; nothing where the paper prints none.
       var cards = MEASURES.map(function (m) {
         var mean = (d.mean || {})[m[0]], sd = (d.std || {})[m[0]];
         var paper = paperRow ? paperRow[m[0]] : null;
-        return '<div class="pg-metric"><div class="pg-metric-name">' + m[1] + '</div><div class="pg-metric-value">' + fixed(mean, m[2]) +
-          (sd !== null && sd !== undefined ? '<span> ± ' + fixed(sd, m[2]) + "</span>" : "") + "</div>" +
-          '<div class="pg-faint">' + (paper !== null && paper !== undefined ? "paper " + fixed(paper, m[2]) + " · gap " +
-            (mean - paper > 0 ? "+" : "") + fixed(mean - paper, m[2]) : "no published figure") + "</div></div>";
+        var published = paper !== null && paper !== undefined;
+        var shown = published ? paperNumber(m[0], paper) : null;
+        var gap = published && mean !== null && mean !== undefined ? mean - paper : null;
+        return '<div class="pg-metric"><div class="pg-metric-name">' + m[1] + '</div><div class="pg-metric-value">' + number(mean, m[2]) +
+          (sd !== null && sd !== undefined ? "<span> ± " + number(sd, m[2]) + "</span>" : "") + "</div>" +
+          (published ? '<div class="pg-faint">paper ' + shown.text +
+            (gap !== null ? " · gap " + (gap > 0 ? "+" : "") + number(gap, shown.places) : "") + "</div>" : "") + "</div>";
       }).join("");
+      var compared = paperRow
+        ? '<p class="pg-faint">Compared with ' + esc(paperRow.label) + ", " + esc(paperRow.source) +
+          (paperRow.score === null || paperRow.score === undefined ? ", which prints RMSE only." : ".") + "</p>"
+        : '<p class="pg-faint">' + esc(d.no_row_reason) + "</p>";
+      var cautions = (d.caveats || []).filter(function (c) { return cautionFor(c, "run"); });
+
       var perSeedPlot = plot({
         width: 420, height: 220, xlabel: "seed", ylabel: "test RMSE (cycles)", label: "test RMSE per seed",
-        series: [{ name: "one seed", points: d.results.map(function (r) { return [r.seed, r.rmse]; }), colour: "var(--fig-accent)", dots: true, line: false, radius: 5 }],
-        hlines: paperRow ? [{ y: paperRow.rmse, label: paperRow.label + " " + paperRow.rmse, colour: "var(--fig-lpc)" }] : []
+        series: [{ points: d.results.map(function (r) { return [r.seed, r.rmse]; }), colour: "var(--fig-accent)", dots: true, line: false, radius: 5 }],
+        hlines: paperRow ? [{ y: paperRow.rmse, label: "paper", colour: "var(--fig-lpc)" }] : []
       });
       var curves = seeds.length && d.per_seed[seeds[0]].history.length;
       var hasValidation = curves && d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== undefined &&
@@ -1247,7 +1487,7 @@
           var best = h.filter(function (x) { return x.epoch === result.best_epoch; })[0];
           return { name: "seed " + s, colour: PALETTE[i % PALETTE.length],
             points: h.map(function (x) { return [x.epoch, x[key]]; }),
-            marks: hasValidation && best ? [[best.epoch, best[key], "best pass " + best.epoch + ", whose weights are reported"]] : [] };
+            marks: hasValidation && best ? [[best.epoch, best[key], "pass " + best.epoch]] : [] };
         })
       }) : "";
       var seedChoice = S.predSeed && d.per_seed[S.predSeed] ? S.predSeed : seeds[0];
@@ -1258,8 +1498,7 @@
       var predictions = seeds.length ? d.per_seed[seedChoice].predictions.slice().sort(byUnit
         ? function (a, b) { return a.unit - b.unit; } : function (a, b) { return a.rul - b.rul; }) : [];
       var predPlot = predictions.length ? plot({
-        width: 640, height: 260, ylabel: "remaining life (cycles)", label: "predictions against truth",
-        xlabel: byUnit ? "test engine, by unit number" : "test engines, ordered by their true remaining life",
+        width: 640, height: 260, ylabel: "remaining life (cycles)", label: "predictions against truth", xlabel: "test engine",
         series: byUnit ? [
           { name: "true remaining life", colour: "var(--fig-burn)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.rul]; }) },
           { name: "predicted", colour: "var(--fig-accent)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.predicted]; }) }
@@ -1270,30 +1509,29 @@
       }) : "";
 
       panel.innerHTML = '<button type="button" class="button button--small pg-back" data-action="back">← All runs</button>' +
-        '<section class="pg-detail"><div class="pg-detail-head"><div><div class="eyebrow">Stored run</div><code class="pg-name">' +
-        esc(d.name) + '</code><div class="chips">' + chip(d.dirty ? "warn" : "", "commit " + d.commit) +
-        chip(d.exploratory ? "warn" : "good", plural(d.seeds, "seed") + (d.exploratory ? " · exploratory" : "")) +
-        chip("", d.subset) + chip("", "temporal: " + temporalName(d.temporal)) + chip("", (d.graph || "") + " graph") +
-        chip("", d.reported_weights === "final_epoch" ? "final pass reported (the paper's procedure)" : "best pass restored") +
-        '</div></div><div class="pg-actions"><button type="button" class="button" data-action="again">Set these settings up again</button>' +
+        '<section class="pg-detail"><div class="pg-detail-head"><div><div class="chips">' +
+        chip(d.dirty ? "warn" : "", "commit " + d.commit) + chip("", plural(d.seeds, "seed")) + chip("", d.subset) +
+        (d.temporal ? chip("", stageName(d.temporal, d.temporal_hidden)) : "") +
+        (d.graph ? chip("", graphName(d.graph, d.adjacency_normalization) + " graph") : "") +
+        chip("", d.reported_weights === "final_epoch" ? "final pass reported" : "best pass restored") + "</div>" +
+        '<details class="pg-details"><summary>Folder</summary><code class="pg-code">' + esc(d.name) + "</code></details></div>" +
+        '<div class="pg-actions"><button type="button" class="button" data-action="again">Set these settings up again</button>' +
         (d.has_weights ? '<button type="button" class="button button--primary" data-action="explain-this">Explain this run</button>' : "") + "</div></div>" +
-        '<div class="pg-metrics">' + cards + "</div>" +
-        (paperRow ? '<p class="pg-faint">Compared with ' + esc(paperRow.label) + " (" + esc(paperRow.source) + ") on " + esc(d.subset) + ".</p>" :
-          '<p class="pg-faint">' + esc(d.no_row_reason) + "</p>") + caveatList(d.caveats) +
-        '<div class="pg-charts"><figure class="pg-figure"><figcaption>Test RMSE of every seed' + (paperRow ? ", with the paper's figure dashed" : "") + "</figcaption>" + perSeedPlot + "</figure>" +
-        (curves ? '<figure class="pg-figure pg-figure--wide"><figcaption>' + (hasValidation
-          ? "Error on the held-back engines after each pass. A ring marks the pass whose weights were kept."
-          : "Training loss after each pass. Nothing was held back, so the weights of the last pass are the ones reported.") +
-          "</figcaption>" + curvePlot + "</figure>" : '<div class="pg-empty">This run was made before per-seed files were kept (2026-09-14), so it has no curves, predictions or weights.</div>') +
-        (predPlot ? '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 8.</strong> Every test engine\'s true and predicted remaining life, for seed ' +
-          selectField("pg-pred-seed", seeds.map(function (s) { return { value: s, label: s }; }), seedChoice, "data-pred-seed") + " " +
-          segmented("pg-pred-order", [{ value: "unit", label: "by unit number, as the paper" }, { value: "rul", label: "ordered by true remaining life" }],
-            byUnit ? "unit" : "rul", 'data-pred-order') +
-          " A prediction can never exceed the label ceiling, because the output layer is a sigmoid scaled to it.</figcaption>" + predPlot + "</figure>" : "") +
+        '<div class="pg-metrics">' + cards + "</div>" + compared + caveatList(cautions) +
+        '<div class="pg-charts"><figure class="pg-figure">' + perSeedPlot + "</figure>" +
+        (curves ? '<figure class="pg-figure pg-figure--wide">' +
+          (hasValidation ? "<figcaption><strong>Not in the paper.</strong> A ring marks the reported pass.</figcaption>" : "") +
+          curvePlot + "</figure>"
+          : '<div class="pg-empty pg-figure--wide">This run kept no per-seed files, so it has no curves, predictions or weights.</div>') +
+        (predPlot ? '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 8.</strong></figcaption>' +
+          '<div class="pg-toolbar pg-figure-toolbar"><label for="pg-pred-seed">Seed</label>' +
+          selectField("pg-pred-seed", seeds.map(function (s) { return { value: s, label: s }; }), seedChoice, "data-pred-seed") +
+          segmented("pg-pred-order", [{ value: "unit", label: "by unit number" }, { value: "rul", label: "by true remaining life" }],
+            byUnit ? "unit" : "rul", 'data-pred-order') + "</div>" + predPlot + "</figure>" : "") +
         "</div></section>";
     }).catch(function (error) {
       panel.innerHTML = '<button type="button" class="button button--small pg-back" data-action="back">← All runs</button>' +
-        '<div class="error-box">' + esc(error.message) + "</div>";
+        errorBox(error.message);
     });
   }
 
@@ -1322,52 +1560,60 @@
 
   // --------------------------------------------------------------- explain
 
+  // The Explain tab explains one run: the one chosen in Results with
+  // "Explain this run", or, when none is chosen, the newest run that kept its
+  // weights. It names that run in one line; another is chosen in Results.
   function drawExplain() {
     var panel = $("#pg-panel");
     var e = S.explain;
     panel.innerHTML = '<div class="loading">Reading reports/…</div>';
     loadRuns().then(function (runs) {
+      if (S.tab !== "explain") { return; }
       var usable = runs.filter(function (r) { return r.has_weights; });
       if (!usable.length) {
-        panel.innerHTML = '<div class="pg-empty">No stored run has kept its weights yet. Runs made from 2026-09-14 on keep them; ' +
-          "train one in the first tab and it will be explainable here.</div>";
+        panel.innerHTML = '<div class="pg-empty">No stored run has kept its weights. Runs made from 2026-09-14 on keep them.</div>';
         return;
       }
-      if (!e.run || !usable.some(function (r) { return r.name === e.run; })) { e.run = usable[0].name; e.detail = null; }
+      if (!e.run || !usable.some(function (r) { return r.name === e.run; })) {
+        e.run = usable[0].name; e.detail = null; e.shown = null;
+      }
+      var run = usable.filter(function (r) { return r.name === e.run; })[0];
       var load = e.detail && e.detail.name === e.run ? Promise.resolve(e.detail)
         : T.get("/api/playground/run?name=" + encodeURIComponent(e.run));
       return load.then(function (d) {
+        if (S.tab !== "explain") { return; }
         e.detail = d;
         var seeds = Object.keys(d.per_seed).filter(function (s) { return d.per_seed[s].has_weights; });
         if (seeds.indexOf(String(e.seed)) < 0) { e.seed = seeds[0]; }
-        panel.innerHTML = '<div class="pg-explain">' + explainForm(usable, seeds) +
-          '<section class="pg-block"><h2 class="pg-block-title">Explanations stored for this run</h2>' +
-          (d.explanations.length ? explanationsTable(d.explanations) : '<div class="pg-empty">None yet. Choose a method above and press Explain.</div>') +
+        panel.innerHTML = '<div class="pg-explain">' + explainForm(run, seeds) +
+          '<section class="pg-block"><div class="pg-block-head"><h2 class="pg-block-title">Explanations stored for this run</h2>' +
+          (d.explanations.length ? '<span class="pg-faint">click a row to open it</span>' : "") + "</div>" +
+          (d.explanations.length ? explanationsTable(d.explanations) : '<div class="pg-empty">None yet.</div>') +
           '</section><div id="pg-e-view"></div></div>';
         if (e.shown) { drawExplanation(); }
       });
     }).catch(function (error) {
-      panel.innerHTML = '<div class="error-box"><strong>Could not load</strong>' + esc(error.message) + "</div>";
+      panel.innerHTML = errorBox(error.message);
     });
   }
 
-  function explainForm(usable, seeds) {
-    var e = S.explain, d = e.detail;
-    var runChoices = usable.map(function (r) {
-      return { value: r.name, label: when(r.finished) + " · " + r.subset + " · " + temporalName(r.temporal) + " · " + (r.graph || "") +
-        " · RMSE " + fixed((r.mean || {}).rmse, 2) + " · " + plural(r.seeds, "seed") };
-    });
+  function explainForm(run, seeds) {
+    var e = S.explain;
+    var graph = graphName(run.graph, run.adjacency_normalization);
+    var named = [when(run.finished), run.subset, stageName(run.temporal, run.temporal_hidden), graph ? graph + " graph" : ""]
+      .filter(Boolean).join(" · ");
     var seedChoices = seeds.map(function (s) { return { value: s, label: s }; });
     var forEngine = e.scope === "engine";
-    return '<section class="pg-block"><h2 class="pg-block-title">Explain a stored run</h2>' +
-      row({ id: "pg-e-run", label: "Run", control: selectField("pg-e-run", runChoices, e.run, 'data-explain="run"'),
-        hint: "Only runs that kept their weights can be explained." }) +
+    return '<section class="pg-block">' +
+      row({ key: "pg-e-run", label: "Run",
+        control: '<span class="pg-run-name">' + esc(named) + "</span>" +
+          '<button type="button" class="pg-link" data-action="choose-run">Choose another run</button>' }) +
       row({ id: "pg-e-seed", label: "Seed whose weights are explained",
         control: seeds.length <= 6 ? segmented("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"') : selectField("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"') }) +
       row({ key: "pg-e-method", label: "Method", stacked: true,
         control: optionList("pg-e-method", [
-          { value: "shap", label: "Exact Shapley values", note: sourceTag({ kind: "paper", ref: "Eq. 14–15" }) +
-            " every one of the 16,384 subsets of sensors, for every window. An absent sensor is replaced by its average training window (" + refLink("A-20") + ")." },
+          { value: "shap", label: METHODS.shap, note: sourceTag({ kind: "paper", ref: "Eq. 14–15" }) +
+            " every one of the " + count(16384) + " subsets of sensors, for every window. An absent sensor is replaced by its average training window (" + refLink("A-20") + ")." },
           { value: "occlusion", label: "Occlusion, one sensor at a time", note: sourceTag({ kind: "extension" }) +
             " 15 evaluations per window. The Shapley term in which the sensor arrives last; the two agree only when sensors do not interact." }
         ], e.method, 'data-explain="method"', function (c) { return c.note; }, "pg-e-method-label") }) +
@@ -1379,29 +1625,35 @@
             " one explanation per test engine, for a ranking across engines." }
         ], e.scope, 'data-explain="scope"', function (c) { return c.note; }, "pg-e-scope-label") }) +
       row({ id: "pg-e-engine", key: "pg-e-engine-row", label: "Engine number", hidden: !forEngine,
-        hint: "Left blank, the engine with the longest history is explained.",
-        control: '<input class="field" type="number" id="pg-e-engine" min="1" placeholder="longest" value="' + esc(e.engine) + '" data-explain="engine">' }) +
+        hint: "Blank: the engine with the longest history.",
+        control: '<input class="field" type="number" id="pg-e-engine" min="1" value="' + esc(e.engine) + '" data-explain="engine">' }) +
       row({ id: "pg-e-every", key: "pg-e-every-row", label: "Explain every n-th window", hidden: !forEngine,
-        hint: "1 explains every window of the engine's life; a larger step is quicker and coarser.",
+        hint: "Larger is quicker and coarser.",
         control: '<input class="field" type="number" id="pg-e-every" min="1" max="100" value="' + e.every + '" data-explain="every">' }) +
       '<div class="pg-row"><div class="pg-row-name"></div><div class="pg-row-control"><button type="button" class="button button--primary" data-action="explain">Explain</button></div></div>' +
       "</section>";
   }
 
+  // What one stored explanation covers, in the page's words: "held-back engine 5, one window in 20".
+  function explainedWhat(x) {
+    if (x.scope !== "engine") { return "test engines"; }
+    var source = ENGINE_SOURCE[x.source] || x.source || "";
+    return (source ? source + " " : "") + "engine " + x.unit + (x.every > 1 ? ", one window in " + x.every : "");
+  }
+
   function explanationsTable(explanations) {
     var e = S.explain;
-    return '<table class="pg-mini pg-clickable"><thead><tr><th>Finished</th><th>Method</th><th>What</th><th>Seed</th><th class="num">Windows</th><th class="num">Largest sum gap</th><th>Commit</th></tr></thead><tbody>' +
+    return '<div class="pg-runs"><table class="data-table"><thead><tr><th>Method</th><th>What</th><th>Seed</th>' +
+      '<th class="num">Windows</th><th>Finished</th></tr></thead><tbody>' +
       explanations.map(function (x) {
-        return '<tr data-explanation="' + esc(x.name) + '"' + (x.name === e.shown ? ' class="is-selected"' : "") + "><td>" + when(x.finished_utc) + "</td><td>" + esc(x.method) +
-          "</td><td>" + (x.scope === "engine" ? "engine " + x.unit + " (" + esc(x.source) + ")" + (x.every > 1 ? ", every " + x.every : "") : "test engines") +
-          "</td><td>" + x.seed + '</td><td class="num">' + x.windows + '</td><td class="num">' + Number(x.sum_gap_max).toExponential(1) +
-          "</td><td><code>" + esc(x.commit) + "</code></td></tr>";
-      }).join("") + "</tbody></table>";
+        return '<tr data-explanation="' + esc(x.name) + '"' + (x.name === e.shown ? ' class="is-selected"' : "") + "><td>" +
+          esc(METHODS[x.method] || x.method) + "</td><td>" + esc(explainedWhat(x)) + "</td><td>" + esc(x.seed) +
+          '</td><td class="num">' + count(x.windows) + "</td><td>" + when(x.finished_utc) + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
   }
 
   function explainChanged(input) {
     var e = S.explain, which = input.getAttribute("data-explain");
-    if (which === "run") { e.run = input.value; e.detail = null; e.shown = null; drawExplain(); return; }
     if (which === "seed") { e.seed = input.value; return; }
     if (which === "engine") { e.engine = input.value; return; }
     if (which === "every") { e.every = Number(input.value) || 1; return; }
@@ -1418,15 +1670,18 @@
     });
   }
 
+  // Queue an explanation. The server names the job; a toast confirms it only
+  // when the banner that shows the queue is scrolled out of sight.
   function submitExplanation() {
-    var e = S.explain, d = e.detail;
+    var e = S.explain;
     var request = { run: e.run, seed: Number(e.seed), method: e.method, scope: e.scope,
       engine: e.scope === "engine" && e.engine !== "" ? Number(e.engine) : null,
-      every: e.scope === "engine" ? Number(e.every) || 1 : 1,
-      label: (e.method === "shap" ? "SHAP" : "Occlusion") + " · " + (e.scope === "engine" ? "engine " + (e.engine || "longest") : "test engines") +
-        " · seed " + e.seed + " · " + d.subset + " " + temporalName(d.temporal) };
-    post("/api/playground/explain", request).then(function () {
-      T.toast("Explanation queued."); clearTimeout(window.__thesisPlaygroundTimer); pollJobs();
+      every: e.scope === "engine" ? Number(e.every) || 1 : 1 };
+    post("/api/playground/explain", request).then(function (job) {
+      if (job && job.id) { S.mine[job.id] = true; }
+      return repoll();
+    }).then(function () {
+      if (!bannerInView()) { T.toast("Explanation queued."); }
     }).catch(function (error) { T.toast(error.message, 8000); });
   }
 
@@ -1448,42 +1703,38 @@
       var sensorOrder = Object.keys(rows[0]).filter(function (k) { return symbols.indexOf(k) >= 0; });
       if (e.index >= rows.length) { e.index = 0; }
       var exact = sum.method === "shap";
-      var head = '<section class="pg-detail"><div class="eyebrow">' + (exact ? "Exact Shapley values" : "Occlusion") + " · seed " + sum.seed + " · commit " + esc(sum.commit) + "</div>" +
-        "<p>" + plural(sum.windows, "window") + (sum.scope === "engine" ? " of engine " + sum.unit + ", one of the " + esc(sum.source) + " engines" : ", the last of each test engine") +
-        ", computed in " + duration(sum.seconds) + ". At the baseline window the model predicts " + fixed(sum.baseline_prediction, 2) + " cycles; each value is how many cycles a sensor moved the prediction away from that.</p>" +
-        '<p class="pg-caveat pg-caveat--' + (exact ? "info" : "warn") + '">' + (exact
-          ? "Equation 14 says a window's values add up to its prediction minus the baseline prediction. Checked here: the largest gap is " + Number(sum.sum_gap_max).toExponential(1) + " cycles."
-          : "Occlusion values need not add up to anything, and here they miss the prediction's distance from the baseline by up to " + fixed(sum.sum_gap_max, 2) + " cycles. That gap is the part the sensors do together.") + "</p>" +
-        caveatList([
-          { level: "info", ref: "F-08", text: "These values are signed and in cycles. The paper's Table 12 cannot hold signed Shapley values satisfying its own Equation 14, so do not set the two side by side." },
-          { level: "info", ref: "", text: "A large value says the model leaned on that sensor for this prediction. It is not evidence that the sensor causes the engine's wear." }
-        ]);
+      var forEngine = sum.scope === "engine";
 
-      // symbols come from the summary already ranked by average size.
-      var ranking = symbols.map(function (s) { return [s, sum.mean_abs[s]]; });
-      var maxRank = ranking[0][1] || 1;
-      var bars = '<div class="pg-bars">' + ranking.map(function (r) {
-        return '<div class="pg-bar-row"><span>' + esc(r[0]) + '</span><div><i style="width:' + (r[1] / maxRank * 100).toFixed(1) + '%"></i></div><b>' + fixed(r[1], 2) + "</b></div>";
-      }).join("") + "</div>";
+      // The head says once what a value is, its sign and its unit; the
+      // cautions after it say what the numbers can and cannot be read as.
+      var cautions = exact
+        ? [{ level: "info", ref: "A-24", text: "Equation 14 says a window's values add up to its prediction minus one constant. " +
+            "The paper's constant is the average label; here it is the prediction at the average training window instead. " +
+            "Checked here: the largest gap is " + Number(sum.sum_gap_max).toExponential(1) + " cycles." },
+          { level: "info", ref: "F-08", text: "The paper's Table 12 cannot hold the signed values its own Equation 14 defines, " +
+            "so only its ranking by size, not its numbers, can be set beside these." }]
+        : [{ level: "warn", text: "Occlusion values miss the prediction's distance from the baseline by up to " +
+            fixed(sum.sum_gap_max, 2) + " cycles." }];
+      cautions.push({ level: "info", text: "A large value is not evidence that the sensor causes the engine's wear." });
+      var head = '<section class="pg-detail"><p class="pg-lead">Each value is how many cycles a sensor moved the prediction away from the baseline of ' +
+        fixed(sum.baseline_prediction, 2) + " cycles: positive raised the predicted remaining life, negative lowered it. Computed in " +
+        duration(sum.seconds) + ".</p>" + caveatList(cautions);
+
       var mean = {};
       sensorOrder.forEach(function (s) { mean[s] = sum.mean_abs[s]; });
 
-      // The paper's figures, in the order its Section 4.4 introduces them,
-      // each drawn from this explanation and captioned with the figure it
-      // follows; the one chart the paper does not have says so.
+      // The paper's figures, in the order its Section 4.4 introduces them, each
+      // drawn from this explanation. Every caption opens by saying which of the
+      // paper's figures it follows, or that the paper has none like it.
       var swarm = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, left.</strong> Every value of every sensor, one dot per ' +
-        (sum.scope === "engine" ? "window" : "engine") + ". The sensors are ranked by the average size of their values, top to bottom; the red frame holds the four largest. " +
-        "A dot right of the dashed line raised the predicted remaining life, one left of it lowered it.</figcaption>" + beeswarm(rows, symbols) + "</figure>";
-      var strip = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, middle.</strong> The same ranking as a row of sensors: ' +
-        "the four largest red, deeper for larger; the rest blue, from deep to light. The bars underneath are the averages the ranking is made from.</figcaption>" +
-        rankedStrip(mean, symbols) + bars + "</figure>";
-      var heat = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Every sensor at every ' +
-        (sum.scope === "engine" ? "window" : "test engine (columns, by engine number)") +
-        ". Blue raised the predicted remaining life, orange lowered it; the stronger the colour, the more cycles.</figcaption>" + heatmap(rows, sensorOrder) + "</figure>";
+        (forEngine ? "window" : "engine") + ", the sensors ranked by the average size of their values.</figcaption>" + beeswarm(rows, symbols) + "</figure>";
+      var strip = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, the two boxes above its graph.</strong> ' +
+        "Deeper for larger, lighter for smaller.</figcaption>" + rankedStrip(mean, symbols) + "</figure>";
 
       var body;
-      if (sum.scope === "engine") {
+      if (forEngine) {
         var current = rows[e.index];
+        var subset = e.detail ? e.detail.subset : "";
         var lifePlot = plot({
           width: 640, height: 250, xlabel: "cycle at the end of the window", ylabel: "remaining life, and error (cycles)",
           label: "the prediction along the engine's life",
@@ -1492,30 +1743,163 @@
           series: [
             { name: "true remaining life (capped)", colour: "var(--fig-accent)", dash: "7 4", width: 2, points: rows.map(function (r) { return [r.end_cycle, r.rul]; }) },
             { name: "predicted", colour: "var(--fig-lpt)", width: 1.8, points: rows.map(function (r) { return [r.end_cycle, r.predicted]; }) },
-            { name: "the window drawn on the graph below", colour: "var(--fig-ink)", line: false, dots: true, radius: 5.5, points: [[current.end_cycle, current.predicted]] }
+            { name: "the chosen window", colour: "var(--fig-ink)", line: false, dots: true, radius: 5.5, points: [[current.end_cycle, current.predicted]] }
           ]
         });
         body = head + '<div class="pg-charts">' +
-          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 7.</strong> The prediction along the engine\'s life against the true remaining life, ' +
-          "with the difference between them shaded about zero, the way the paper shades what it calls the new error area. The paper's engine is FD001 unit 38; this is engine " +
-          esc(sum.unit) + " of the " + esc(sum.source) + " engines of seed " + esc(sum.seed) + ".</figcaption>" + lifePlot + "</figure>" +
+          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 7.</strong>' +
+          (FIG7_UNIT[subset] ? " The paper's " + esc(subset) + " engine is unit " + FIG7_UNIT[subset] + "." : "") +
+          "</figcaption>" + lifePlot + "</figure>" +
           swarm + strip +
-          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, right.</strong> One window on the sensor graph, the four largest values red and the rest blue. <label class="pg-slider">Window ' +
+          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, right.</strong> One window on the sensor graph, ' +
+          'coloured by the rank of this window\'s values. <label class="pg-slider">Window ' +
           '<input type="range" min="0" max="' + (rows.length - 1) + '" value="' + e.index + '" data-window-index> <span data-window-caption>' +
           esc(windowCaption(current)) + "</span></label></figcaption>" +
-          '<div class="pg-split">' + sensorGraph(current, sensorOrder) + signedBars(current, sensorOrder) + "</div>" +
-          '<p class="pg-faint">The paper colours its four most influential sensors red, with intensity by contribution, and the rest blue from deep to light. It does not say whether influence is the size of the value or the value itself; here it is the size, ignoring the sign.</p></figure>' +
-          (exact ? paperComparison(rows, sensorOrder, sum) : "") +
-          heat + "</div></section>";
+          sensorGraph(current, sensorOrder) +
+          '<p class="pg-faint">The paper does not say whether influence is the size of a value or the value itself; here it is the size, ignoring the sign.</p></figure>' +
+          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> ' +
+          "Every sensor, across the whole life. Point at any panel to read every sensor at that cycle.</figcaption>" +
+          sensorHistory(rows, symbols, e.index) + "</figure>" +
+          (exact ? paperComparison(rows, sensorOrder, sum) : "") + "</div></section>";
       } else {
-        body = head + '<div class="pg-charts">' + swarm + strip +
-          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, right.</strong> The average size of each sensor\'s value over the test engines, on the sensor graph: the four largest red, the rest blue.</figcaption>' + sensorGraph(mean, sensorOrder) + "</figure>" +
-          heat + "</div></section>";
+        // With no single window to show, Fig. 9 (right) would repeat Fig. 9
+        // (middle) on the graph; the heat map carries the colour key instead
+        // of the history chart, which needs one engine's life.
+        var heat = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Every sensor at every ' +
+          "test engine (columns, by engine number). Blue raised the predicted remaining life, orange lowered it; the stronger the colour, the more cycles.</figcaption>" +
+          heatmap(rows, sensorOrder) + "</figure>";
+        body = head + '<div class="pg-charts">' + swarm + strip + heat + "</div></section>";
       }
       box.innerHTML = body;
+      wireHistory(box, forEngine ? rows : []);
     }).catch(function (error) {
-      box.innerHTML = '<div class="error-box">' + esc(error.message) + "</div>";
+      box.innerHTML = errorBox(error.message);
     });
+  }
+
+  // One panel per sensor, holding that sensor's value at every window of the
+  // engine's life, every panel on ONE vertical scale so that a tall panel
+  // means a large value and not a large axis. This is the counterpart of
+  // plot_contributions_over_time in explain/plots.py, which draws the same
+  // thing for the notebooks. A cursor marks one window in every panel at once
+  // and each caption reads that sensor's value there; wireHistory moves it.
+  var HISTORY_W = 260, HISTORY_H = 104, HISTORY_PAD = 5;
+  var historyCursor = null;   // moves the cursor to a window, while the chart is on screen
+
+  function historyScale(rows) {
+    var cycles = rows.map(function (r) { return r.end_cycle; });
+    var x0 = Math.min.apply(null, cycles), x1 = Math.max.apply(null, cycles);
+    return {
+      x0: x0, x1: x1,
+      X: function (c) { return HISTORY_PAD + (c - x0) / ((x1 - x0) || 1) * (HISTORY_W - 2 * HISTORY_PAD); }
+    };
+  }
+
+  function signedValue(v) {
+    return (v > 0 ? "+" : "") + fixed(v, 2);
+  }
+
+  function sensorHistory(rows, symbols, current) {
+    var scale = historyScale(rows), X = scale.X;
+    var limit = 0;
+    symbols.forEach(function (s) {
+      rows.forEach(function (r) { if (isFinite(r[s])) { limit = Math.max(limit, Math.abs(r[s])); } });
+    });
+    var largest = limit;
+    limit = (limit || 1) * 1.08;
+
+    // The cycle at which the true remaining life first falls below its
+    // ceiling: before it the engine is flat, after it the label is falling.
+    var ceiling = Math.max.apply(null, rows.map(function (r) { return r.rul; }));
+    var knee = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].rul < ceiling) { knee = rows[i].end_cycle; break; }
+    }
+
+    var W = HISTORY_W, H = HISTORY_H, pad = HISTORY_PAD, mid = H / 2;
+    var Y = function (v) { return mid - (v / limit) * (mid - pad); };
+    var marked = rows[current] || rows[0];
+    var cursorX = X(marked.end_cycle).toFixed(1);
+
+    var panels = symbols.map(function (s, index) {
+      var pts = rows.map(function (r) { return X(r.end_cycle).toFixed(1) + "," + Y(r[s]).toFixed(1); }).join(" ");
+      var area = X(rows[0].end_cycle).toFixed(1) + "," + mid + " " + pts + " " +
+                 X(rows[rows.length - 1].end_cycle).toFixed(1) + "," + mid;
+      var up = "pg-up" + index, down = "pg-down" + index;
+      return '<figure class="pg-sm" data-sensor="' + esc(s) + '">' +
+        '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(s + " over the engine's life") + '">' +
+        "<defs>" +
+        '<clipPath id="' + up + '"><rect x="0" y="0" width="' + W + '" height="' + mid + '"/></clipPath>' +
+        '<clipPath id="' + down + '"><rect x="0" y="' + mid + '" width="' + W + '" height="' + mid + '"/></clipPath>' +
+        "</defs>" +
+        (knee !== null ? '<line x1="' + X(knee).toFixed(1) + '" x2="' + X(knee).toFixed(1) +
+          '" y1="' + pad + '" y2="' + (H - pad) + '" stroke="var(--fig-edge)" stroke-dasharray="3 3"/>' : "") +
+        '<polygon points="' + area + '" fill="var(--fig-accent)" fill-opacity="0.28" clip-path="url(#' + up + ')"/>' +
+        '<polygon points="' + area + '" fill="var(--fig-warn)" fill-opacity="0.28" clip-path="url(#' + down + ')"/>' +
+        '<line x1="' + pad + '" x2="' + (W - pad) + '" y1="' + mid + '" y2="' + mid + '" stroke="var(--fig-axis)" stroke-width="0.8"/>' +
+        '<polyline points="' + pts + '" fill="none" stroke="var(--fig-ink)" stroke-width="1.2"/>' +
+        '<line class="pg-sm-cursor" x1="' + cursorX + '" x2="' + cursorX + '" y1="0" y2="' + H + '"/>' +
+        "</svg>" +
+        '<figcaption><b>' + esc(s) + '</b> <span class="pg-sm-value">' + signedValue(marked[s]) + "</span></figcaption></figure>";
+    }).join("");
+
+    // The readout names the cycle only while the pointer is on a panel; the
+    // rest of the time the slider's caption already says which window is marked.
+    return '<div class="pg-sm-readout is-idle" aria-live="polite">Values at cycle <b>' + marked.end_cycle + "</b></div>" +
+      '<div class="pg-smalls">' + panels + "</div>" +
+      '<div class="pg-faint">Blue raised the predicted remaining life, orange lowered it. ' +
+      "Every panel shares one scale; the largest value is " + fixed(largest, 2) + " cycles." +
+      (knee !== null ? " The dashed line is cycle " + knee + ", where the true remaining life starts falling." : "") +
+      "</div>";
+  }
+
+  // Pointing at any panel moves the cursor in all of them to the nearest
+  // window; leaving puts it back on the window the slider has chosen.
+  function wireHistory(scope, rows) {
+    historyCursor = null;
+    var grid = scope.querySelector(".pg-smalls");
+    if (!grid || !rows.length) { return; }
+    var scale = historyScale(rows);
+    var readoutBox = scope.querySelector(".pg-sm-readout");
+    var readout = readoutBox && readoutBox.querySelector("b");
+    var panels = Array.prototype.map.call(grid.querySelectorAll(".pg-sm"), function (panel) {
+      return {
+        sensor: panel.getAttribute("data-sensor"),
+        cursor: panel.querySelector(".pg-sm-cursor"),
+        value: panel.querySelector(".pg-sm-value")
+      };
+    });
+
+    function show(index) {
+      var row = rows[index];
+      if (!row) { return; }
+      var x = scale.X(row.end_cycle).toFixed(1);
+      panels.forEach(function (p) {
+        p.cursor.setAttribute("x1", x);
+        p.cursor.setAttribute("x2", x);
+        p.value.textContent = signedValue(row[p.sensor]);
+      });
+      if (readout) { readout.textContent = row.end_cycle; }
+    }
+
+    grid.addEventListener("pointermove", function (event) {
+      var svg = event.target.closest && event.target.closest("svg");
+      if (!svg) { return; }
+      var box = svg.getBoundingClientRect();
+      var inView = (event.clientX - box.left) / (box.width || 1) * HISTORY_W;
+      var cycle = scale.x0 + (inView - HISTORY_PAD) / (HISTORY_W - 2 * HISTORY_PAD) * (scale.x1 - scale.x0);
+      var best = 0;
+      rows.forEach(function (r, i) {
+        if (Math.abs(r.end_cycle - cycle) < Math.abs(rows[best].end_cycle - cycle)) { best = i; }
+      });
+      show(best);
+      if (readoutBox) { readoutBox.classList.remove("is-idle"); }
+    });
+    grid.addEventListener("pointerleave", function () {
+      show(S.explain.index);
+      if (readoutBox) { readoutBox.classList.add("is-idle"); }
+    });
+    historyCursor = show;
   }
 
   function heatmap(rows, sensors) {
@@ -1526,11 +1910,12 @@
     peak = peak || 1;
     var out = '<div class="pg-heat-wrap"><svg class="pg-heat" viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H + '">';
     sensors.forEach(function (s, j) {
-      out += '<text x="54" y="' + (j * 16 + 12) + '" text-anchor="end" class="pg-tick">' + esc(s) + "</text>";
+      // This drawing is not scaled to fit, so its labels are a size on the screen and keep to the 11-pixel floor.
+      out += '<text x="54" y="' + (j * 16 + 12) + '" text-anchor="end" class="pg-heat-label">' + esc(s) + "</text>";
       rows.forEach(function (r, i) {
         var v = r[s];
         out += '<rect x="' + (60 + i * cell) + '" y="' + (j * 16) + '" width="' + cell + '" height="15" fill="' + (v >= 0 ? "var(--fig-accent)" : "var(--fig-warn)") +
-          '" fill-opacity="' + (Math.abs(v) / peak).toFixed(3) + '"><title>' + esc(s + " · cycle " + r.end_cycle + " · engine " + r.unit + ": " + (v >= 0 ? "+" : "") + v.toFixed(3) + " cycles") + "</title></rect>";
+          '" fill-opacity="' + (Math.abs(v) / peak).toFixed(3) + '"><title>' + esc(s + " · engine " + r.unit + ": " + signedValue(v) + " cycles") + "</title></rect>";
       });
     });
     return out + '</svg></div><div class="pg-faint">Strongest colour: ' + peak.toFixed(2) + " cycles.</div>";
@@ -1560,7 +1945,7 @@
     });
     st.ranked.forEach(function (s, rank) {
       var p = g.positions[s], k = st.style[s];
-      out += '<g><title>' + esc(s + ": rank " + (rank + 1) + ", " + (values[s] >= 0 ? "+" : "") + Number(values[s]).toFixed(3) + " cycles") + "</title>" +
+      out += '<g><title>' + esc(s + ": rank " + (rank + 1) + ", " + signedValue(Number(values[s])) + " cycles") + "</title>" +
         '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale + '" r="17" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/>' +
         '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
     });
@@ -1570,39 +1955,68 @@
   // How many times a sensor joins the red four, going from each graph in the
   // list to the next.
   function redFourEntries(list, sensors) {
-    var count = 0;
+    var entries = 0;
     for (var i = 1; i < list.length; i++) {
       var before = fig10Style(list[i - 1], sensors).ranked.slice(0, 4);
-      count += fig10Style(list[i], sensors).ranked.slice(0, 4).filter(function (s) { return before.indexOf(s) < 0; }).length;
+      entries += fig10Style(list[i], sensors).ranked.slice(0, 4).filter(function (s) { return before.indexOf(s) < 0; }).length;
     }
-    return count;
+    return entries;
   }
 
-  // One small graph with the sensors round a circle in Fig. 10's order and
-  // Table 3's edges between them. unit is "" for the paper's unitless values.
-  function ringGraph(values, sensors, label, unit) {
+  // Where each sensor sits round a small ring, in Fig. 10's order.
+  function ringPositions() {
     var ring = S.options.table12.ring, n = ring.length, c = 50, R = 40;
     var at = {};
     ring.forEach(function (s, i) {
       var a = (-90 - 180 / n + i * 360 / n) * Math.PI / 180;
       at[s] = [c + R * Math.cos(a), c + R * Math.sin(a)];
     });
+    return at;
+  }
+
+  function ringEdges(at) {
+    return S.options.graph.edges.map(function (edge) {
+      var a = at[edge[0]], b = at[edge[1]];
+      return '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) +
+        '" stroke="var(--fig-edge)" stroke-width="0.45"/>';
+    }).join("");
+  }
+
+  function ringLabel(p, s) {
+    return '<text x="' + p[0].toFixed(1) + '" y="' + (p[1] + 1.9).toFixed(1) + '" text-anchor="middle" class="pg-ring-label">' + esc(s) + "</text>";
+  }
+
+  // One small graph with the sensors round a circle in Fig. 10's order and
+  // Table 3's edges between them. Only the red four are named, since which
+  // four they are is what changes from ring to ring; the key ring names the
+  // rest. unit is "" for the paper's unitless values.
+  function ringGraph(values, sensors, label, unit) {
+    var ring = S.options.table12.ring, n = ring.length, at = ringPositions();
     var out = '<figure class="pg-ring"><svg viewBox="0 0 100 100" role="img" aria-label="' + esc(label) + '">';
     if (!values) {
       return out + '<text x="50" y="52" text-anchor="middle" class="pg-ring-missing">not explained</text></svg><figcaption>' + esc(label) + "</figcaption></figure>";
     }
-    S.options.graph.edges.forEach(function (edge) {
-      var a = at[edge[0]], b = at[edge[1]];
-      out += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="var(--fig-edge)" stroke-width="0.45"/>';
-    });
+    out += ringEdges(at);
     var st = fig10Style(values, sensors);
     ring.forEach(function (s) {
       var p = at[s], k = st.style[s], v = Number(values[s]);
-      out += "<g><title>" + esc(label + " · " + s + ": rank " + (k.rank + 1) + " of " + n + ", " + (unit && v >= 0 ? "+" : "") + v.toFixed(2) + (unit ? " " + unit : "")) + "</title>" +
+      out += "<g><title>" + esc(label + " · " + s + ": rank " + (k.rank + 1) + " of " + n + ", " + (unit ? signedValue(v) + " " + unit : fixed(v, 2))) + "</title>" +
         '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-ink)" stroke-width="0.35"/>' +
-        '<text x="' + p[0].toFixed(1) + '" y="' + (p[1] + 1.9).toFixed(1) + '" text-anchor="middle" class="pg-ring-label">' + esc(s) + "</text></g>";
+        (k.rank < 4 ? ringLabel(p, s) : "") + "</g>";
     });
     return out + "</svg><figcaption>" + esc(label) + "</figcaption></figure>";
+  }
+
+  // The ring once more with every sensor named and nothing coloured: the key to where each one sits.
+  function keyRing() {
+    var at = ringPositions();
+    var out = '<figure class="pg-ring pg-ring--key"><svg viewBox="0 0 100 100" role="img" aria-label="Where each sensor sits">' + ringEdges(at);
+    S.options.table12.ring.forEach(function (s) {
+      var p = at[s];
+      out += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="var(--fig-bg)" stroke="var(--fig-axis)" stroke-width="0.5"/>' +
+        ringLabel(p, s);
+    });
+    return out + "</svg><figcaption>key</figcaption></figure>";
   }
 
   // The paper's Fig. 10, redrawn from Table 12, above this engine at the same
@@ -1611,8 +2025,7 @@
   function paperComparison(rows, sensors, sum) {
     var t = S.options.table12, every = Number(sum.every) || 1;
     if (!t || !t.graphs) {
-      return '<div class="pg-empty">The paper\'s Table 12 did not arrive with this page\'s settings, which happens when the ' +
-        "documentation server is older than the page it serves. Stop the server and start scripts/docs_ui.py again.</div>";
+      return '<div class="pg-empty pg-figure--wide">The paper\'s Table 12 did not arrive with this page.</div>';
     }
     var names = ["Early", "Middle", "Late"];
     var paperSteps = 0, oursSteps = 0, oursAll = true;
@@ -1629,34 +2042,25 @@
       });
       paperSteps += redFourEntries(paper, sensors);
       if (ours.every(Boolean)) { oursSteps += redFourEntries(ours, sensors); } else { oursAll = false; }
-      return '<div class="pg-fig10-stage"><div class="pg-fig10-head">' + names[k] + ": graphs " + graphs[0] + " to " + graphs[4] + "</div>" +
-        '<div class="pg-fig10-row"><span class="pg-fig10-who">Paper, Table 12</span>' +
+      // The two rows are named once, in the first stage; the stages below keep the same order.
+      return '<div class="pg-fig10-stage"><div class="pg-fig10-head">' + names[k] + "</div>" +
+        '<div class="pg-fig10-row">' + (k === 0 ? '<span class="pg-fig10-who">The paper</span>' : "") +
         paper.map(function (v, j) { return ringGraph(v, sensors, "graph " + graphs[j], ""); }).join("") + "</div>" +
-        '<div class="pg-fig10-row"><span class="pg-fig10-who">Engine ' + esc(sum.unit) + ", seed " + esc(sum.seed) + "</span>" +
+        '<div class="pg-fig10-row">' + (k === 0 ? '<span class="pg-fig10-who">This engine</span>' : "") +
         ours.map(function (r, j) { return ringGraph(r, sensors, r ? "cycle " + r.end_cycle : "graph " + graphs[j], "cycles"); }).join("") + "</div></div>";
     }).join("");
     var allSteps = every === 1 && rows.length > 1 ? redFourEntries(rows, sensors) : null;
-    return '<figure class="pg-figure pg-figure--wide"><figcaption>Beside the paper\'s Fig. 10. Each small graph is one window: the four sensors with the largest values red, the rest blue, ' +
-      "each shade by rank, round the circle in the order the paper draws them. The top row of each stage is the paper's, redrawn from the numbers of its Table 12; " +
-      "the row below is this engine at the same graph numbers, where graph 1 is the first window.</figcaption>" + blocks +
+    return '<figure class="pg-figure pg-figure--wide"><figcaption class="pg-fig10-caption"><span><strong>As the paper\'s Fig. 10.</strong> ' +
+      "Each small graph is one window, its sensors round the circle in the order the paper draws them, the red four named. " +
+      "The top row of each stage is the paper's, redrawn from the numbers of its Table 12; " +
+      "the row below is this engine at the same graph numbers, where graph 1 is the first window.</span>" + keyRing() + "</figcaption>" + blocks +
       '<p class="pg-fig10-count"><strong>How often the red four changes.</strong> Inside the three stages there are 12 steps from one graph to the next. ' +
       "Over those steps a sensor joins the red four " + plural(paperSteps, "time") + " in the paper's table" +
       (oursAll ? ", and " + plural(oursSteps, "time") + " for this engine." : "; this engine is missing some of those graphs, so it is not counted.") +
-      (allSteps !== null ? " Over all " + (rows.length - 1) + " steps between this engine's neighbouring windows: " + allSteps + " times." : "") + "</p>" +
-      '<p class="pg-faint">The paper\'s row is drawn from Table 12, not copied from its printed figure. The two agree on the red four in 13 of the 15 graphs; ' +
-      "in graph 81 the printed figure colours T30 red in place of phi, and in graph 82 T30 and Nc in place of P30 and phi (" + refLink("F-17") + "). " +
-      "Table 12 describes one engine the paper does not name, so the engine below it is a different one. " +
-      "Every value in Table 12 is positive, which signed Shapley values cannot all be (" + refLink("F-08") + "), " +
-      "so here a sensor that pulled the prediction down by many cycles is red as well: the ranking uses the size of the value.</p></figure>";
-  }
-
-  function signedBars(row, sensors) {
-    var peak = Math.max.apply(null, sensors.map(function (s) { return Math.abs(row[s]); })) || 1;
-    return '<div class="pg-signed">' + sensors.slice().sort(function (a, b) { return Math.abs(row[b]) - Math.abs(row[a]); }).map(function (s) {
-      var v = row[s], width = Math.abs(v) / peak * 50;
-      return '<div class="pg-signed-row"><span>' + esc(s) + '</span><div class="pg-signed-track"><i class="' + (v >= 0 ? "up" : "down") + '" style="width:' + width.toFixed(1) +
-        "%;" + (v >= 0 ? "left:50%" : "right:50%") + '"></i></div><b>' + (v >= 0 ? "+" : "") + v.toFixed(2) + "</b></div>";
-    }).join("") + "</div>";
+      (allSteps !== null ? " Over all " + count(rows.length - 1) + " steps between this engine's neighbouring windows: " + plural(allSteps, "time") + "." : "") + "</p>" +
+      '<p class="pg-faint">The paper\'s printed figure agrees with Table 12 on the red four in 13 of the 15 graphs; ' +
+      "in graph 81 it colours T30 red in place of phi, and in graph 82 T30 and Nc in place of P30 and phi (" + refLink("F-17") + "). " +
+      "Table 12 describes one engine the paper does not name, so the engine below it is a different one.</p></figure>";
   }
 
   window.thesisPlayground = start;

@@ -324,29 +324,28 @@ back, so one piece of code can serve both.
 
 ---
 
-## P-19 — Outside the playground, the layer table still shows the temporal stage as a row before Table 4's
+## P-19 — Notebook 02 still shows the temporal stage as a row before Table 4's
 
 `ESTGNN.layer_summary()` returns a "Temporal" row and then Table 4's "Input" row,
 and both describe the same `(B, 14, 1)` tensor: Table 4's Input row, which lists
 no parameters, is what the recurrent stage hands to the first graph layer. On
 2026-09-14 the author pointed this out on the playground, which now shows the two
-as one Input row naming the stage. Three places still show both:
-
-- notebook 02, cells 16 and 20, whose text says "the first row is the stage.
-  Every row below it is Table 4, unchanged";
-- the site's "The network" page, whose table `server.py` builds from
-  `layer_summary()` and introduces as "the same table the paper prints", with a
-  Temporal row reading `LastCycle`, `(B, 14, 1)` in and out, 0 parameters;
-- `figures.py`'s `draw_architecture`, which draws a box for each row.
+as one Input row naming the stage. The site's separate network page has since
+been removed, and `figures.py`'s `draw_architecture` now folds the two rows into
+one Input box the same way. One place still shows both: notebook 02,
+cells 16 and 20, which display `layer_summary()` as it is, and whose text says
+"the first row is the stage. Every row below it is Table 4, unchanged". (Its
+cell 11 showed an older figure with a separate Temporal box until the notebook
+was re-executed on 2026-09-17.)
 
 `tests/test_models.py::test_activations_and_shapes_match_table_4` asserts the
 separate row, and `docs/DESIGN_swappable_stages.md` chose it on purpose.
 
 **What finishing looks like:** a decision on whether `layer_summary()` itself
 should fold the stage into the Input row. If yes: change it and that test,
-re-execute notebook 02 (it trains, so it takes minutes) and add a dated line to
-the design. If no: fold the rows on the "The network" page as the playground
-does, and leave the notebook's framing, which says in words what it is doing.
+re-execute notebook 02 (it trains, so it takes minutes), and add a dated line to
+the design. If no: leave the notebook's framing, which says in words what it is
+doing.
 
 ---
 
@@ -384,8 +383,10 @@ for this — the reasons were argued on 2026-09-09: a number shown in a browser
 and never written to `reports/` with its commit cannot be quoted or reproduced.
 
 **What finishing looks like:** the two folders built on that pattern, notebook
-02's section 5 moved into `graph/`, and the explorer beside the existing
-`#/explore/` pages.
+02's section 5 moved into `graph/`, and the explorer built into the playground,
+which is now the site's only page not made from a file. The separate
+`#/explore/` pages this entry once put it beside, the stored runs among them,
+were removed because each repeated another page.
 
 ---
 
@@ -400,15 +401,14 @@ not look at:
   there has its entry one click away, but the author's instruction covers it.
 - **`docs/LITERATURE_BASIS.md`** and the dated audits and reviews. The dated
   documents are records of what was written then and should not be rewritten.
-- **The documentation site's own interface.** The playground's warnings show
-  bare codes as labels (`D-2`, `F-16`, `A-26`) in
-  `src/thesis_gnn_rul_xai/docsite/playground.py`, `caveats()`.
 - **`scripts/train.py --help`**, whose option texts end in "(A-19)" and the like.
 
+The playground's cautions were on this list until 2026-09-17; they now say the
+thing in words and put the code after it in parentheses, as a link to the entry.
+
 **What finishing looks like:** the log's cross-references rewritten with the
-thing said in words; the playground's labels showing the entry's title with its
-code; the check extended to `docs/ASSUMPTIONS.md` with entry headings and table
-identifier columns exempt.
+thing said in words; the check extended to `docs/ASSUMPTIONS.md` with entry
+headings and table identifier columns exempt.
 
 ---
 
@@ -420,10 +420,12 @@ F-04 gained the row for the current default. What remains is in A-21:
 
 - The **summary table** at the top of the log says row rescaling came 0.25
   cycles closer with nothing held back, p = 0.068. `config.py`'s comment,
-  `config/fd001.yaml`, the package README and `docs/learn/02_graphs.md` all
-  quote 0.35 and p = 0.047. A-21's own table holds both: 0.253 under the step
-  schedule, 0.352 under the superseded exponential one. So the documents quote
-  the superseded schedule's figure as though it were current.
+  `config/fd001.yaml` and the package README all quote 0.35 and p = 0.047.
+  A-21's own table holds both: 0.253 under the step schedule, 0.352 under the
+  superseded exponential one. So those three quote the superseded schedule's
+  figure as though it were current. The taught pages no longer do: the one on
+  graphs quotes 0.25 at p = 0.068, and the one on reading a result gives both
+  figures, each with its schedule (checked 2026-09-17).
 - A-21's row "z-score, 20 % held back, early stopping" gives row rescaling
   16.616 ± 0.289, while the stored run of the current default — the same
   settings — gives 16.496 ± 0.415 at `f386291-dirty`. The row names no commit,
@@ -432,17 +434,3 @@ F-04 gained the row for the current default. What remains is in A-21:
 **How to check:** `grep -rn "0.35 cycles\|0.047" config src docs/learn README.md`.
 **What finishing looks like:** every quotation names the schedule it was
 measured under, and the 20 %-held-back rows of A-21 re-run at one commit.
-
----
-
-## P-07 — nbconvert silently drops SVG outputs
-
-Guarded by a test now
-(`test_the_map_survives_into_the_page_the_site_builds_from_the_notebook`), but
-the underlying trap is general: any notebook cell that displays an
-`IPython.display.SVG` will show in JupyterLab and vanish from the documentation
-site. Measured on nbconvert 7.17.1 against the `basic`, `lab` and `classic`
-templates — all three drop `image/svg+xml` and keep `text/html`.
-
-**What finishing looks like:** a line in `docsite/README.md` warning anyone
-adding a notebook figure, so the next person does not spend an hour on it.

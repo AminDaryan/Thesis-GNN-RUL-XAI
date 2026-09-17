@@ -1,10 +1,12 @@
 # `docsite` — the documentation, in a browser
 
-This folder holds a small website that shows everything written in this
-repository: the top-level README, one page per folder of the code plus one
-per file under `data/`, the assumptions log, the audits, both notebooks, and a
-set of figures. It runs on your own
-machine, reads the files from disk as you ask for them, and publishes nothing.
+This folder holds a small website for this repository. It opens on the
+playground, where a run of the network is designed, trained, set beside the
+paper and explained. Its menu holds everything written here that a reader
+needs: eight taught pages that build the method from nothing, the notebooks,
+one page per folder of the code, the assumptions log, the audits and reviews.
+It runs on your own machine, reads the files from disk as you ask for them,
+and publishes nothing.
 
 Start it with:
 
@@ -31,8 +33,8 @@ and `scripts/explain.py`, but what they compute is theirs, stored by them in
 | `server.py` | The web server. Receives a request for an address such as `/api/doc?path=README.md` and sends back the answer. |
 | `catalog.py` | Finds every document in the repository and arranges them into the groups the menu shows. |
 | `markup.py` | Turns one Markdown file into the HTML the browser displays. |
-| `figures.py` | Draws the fifteen diagrams, each from this repository's own data. |
-| `results.py` | Reads the stored runs in `reports/` and the entries in `docs/ASSUMPTIONS.md`. |
+| `figures.py` | Draws the diagrams the taught pages and the notebooks show, each from this repository's own data. |
+| `results.py` | Reads the entries of `docs/ASSUMPTIONS.md`, and the last re-check of the numbers the log quotes. |
 | `notebooks.py` | Turns a notebook into HTML for reading, and starts JupyterLab for running. |
 | `playground.py` | Checks the playground's settings, builds the command that runs them, queues the jobs, and reads stored runs and explanations back. |
 | `assets/playground.js` | The playground page: its form, its job list, its charts. |
@@ -61,11 +63,11 @@ the failure mode entirely. There is no build step, nothing to regenerate, and
 nothing to forget.
 
 The figures follow the same rule, one step further: they are **computed**, not
-drawn. The sensor graph is laid out from the transcribed matrix in
-`graph/adjacency.py`, and its edge count and diameter come from the same
-`adjacency_report()` the tests use. The network diagram is produced by building
-a real `ESTGNN` in memory and reading its layers back. If someone changes the
-layer widths, the diagram changes with them.
+drawn. The graph drawings are laid out from the transcribed matrix in
+`graph/adjacency.py`, and the distances the reach figure counts come from the
+same `adjacency_report()` the tests use. The network diagram is produced by
+building a real `ESTGNN` in memory and reading its layers back. If someone
+changes the layer widths, the diagram changes with them.
 
 ---
 
@@ -82,14 +84,23 @@ Say you click on the assumptions log. Six things happen.
    not, and reads the file.
 4. `markup.py` converts the Markdown to HTML, gives every heading an anchor,
    rewrites the links, and returns the headings as a list.
-5. The server sends back a small parcel: the HTML, the title, the headings, and
-   how long the document takes to read.
-6. `app.js` puts the HTML in the middle of the page and builds the "On this
-   page" list down the right-hand side from the headings.
+5. The server puts the page's menu name, "Assumptions log", in place of the
+   words of its first heading, and sends back a small parcel: the HTML, that
+   name, the headings, and how long the document takes to read.
+6. `app.js` puts the HTML in the middle of the page, names the browser tab with
+   the same menu name, and builds the "On this page" list down the right-hand
+   side from the headings.
 
 The whole exchange is one request. There is no framework involved on either
 side — the server is Python's own `http.server`, and the browser code is plain
 JavaScript with no libraries.
+
+Step 5 is why a page has one name. The menu has to use short names, and a file
+often opens with a longer heading of its own, so the reader used to meet two
+names for one page, side by side. The Markdown files are not edited for this:
+on GitHub they keep their own headings. A page reached only through a link,
+such as the top-level `README.md`, is not in the menu and keeps its own
+heading.
 
 ---
 
@@ -157,34 +168,37 @@ jump from a mention to the reasoning without hunting. Identifiers inside code
 spans and inside existing links are left alone, so `` `ASSUMPTION A-07` `` in a
 code sample stays plain text.
 
+### And code has to be readable in both themes
+
+Code is coloured by Pygments, the library that splits source code into words
+and gives each kind of word a colour. Each of its colour schemes is chosen for
+one background. The light scheme's colours once showed through on the dark
+theme's code panel, where they fell below the contrast of 4.5 to 1 that
+ordinary text needs: its blue measured 2.01 to 1, its red 2.74 and its green
+3.36. So `markup.py` gives each theme its own scheme, Pygments' `default` for
+the light theme and `github-dark` for the dark one, and mixes any colour that
+still falls short towards the theme's ordinary text colour, five per cent at a
+time, until it reaches 4.5 to 1 on that theme's panel. The panel colours it
+measures against are copied from `app.css`; one test fails if the two ever
+differ, and another if any colour on the site falls short.
+
 ---
 
 ## The figures, and the ones that cannot always be drawn
 
-There are fifteen: nine need nothing but the repository, five read the real
-NASA files, and one needs PyTorch. All of them are on one page at `#/figures`,
-linked from the foot of the menu with a count taken from the same list the
-server draws from, so the link cannot promise a figure that does not exist.
+Each figure is one function in `figures.py`, listed by name in `FIGURES`. A
+taught page asks for one with `{{figure:name}}` on a line of its own, and a
+notebook with `display(HTML(render_figure("name")))`. Before a figure is
+deleted, both kinds of caller have to be searched for its name.
 
-| Figure | What it shows |
-|---|---|
-| `engine` | A turbofan, with the station each sensor sits at |
-| `pipeline` | The eight preprocessing steps, and the three that decide validity |
-| `sensor-graph` | The paper's Table 3 drawn as the network it describes |
-| `adjacency` | The same graph as a table, before and after rescaling |
-| `degrees` | How many neighbours each sensor has |
-| `message-passing` | Information spreading from one sensor, one edge per layer |
-| `reach` | How far apart every pair of sensors is |
-| `shapley` | Every order three players could join a group in |
-| `architecture` | Every layer of the network, with its real parameter count |
-| `lstm-cell` | The paper's Fig. 2: one memory cell, its three gates and its six equations |
-| `correlation` | The paper's Fig. 5: the correlation between every pair of columns of the FD001 training file |
-| `rul-curve`, `smoothing`, `windowing`, `notebook-map` | The label, the filter, the window, and the whole of notebook 01 |
-
-`notebook-map` is the one that answers "what does the preprocessing notebook
-actually do?" in a single picture. It runs the pipeline while the page loads
-and prints the count the data really has at every step, so it cannot drift away
-from the notebook it describes the way a hand-drawn diagram would.
+**A notebook must hand a figure over as HTML, never as an SVG image.** The
+site reads a notebook through `nbconvert`, which drops an output of the type
+`image/svg+xml` and keeps one of the type `text/html`, so a figure displayed as
+an SVG object shows in JupyterLab and is simply missing here, with nothing
+failing. That was measured on nbconvert 7.17.1 against its `basic`, `lab` and
+`classic` templates, after notebook 01's map went missing that way.
+`tests/test_docsite.py` renders notebook 01 as the site does and requires the
+map to be in the page.
 
 Five of them read the **real NASA files**: `rul-curve`, `correlation`,
 `smoothing`, `windowing` and `notebook-map`. If those files are not in
@@ -192,6 +206,11 @@ Five of them read the **real NASA files**: `rul-curve`, `correlation`,
 download. It does **not** draw an invented signal that happens to have the right
 shape. That is the same rule the rest of the project follows, applied to
 pictures: show the thing, or say you cannot.
+
+`notebook-map` is the one that answers "what does the preprocessing notebook
+actually do?" in a single picture. It runs the pipeline while the page loads
+and prints the count the data really has at every step, so it cannot drift away
+from the notebook it describes the way a hand-drawn diagram would.
 
 `architecture` needs PyTorch, because it builds a real model to read the layer
 shapes off it. Without PyTorch it says so, and nothing else on the site is
@@ -208,9 +227,15 @@ in a saved copy of the page.
 in a sentence and obvious in a picture: after three layers, `W32` is still
 grey. It is four edges from `P15` and three layers cannot cross four edges, so
 those two sensors are **never** mixed, whatever the training does. The four
-pairs in that situation are computed by `pairs_beyond_reach()`, the same
-function `tests/test_models.py` uses to check the network really behaves that
-way.
+pairs in that situation, which the `reach` figure names, are computed by
+`pairs_beyond_reach()` in `graph/adjacency.py`, which `tests/test_adjacency.py`
+checks against the four pairs worked out by hand.
+
+That the network itself behaves that way is a separate test,
+`tests/test_models.py::test_three_layers_cannot_reach_four_hops`: it adds 100
+to every reading of `P15`, runs the three graph layers, and requires `W32`'s
+output not to move. An earlier version of this page said that test used
+`pairs_beyond_reach()`; it does not, and was corrected on 2026-09-17.
 
 ---
 
@@ -221,20 +246,26 @@ The site does both, and the difference matters.
 **Reading** uses `nbconvert` to turn the stored notebook into HTML. You see the
 code and the outputs **as they were saved**, produced on the real FD001 files.
 Nothing runs. This always works, needs no extra software, and is what you want
-if you are following the argument.
+if you are following the argument. The line above a notebook says so in two
+words, "Saved outputs.", beside the button that runs it.
 
-**Running** needs JupyterLab, which is a separate program. The **JupyterLab**
-button in the top bar starts it as a child process, waits for it to print the
-address it is serving on — including the one-time token it generates for
-itself — and opens that address in a new tab. From then on you are in
-JupyterLab, not on this site, and you can execute cells.
+**Running** needs JupyterLab, which is a separate program. The **Open in
+JupyterLab** button above a notebook starts it as a child process, waits for it
+to print the address it is serving on — including the one-time token it
+generates for itself — and opens that notebook in a new tab. From then on you
+are in JupyterLab, not on this site, and you can execute cells. The new tab is
+the confirmation; a message gives the address only when the browser blocked the
+tab from opening.
 
-If JupyterLab is not installed the button says so and tells you how to install
-it, rather than failing silently:
+If JupyterLab is not installed, the line above the notebook says how to install
+it in place of the button:
 
 ```bash
 pip install -e .[notebook]
 ```
+
+The server looks for JupyterLab again on every request rather than once when it
+starts, so installing it is not a reason to restart the site.
 
 Only one JupyterLab is ever started. Asking again returns the address of the
 one already running, and it is shut down when the documentation server stops.
@@ -262,24 +293,26 @@ strips a trailing `/lab` before adding the rest. That bug survived until
 JupyterLab was first installed on a machine here, because until then the code
 that builds the address had never run with a real address to build from.
 
-### A trap: nbconvert's stylesheet is not scoped
+### A trap: nbconvert's stylesheet is not used
 
 `nbconvert` returns a stylesheet along with the HTML, and that stylesheet
-styles bare tags — `pre`, `table`, `div`. Dropped into the page as-is it
-restyles the entire site, not just the notebook.
+styles bare tags — `pre`, `table`, `div`. Dropped into the page as it is, it
+would restyle the entire site, not just the notebook, and its code colours are
+chosen for a light background only.
 
-`app.js` therefore rewrites every rule in it to apply only inside the box the
-notebook is drawn in, before adding it to the page. If a notebook ever looks
-right but the rest of the site suddenly does not, that rewriting is where to
-look.
+`render_notebook()` therefore keeps the HTML and discards the stylesheet.
+`app.css` styles everything inside the box the notebook is drawn in,
+`.notebook-frame`, and the code colours of the section above apply to a
+notebook's cells in both themes. If a notebook ever looks unstyled, that box is
+where to look.
 
 ---
 
-## The playground: choose, train, compare, explain
+## The playground: design, results, explain, jobs
 
 The page at `#/explore/playground` is where the parts of the method can be
 swapped and the effect seen. It has three tabs, in the order the work happens,
-and a fourth for the jobs (see below):
+and a fourth for the jobs:
 
 1. **Design a run.** Choose the sub-dataset, the preprocessing, the temporal
    stage, the widths of the graph layers and the training settings. The graph
@@ -287,20 +320,20 @@ and a fourth for the jobs (see below):
    change.
 2. **Results.** Every stored run, its four measures beside the paper's, every
    seed's curve and predictions, and any two runs paired seed by seed.
-3. **Explain.** Pick a stored run and a seed, choose the method and what to
-   explain, and read back how much each sensor moved the predictions.
+3. **Explain.** Explain one stored run's predictions, with the paper's method
+   or a cheaper one, and read back how much each sensor moved them.
 
-The first tab has twenty-nine settings, and shown all at once they ran to five
-screens. So the form opens with the four variants of Table 11 and the two
-training procedures as cards, and below them the settings in six groups that
-fold. A folded group's heading says what it holds right now — "30-cycle
-windows, stride 1 · ceiling 125 …" — and how many of its settings differ from
-their defaults, so nothing is hidden by folding it; a setting that differs is
-marked and carries a Reset. Which groups are open is remembered in the
-reader's own browser, as the menu's folds are. The column on the right does
-not scroll away: it holds the button that starts the run, the cautions, the
-row of the paper the result may be set beside, and the network the settings
-build.
+The design tab has twenty-nine settings, and shown all at once they ran to five
+screens. So the form opens with the sub-dataset on its own, then the four
+variants of Table 11 and the two training procedures as cards, and below them
+the other settings in five groups that fold. A folded group's heading says what
+it holds right now — "30-cycle windows, stride 1 · ceiling 125 …" — and how
+many of its settings differ from their defaults, so nothing is hidden by
+folding it; an open group shows the controls instead, and a setting that
+differs carries a Reset. Which groups are open is remembered in the reader's
+own browser, as the menu's folds are. The column on the right does not scroll
+away: it holds the button that starts the run, what stops or qualifies that
+run, and the network the settings build.
 
 ### Why the page never computes a result of its own
 
@@ -312,33 +345,35 @@ happened here the one time that slipped). And a page that answers quickly
 invites one-seed numbers, which rule 3 forbids as results.
 
 So the page does not train. It starts **`scripts/train.py`** — the same script,
-with the same arguments, that anyone would type — and shows that command beside
-the button. What the run produces lands in `reports/` with its commit in its
-directory name, exactly as if it had been typed. An explanation is
-`scripts/explain.py` in the same way, and lands inside the run it explains. The
-command is handed to the operating system as a list of separate arguments,
+with the same arguments, that anyone would type, and the job's card in the Jobs
+tab shows that command. What the run produces lands in `reports/` with its
+commit in its directory name, exactly as if it had been typed. An explanation
+is `scripts/explain.py` in the same way, and lands inside the run it explains.
+The command is handed to the operating system as a list of separate arguments,
 never as one line of text for a shell to split, so no setting typed into the
 page can become a second command.
 
-Fewer than five seeds is allowed, because trying things out is the point, and
-is marked **exploratory** everywhere it appears: in the cautions before a run,
-in the results table, and on the run's own page.
+Fewer than five seeds is allowed, because trying things out is the point. It is
+marked where it matters: beside the Train button before the run, as a
+warning-coloured seed count in the list of runs, and among the cautions on the
+run's own page.
 
-### What is shown before anything runs
+### What the design tab shows before anything runs
 
 Some things need no training, and the page shows them as the settings change:
 
-- **The network these settings build**, built for real by `models/`, with each
-  layer's output shape and how many numbers it learns. For the paper's LSTM
-  stage at hidden size 32 that is 124,482; with the stage removed it is 61,729.
-  The table has Table 4's seven rows. `ESTGNN.layer_summary()` lists the
-  temporal stage and then Table 4's "Input" row, but both describe the same
-  `(B, 14, 1)` tensor — Table 4's Input row, with no parameters of its own, is
-  what the stage hands to the first graph layer — so the page shows them as one
-  Input row, names the stage beside it, and counts the stage's learned numbers
-  there.
-  Settings the network refuses — thirty raw cycles handed straight to a graph
-  layer, for one — are refused here with the network's own message.
+- **The network these settings build**, built for real by `models/`, with how
+  many numbers it learns and, folded under it, each layer's output shape and
+  count. For the paper's LSTM stage at hidden size 32 that is 124 482; for the
+  w/o LSTM network, which keeps only each window's last cycle, it is 61 729.
+  `ESTGNN.layer_summary()` lists the temporal stage and then Table 4's "Input"
+  row, but both describe the same array of shape `(B, 14, 1)`, one number per
+  sensor for each of the `B` windows in a batch — Table 4's Input row, which
+  learns nothing of its own, is what the stage hands to the first graph layer —
+  so the page shows them as one Input row and counts the stage's learned
+  numbers there. Settings the network refuses — thirty raw cycles handed
+  straight to a graph layer, for one — are refused with the network's own
+  message.
 - **The row of the paper a result may be set beside.** Which row is decided by
   what the settings remove, one part at a time, the way the paper's Table 11
   does:
@@ -346,27 +381,40 @@ Some things need no training, and the page shows them as the settings change:
   | Temporal stage | Sensor graph | Published row |
   |---|---|---|
   | LSTM | the paper's | ESTGNN (Full), Tables 7 to 10 |
-  | removed | the paper's | ESTGNN w/o LSTM, Table 11 |
+  | w/o LSTM | the paper's | ESTGNN w/o LSTM, Table 11 |
   | LSTM | every sensor joined | ESTGNN w/o Physics prior, Table 11 |
-  | anything else | anything | none, and the page says why |
+  | w/o LSTM | every sensor joined | none: two parts removed at once |
+  | anything | the 41 most correlated pairs | none: the paper builds no such graph |
+  | anything else | the paper's or every sensor joined | none: the paper has no row for the stage |
+  | not recorded, in an older stored run | the paper's or every sensor joined | none: no row can be chosen |
 
   Removing one part of a model to see what it was worth is called an
-  **ablation**, and the variant buttons at the top of the form set exactly the
-  settings of each row. "w/o GCN" is shown and disabled: a model without graph
-  layers is not built.
-- **The cautions that apply**, each with the entry of `docs/ASSUMPTIONS.md` it
-  comes from as a pointer: that capped test labels can only flatter the numbers,
-  that held-back engines mean the weights of the best pass over the training
-  data are restored — a step the paper never describes — and that on FD002 and
-  FD004 engines shorter than the window are left out, so the score, a sum over
-  engines, stops being comparable.
-- **What the files say about the sub-dataset**: Table 5's counts, and how many
-  test engines are shorter than the chosen window, counted from the real file.
+  **ablation**, and the variant cards at the top of the form set exactly the
+  settings of each row, with the paper's RMSE on each. The card the settings
+  match is marked; when none matches, the reason from the table's last column
+  is printed once under the cards. "w/o GCN" is shown and disabled: a model
+  without graph layers is not built.
+- **What stops or qualifies the run**, directly under the Train button: that
+  PyTorch or the NASA files are missing, the network's refusal, how many test
+  engines are shorter than the window and will be left out (counted from the
+  real file), and two cautions about settings that conflict — fewer than five
+  seeds, and the learning rate that waits for the held-back error to stall with
+  no engines held back. Those two are here because the settings involved sit in
+  groups that may be folded, and "Set these settings up again" on a stored run
+  can bring either in without the reader opening a group.
+
+The cautions come from one function, `caveats()`, and each carries a `where`:
+`"run"` for a caution that qualifies a stored run's numbers, which the run's
+own page lists in full, and `"design"` for the two above. Most cautions are
+`"run"` only, because on the design tab the tag beside the setting already says
+the same thing, while a stored run's page shows no settings and the caution is
+the only copy there.
 
 ### Where each default comes from
 
-Every setting carries a label saying which of three things set its default,
-because that is the distinction the thesis depends on:
+Every setting carries a label saying which of four things set its default,
+because that is the distinction the thesis depends on. Pointing at a label
+gives its meaning in a few words.
 
 | Label | Meaning | Example |
 |---|---|---|
@@ -375,14 +423,21 @@ because that is the distinction the thesis depends on:
 | Project rule | neither: a rule of this repository | five seeds |
 | Not in the paper | an option offered for comparison | the GRU stage |
 
+Each fact is said once: when every option of a setting shares one source, the
+label sits on the setting; when the options differ, as for the sensor graph and
+the temporal stage, each option carries its own.
+
 A pass over the whole training set is what PyTorch calls an **epoch**; the page
 says "pass" throughout.
 
-The training procedure gets a switch of its own, **the paper's** (nothing held
-back, all 200 passes, the last pass's weights) against **this project's
-default** (a fifth of the training engines held back, the best pass restored).
-It is a separate switch because on FD001 it changed what the LSTM stage was
-worth from 3.19 cycles to 0.77 (finding F-16).
+The training procedure gets cards of its own: **the paper's procedure**
+(nothing held back, every pass, the final weights) and **held back, best pass**
+(a fifth of the training engines held back, and the weights of the pass that
+scored best on them restored). The cards are the only control for those two
+things; while the second is chosen, the share of engines held back and how many
+passes may go by without improvement sit under it. Neither card sets the number
+of passes. They are one switch because on FD001 the choice changed what the
+LSTM stage was worth from 3.19 cycles to 0.77 (finding F-16).
 
 ### Jobs: one at a time, and what stopping means
 
@@ -393,126 +448,122 @@ processor and both finish later. Each job has a folder in
 command printed, a progress file of one JSON line per event — a pass
 finished, a seed finished, a window explained — and, since 2026-09-16, a
 `job.json` with its name, its command and how it ended. The page reads the
-progress file every two seconds to draw the progress bar and the held-back
-error of the current seed. The folder starts with a dot so the run listing
-never mistakes it for a run.
+progress file every two seconds while a job is live, to draw the progress bar
+and the held-back error of the current seed. The folder starts with a dot so
+the run listing never mistakes it for a run.
 
-The page shows the job running now in one line above whichever tab is open,
-with what waits behind it and a Stop button, and nothing at all when nothing
-is running, so the tabs never move. Everything else is in the **Jobs** tab:
+A job's name is built by the server alone, in `job_label()` for a training run
+and `explanation_label()` for an explanation — "FD001 · LSTM 32 · physics
+graph · best pass · 5 seeds", "Exact Shapley values · engine 5 · seed 42" — and
+the same way for a job this server started and for a folder read back from
+disk, so one job never appears under two names. A folder read back that asked
+for no particular engine takes the engine from the explanation it stored.
+
+The job running now is shown in one line above whichever tab is open, with a
+Stop button, and nothing at all when nothing is live, so the tabs never move.
+On the Jobs tab that line is hidden while the list below shows the same job.
+The Jobs tab's badge counts the jobs waiting behind it. The tab itself holds
 every job this server ran and every one an earlier server left on disk, read
-back from its folder and marked so. A job whose server stopped before it
-finished is listed as interrupted, since a run writes nothing until its last
-seed is done. One that **another server is still running** is listed as
-running instead, and refused for removal: every job writes down the number of
-the process running it, and a server that finds that process still alive knows
-the command is writing into that folder at this moment. Without that check the
-job would read as ended, and removing all the ended ones would delete the
-folder from under a running command. The tab filters by kind and by state, and
-a job that has ended can be removed, singly or all at once; removing one
-deletes its folder under `reports/.playground/` and nothing else, so the run or
-explanation it wrote stays where it is.
+back from its folder. A job whose server stopped before it finished is listed
+as interrupted, since a run writes nothing until its last seed is done. One
+that **another server is still running** is listed as running instead, and
+refused for removal: every job writes down the number of the process running
+it, and a server that finds that process still alive knows the command is
+writing into that folder at this moment. Without that check the job would read
+as ended, and removing all the ended ones would delete the folder from under a
+running command. The tab filters by kind and by state, and a job that has ended
+can be removed, singly or all at once; removing one deletes its folder under
+`reports/.playground/` and nothing else, so the run or explanation it wrote
+stays where it is.
 
 **Stopping a job writes nothing to `reports/`.** `scripts/train.py` keeps every
 seed's weights, curves and predictions in memory and writes them only when the
 last seed has finished, so a run stopped part-way leaves no directory that could
 be read as a finished one.
 
-The "train it and its w/o LSTM twin" button queues the same settings twice, the
-second time with the temporal stage removed. Both runs use the same seeds, so
-the Results tab can pair them seed by seed.
+**A short message is shown only where nothing else says the same.** "Run
+queued." and "Explanation queued." appear only when the line above the tabs is
+scrolled out of sight:
+that line does not stay on screen, while the column holding the Train button
+does, so a reader who has scrolled down to it would otherwise see nothing
+happen. A job that ends is
+announced by name unless the Jobs tab is open, where its card changes in front
+of the reader. One trap here: a job is announced when a poll finds it ended
+after an earlier poll saw it live, and a short explanation can finish between
+the request that starts it and the next poll. So a job this page started is
+also announced when the very first poll already finds it ended.
 
-### Comparing two runs
+### A run, and two runs
 
 Click a run and it opens on its own, in place of the list, with a button back
 to every run; the list is long, and a run's curves and predictions drawn
-underneath it were a screen's scroll away. Tick two runs and the page lists
-**every setting that differs** between them, then pairs their seeds. For each seed it takes the second run's number minus
+underneath it were a screen's scroll away. A commit ending in `-dirty` had
+uncommitted changes, so no committed state of the code reproduces that run;
+the list colours such a commit, and its column heading says so when pointed at.
+
+The run's predictions are drawn as the paper's Fig. 8 draws them, test engines
+in order of unit number, or ordered by true remaining life instead, which shows
+how the error changes along the life.
+
+Tick two runs and the page lists **every setting that differs** between them,
+then pairs their seeds. For each seed it takes the second run's number minus
 the first's; the paired *t* statistic is the average of those differences
 divided by how much they vary, and *p* is how often a *t* that large would turn
 up if the true average difference were zero.
 
 A worked case, from two runs stored on 2026-09-09 that differ in one setting
-only: the temporal stage removed, and the paper's LSTM at hidden size 32, both
-with a fifth of the engines held back, five seeds each. The page computes a
-mean RMSE difference of −3.189 cycles, *t* = −8.978, *p* = 0.00085 — the same
-figures the assumptions log records for this pair (finding F-16), computed here
-by `compare_runs` rather than copied.
+only: the w/o LSTM network, and the paper's LSTM at hidden size 32, both with a
+fifth of the engines held back, five seeds each. The page computes a mean RMSE
+difference of −3.189 cycles, *t* = −8.978, *p* = 0.00085 — the same figures the
+assumptions log records for this pair (finding F-16), computed here by
+`compare_runs` rather than copied.
 
 If more than one setting differs, the page says the difference cannot be put
-down to any one of them. And under every comparison it says what a paired *p*
-does not establish: every seed is scored on the same test engines, so it answers
-only whether the difference could be an accident of how the network started,
-never how the model would do on engines it has not seen (defect D-8 of the
-audit of 2026-09-08).
+down to any one of them, and if only the commit differs, that any difference
+comes from the code or the machine. And under every comparison it says what a
+paired *p* does not establish: every seed is scored on the same test engines, so
+it answers only whether the difference could be an accident of how the network
+started, never how the model would do on engines it has not seen (defect D-8 of
+the audit of 2026-09-08).
 
 ### Explanations
 
-Two methods, and the page labels which is the paper's:
+The Explain tab explains the run chosen in Results with "Explain this run", or,
+when none is chosen, the newest run that kept its weights; another run is
+chosen back in Results. It starts `scripts/explain.py` with one of two methods,
+exact Shapley values or occlusion, which `explain/README.md` explains. Measured
+on this machine's processor with an untrained network, one window of exact
+Shapley values takes 0.07 s for the w/o LSTM network and 0.50 s with the LSTM
+stage, so an engine's whole life is minutes, not hours.
 
-- **Exact Shapley values** (Equations 14 and 15). Every one of the 16,384
-  subsets of the 14 sensors is evaluated for every window, with an absent sensor
-  replaced by its average training window (assumption A-20). Measured on this
-  machine's processor with an untrained network, one window takes 0.07 s with
-  the temporal stage removed and 0.50 s with the LSTM stage, so an engine's
-  whole life is minutes, not hours.
-- **Occlusion**, not in the paper: one sensor at a time replaced by the same
-  baseline, 15 evaluations per window. `explain/README.md` explains both.
-
-Either can explain **one engine at every cycle** — the dynamic explanation of
-the paper's Section 4.4 — or **the last window of every test engine**. What a
-stored explanation holds is one row per window: the true and predicted
+A stored explanation holds one row per window: the true and predicted
 remaining life, one value per sensor in cycles, and, since 2026-09-16, what
 each sensor was reading at the window's last cycle, because the paper's Fig. 9
 colours every value by whether the sensor read high or low and nothing else in
 the file could say which. That last number is the reading **after** the noise
 filter and the rescaling, not the raw one: it is what the model was given, and
-it is the only version of it the stored windows hold.
+it is the only version of it the stored windows hold. An explanation stored
+before the readings were kept is coloured by the window's place in the sequence
+instead, and its legend says so.
 
-The page then draws the paper's own figures from it, each captioned with the
-figure it follows:
+Every caption of an explanation opens by naming the paper's figure the chart
+follows, as in "As the paper's Fig. 9, left.", or with "Not in the paper.", so
+a reader can tell the paper's pictures from this project's additions (working
+rule 5).
 
-- **Fig. 7**: the prediction along the engine's life against the true
-  remaining life, with the difference shaded about zero the way the paper
-  shades its "new error area".
-- **Fig. 9, left**: every value of every sensor as one dot, the sensors ranked
-  by the average size of their values, the four largest framed in red and the
-  rest in blue, each dot coloured blue to red by the sensor's reading. An
-  explanation stored before the readings were kept is coloured by the window's
-  place in the sequence instead, and its legend says so.
-- **Fig. 9, middle**: the same ranking as a row of sensors, the four largest
-  red and the rest blue from deep to light, with the averages as bars.
-- **Fig. 9, right**: one chosen window on the sensor graph, coloured the same
-  way.
-- **Fig. 10**: described below.
-
-One chart is not in the paper and is labelled so: every sensor at every window
-as a grid of colours. The page also checks Equation 14 on every stored
-explanation — a window's Shapley values must add up to its prediction minus the
-prediction at the baseline — and prints the largest gap. A run's own page
-draws its Fig. 8 too: every test engine's true and predicted remaining life,
-by unit number as the paper has it, or ordered by true remaining life.
-
-**Beside the paper's Fig. 10.** For an engine explained with Shapley values, the
-page also draws thirty small graphs in three stages. In each stage the top row
-is the paper's Fig. 10, graphs 1 to 5, 78 to 82 or 187 to 191, redrawn from the
-numbers of its Table 12; the row below is the stored engine at the same graph
-numbers, where graph `g` is the engine's `g`-th window. Both put the sensors
-round a circle in the paper's order, with Table 3's edges, and colour them the
-paper's way. The paper's engine is not named, so the two rows are different
-engines; the page says so, and says that the printed Fig. 10 differs from Table
-12 at graphs 81 and 82 (finding F-17).
-
-Under the graphs it counts **how often a sensor joins the red four** from one
-graph to the next. Within the three stages there are 12 such steps. On the
-paper's own table the count is 1. At graph 190 the four largest are Nc 2.37,
-Ps30 2.29, BPR 1.84 and T50 1.65, with phi fifth at 1.59. At graph 191 BPR has
+**Beside the paper's Fig. 10.** For an engine explained with Shapley values,
+the page redraws the paper's Fig. 10 from the numbers of its Table 12, above
+the stored engine at the same graph numbers, where graph `g` is the engine's
+`g`-th window, and counts **how often a sensor joins the red four**, the four
+largest values, from one graph to the next. Within the three stages there are
+12 such steps. At graph 190 of Table 12 the four largest are Nc 2.37, Ps30
+2.29, BPR 1.84 and T50 1.65, with phi fifth at 1.59. At graph 191 BPR has
 fallen to 1.18 and the four largest are Ps30 4.23, Nc 2.60, phi 1.51 and T50
 1.42. So phi joins the red four there, once, and in the other eleven steps
-nothing joins. The page counts the stored engine the same way, and, when
-every window was explained, over all of that engine's steps as well. A large
-count means the sensors this network leans on move from one window to the next,
-which is not something the paper's table shows.
+nothing joins. The page counts the stored engine the same way, and, when every
+window was explained, over all of that engine's steps as well. A large count
+means the sensors this network leans on move from one window to the next, which
+is not something the paper's table shows.
 
 ---
 
@@ -523,7 +574,7 @@ is a reader for your own files, not a way to publish them, and it is worth
 being clear about the difference because the project directory contains a
 paper's worth of unpublished work.
 
-Four rules keep it that way:
+Five rules keep it that way:
 
 - **Every path is resolved and checked to be inside the project directory.**
   `../../../etc/passwd` is refused, and so is anything else that climbs out.
@@ -534,8 +585,11 @@ Four rules keep it that way:
 - **Files above 400 kB are refused** by the source viewer. Every source file in
   the project is far below that; the raw NASA files are far above it, and a
   3.5 MB table of numbers is not something to read in a browser.
-- **Only the addresses that start work accept a POST**: the one that starts
-  JupyterLab, and the playground's five (below). Everything else is read-only.
+- **Only the addresses that start work accept a POST**, the kind of request a
+  browser sends to ask for something to be done rather than read: the one that
+  starts JupyterLab, and the playground's five, which preview a network, start
+  a training run, start an explanation, stop a job and remove one. Everything
+  else is read-only.
 - **A request that starts work must come from this site's own page and from
   this computer.** A browser attaches the address of the page that sent a POST
   in a header called `Origin`, so any other web page open in the same browser
@@ -553,21 +607,38 @@ reach your machine.
 
 ## Things that will catch you out
 
-**The menu order is not the directory order.** `catalog.py` lists the folder
-READMEs in the order the pipeline runs them — data, graph, models, training,
-evaluation, explain, utils — not alphabetically. A reader following the method
-wants `data` first and `evaluation` after `training`, and alphabetical order
-gives neither.
+**The site opens on the playground.** The playground is what the site is for,
+so the address `#/` sends the reader straight to `#/explore/playground`, and
+the playground is the one link above the menu's sections. There is no separate
+home page and no trail of links above a page's title: every page sits one level
+below the menu, so a trail would only repeat the page's name.
 
-**The menu sections fold, and two of them start open.** There are thirty
-documents. Listed flat they run together and a reader cannot see where one
-group ends, so each section is a block that folds shut, showing its title and
-how many documents it holds. **Learn** and **Explore** start open because that
-is where someone new begins; the long reference lists start shut. Whatever the
-reader folds is remembered in their own browser, so the menu opens the way they
-left it — except that navigating to a page inside a folded section always
-unfolds it, since a menu that hides the page you are reading is worse than one
-that ignores your preference.
+**Removed pages still have addresses.** The site once had separate pages for
+the sensor graph, the network's layers, every figure, the stored runs and the
+assumptions as cards. Each repeated something another page already said, and
+each was removed. Their old addresses, which bookmarks may hold,
+open the page that now says the same thing: the sensor graph and every figure
+open the taught page on graphs, the network's layers the taught page on the
+model, the stored runs the playground, and the assumptions the log.
+
+**The menu is written by hand, in four sections named for what a reader goes
+there to do.** They are *Learn the method*, *Notebooks*, *Code* and *Choices
+and checks*. `catalog.py` gives every page a short name of its own, which the
+menu, the page's first heading and the browser tab all use. The code pages
+follow the order the pipeline runs them — data, graph, models, training,
+evaluation, explain, utils — not the alphabet, and the parts of a folder are
+indented under it. The dated audits and reviews are the one group found on
+disk, newest first, so a new one needs no edit. Two files are left out of the
+menu on purpose, and still open from any link to them: the top-level
+`README.md`, the repository's front page on GitHub, whose sections each have a
+menu page of their own, and the paper-against-code audit of 2026-08-31, the
+record of how each row of `docs/PAPER_TO_CODE.md` was first checked.
+
+**Every menu section starts folded.** There are 43 pages in the four sections.
+Whatever the reader opens or folds is remembered in their own browser — except
+that going to a page inside a folded section always unfolds it, since a menu
+that hides the page you are reading is worse than one that ignores your
+preference.
 
 **The server loads its Python once, and says so when that is out of date.**
 Documents and the page's own scripts are read from disk on every request, so
@@ -619,19 +690,21 @@ count by 220 words a minute. It is there to warn you that the assumptions log
 is an hour's reading, not to be accurate about you.
 
 **The assumptions log is parsed, not just displayed.** `results.py` reads the
-headings of `docs/ASSUMPTIONS.md` to build the cards on the explorer page,
-picking out the identifier, the title, the `**Where:**` line and whether the
-entry has been withdrawn, reversed or superseded. That parsing depends on the
-log's existing heading style — `## A-01 — The label ceiling is 125 cycles`. A
-test checks that the entries come out numbered consecutively with no gaps, so
-if a future entry is written differently the test fails rather than the card
-quietly going missing.
+headings of `docs/ASSUMPTIONS.md`, picking out each entry's identifier, title
+and anchor, so that a link such as `#/entry/A-07` lands on that entry's heading
+in the log. That parsing depends on the log's existing heading style —
+`## A-01 — The label ceiling is 125 cycles`. A test checks that the entries come
+out numbered consecutively with no gaps, so if a future entry is written
+differently the test fails rather than the link quietly going nowhere. The log's
+page also shows, under its title, the result of the last run of
+`scripts/verify_claims.py`, which recomputes the numbers the log quotes: how
+many it re-checked, how many disagree, and when.
 
 **A run with one seed keeps its blank standard deviation blank.** The stored
 summary files write `null` there, because one run has no spread. It would be
 easy to turn that into a `0.0` on the way through, and it would be a lie: it
-would read as "measured, and it was zero" instead of "not measured". The table
-shows a dash.
+would read as "measured, and it was zero" instead of "not measured". The page
+prints no spread at all.
 
 **A job is marked running a moment before its process exists.** The queue
 takes the next job, marks it running, and only then asks the operating system to
@@ -693,10 +766,11 @@ visible before you start clicking.
 
 ### `build_catalog(root)`
 
-Returns a `Catalog`: every document the site can show, grouped into the six
-sections of the menu, with each one's title read from its first heading and its
-length measured. A document that is not on disk is simply absent from the
-result, so the site works on a partial checkout.
+Returns a `Catalog`: every page the site can show, the playground as its one
+primary page, and the rest in the four sections of the menu, each with the
+short name the menu shows and, for a document, its length measured. A document
+that is not on disk is simply absent from the result, so the site works on a
+partial checkout.
 
 ### `read_document(path, root)`
 
@@ -706,11 +780,12 @@ there.
 
 ### `search(query, catalog, root)`
 
-Every place a phrase appears across the documents, as a list of dictionaries
-holding the document, the line number and the surrounding text. It is a plain
+Every place a phrase appears across the documents in the menu, as a list of
+dictionaries holding the document's path, its menu name and the surrounding
+text. The notebooks and the playground are not searched. It is a plain
 substring search over the raw Markdown — no index, no ranking. On this
 repository's 300 kB of prose it takes long enough to notice and not long enough
-to mind.
+to mind. The page names each document once, over the lines that matched in it.
 
 ### `render_markdown(source, source_path, link_identifiers)`
 
@@ -729,19 +804,20 @@ One diagram as a piece of SVG, or — if the NASA files or PyTorch are missing �
 a block of HTML explaining what is absent and how to get it. It never raises,
 because a missing figure should not take the page down with it.
 
-### `load_runs(root)` and `load_entries(root)`
+### `load_entries(root)` and `latest_verification(root)`
 
-Every run in `reports/` as a `Run`, newest first, each carrying the commit that
-produced it and whether that commit was marked `-dirty`. And every assumption
-and finding in the log as an `Entry`, with its identifier, title, status and
-the anchor to link to.
+The first returns every assumption and finding in the log as an `Entry`, with
+its identifier, title, status and the anchor to link to. The second returns the
+most recent run of `scripts/verify_claims.py` stored in `reports/`, as a
+`Verification` holding how many claims it re-checked and how many failed, or
+`None` if it never ran.
 
 ### `render_notebook(path, root)` and `start_jupyter(port, root)`
 
-The first returns a notebook as HTML and the stylesheet it needs. The second
-starts JupyterLab and returns a `JupyterProcess`, the record of a running
-server — where it is serving, how it was started, and a `stop()` that shuts it
-down.
+The first returns a notebook's cells as HTML, with the outputs it was saved
+with. The second starts JupyterLab and returns a `JupyterProcess`, the record of
+a running server — where it is serving, how it was started, and a `stop()` that
+shuts it down.
 
 ### `validate_settings(payload)` and `paper_row_for(subset, temporal, graph)`
 
@@ -755,11 +831,12 @@ together with the reason there is none.
 ### `JobManager(root)`
 
 The queue of the playground's commands for one project directory. Its
-`submit_training` and `submit_explanation` add a job and return it, `cancel`
-removes a queued job or ends a running one, `forget` removes ended jobs and
-deletes their folders, and `snapshot` returns every job with its progress —
-this server's and those read back from earlier servers' folders by
-`job_history` — for the page to draw.
+`submit_training(settings)` and `submit_explanation(request)` add a job and
+return it, named by `job_label` or `explanation_label`; `cancel` removes a
+queued job or ends a running one, `forget` removes ended jobs and deletes their
+folders, and `snapshot` returns every job with its progress — this server's and
+those read back from earlier servers' folders by `job_history` — for the page to
+draw.
 
 ### `list_runs(root)`, `run_detail(root, name)` and `compare_runs(root, first, second)`
 

@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from ..data.labeling import piecewise_rul_curve
-from ..data.sensors import PAPER_SENSOR_SYMBOLS, SENSORS, symbol_to_column
+from ..data.sensors import PAPER_SENSOR_SYMBOLS, symbol_to_column
 from ..graph.adjacency import (
     adjacency_report,
     build_physics_adjacency,
@@ -42,11 +42,9 @@ class DataMissing(Exception):
 
 @dataclass(frozen=True)
 class Figure:
-    """One diagram: how to draw it, what it shows, and what it needs first."""
+    """One diagram: the name a page asks for it by, how to draw it, and what it needs first."""
 
     name: str
-    title: str
-    caption: str
     draw: Callable[[], str]
     needs_data: bool = False
     needs_torch: bool = False
@@ -56,25 +54,43 @@ class Figure:
 _WIDTH = 860.0
 _HEIGHT = 520.0
 
-# The eight sensors of the engine core and the four of the bypass side, used
-# only to colour the graph figure. The grouping is read from the station field
-# of the sensor table in data/sensors/, never invented here.
-_STATION_HUE: dict[str, str] = {
-    "Fan inlet": "var(--fig-fan, #2f7fd1)",
-    "Bypass duct": "var(--fig-fan, #2f7fd1)",
-    "Fan shaft": "var(--fig-fan, #2f7fd1)",
+# The colour of each part of the engine, used by the engine drawing and the
+# sensor graph, with the words the graph's key prints for it. Which part a
+# sensor belongs to is read from the station field of the sensor table in
+# data/sensors/, never invented here; stations that share a colour share a
+# group, so the key has one entry per colour.
+_GROUP_HUE: dict[str, str] = {
+    "fan and bypass": "var(--fig-fan, #2f7fd1)",
     "LPC outlet": "var(--fig-lpc, #6b4fbb)",
     "HPC outlet": "var(--fig-hpc, #c2521f)",
-    "Combustor": "var(--fig-burn, #b3261e)",
-    "Core shaft": "var(--fig-core, #8a6d00)",
+    "combustor": "var(--fig-burn, #b3261e)",
+    "core shaft": "var(--fig-core, #8a6d00)",
     "LPT outlet": "var(--fig-lpt, #1c7a5e)",
-    "HPT cooling": "var(--fig-cool, #0f6b86)",
-    "LPT cooling": "var(--fig-cool, #0f6b86)",
-    "Bleed system": "var(--fig-bleed, #6a6a6a)",
+    "turbine cooling": "var(--fig-cool, #0f6b86)",
+    "bleed": "var(--fig-bleed, #6a6a6a)",
 }
+_STATION_GROUP: dict[str, str] = {
+    "Fan inlet": "fan and bypass",
+    "Bypass duct": "fan and bypass",
+    "Fan shaft": "fan and bypass",
+    "LPC outlet": "LPC outlet",
+    "HPC outlet": "HPC outlet",
+    "Combustor": "combustor",
+    "Core shaft": "core shaft",
+    "LPT outlet": "LPT outlet",
+    "HPT cooling": "turbine cooling",
+    "LPT cooling": "turbine cooling",
+    "Bleed system": "bleed",
+}
+_STATION_HUE = {station: _GROUP_HUE[group] for station, group in _STATION_GROUP.items()}
 
-_STATION_OF = {sensor.symbol: sensor.station for sensor in SENSORS}
-_DESCRIPTION_OF = {sensor.symbol: sensor.description for sensor in SENSORS}
+
+_WORDS = ("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
+
+
+def _word(count: int) -> str:
+    """A small count in words, as a sentence says it, and in digits from eleven up."""
+    return _WORDS[count] if 0 <= count < len(_WORDS) else str(count)
 
 
 def _open(width: float = _WIDTH, height: float = _HEIGHT, extra: str = "") -> str:
@@ -97,13 +113,22 @@ def _text(
     fill: str = "var(--fig-ink, #1a1a1a)",
     opacity: float = 1.0,
     family: str = "inherit",
+    halo: bool = False,
 ) -> str:
     """One piece of text, escaped, with the settings the figures keep reusing."""
     style = f"font-family:{family};" if family != "inherit" else ""
+    # A halo is an outline in the background colour drawn under the letters,
+    # so a label stays readable over a fill whose shade changes as it animates.
+    outline = (
+        ' stroke="var(--fig-bg, #ffffff)" stroke-width="3" stroke-linejoin="round" '
+        'paint-order="stroke"'
+        if halo
+        else ""
+    )
     return (
         f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="{anchor}" '
         f'font-size="{size:g}" font-weight="{weight}" fill="{fill}" '
-        f'opacity="{opacity:g}" style="{style}">{html.escape(body)}</text>'
+        f'opacity="{opacity:g}" style="{style}"{outline}>{html.escape(body)}</text>'
     )
 
 
@@ -121,7 +146,7 @@ def _mono(x: float, y: float, body: str, **kwargs: object) -> str:
 
 
 def _graph_layout() -> tuple[nx.Graph, dict[str, tuple[float, float]], dict[str, int]]:
-    """Place the 14 real sensors on the canvas, and report their degrees."""
+    """Place the 14 real sensors on the canvas, and count how many neighbours each has."""
     matrix, symbols = build_physics_adjacency()
     graph = to_networkx(matrix, symbols)
     raw = nx.kamada_kawai_layout(graph)
@@ -148,80 +173,45 @@ def _node_radius(degree: int) -> float:
     return 15.0 + 1.9 * degree
 
 
-def draw_sensor_graph() -> str:
-    """The paper's Table 3, drawn: 14 sensors, 41 edges, one articulation point."""
-    graph, pos, degrees = _graph_layout()
-    report = adjacency_report(*build_physics_adjacency())
-    articulation = set(report["articulation_points"])  # type: ignore[arg-type]
-
-    edges = "".join(
-        f'<line x1="{pos[a][0]:.1f}" y1="{pos[a][1]:.1f}" '
-        f'x2="{pos[b][0]:.1f}" y2="{pos[b][1]:.1f}" '
-        f'stroke="var(--fig-edge, #b9c0cb)" stroke-width="1.6" />'
-        for a, b in graph.edges()
+def _cut_sensors(graph: nx.Graph) -> tuple[set[str], str]:
+    """The sensors whose removal splits the graph, and the words that key their ring."""
+    cut = sorted(nx.articulation_points(graph))
+    if not cut:
+        return set(), ""
+    if len(cut) > 1:
+        return set(cut), "dashed ring: remove any one of these sensors and the graph splits"
+    rest = graph.subgraph(set(graph.nodes()) - set(cut))
+    parts = nx.number_connected_components(rest)
+    return set(cut), (
+        f"dashed ring: remove this sensor and the graph splits into {_word(parts)} parts"
     )
 
-    nodes = []
-    for node, (x, y) in pos.items():
-        radius = _node_radius(degrees[node])
-        colour = _STATION_HUE.get(_STATION_OF[node], "var(--fig-accent, #2f7fd1)")
-        ring = (
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius + 5:.1f}" fill="none" '
-            f'stroke="var(--fig-warn, #c2521f)" stroke-width="2.4" '
-            f'stroke-dasharray="4 3" />'
-            if node in articulation
-            else ""
-        )
-        nodes.append(
-            f"<g>{ring}"
-            f'<title>{html.escape(node)} — {html.escape(_DESCRIPTION_OF[node])}'
-            f" ({degrees[node]} neighbours)</title>"
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius:.1f}" fill="{colour}" '
-            f'fill-opacity="0.9" stroke="var(--fig-bg, #ffffff)" stroke-width="2" />'
-            + _mono(x, y + 4, node, size=12, weight="600", fill="#ffffff")
-            + "</g>"
-        )
 
-    legend = (
-        _text(
-            _WIDTH / 2,
-            _HEIGHT - 26,
-            f"{report['n_nodes']} sensors · {report['n_edges']} edges · "
-            f"diameter {report['diameter']} · "
-            f"T24 is the only articulation point",
-            size=13,
-            opacity=0.72,
-        )
-        + _text(
-            _WIDTH / 2,
-            _HEIGHT - 8,
-            "Node size is the number of neighbours. Colour is the engine station. "
-            "Hover a node for its name.",
-            size=11.5,
-            opacity=0.55,
-        )
+def _ring(x: float, y: float, radius: float) -> str:
+    """The dashed ring drawn round a sensor whose removal splits the graph."""
+    return (
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius + 5:.1f}" fill="none" '
+        f'stroke="var(--fig-ink, #1a1a1a)" stroke-opacity="0.75" stroke-width="2" '
+        f'stroke-dasharray="4 3" />'
     )
-    return _open() + edges + "".join(nodes) + legend + "</svg>"
 
 
 def draw_message_passing() -> str:
-    """Three layers of message passing, animated over the real sensor graph."""
+    """Information leaving P15 through three graph layers, animated over the real sensor graph."""
     graph, pos, degrees = _graph_layout()
-    source = "P15"
+    source, layers = "P15", 3
     distance = nx.single_source_shortest_path_length(graph, source)
-    unreachable = [
-        node for node in graph.nodes() if distance.get(node, 99) > 3
-    ]
+    cut, cut_key = _cut_sensors(graph)
 
     # One second per layer, then a pause, then the whole thing again.
     step, pause = 1.6, 2.2
-    cycle = step * 4 + pause
+    cycle = step * (layers + 1) + pause
 
     edges = []
     for a, b in graph.edges():
         near = min(distance.get(a, 99), distance.get(b, 99))
         far = max(distance.get(a, 99), distance.get(b, 99))
-        carries = far <= 3 and far == near + 1
+        carries = far <= layers and far == near + 1
         begin = step * far
         pulse = (
             f'<animate attributeName="stroke-opacity" values="0.25;1;0.25" '
@@ -242,7 +232,7 @@ def draw_message_passing() -> str:
     for node, (x, y) in pos.items():
         radius = _node_radius(degrees[node])
         hops = distance.get(node, 99)
-        reached = hops <= 3
+        reached = hops <= layers
         colour = (
             "var(--fig-accent, #2f7fd1)" if reached else "var(--fig-muted, #9aa3b0)"
         )
@@ -259,33 +249,29 @@ def draw_message_passing() -> str:
             _mono(x, y + radius + 15, f"{hops} hop" + ("s" if hops != 1 else ""),
                   size=10, opacity=0.6)
             if reached
-            else _mono(x, y + radius + 15, "4 hops — never", size=10,
+            else _mono(x, y + radius + 15, f"{hops} hops — never", size=10,
                        fill="var(--fig-warn, #c2521f)", opacity=0.85)
         )
         nodes.append(
-            f"<g><circle cx='{x:.1f}' cy='{y:.1f}' r='{radius:.1f}' fill='{colour}' "
+            f"<g>{_ring(x, y, radius) if node in cut else ''}"
+            f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{radius:.1f}' fill='{colour}' "
             f"fill-opacity='{0.95 if hops == 0 else 0.12:g}' "
             f"stroke='{colour}' stroke-width='2'>{fill_animation}</circle>"
             + _mono(x, y + 4, node, size=12, weight="600",
-                    fill="var(--fig-ink, #1a1a1a)")
+                    fill="var(--fig-ink, #1a1a1a)", halo=True)
             + badge
             + "</g>"
         )
 
+    counts = ", ".join(_word(n) for n in range(1, layers))
     caption = _text(
         _WIDTH / 2,
         _HEIGHT - 22,
-        f"Information leaving {source} after one, two and three graph layers. "
-        f"{', '.join(unreachable)} is never reached.",
+        f"Information leaving {source} after {counts} and {_word(layers)} graph layers",
         size=13,
         opacity=0.72,
-    ) + _text(
-        _WIDTH / 2,
-        _HEIGHT - 4,
-        "Three layers reach three edges away — no further. This is measured by "
-        "tests/test_models.py::test_three_layers_cannot_reach_four_hops.",
-        size=11.5,
-        opacity=0.55,
+    ) + (
+        _text(_WIDTH / 2, _HEIGHT - 4, cut_key, size=11.5, opacity=0.6) if cut_key else ""
     )
     return _open() + "".join(edges) + "".join(nodes) + caption + "</svg>"
 
@@ -295,7 +281,7 @@ def draw_adjacency_matrix() -> str:
     matrix, symbols = build_physics_adjacency()
     normalized = normalize_adjacency(matrix, method="row")
 
-    cell, left, top = 21.0, 74.0, 96.0
+    cell, left, top = 21.0, 74.0, 112.0
     panels = []
     for index, (data, title) in enumerate(
         ((matrix, "A — the paper's Table 3"), (normalized, "D⁻¹(A + I) — row normalised")),
@@ -317,8 +303,10 @@ def draw_adjacency_matrix() -> str:
                     f"</rect>"
                 )
         labels = "".join(
-            _mono(offset + i * cell + cell / 2 - 0.75, top - 8, symbols[i],
-                  size=8.5, opacity=0.7)
+            f'<g transform="translate({offset + i * cell + cell / 2 + 2:.1f},{top - 6:.1f}) '
+            f'rotate(-90)">'
+            + _mono(0, 0, symbols[i], size=8.5, anchor="start", opacity=0.7)
+            + "</g>"
             for i in range(14)
         ) + "".join(
             _mono(offset - 6, top + i * cell + cell / 2 + 3, symbols[i],
@@ -326,63 +314,12 @@ def draw_adjacency_matrix() -> str:
             for i in range(14)
         )
         panels.append(
-            _text(offset + 14 * cell / 2, top - 34, title, size=13, weight="600")
+            _text(offset + 14 * cell / 2, top - 58, title, size=13, weight="600")
             + "".join(squares)
             + labels
         )
 
-    caption = _text(
-        _WIDTH / 2,
-        _HEIGHT - 14,
-        "Left: 41 edges, a zero diagonal, symmetric. Right: self-loops added, "
-        "then each row divided by its own degree, so every row sums to 1.",
-        size=12,
-        opacity=0.68,
-    )
-    return _open(880, 470) + "".join(panels) + caption + "</svg>"
-
-
-def draw_degrees() -> str:
-    """How many neighbours each sensor has, as a bar for each of the 14."""
-    _, _, degrees = _graph_layout()
-    order = list(PAPER_SENSOR_SYMBOLS)
-    top, height, base = 70.0, 300.0, 380.0
-    width, gap = 40.0, 16.0
-    left = (_WIDTH - (len(order) * width + (len(order) - 1) * gap)) / 2
-    largest = max(degrees.values())
-
-    bars = []
-    for index, symbol in enumerate(order):
-        degree = degrees[symbol]
-        bar_height = height * degree / largest
-        x = left + index * (width + gap)
-        colour = _STATION_HUE.get(_STATION_OF[symbol], "var(--fig-accent, #2f7fd1)")
-        bars.append(
-            f'<rect x="{x:.1f}" y="{base - bar_height:.1f}" width="{width:g}" '
-            f'height="{bar_height:.1f}" rx="4" fill="{colour}" fill-opacity="0.85">'
-            f"<title>{symbol}: {degree} neighbours</title></rect>"
-            + _mono(x + width / 2, base - bar_height - 8, str(degree), size=12,
-                    weight="600")
-            + _mono(x + width / 2, base + 18, symbol, size=10.5, opacity=0.8)
-            + _text(x + width / 2, base + 34, _STATION_OF[symbol], size=8,
-                    opacity=0.45)
-        )
-
-    caption = _text(
-        _WIDTH / 2,
-        top - 34,
-        "Neighbours per sensor in the paper's graph",
-        size=14,
-        weight="600",
-    ) + _text(
-        _WIDTH / 2,
-        base + 66,
-        "T30, Nc and W31 are the best connected, with 8 neighbours each. "
-        "The four bypass-side sensors have 4.",
-        size=12,
-        opacity=0.68,
-    )
-    return _open(_WIDTH, 470) + caption + "".join(bars) + "</svg>"
+    return _open(880, top + 14 * cell + 20) + "".join(panels) + "</svg>"
 
 
 # --------------------------------------------------------------------------
@@ -413,6 +350,11 @@ def _one_engine(unit: int = 1) -> tuple[pd.DataFrame, int]:
     data = load_subset("FD001", data_dir=raw_data_dir())
     frame = data.train[data.train["unit"] == unit]
     return frame, int(frame["cycle"].max())
+
+
+def _cycle_axis(unit: int = 1) -> str:
+    """The horizontal axis title of a figure that plots one training engine of FD001."""
+    return f"flight cycle of engine {unit} (FD001 training data)"
 
 
 def _axes(
@@ -468,8 +410,8 @@ def draw_rul_curve() -> str:
     )
 
     return (
-        _open(_WIDTH, 470)
-        + _axes(left, top, width, height, "flight cycle", "label (cycles left)")
+        _open(_WIDTH, top + height + 60)
+        + _axes(left, top, width, height, _cycle_axis(1), "label (cycles left)")
         + ticks
         + naive
         + f'<line x1="{to_x(knee):.1f}" y1="{top}" x2="{to_x(knee):.1f}" '
@@ -488,15 +430,6 @@ def draw_rul_curve() -> str:
                 size=11, opacity=0.6)
         + _text(to_x(total * 0.30), to_y(rul_max * 0.80) + 14,
                 "uncapped alternative", size=11, opacity=0.6)
-        + _text(
-            _WIDTH / 2,
-            _HEIGHT - 62,
-            f"Engine 1 of FD001, which ran {total} cycles. "
-            f"The ceiling is 125 (assumption A-01), so the label is flat for "
-            f"the first {knee} cycles.",
-            size=12,
-            opacity=0.7,
-        )
         + "</svg>"
     )
 
@@ -505,7 +438,7 @@ def draw_smoothing() -> str:
     """One real sensor trace, before and after the noise filter of step 5."""
     from ..data.smoothing import ewma_series
 
-    frame, total = _one_engine(1)
+    frame, _ = _one_engine(1)
     column = symbol_to_column("T50")
     raw = frame[column].to_numpy(dtype=float)
     smooth = ewma_series(raw, 0.5)
@@ -531,8 +464,8 @@ def draw_smoothing() -> str:
     )
 
     return (
-        _open(_WIDTH, 470)
-        + _axes(left, top, width, height, "flight cycle", "T50 (degrees Rankine)")
+        _open(_WIDTH, top + height + 84)
+        + _axes(left, top, width, height, _cycle_axis(1), "T50 (degrees Rankine)")
         + ticks
         + f'<polyline points="{path(raw)}" fill="none" '
         f'stroke="var(--fig-muted, #9aa3b0)" stroke-width="1.2" opacity="0.85" />'
@@ -544,20 +477,11 @@ def draw_smoothing() -> str:
                 anchor="start", fill="var(--fig-accent, #2f7fd1)", weight="600")
         + _text(
             _WIDTH / 2,
-            _HEIGHT - 62,
-            f"Engine 1, sensor T50, all {total} cycles. Average step between "
-            f"neighbouring cycles: {jitter_before:.3f} before, "
+            top + height + 70,
+            f"Average step between neighbouring cycles: {jitter_before:.3f} before, "
             f"{jitter_after:.3f} after — {removed:.0f} % of the jitter removed.",
             size=12,
             opacity=0.7,
-        )
-        + _text(
-            _WIDTH / 2,
-            _HEIGHT - 44,
-            "The filter only ever looks backwards, so it cannot leak a future "
-            "reading into the present.",
-            size=11.5,
-            opacity=0.55,
         )
         + "</svg>"
     )
@@ -565,13 +489,12 @@ def draw_smoothing() -> str:
 
 def draw_windowing() -> str:
     """The sliding window of step 8, animated over a real engine's history."""
-    frame, total = _one_engine(1)
+    frame, _ = _one_engine(1)
     column = symbol_to_column("T50")
     values = frame[column].to_numpy(dtype=float)
     window = 30
-    n_windows = max(len(values) - window + 1, 0)
 
-    left, top, width, height = 90.0, 78.0, 700.0, 230.0
+    left, top, width, height = 90.0, 50.0, 700.0, 230.0
     low, high = float(values.min()), float(values.max())
     pad = (high - low) * 0.1 or 1.0
     to_x = lambda i: left + width * i / max(len(values) - 1, 1)  # noqa: E731
@@ -600,31 +523,19 @@ def draw_windowing() -> str:
     )
 
     return (
-        _open(_WIDTH, 470)
-        + _axes(left, top, width, height, "flight cycle", "T50")
+        _open(_WIDTH, top + height + 84)
+        + _axes(left, top, width, height, _cycle_axis(1), "T50")
         + f'<polyline points="{trace}" fill="none" '
         f'stroke="var(--fig-muted, #9aa3b0)" stroke-width="1.6" />'
         + box
         + marker
-        + _text(_WIDTH / 2, 40, "One example is 30 consecutive cycles", size=14,
-                weight="600")
-        + _text(left + window_width / 2, top + height + 62,
+        + _text(left + window_width / 2, top - 20,
                 "the window the model receives", size=11.5,
                 fill="var(--fig-accent, #2f7fd1)")
         + _text(
             _WIDTH / 2,
-            _HEIGHT - 62,
-            f"Engine 1 ran {total} cycles, so a 30-cycle window moving one cycle "
-            f"at a time (assumption A-05) yields {n_windows} training examples "
-            f"from this engine alone.",
-            size=12,
-            opacity=0.7,
-        )
-        + _text(
-            _WIDTH / 2,
-            _HEIGHT - 44,
-            "The orange line is the last cycle of the window — the one number "
-            "each sensor node actually carries (assumption A-07).",
+            top + height + 70,
+            "The orange line is the last cycle of the window.",
             size=11.5,
             opacity=0.55,
         )
@@ -638,17 +549,38 @@ def draw_windowing() -> str:
 
 
 def draw_architecture() -> str:
-    """Every layer of the network, with the parameter counts it really has."""
+    """Every layer of the w/o LSTM network, with the shape and the learned numbers each really has."""
+    from ..config import PreprocessingConfig
     from ..models.estgnn import ESTGNN
 
     matrix, _ = build_physics_adjacency()
-    model = ESTGNN(normalize_adjacency(matrix, method="row"), window_size=1)
-    rows = model.layer_summary()
-    total = model.count_parameters()
+    # With no stage named, the network keeps only each window's last cycle:
+    # the configuration this project calls w/o LSTM.
+    model = ESTGNN(
+        normalize_adjacency(matrix, method="row"),
+        window_size=PreprocessingConfig().window_size,
+    )
+    summary = model.layer_summary()
+    # layer_summary lists the temporal stage and then Table 4's Input row, and
+    # both describe the same tensor, so they are drawn as one Input box that
+    # names the stage its numbers come from and counts what that stage learns.
+    stage, first = summary[0], summary[1]
+    if (stage["layer"], first["layer"]) != ("Temporal", "Input"):
+        raise ValueError(
+            "layer_summary no longer starts with the temporal stage and then the "
+            f"Input row, but with {stage['layer']} and {first['layer']}."
+        )
+    rows = [
+        {**first, "activation": "w/o LSTM", "parameters": stage["parameters"]},
+        *summary[2:],
+    ]
 
-    box_width, box_height, gap = 96.0, 96.0, 24.0
+    # The boxes shrink to fit the figure's width, because the number of layers
+    # depends on how many graph layers the network has.
+    box_height, gap, margin = 96.0, 20.0, 24.0
+    box_width = min(96.0, (_WIDTH - 2 * margin - (len(rows) - 1) * gap) / len(rows))
     left = (_WIDTH - (len(rows) * box_width + (len(rows) - 1) * gap)) / 2
-    top = 150.0
+    top = 100.0
 
     blocks = []
     for index, row in enumerate(rows):
@@ -657,7 +589,7 @@ def draw_architecture() -> str:
         colour = (
             "var(--fig-accent, #2f7fd1)" if is_graph else "var(--fig-lpt, #1c7a5e)"
         )
-        if str(row["layer"]) in ("Input", "Flatten"):
+        if int(row["parameters"]) == 0:
             colour = "var(--fig-muted, #9aa3b0)"
         arrow = (
             f'<path d="M{x - gap + 4:.1f} {top + box_height / 2:.1f} '
@@ -666,6 +598,8 @@ def draw_architecture() -> str:
             if index
             else ""
         )
+        # A layer with no activation, such as Flatten, leaves its second line empty.
+        second = "" if str(row["activation"]) == "-" else str(row["activation"])
         blocks.append(
             arrow
             + f'<rect x="{x:.1f}" y="{top:.1f}" width="{box_width:g}" '
@@ -673,8 +607,7 @@ def draw_architecture() -> str:
             f'stroke="{colour}" stroke-width="1.8" />'
             + _text(x + box_width / 2, top + 26, str(row["layer"]), size=13,
                     weight="600")
-            + _text(x + box_width / 2, top + 45, str(row["activation"]), size=10.5,
-                    opacity=0.65)
+            + _text(x + box_width / 2, top + 45, second, size=10.5, opacity=0.65)
             + _mono(x + box_width / 2, top + 68, str(row["out"]).replace("B, ", ""),
                     size=9.5, opacity=0.8)
             + _mono(x + box_width / 2, top + 86,
@@ -692,29 +625,12 @@ def draw_architecture() -> str:
     )
 
     return (
-        _open(_WIDTH, 430, defs)
-        + _text(_WIDTH / 2, 48, "The network of the paper's Table 4", size=16,
+        _open(_WIDTH, top + box_height + 44, defs)
+        + _text(_WIDTH / 2, 40, "The network of the paper's Table 4", size=16,
                 weight="600")
-        + _text(_WIDTH / 2, 72, "Each box shows what comes out of it, and how "
+        + _text(_WIDTH / 2, 64, "Each box shows what comes out of it, and how "
                 "many numbers it learns", size=12, opacity=0.65)
         + "".join(blocks)
-        + _text(
-            _WIDTH / 2,
-            352,
-            f"{total:,} trainable parameters in total".replace(",", " ")
-            + " — the count the paper's Table 4 prints, checked by a test.",
-            size=13,
-            weight="600",
-        )
-        + _text(
-            _WIDTH / 2,
-            376,
-            "Built by this page just now, from "
-            "src/thesis_gnn_rul_xai/models/estgnn.py. The per-sensor LSTM the "
-            "paper puts in front is deliberately absent (assumption A-11).",
-            size=11.5,
-            opacity=0.6,
-        )
         + "</svg>"
     )
 
@@ -724,13 +640,14 @@ def draw_shapley() -> str:
     players = ("A", "B", "C")
     orders = list(itertools.permutations(players))
 
-    left, top, row_height = 150.0, 118.0, 44.0
+    # The rows are about 350 wide with their notes, so this centres them.
+    left, top, row_height = 290.0, 96.0, 44.0
     cell, gap = 56.0, 12.0
 
     rows = []
     for index, order in enumerate(orders):
         y = top + index * row_height
-        rows.append(_mono(left - 22, y + 26, f"#{index + 1}", size=11,
+        rows.append(_mono(left - 22, y + 21, f"#{index + 1}", size=11,
                           anchor="end", opacity=0.5))
         for position, player in enumerate(order):
             x = left + position * (cell + gap)
@@ -759,29 +676,15 @@ def draw_shapley() -> str:
         )
 
     return (
-        _open(_WIDTH, 460)
-        + _text(_WIDTH / 2, 46, "A Shapley value is an average over every "
+        _open(_WIDTH, top + len(orders) * row_height + 12)
+        + _text(_WIDTH / 2, 40, "A Shapley value is an average over every "
                 "joining order", size=16, weight="600")
-        + _text(_WIDTH / 2, 72, "Three players have 6 orders. B's value is how "
-                "much it adds, averaged over all of them.", size=12, opacity=0.65)
-        + _text(_WIDTH / 2, 96, "first · second · third", size=10.5, opacity=0.45)
+        + "".join(
+            _text(left + position * (cell + gap) + cell / 2, top - 10, word,
+                  size=10.5, opacity=0.55)
+            for position, word in enumerate(("first", "second", "third"))
+        )
         + "".join(rows)
-        + _text(
-            _WIDTH / 2,
-            400,
-            "This project has 14 sensors, so 14! = 87 178 291 200 orders — but "
-            "only 2¹⁴ = 16 384 distinct groups.",
-            size=12.5,
-            opacity=0.75,
-        )
-        + _text(
-            _WIDTH / 2,
-            424,
-            "explain/shap.py evaluates all 16 384 and weights them, so the "
-            "attributions are exact rather than sampled.",
-            size=11.5,
-            opacity=0.55,
-        )
         + "</svg>"
     )
 
@@ -851,19 +754,20 @@ def draw_engine() -> str:
     )
 
     return (
-        _open(_WIDTH, 470, defs)
+        _open(_WIDTH, 486, defs)
         + _text(_WIDTH / 2, 34, "Where the sensors sit", size=16, weight="600")
-        + _text(_WIDTH / 2, 56, "Air enters at the left, is compressed, is burned, "
-                "and drives the turbines on its way out", size=12, opacity=0.65)
         + body
         + flow
         + "".join(marks)
-        + _text(_WIDTH / 2, 440, "Bold names are among the 14 the paper keeps; "
-                "faded ones are dropped. Shaft-speed and bypass sensors "
-                "(Nf, Nc, NRf, BPR, P15, htBleed) are not drawn — they measure "
-                "the whole machine rather than one station.", size=11,
-                opacity=0.55)
-        + _text(_WIDTH / 2, 458, "Schematic, drawn for this page. It is not a "
+        + _text(_WIDTH / 2, 424, "Bold names are among the 14 the paper keeps; "
+                "faded ones are dropped.", size=11, opacity=0.55)
+        + _text(_WIDTH / 2, 441, "Six of the 14 are not drawn: the shaft speeds "
+                "(Nf, NRf, Nc), the bypass duct (P15, BPR) and the bleed system "
+                "(htBleed).", size=11, opacity=0.55)
+        + _text(_WIDTH / 2, 457, "They belong to a shaft, the bypass duct or the "
+                "bleed system, not to one station on the flow path drawn here.",
+                size=11, opacity=0.55)
+        + _text(_WIDTH / 2, 476, "Schematic, drawn for this page. It is not a "
                 "figure from the paper and is not to scale.", size=10.5,
                 opacity=0.42)
         + "</svg>"
@@ -872,19 +776,21 @@ def draw_engine() -> str:
 
 def draw_pipeline() -> str:
     """The eight preprocessing steps and the shape the data has after each."""
-    steps: tuple[tuple[str, str, str], ...] = (
-        ("1", "Load", "three text files → one table"),
-        ("2", "Diagnose", "which sensors never move"),
-        ("3", "Select", "keep 14, in Table 3's order"),
-        ("4", "Cap", "hold the label at 125"),
-        ("5", "Smooth", "backward-looking filter"),
-        ("6", "Split", "by engine, before any statistic"),
-        ("7", "Rescale", "training engines only"),
-        ("8", "Window", "30 cycles → one example"),
+    # Each note is two short lines: on one line, neighbouring notes ran into
+    # each other at the width the pages draw this figure.
+    steps: tuple[tuple[str, str, tuple[str, str]], ...] = (
+        ("1", "Load", ("three text files", "→ one table")),
+        ("2", "Diagnose", ("which sensors", "never move")),
+        ("3", "Select", ("keep 14, in", "Table 3's order")),
+        ("4", "Cap", ("hold the label", "at 125")),
+        ("5", "Smooth", ("backward-looking", "filter")),
+        ("6", "Split", ("by engine, before", "any statistic")),
+        ("7", "Rescale", ("training engines", "only")),
+        ("8", "Window", ("30 cycles →", "one example")),
     )
     box_w, box_h, gap = 88.0, 82.0, 18.0
     left = (_WIDTH - (len(steps) * box_w + (len(steps) - 1) * gap)) / 2
-    top = 150.0
+    top = 76.0
 
     blocks = []
     for index, (number, name, what) in enumerate(steps):
@@ -908,7 +814,11 @@ def draw_pipeline() -> str:
             f'stroke-width="1.6" />'
             + _mono(x + box_w / 2, top + 22, number, size=11, opacity=0.55)
             + _text(x + box_w / 2, top + 42, name, size=13, weight="600")
-            + _text(x + box_w / 2, top + box_h + 20, what, size=9.5, opacity=0.6)
+            + "".join(
+                _text(x + box_w / 2, top + box_h + 20 + line * 14, words, size=10.5,
+                      opacity=0.6)
+                for line, words in enumerate(what)
+            )
         )
 
     defs = (
@@ -919,39 +829,34 @@ def draw_pipeline() -> str:
     )
 
     return (
-        _open(_WIDTH, 400, defs)
-        + _text(_WIDTH / 2, 48, "The eight preprocessing steps", size=16,
+        _open(_WIDTH, top + box_h + 98, defs)
+        + _text(_WIDTH / 2, 40, "The eight preprocessing steps", size=16,
                 weight="600")
-        + _text(_WIDTH / 2, 72, "Their order is not free: three of them decide "
-                "whether the experiment is valid at all", size=12, opacity=0.65)
         + "".join(blocks)
-        + _text(_WIDTH / 2, 314, "The three in orange are the leakage-critical "
-                "ones", size=12, weight="600", fill="var(--fig-warn, #c2521f)")
-        + _text(_WIDTH / 2, 336, "The filter may only look backwards; the split "
-                "happens before any statistic is learned; the scaling is fitted "
-                "on training engines alone.", size=11.5, opacity=0.6)
-        + _text(_WIDTH / 2, 358, "Each is guarded by its own test — see "
-                "tests/test_pipeline.py.", size=11, opacity=0.45)
+        + _text(_WIDTH / 2, top + box_h + 76, "The three in orange are the "
+                "leakage-critical ones", size=12, weight="600",
+                fill="var(--fig-warn, #c2521f)")
         + "</svg>"
     )
 
 
 def draw_reach() -> str:
-    """How far three layers reach, as the real distance histogram of the graph."""
+    """How far apart every pair of sensors is, measured against what three graph layers reach."""
     matrix, symbols = build_physics_adjacency()
     report = adjacency_report(matrix, symbols)
     histogram: dict[int, int] = dict(report["distance_histogram"])  # type: ignore[arg-type]
-    beyond = pairs_beyond_reach(matrix, symbols, 3)
+    layers = 3
+    beyond = pairs_beyond_reach(matrix, symbols, layers)
 
     total = sum(histogram.values())
-    left, base, height = 180.0, 340.0, 220.0
+    left, base, height = 180.0, 280.0, 200.0
     bar_w, gap = 92.0, 40.0
 
     bars = []
     for index, (distance, count) in enumerate(sorted(histogram.items())):
         x = left + index * (bar_w + gap)
         bar_h = height * count / max(histogram.values())
-        reachable = distance <= 3
+        reachable = distance <= layers
         colour = (
             "var(--fig-accent, #2f7fd1)" if reachable
             else "var(--fig-warn, #c2521f)"
@@ -966,22 +871,24 @@ def draw_reach() -> str:
             + _text(x + bar_w / 2, base + 40,
                     f"{100 * count / total:.0f} % of pairs", size=10, opacity=0.55)
             + _text(x + bar_w / 2, base + 60,
-                    "reachable" if reachable else "out of reach", size=10,
-                    weight="600", fill=colour)
+                    f"{'within' if reachable else 'beyond'} {_word(layers)} layers",
+                    size=10, weight="600", fill=colour)
         )
 
     names = ", ".join(f"{a} and {b}" for a, b, _ in beyond)
     return (
-        _open(_WIDTH, 460)
-        + _text(_WIDTH / 2, 50, "How far apart the 91 sensor pairs are", size=16,
+        _open(_WIDTH, base + 116)
+        + _text(_WIDTH / 2, 40, f"How far apart the {total} sensor pairs are", size=16,
                 weight="600")
-        + _text(_WIDTH / 2, 74, "Three graph layers carry information three "
-                "edges. Anything further never mixes.", size=12, opacity=0.65)
         + "".join(bars)
-        + _text(_WIDTH / 2, 430, f"The four pairs beyond reach: {names}.",
-                size=12, opacity=0.72)
-        + _text(_WIDTH / 2, 450, "Computed here by "
-                "graph/adjacency.py::pairs_beyond_reach.", size=10.5, opacity=0.45)
+        + (
+            _text(_WIDTH / 2, base + 96,
+                  f"The {_word(len(beyond))} pair{'s' if len(beyond) != 1 else ''} "
+                  f"beyond {_word(layers)} layers: {names}.",
+                  size=12, opacity=0.72)
+            if beyond
+            else ""
+        )
         + "</svg>"
     )
 
@@ -992,34 +899,18 @@ def draw_reach() -> str:
 
 
 def _spaced(value: int) -> str:
-    """A count with a space every three digits, as the rest of the site prints."""
+    """A count with a space every three digits, as the figures and the Learn pages print it."""
     return f"{value:,}".replace(",", " ")
 
 
-def _map_band(
-    x: float,
-    y: float,
-    width: float,
-    number: str,
-    name: str,
-    section: str,
-    doer: str,
-    colour: str,
-) -> str:
-    """One step of the notebook: its number, its name, and the code that runs it."""
-    height = 26.0
+def _map_band(x: float, y: float, width: float, number: str, name: str, colour: str) -> str:
+    """One step of the notebook, as a band holding its number and its name."""
     return (
-        f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:g}" height="{height:g}" '
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:g}" height="26" '
         f'rx="6" fill="{colour}" fill-opacity="0.11" stroke="{colour}" '
         f'stroke-width="1.3" />'
         + _mono(x + 16, y + 18, number, size=11, weight="600", fill=colour)
         + _text(x + 34, y + 18, name, size=12.5, anchor="start", weight="600")
-        + (
-            _mono(x + 152, y + 18, section, size=10, anchor="start", opacity=0.5)
-            if section
-            else ""
-        )
-        + _mono(x + 178, y + 18, doer, size=9.5, anchor="start", opacity=0.5)
     )
 
 
@@ -1041,7 +932,7 @@ def _map_lines(x: float, y: float, lines: Sequence[str], colour: str) -> str:
 
 
 def draw_notebook_map() -> str:
-    """Notebook 01 from the three raw files to the five saved ones, with counts."""
+    """Notebook 01 from the three raw files to the five saved ones, with the count each step leaves."""
     from ..config import PreprocessingConfig
     from ..data.pipeline import run_preprocessing
     from ..data.sensors import PAPER_SENSOR_COLUMNS, UNIT_COL
@@ -1054,15 +945,23 @@ def draw_notebook_map() -> str:
     assert raw is not None and prepared.frames is not None  # keep_frames=True
     splits = prepared.diagnostics["splits"]
     graph = prepared.diagnostics["graph"]
-    assert isinstance(splits, dict) and isinstance(graph, dict)
+    sensors = prepared.diagnostics["sensor_diagnostics"]
+    assert isinstance(splits, dict) and isinstance(graph, dict) and isinstance(sensors, dict)
 
     n_raw_rows = len(raw.train)
     n_raw_test_rows = len(raw.test)
-    n_columns = int(raw.train.shape[1])
     n_engines = int(raw.train[UNIT_COL].nunique())
     n_test_engines = int(raw.test[UNIT_COL].nunique())
     longest_life = int(raw.train["rul"].max())
     at_ceiling = float((raw.train["rul"] > config.rul_max).mean())
+
+    n_sensors = sum(len(sensors[kind]) for kind in ("constant", "low_resolution", "informative"))
+    # A sensor that moves but takes too few distinct values, with how many it takes.
+    coarse = [
+        f"{symbol} takes only {_word(int(raw.train[symbol_to_column(symbol)].nunique()))} "
+        "distinct values (finding F-01)"
+        for symbol in sensors["low_resolution"]
+    ]
 
     fitting_engines = list(splits["train_engines"])
     held_back = list(splits["validation_engines"])
@@ -1071,16 +970,17 @@ def draw_notebook_map() -> str:
     is_fitting = scaled[UNIT_COL].isin(fitting_engines)
     fitted_on = scaled[is_fitting][columns].to_numpy()
     test_scaled = prepared.frames["test"][columns].to_numpy()
+    conditions = int(prepared.diagnostics["n_operating_conditions"])  # type: ignore[call-overload]
 
     n_train = len(prepared.train)
     n_validation = len(prepared.validation)
     n_windows = n_train + n_validation
     n_test = len(prepared.test)
-    # Every engine's first 29 cycles have too little history behind them to be
-    # the last cycle of a 30-cycle window, so they never end one.
+    # Every engine's first window_size - 1 cycles have too little history
+    # behind them to be the last cycle of a window, so they never end one.
     no_window = n_raw_rows - n_windows
+    stride = f"{config.window_stride} cycle" + ("s" if config.window_stride != 1 else "")
 
-    ink = "var(--fig-ink, #1a1a1a)"
     accent = "var(--fig-accent, #2f7fd1)"
     warn = "var(--fig-warn, #c2521f)"
     paper = "var(--fig-lpc, #6b4fbb)"
@@ -1090,162 +990,115 @@ def draw_notebook_map() -> str:
     lane_w = (band_w - lane_gap) / 2
     right_lane = left + lane_w + lane_gap
 
-    steps: tuple[tuple[str, str, str, str, str, list[str], list[str]], ...] = (
+    steps: tuple[tuple[str, str, str, list[str], list[str]], ...] = (
         (
-            "1", "Load", "", "loading/load_subset()", accent,
+            "1", "Load", accent,
             [
-                f"{_spaced(n_raw_rows)} rows and {n_columns} columns, "
+                f"{_spaced(n_raw_rows)} rows and {raw.train.shape[1]} columns, "
                 f"{n_engines} engines",
                 "each engine runs to failure, so life left is counted back",
                 f"from its own last cycle: {longest_life} down to 0",
             ],
             [
-                f"{_spaced(n_raw_test_rows)} rows and {n_columns} columns, "
+                f"{_spaced(n_raw_test_rows)} rows and {raw.test.shape[1]} columns, "
                 f"{n_test_engines} engines",
                 "recording stops early, so life left is cycles to the",
                 "cut-off plus the number RUL_FD001.txt gives for that engine",
             ],
         ),
         (
-            "2", "Diagnose", "", "sensors/detect_uninformative_sensors()", accent,
+            "2", "Diagnose", accent,
             [
-                "6 of the 21 sensors never move at all; P15 moves between "
-                "only two values (F-01)",
-                "Nothing is removed here. The step exists so the paper's "
-                "choice of sensors can be checked",
-                "against the data instead of taken on trust.",
+                "; ".join([
+                    f"{len(sensors['constant'])} of the {n_sensors} sensors never move at all",
+                    *coarse,
+                ]),
             ],
             [],
         ),
         (
-            "3", "Select", "", "sensors/PAPER_SENSOR_COLUMNS", paper,
+            "3", "Select", paper,
             [
-                "21 sensor columns → 14, in the order the paper's Table 3 uses",
-                "The graph is a plain grid whose rows are matched to sensors by "
-                "position alone, so a different",
-                "order would join the wrong sensors together and nothing would "
-                "report an error.",
+                f"{n_sensors} sensor columns → {len(columns)}, in the order the paper's "
+                "Table 3 uses",
             ],
             [],
         ),
         (
-            "4", "Cap", "", "labeling/apply_piecewise_rul()", accent,
+            "4", "Cap", accent,
             [
                 f"labels {longest_life} … 0  →  {config.rul_max} … 0",
-                f"{100 * at_ceiling:.1f} % of rows now sit at the ceiling: a new",
-                "engine looks the same whether 300 cycles remain or 280",
-            ],
-            [
-                "the same ceiling on the test labels (A-02)",
-                "the last layer cannot produce more than the ceiling, so an",
-                "uncapped label would charge an error it cannot avoid",
-            ],
-        ),
-        (
-            "5", "Smooth", "", "smoothing/apply_ewma()", warn,
-            [
-                f"strength {config.smoothing_alpha}, one engine at a time, "
-                "reading only backwards (A-04) — row counts unchanged",
-                "A filter that also read forwards would carry an engine's "
-                "future into its present, and the",
-                "model would appear to predict failure better than it can.",
+                f"{100 * at_ceiling:.1f} % of rows now sit at the ceiling",
             ],
             [],
         ),
         (
-            "6", "Split", "", "windowing/split_units_by_id()", warn,
+            "5", "Smooth", warn,
+            [
+                f"strength {config.smoothing_alpha}, one engine at a time, reading only "
+                "backwards (assumption A-04); row counts unchanged",
+            ],
+            [],
+        ),
+        (
+            "6", "Split", warn,
             [
                 f"{n_engines} engines → {len(fitting_engines)} to learn from "
                 f"+ {len(held_back)} held back",
-                "chosen here, before a single number has been measured from",
-                "the data, and by whole engine rather than by window",
             ],
-            [
-                "untouched: the test engines were never in this pool",
-                "they arrive from their own file and are held apart from",
-                "beginning to end",
-            ],
+            ["untouched: the test engines were never in this pool"],
         ),
         (
-            "7", "Rescale", "", "normalization/SensorNormalizer", warn,
+            "7", "Rescale", warn,
             [
-                f"14 means and 14 spreads, from the "
+                f"{len(columns)} means and {len(columns)} spreads, from the "
                 f"{len(fitting_engines)} learning engines alone",
-                "a z-score is how many spreads a reading sits from",
-                f"its own sensor's mean, so the values land in "
-                f"[{fitted_on.min():+.2f}, {fitted_on.max():+.2f}]",
-                f"rather than between 0 and 1. FD001 has "
-                f"{prepared.diagnostics['n_operating_conditions']} operating "
-                "condition.",
+                f"values land in [{fitted_on.min():+.2f}, {fitted_on.max():+.2f}]; "
+                f"FD001 has {conditions} operating condition"
+                + ("s" if conditions != 1 else ""),
             ],
             [
-                f"the same 14 pairs applied unchanged: "
+                f"the same {len(columns)} pairs applied unchanged: "
                 f"[{test_scaled.min():+.2f}, {test_scaled.max():+.2f}]",
-                "nothing about these engines was allowed to move the scale,",
-                "which is what §9 corrupts the test set by a millionfold to check",
             ],
         ),
         (
-            "8", "Window", "", "windowing/make_windows()", accent,
+            "8", "Window", accent,
             [
-                f"every {config.window_size}-cycle window, moving "
-                f"{config.window_stride} cycle at a time → {_spaced(n_windows)}",
-                f"the first {config.window_size - 1} cycles of an engine have "
-                "too little history",
-                f"behind them to end a window, so {_spaced(no_window)} of the "
-                f"{_spaced(n_raw_rows)} rows",
-                "never become one",
+                f"every {config.window_size}-cycle window, moving {stride} at a time "
+                f"→ {_spaced(n_windows)}",
+                f"{_spaced(no_window)} of {_spaced(n_raw_rows)} rows are too early to end one",
             ],
             [
-                f"one window per engine — its last {config.window_size} "
-                f"cycles → {n_test}",
-                "the label file describes exactly that one moment, so a",
-                "second window from the same engine would have no label",
+                f"one window per engine, its last {config.window_size} cycles → {n_test}",
             ],
         ),
-        (
-            "↳", "Apply the split", "",
-            "WindowedDataset.subset_by_units()", accent,
-            [
-                f"{_spaced(n_windows)} → {_spaced(n_train)} to learn from "
-                f"+ {_spaced(n_validation)} held back",
-                "the decision made at step 6 is carried out only now; whole",
-                "engines move together, never single windows",
-            ],
-            [
-                f"{n_test} windows from {n_test} engines",
-                "no split to apply: this set is judged once, at the end,",
-                "and never used to choose anything",
-            ],
-        ),
+        # The three boxes under this band are what the split leaves, so the
+        # band itself carries no lines.
+        ("↳", "Apply the split", accent, [], []),
     )
 
-    y = 152.0
+    y = 116.0
     body: list[str] = []
-    for number, name, section, doer, colour, train_lines, test_lines in steps:
+    for number, name, colour, train_lines, test_lines in steps:
         body.append(
             f'<path d="M{_WIDTH / 2:.1f} {y - 14:.1f} v10" '
             f'stroke="var(--fig-axis, #8a93a0)" stroke-width="1.4" '
             f'marker-end="url(#mapArrow)" />'
         )
-        body.append(
-            _map_band(left, y, band_w, number, name, section, doer, colour)
-        )
+        body.append(_map_band(left, y, band_w, number, name, colour))
         top = y + 44
+        rows = max(len(train_lines), len(test_lines))
+        body.append(_map_lines(left + 14, top, train_lines, colour))
         if test_lines:
-            body.append(_map_lines(left + 14, top, train_lines, colour))
             body.append(_map_lines(right_lane + 14, top, test_lines, colour))
             body.append(
                 f'<line x1="{right_lane - lane_gap / 2:.1f}" y1="{top - 16:.1f}" '
                 f'x2="{right_lane - lane_gap / 2:.1f}" '
-                f'y2="{top + 14.5 * max(len(train_lines), len(test_lines)) - 6:.1f}" '
+                f'y2="{top + 14.5 * rows - 6:.1f}" '
                 f'stroke="var(--fig-edge, #c3cad4)" stroke-width="1" />'
             )
-            rows = max(len(train_lines), len(test_lines))
-        else:
-            body.append(_map_lines(left + 14, top, train_lines, colour))
-            rows = len(train_lines)
-        y = top + rows * 14.5 + 16
+        y = top + rows * 14.5 + 16 if rows else y + 42
 
     # The three sets the notebook ends with.
     results = (
@@ -1266,49 +1119,39 @@ def draw_notebook_map() -> str:
                     f"{config.window_size})", size=12,
                     weight="600", fill=colour)
         )
-    y += 72
-    body.append(
-        _text(_WIDTH / 2, y,
-              "14 sensor nodes, each carrying its whole window. How many "
-              "numbers a node ends up with is decided in the model, by a "
-              "named temporal stage (A-07); by default it is one, the "
-              "last cycle.",
-              size=11, opacity=0.62)
-    )
 
     # The graph, which is read from the paper rather than from the engines.
-    y += 30
+    y += 76
+    reach = (
+        "every sensor reachable from every other"
+        if graph["is_connected"]
+        else "not every sensor reachable from every other"
+    )
     body.append(
-        f'<rect x="{left:.1f}" y="{y:.1f}" width="{band_w:g}" height="74" '
+        f'<rect x="{left:.1f}" y="{y:.1f}" width="{band_w:g}" height="58" '
         f'rx="8" fill="{paper}" fill-opacity="0.08" stroke="{paper}" '
         f'stroke-width="1.3" stroke-dasharray="5 4" />'
-        + _text(left + 16, y + 22, "§5  The sensor graph", size=12,
+        + _text(left + 16, y + 22, "The sensor graph", size=12,
                 anchor="start", weight="600", fill=paper)
         + _text(left + 16, y + 42,
                 f"Table 3 of the paper, transcribed: {graph['n_nodes']} by "
-                f"{graph['n_nodes']}, {graph['n_edges']} edges, every sensor "
-                f"reachable from every other. Then rescaled by rows (A-21).",
+                f"{graph['n_nodes']}, {reach}. It never touches the engine data.",
                 size=10.5, anchor="start", opacity=0.68)
-        + _text(left + 16, y + 60,
-                "This branch never touches the engine data. It is the one part "
-                "of the method the paper states in full, so nothing here is "
-                "assumed — only copied, and checked.",
-                size=10.5, anchor="start", opacity=0.5)
     )
 
-    y += 100
+    y += 84
     body.append(
         f'<path d="M{_WIDTH / 2:.1f} {y - 22:.1f} v12" '
         f'stroke="var(--fig-axis, #8a93a0)" stroke-width="1.4" '
         f'marker-end="url(#mapArrow)" />'
-        + _text(_WIDTH / 2, y + 4, "§7  Every claim above re-checked, then "
-                "§8  saved to data/processed/", size=12, weight="600")
+        + _text(_WIDTH / 2, y + 4, "Every claim above re-checked, then saved to "
+                "data/processed/", size=12, weight="600")
         + _mono(_WIDTH / 2, y + 24,
                 "windows.npz · adjacency.npz · normalization_statistics.csv "
                 "· config.yaml · diagnostics.json", size=10, opacity=0.6)
     )
 
-    height = y + 66
+    height = y + 44
     defs = (
         '<defs><marker id="mapArrow" viewBox="0 0 10 10" refX="9" refY="5" '
         'markerWidth="5" markerHeight="5" orient="auto-start-reverse">'
@@ -1317,41 +1160,16 @@ def draw_notebook_map() -> str:
     )
 
     header = (
-        _text(_WIDTH / 2, 40, "What notebook 01 does", size=17, weight="600")
-        + _text(_WIDTH / 2, 64,
-                "Three text files in, five files out. Eight steps, and "
-                "the state the data is in after each one.", size=12,
-                opacity=0.65)
-        + _text(left + 14, 96, "train_FD001.txt", size=11.5, anchor="start",
+        _text(_WIDTH / 2, 40, "What notebook 01 does", size=16, weight="600")
+        + _text(left + 14, 72, "train_FD001.txt", size=11.5, anchor="start",
                 weight="600", fill=accent)
-        + _text(right_lane + 14, 96, "test_FD001.txt  +  RUL_FD001.txt",
+        + _text(right_lane + 14, 72, "test_FD001.txt  +  RUL_FD001.txt",
                 size=11.5, anchor="start", weight="600", fill=warn)
-        + _text(left + 14, 114,
-                "engines run until they fail", size=10.5, anchor="start",
-                opacity=0.55, fill=ink)
-        + _text(right_lane + 14, 114,
-                "recording stops early, one true answer per engine",
-                size=10.5, anchor="start", opacity=0.55, fill=ink)
-        + _text(_WIDTH / 2, 136,
-                "The two are shaped differently, and every step below has to "
-                "respect that.  ·  All eight steps are section 4 of the "
-                "notebook.", size=10.5, opacity=0.45)
+        + _text(_WIDTH / 2, 94, "All eight steps are section 4 of the notebook.",
+                size=10.5, opacity=0.55)
     )
 
-    footer = _text(
-        _WIDTH / 2, height - 20,
-        "Every number here was produced by running the pipeline on the real "
-        "FD001 files while this page loaded — none is written down.",
-        size=10.5, opacity=0.45,
-    )
-
-    return (
-        _open(_WIDTH, height, defs)
-        + header
-        + "".join(body)
-        + footer
-        + "</svg>"
-    )
+    return _open(_WIDTH, height, defs) + header + "".join(body) + "</svg>"
 
 
 def correlation_table() -> tuple[list[str], np.ndarray]:
@@ -1386,7 +1204,7 @@ def draw_correlation() -> str:
     cell, left, top = 34.0, 112.0, 24.0
     size = cell * count
     bar_x = left + size + 26
-    total_height = top + size + 100
+    total_height = top + size + 64
 
     out = _open(_WIDTH, total_height) + (
         '<defs><linearGradient id="corr-scale" x1="0" y1="0" x2="0" y2="1">'
@@ -1422,12 +1240,6 @@ def draw_correlation() -> str:
     for tick in (1.0, 0.5, 0.0, -0.5, -1.0):
         y = top + size * (1 - tick) / 2
         out += _mono(bar_x + 22, y + 3.5, f"{tick:+.2f}", size=9, anchor="start", opacity=0.7)
-    out += _text(
-        _WIDTH / 2, total_height - 14,
-        "Pearson correlation over every row of the FD001 training file, the fourteen "
-        "sensors in the paper's order; the paper's Fig. 5 prints the same table.",
-        size=11.5, opacity=0.65,
-    )
     return out + "</svg>"
 
 
@@ -1463,7 +1275,7 @@ def draw_lstm_cell() -> str:
             + _text(cx, cy + 5.5, symbol, size=15, weight="700")
         )
 
-    out = _open(_WIDTH, _HEIGHT) + (
+    out = _open(_WIDTH, 476) + (
         '<defs><marker id="lstm-head" viewBox="0 0 10 10" refX="9" refY="5" '
         'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
         f'<path d="M0,0 L10,5 L0,10 z" fill="{wire_colour}"/></marker></defs>'
@@ -1521,125 +1333,27 @@ def draw_lstm_cell() -> str:
         + _text(400, 372, "[h(t-1), x(t)]: the last output and this cycle's reading, joined",
                 size=10.5, opacity=0.7)
     )
-    # What the symbols mean, for a reader who has not met them.
-    out += (
-        _text(_WIDTH / 2, 452,
-              "A sigmoid squashes a weighted sum to between 0 and 1: 0 shuts the gate, "
-              "1 opens it. ⊗ multiplies element by element; ⊕ adds.",
-              size=11.5, opacity=0.7)
-        + _text(_WIDTH / 2, 474,
-                "New memory (4): the forget gate times the old memory, plus the input gate "
-                "times the candidate. Output (6): the output gate times tanh of the new memory.",
-                size=11.5, opacity=0.7)
-        + _text(_WIDTH / 2, 496,
-                "Each of the 14 sensors has its own cell (Section 2.2): the window's 30 "
-                "readings pass through it one cycle at a time,",
-                size=11.5, opacity=0.55)
-        + _text(_WIDTH / 2, 512,
-                "and the last h(t) goes through one more layer of weights, which makes the "
-                "number the graph receives (assumption A-26). Equation numbers are the paper's.",
-                size=11.5, opacity=0.55)
-    )
+    # What the two operation symbols and the bracketed numbers mean.
+    out += _text(_WIDTH / 2, 456,
+                 "⊗ multiplies element by element; ⊕ adds. Equation numbers are the paper's.",
+                 size=11.5, opacity=0.7)
     return out + "</svg>"
 
 
 FIGURES: tuple[Figure, ...] = (
-    Figure(
-        "engine",
-        "Where the sensors sit",
-        "A turbofan, and the station each measurement is taken at.",
-        draw_engine,
-    ),
-    Figure(
-        "rul-curve",
-        "The piecewise-linear label",
-        "What the model is asked to predict, on a real engine's true length.",
-        draw_rul_curve,
-        needs_data=True,
-    ),
-    Figure(
-        "correlation",
-        "How every column moves with every other",
-        "The paper's Fig. 5, recomputed from the FD001 training file.",
-        draw_correlation,
-        needs_data=True,
-    ),
-    Figure(
-        "smoothing",
-        "The noise filter",
-        "One real sensor trace before and after the filter of step 5.",
-        draw_smoothing,
-        needs_data=True,
-    ),
-    Figure(
-        "windowing",
-        "The sliding window",
-        "How one engine's history becomes many fixed-size examples.",
-        draw_windowing,
-        needs_data=True,
-    ),
-    Figure(
-        "pipeline",
-        "The eight preprocessing steps",
-        "The order of the chain, and the three steps that decide its validity.",
-        draw_pipeline,
-    ),
-    Figure(
-        "notebook-map",
-        "What notebook 01 does",
-        "The same chain with the measured counts, and where the two sets part.",
-        draw_notebook_map,
-        needs_data=True,
-    ),
-    Figure(
-        "sensor-graph",
-        "The sensor graph",
-        "The paper's Table 3, drawn as the network it describes.",
-        draw_sensor_graph,
-    ),
-    Figure(
-        "adjacency",
-        "The adjacency matrix",
-        "The same graph as a table, raw and after normalisation.",
-        draw_adjacency_matrix,
-    ),
-    Figure(
-        "degrees",
-        "Neighbours per sensor",
-        "Which sensors the paper's graph considers central.",
-        draw_degrees,
-    ),
-    Figure(
-        "message-passing",
-        "Message passing, three layers deep",
-        "Information spreading from one sensor, and where it stops.",
-        draw_message_passing,
-    ),
-    Figure(
-        "reach",
-        "What three layers can reach",
-        "The distance between every pair of sensors, and the four out of reach.",
-        draw_reach,
-    ),
-    Figure(
-        "architecture",
-        "The network",
-        "Every layer of Table 4, with the parameter counts it really has.",
-        draw_architecture,
-        needs_torch=True,
-    ),
-    Figure(
-        "lstm-cell",
-        "One memory cell",
-        "The paper's Fig. 2: the three gates of an LSTM cell and its six equations.",
-        draw_lstm_cell,
-    ),
-    Figure(
-        "shapley",
-        "What a Shapley value averages over",
-        "Every order three players could join in, and where B lands in each.",
-        draw_shapley,
-    ),
+    Figure("engine", draw_engine),
+    Figure("rul-curve", draw_rul_curve, needs_data=True),
+    Figure("correlation", draw_correlation, needs_data=True),
+    Figure("smoothing", draw_smoothing, needs_data=True),
+    Figure("windowing", draw_windowing, needs_data=True),
+    Figure("pipeline", draw_pipeline),
+    Figure("notebook-map", draw_notebook_map, needs_data=True),
+    Figure("adjacency", draw_adjacency_matrix),
+    Figure("message-passing", draw_message_passing),
+    Figure("reach", draw_reach),
+    Figure("architecture", draw_architecture, needs_torch=True),
+    Figure("lstm-cell", draw_lstm_cell),
+    Figure("shapley", draw_shapley),
 )
 
 _BY_NAME = {figure.name: figure for figure in FIGURES}

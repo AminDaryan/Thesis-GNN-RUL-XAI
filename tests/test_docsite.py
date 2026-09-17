@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from thesis_gnn_rul_xai.docsite import catalog, figures, markup, results
+from thesis_gnn_rul_xai.docsite import catalog, figures, markup, playground, results
 from thesis_gnn_rul_xai.utils.paths import project_root
 
 
@@ -22,15 +22,15 @@ def site_catalog(root: Path) -> catalog.Catalog:
 
 
 @pytest.fixture()
-def stored_runs(root: Path) -> list[results.Run]:
-    """Every training run in reports/, or skip the test if there are none.
+def stored_runs(root: Path) -> list[dict]:
+    """Every training run in reports/, as the playground lists them, or skip if there are none.
 
     `reports/*` is deliberately not committed -- a run directory is written per
     training run and they accumulate -- so a fresh clone has none, and neither
     does the CI runner. Tests about stored runs therefore skip there for the
     same reason the data-dependent tests do: the artefact is absent, not wrong.
     """
-    runs = results.load_runs(root)
+    runs = playground.list_runs(root)
     if not runs:
         pytest.skip(
             f"No training runs are stored in {root / 'reports'}. They are not "
@@ -98,6 +98,59 @@ def test_an_identifier_inside_code_is_left_alone():
     assert 'href="#/entry/A-07"' not in rendered.html
 
 
+def test_a_page_heading_can_show_the_menu_name_and_keep_its_anchor():
+    rendered = markup.render_markdown(
+        "# windowing — cut each engine's history\n\ntext\n\n# A second title\n"
+    )
+    named = markup.name_first_heading(rendered.html, "Cutting windows")
+    # The words change; the anchor a GitHub link was written against does not.
+    assert '<h1 id="windowing--cut-each-engines-history">Cutting windows<a class="anchor"' in named
+    assert '<h1 id="a-second-title">A second title<a class="anchor"' in named
+
+
+def test_a_whole_source_file_does_not_name_its_language_twice():
+    assert "code-language" not in markup.code_block("x = 1\n", "python", label=False)
+    assert "code-language" in markup.code_block("x = 1\n", "python")
+    assert "code-language" in markup.render_markdown("```python\nx = 1\n```\n").html
+
+
+def test_the_code_panels_the_colours_are_chosen_against_are_the_stylesheets(root: Path):
+    import re
+
+    css = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.css").read_text(encoding="utf-8")
+    blocks = {
+        "light": re.search(r":root \{(.*?)\}", css, re.DOTALL).group(1),
+        "dark": re.search(r'html\[data-theme="dark"\] \{(.*?)\}', css, re.DOTALL).group(1),
+    }
+    for theme, block in blocks.items():
+        for name, colour in markup.CODE_PANELS[theme].items():
+            assert re.search(rf"--{name}: {colour};", block), (theme, name)
+
+
+def test_every_code_colour_reads_on_its_own_panel_in_both_themes():
+    """CLAUDE.md rule 11 asks for 4.5 to 1. The light scheme's colours once
+    showed through on the dark panel, where blue measured 2.01 to 1, and a
+    light background behind every line of dark-theme code made it unreadable."""
+    import re
+
+    sheet = markup.pygments_stylesheet()
+    rules = sheet.strip().splitlines()
+    assert rules
+    for rule in rules:
+        theme = "dark" if rule.startswith('html[data-theme="dark"]') else "light"
+        prefix = 'html[data-theme="dark"] ' if theme == "dark" else ""
+        selectors = rule.split(" {")[0].split(", ")
+        # Only code is coloured: a document's code blocks and a notebook's code cells.
+        assert [s.rsplit(" .", 1)[0] for s in selectors] == [
+            f"{prefix}.code-block pre code",
+            f"{prefix}.notebook-frame .highlight pre",
+        ], rule
+        assert "background" not in rule, rule
+        for colour in re.findall(r"color: (#[0-9a-f]{6})", rule):
+            ratio = markup.contrast_ratio(colour, markup.CODE_PANELS[theme]["panel"])
+            assert ratio >= 4.5, (rule, round(ratio, 2))
+
+
 def test_every_document_in_the_repository_renders():
     for path in sorted(project_root().glob("docs/**/*.md")):
         relative = path.relative_to(project_root()).as_posix()
@@ -112,8 +165,9 @@ def test_every_document_in_the_repository_renders():
 
 def test_the_catalog_finds_the_taught_pages(site_catalog: catalog.Catalog):
     learn = next(s for s in site_catalog.sections if s.key == "learn")
-    assert len(learn.documents) == 8
-    assert all(doc.words > 200 for doc in learn.documents)
+    taught = [doc for doc in learn.documents if doc.kind == "learn"]
+    assert len(taught) == 8
+    assert all(doc.words > 200 for doc in taught)
 
 
 def test_the_catalog_finds_one_readme_for_every_source_folder(
@@ -150,6 +204,48 @@ def test_the_catalog_lists_every_per_file_page_under_data(
     assert on_disk == listed
 
 
+def test_the_menu_has_the_playground_and_four_sections(site_catalog: catalog.Catalog):
+    assert site_catalog.primary is not None
+    assert site_catalog.primary.path == "explore/playground"
+    assert [section.title for section in site_catalog.sections] == [
+        "Learn the method",
+        "Notebooks",
+        "Code",
+        "Choices and checks",
+    ]
+    # The playground is the one page drawn here rather than read from a file.
+    explore = [doc.path for doc in site_catalog.by_path.values() if doc.kind == "explore"]
+    assert explore == ["explore/playground"]
+
+
+def test_pages_that_repeat_other_pages_are_not_in_the_menu(
+    site_catalog: catalog.Catalog, root: Path
+):
+    listed = set(site_catalog.by_path)
+    # The files stay in the repository; only the menu leaves them out.
+    for path in ("README.md", "docs/AUDIT_2026-08-31_paper_against_code.md"):
+        assert (root / path).is_file(), path
+        assert path not in listed, path
+    code = next(s for s in site_catalog.sections if s.key == "code")
+    assert ("data/raw/README.md", "Getting the NASA data") in {
+        (doc.path, doc.title) for doc in code.documents
+    }
+    checks = next(s for s in site_catalog.sections if s.key == "checks")
+    assert checks.documents[0].title == "Assumptions log"
+
+
+def test_every_listed_page_has_a_first_heading_to_show_its_menu_name(
+    site_catalog: catalog.Catalog, root: Path
+):
+    for doc in site_catalog.by_path.values():
+        if not doc.path.endswith(".md"):
+            continue
+        rendered = markup.render_markdown(
+            catalog.read_document(doc.path, root), source_path=doc.path
+        )
+        assert any(heading.level == 1 for heading in rendered.headings), doc.path
+
+
 def test_reading_a_file_outside_the_project_is_refused(root: Path):
     with pytest.raises(ValueError, match="outside the project"):
         catalog.read_document("../../../etc/passwd", root)
@@ -160,7 +256,7 @@ def test_search_finds_a_phrase_that_is_certainly_there(
 ):
     hits = catalog.search("piecewise", site_catalog, root)
     assert hits
-    assert all({"path", "title", "line", "context"} <= set(hit) for hit in hits)
+    assert all(set(hit) == {"path", "title", "context"} for hit in hits)
 
 
 def test_search_ignores_a_query_too_short_to_mean_anything(
@@ -243,35 +339,35 @@ def test_only_the_entries_that_say_so_are_retired(root: Path):
 
 def test_every_stored_run_names_the_commit_that_produced_it(stored_runs):
     for run in stored_runs:
-        assert run.commit and run.commit != "unknown", run.directory
-        assert run.dirty == run.commit.endswith("-dirty")
+        assert run["commit"] and run["commit"] != "unknown", run["name"]
+        assert run["dirty"] == run["commit"].endswith("-dirty")
 
 
 def test_a_single_seed_run_keeps_its_missing_spread_as_missing(stored_runs):
     for run in stored_runs:
-        if run.seeds == 1:
-            assert run.std.get("rmse") is None
+        if run["seeds"] == 1:
+            assert (run["std"] or {}).get("rmse") is None
             return
     pytest.skip("no single-seed run is stored")
 
 
 def test_the_directory_name_of_every_run_carries_its_commit(stored_runs):
     for run in stored_runs:
-        assert run.commit in run.directory, run.directory
+        assert run["commit"] in run["name"], run["name"]
 
 
 def test_a_verification_report_is_not_listed_as_a_training_run(stored_runs):
     # scripts/verify_claims.py writes into reports/ too, with no scores in it.
     # Listing one as a run would show a row of dashes that reads like a
     # training run that failed.
-    directories = {run.directory for run in stored_runs}
+    directories = {run["name"] for run in stored_runs}
     assert not any(name.startswith("verification_") for name in directories)
 
 
 def test_every_listed_run_has_the_four_measures(stored_runs):
     for run in stored_runs:
-        assert set(run.mean) >= {"rmse", "score", "r2", "asue"}, run.directory
-        assert run.mean["rmse"] is not None, run.directory
+        assert set(run["mean"]) >= {"rmse", "score", "r2", "asue"}, run["name"]
+        assert run["mean"]["rmse"] is not None, run["name"]
 
 
 def test_the_latest_verification_is_found_and_says_what_it_checked(root: Path):
@@ -337,17 +433,24 @@ def test_the_correlation_figure_is_the_papers_eighteen_by_eighteen_table(raw_dir
         assert label in drawn
 
 
-def test_the_sensor_graph_figure_reports_what_the_code_measures():
-    from thesis_gnn_rul_xai.graph.adjacency import (
-        adjacency_report,
-        build_physics_adjacency,
-    )
+def _node_groups(drawn: str) -> dict[str, str]:
+    """Each sensor drawn in a graph figure, with the markup of its own group."""
+    import re
 
-    report = adjacency_report(*build_physics_adjacency())
-    drawn = figures.render_figure("sensor-graph")
-    assert f"{report['n_nodes']} sensors" in drawn
-    assert f"{report['n_edges']} edges" in drawn
-    assert f"diameter {report['diameter']}" in drawn
+    groups = {}
+    for group in re.findall(r"<g>(.*?)</g>", drawn, flags=re.S):
+        # The sensor's name is the one bold label inside its group.
+        name = re.search(r'font-weight="600"[^>]*>([^<]+)</text>', group)
+        if name:
+            groups[name.group(1)] = group
+    return groups
+
+
+def _ringed(drawn: str) -> set[str]:
+    """The sensors a graph figure draws a dashed ring round."""
+    return {
+        name for name, group in _node_groups(drawn).items() if "stroke-dasharray" in group
+    }
 
 
 def test_the_notebook_map_counts_what_the_pipeline_really_produces(raw_dir: Path):
@@ -375,9 +478,10 @@ def test_the_notebook_map_counts_what_the_pipeline_really_produces(raw_dir: Path
     assert f"({spaced(len(prepared.train))}, 14, {width})" in drawn
     assert f"({spaced(len(prepared.validation))}, 14, {width})" in drawn
     assert f"({spaced(len(prepared.test))}, 14, {width})" in drawn
-    # The total before the split, and the graph the same run built.
+    # The total before the split, and the size of the graph the same run built.
     assert spaced(windows) in drawn
-    assert f"{prepared.diagnostics['graph']['n_edges']} edges" in drawn
+    nodes = prepared.diagnostics["graph"]["n_nodes"]
+    assert f"{nodes} by {nodes}" in drawn
 
 
 def test_the_notebook_map_needs_the_nasa_files_rather_than_inventing_them(
@@ -402,7 +506,7 @@ def test_the_map_survives_into_the_page_the_site_builds_from_the_notebook(
     pytest.importorskip("nbconvert")
     from thesis_gnn_rul_xai.docsite import notebooks
 
-    body, _ = notebooks.render_notebook(
+    body = notebooks.render_notebook(
         root / "notebooks" / "01_preprocessing_fd001.ipynb"
     )
     assert "What notebook 01 does" in body, (
@@ -411,20 +515,36 @@ def test_the_map_survives_into_the_page_the_site_builds_from_the_notebook(
 
 
 def test_the_message_passing_figure_stops_where_the_graph_stops():
+    """The sensors marked as never reached are exactly those more than three edges from P15."""
     from thesis_gnn_rul_xai.graph.adjacency import (
+        adjacency_report,
         build_physics_adjacency,
         pairs_beyond_reach,
     )
 
     matrix, symbols = build_physics_adjacency()
-    beyond = pairs_beyond_reach(matrix, symbols, 3)
-    assert beyond, "the graph no longer has a pair beyond three layers"
+    far = {
+        b if a == "P15" else a
+        for a, b, _ in pairs_beyond_reach(matrix, symbols, 3)
+        if "P15" in (a, b)
+    }
+    assert far, "the graph no longer has a sensor beyond three layers from P15"
     drawn = figures.render_figure("message-passing")
-    assert "never reached" in drawn
+    groups = _node_groups(drawn)
+    assert len(groups) == len(symbols)
+    assert {name for name, group in groups.items() if "never" in group} == far
+    # The sensor whose removal splits the graph is ringed here as well, so a
+    # page can show this drawing without the plain one beside it.
+    report = adjacency_report(matrix, symbols)
+    assert _ringed(drawn) == set(report["articulation_points"])
 
 
-def test_the_architecture_figure_prints_the_real_parameter_count():
+def test_the_architecture_figure_prints_the_real_parameter_counts():
+    """Each box's count is read from the built network, with the stage and Table 4's Input as one box."""
+    import re
+
     pytest.importorskip("torch")
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
     from thesis_gnn_rul_xai.graph.adjacency import (
         build_physics_adjacency,
         normalize_adjacency,
@@ -432,9 +552,32 @@ def test_the_architecture_figure_prints_the_real_parameter_count():
     from thesis_gnn_rul_xai.models.estgnn import ESTGNN
 
     matrix, _ = build_physics_adjacency()
-    model = ESTGNN(normalize_adjacency(matrix, method="row"), window_size=1)
+    model = ESTGNN(
+        normalize_adjacency(matrix, method="row"),
+        window_size=PreprocessingConfig().window_size,
+    )
+    rows = model.layer_summary()
+    assert [rows[0]["layer"], rows[1]["layer"]] == ["Temporal", "Input"]
+    expected = [("Input", rows[0]["parameters"])] + [
+        (row["layer"], row["parameters"]) for row in rows[2:]
+    ]
+
     drawn = figures.render_figure("architecture")
-    assert f"{model.count_parameters():,}".replace(",", " ") in drawn
+    assert "figure-notice" not in drawn
+    # Every box starts with its rectangle; its name is the 13-unit label and its
+    # count the bold 10-unit one.
+    boxes = drawn.split("<rect ")[1:]
+    drawn_counts = [
+        (
+            re.search(r'font-size="13"[^>]*>([^<]+)</text>', box).group(1),
+            re.search(r'font-size="10" font-weight="600"[^>]*>([^<]+)</text>', box).group(1),
+        )
+        for box in boxes
+    ]
+    assert drawn_counts == [
+        (layer, f"{int(count):,}".replace(",", " ")) for layer, count in expected
+    ]
+    assert "w/o LSTM" in boxes[0]
 
 
 # -- the taught pages ------------------------------------------------------
@@ -466,10 +609,108 @@ def test_the_site_reports_what_this_machine_can_do(root: Path):
     from thesis_gnn_rul_xai.docsite.server import site_state
 
     state = site_state(root)
-    assert set(state) >= {"commit", "torch", "jupyter", "hasFD001", "figures", "stale"}
+    assert set(state) >= {"commit", "torch", "jupyter", "hasFD001", "stale"}
     assert isinstance(state["hasFD001"], bool)
     assert isinstance(state["stale"], bool)
     assert json.dumps(state)  # the browser has to be able to read it
+
+
+@pytest.fixture(scope="module")
+def live_site(root: Path):
+    """The site serving this repository on a free port, stopped afterwards."""
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from thesis_gnn_rul_xai.docsite.server import DocsHandler
+
+    handler = type("RepositoryHandler", (DocsHandler,), {"root": root})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def _get(url: str) -> tuple[int, dict]:
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url, timeout=120) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as refused:
+        return refused.code, json.loads(refused.read())
+
+
+def test_a_menu_page_goes_by_its_menu_name_in_its_heading_and_its_tab(live_site: str):
+    status, doc = _get(f"{live_site}/api/doc?path=docs/learn/01_the_problem.md")
+    assert status == 200
+    assert doc["title"] == "How long has this engine got?"
+    first = doc["html"].split("</h1>")[0]
+    assert first.startswith("<h1 ") and ">How long has this engine got?<a" in first
+    assert "words" not in doc  # the reading time is kept, its word count is not
+
+
+def test_a_page_outside_the_menu_keeps_its_own_heading(live_site: str, root: Path):
+    status, doc = _get(f"{live_site}/api/doc?path=README.md")
+    assert status == 200
+    own = markup.render_markdown(catalog.read_document("README.md", root)).title
+    assert doc["title"] == own
+    assert doc["minutes"] is None
+
+
+def test_a_notebook_page_goes_by_its_menu_name(live_site: str):
+    pytest.importorskip("nbconvert")
+    status, notebook = _get(
+        f"{live_site}/api/notebook?path=notebooks/xai/02_occlusion_fd001.ipynb"
+    )
+    assert status == 200
+    assert notebook["title"] == "Occlusion: hiding one sensor"
+    assert "css" not in notebook  # its code is coloured by the site's own stylesheet
+    assert notebook["html"].count("<h1") == 1
+    assert ">Occlusion: hiding one sensor<a class=\"anchor-link\"" in notebook["html"]
+
+
+def test_a_source_file_is_named_by_its_path_and_shown_without_a_language_badge(
+    live_site: str,
+):
+    path = "src/thesis_gnn_rul_xai/graph/adjacency.py"
+    status, file = _get(f"{live_site}/api/source?path={path}")
+    assert status == 200
+    assert file["title"] == path
+    assert "code-language" not in file["html"]
+    assert '<span class="k">' in file["html"]  # still coloured
+
+
+def test_the_routes_only_the_removed_pages_used_are_gone(live_site: str):
+    for route in ("/api/graph", "/api/model"):
+        status, answer = _get(live_site + route)
+        assert status == 404, route
+        assert "No route" in answer["error"]
+    status, log = _get(f"{live_site}/api/results")
+    assert status == 200
+    # What the entry links and the log's re-check result need, and nothing more.
+    assert set(log) == {"entries", "verification"}
+    assert log["entries"]
+
+
+def test_every_old_address_is_sent_to_a_page_that_exists(root: Path):
+    import re
+
+    script = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.js").read_text(encoding="utf-8")
+    moved = dict(re.findall(r'"((?:explore/)?[a-z]+)": "(#/[^"]+)"', script))
+    assert set(moved) == {
+        "explore/graph",
+        "figures",
+        "explore/architecture",
+        "explore/results",
+        "explore/assumptions",
+    }
+    listed = catalog.build_catalog(root).by_path
+    for old, new in moved.items():
+        target = new.removeprefix("#/doc/").removeprefix("#/")
+        assert target in listed or (root / target).is_file(), (old, new)
 
 
 def test_a_second_server_cannot_take_a_port_another_server_already_holds():

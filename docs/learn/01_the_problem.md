@@ -3,48 +3,43 @@
 ## Remaining useful life
 
 **Remaining Useful Life**, almost always shortened to **RUL**, is the number of
-flight cycles a machine will still run before it fails. A **flight cycle** is
-one complete take-off, flight and landing. It is the unit of time used
-everywhere in this project — not hours, not kilometres, but whole flights.
-
-RUL is the quantity being predicted. If a model says an engine has 40 cycles
-left, that is a claim that the engine will survive roughly 40 more flights.
+flight cycles an engine will still run before it fails, and it is what this
+project predicts. A **flight cycle** is one complete take-off, flight and
+landing, and it is the unit of time used everywhere in this project.
 
 The reason anyone wants the number is **predictive maintenance**: servicing
 equipment according to its measured condition rather than on a fixed calendar
-or after it breaks. Servicing too early wastes an engine's remaining life.
-Servicing too late means a failure in service. A good RUL estimate lets an
-airline plan.
+or after it breaks. Servicing too early wastes an engine's remaining life;
+servicing too late means a failure in service.
 
 ---
 
-## What a turbofan measures
+## What the engine's sensors measure
 
 {{figure:engine}}
 
-Air enters at the fan, is compressed by a low-pressure compressor and then a
-high-pressure one, is burned with fuel in the combustor, and drives two
-turbines on its way out. Each stage has sensors, and the names in the diagram
-are the ones used throughout this project — `T24` is the temperature at the
-low-pressure compressor outlet, `P30` the pressure at the high-pressure
-compressor outlet, and so on.
+Air enters at the fan, is compressed by a low-pressure compressor (LPC) and
+then a high-pressure one (HPC), is burned with fuel in the combustor, and
+drives a high-pressure turbine (HPT) and then a low-pressure one (LPT) on its
+way out. The names in the diagram are the ones used throughout this project:
+`T24` is the temperature at the LPC outlet, `P30` the pressure at the HPC
+outlet, and so on.
 
-The important structural fact is that **the sensors are not independent**. The
-engine is a chain: air that has been heated by one stage arrives at the next
-stage already hot. A change in one component shows up in the readings of the
-component after it. A model that treats the sensors as unrelated numbers throws
-that structure away — and keeping it is the whole point of the method this
-project rebuilds.
+**The sensors are not independent.** The engine is a chain: air that has been
+heated by one stage arrives at the next stage already hot, so a change in one
+component shows up in the readings of the component after it. A model that
+treats the sensors as unrelated numbers throws that structure away, and keeping
+it is the whole point of the method this project rebuilds.
 
 ---
 
-## The C-MAPSS benchmark
+## NASA's benchmark data: C-MAPSS
 
 **C-MAPSS** stands for *Commercial Modular Aero-Propulsion System Simulation*,
-a NASA program that simulates a large turbofan. NASA used it to build a public
-dataset in which simulated engines are run until they fail, with 21 sensors
-recorded once per cycle. It has been the standard test problem for this task
-since 2008, which is what makes results comparable between papers at all.
+a NASA program that simulates a large jet engine. NASA used it to build a
+public dataset in which simulated engines are run until they fail, with 21
+sensors recorded once per cycle. It has been the standard test problem for this
+task since 2008, which is what makes results comparable between papers at all.
 
 This project works on the sub-dataset called **FD001**. Measured from the files
 in `data/raw/`:
@@ -64,87 +59,67 @@ broke. Every test engine is cut off partway through, and a separate file gives
 the true remaining life at that cut-off point. That is the number a model has
 to guess.
 
-The spread of lifetimes is what makes the task hard. The engines are nominally
-identical, and they last anywhere from 128 to 362 cycles. Whatever separates a
-128-cycle engine from a 362-cycle one has to be read out of the sensors.
-
-> **Where these numbers come from.** They were computed from the real NASA
-> files by this project's own loading code, not copied from a paper. The
-> project deliberately contains no synthetic data: a pipeline that appears to
-> work on invented signals tells you nothing about whether it works on engines.
-> If the files are missing, the code says so and points at the download rather
-> than substituting something with the right shape.
+The engines are nominally identical, yet they last anywhere from 128 to 362
+cycles. Whatever separates a 128-cycle engine from a 362-cycle one has to be
+read out of the sensors.
 
 ---
 
 ## Only 14 of the 21 sensors
 
-Not every sensor is worth using. Running this project's own diagnostic over the
-100 training engines finds that **six sensors never change at all** — `T2`,
-`P2`, `epr`, `farB`, `Nf_dmd` and `PCNfR_dmd` hold a single value for all
-20 631 rows. A sensor that never moves cannot carry information about wear.
+Running this project's own diagnostic over the 100 training engines finds that
+**six sensors never change at all**: `T2`, `P2`, `epr`, `farB`, `Nf_dmd` and
+`PCNfR_dmd` hold a single value for all 20 631 rows. A sensor that never moves
+cannot carry information about wear.
 
-The paper being re-implemented keeps 14 sensors and drops 7. Six of its seven
-are exactly the six flat ones above, which is a strong sign the selection is
-sound. The seventh it names only implicitly; working out which sensor it must
-be is one of this project's documented choices (A-10).
+The paper keeps 14 sensors and drops 7. It names six of the dropped ones, and
+they are exactly these six. It does not name the seventh, but it states its
+rule: drop a sensor that is constant, or that rises and falls almost in step
+with another sensor (a correlation above 0.95, on a scale where 1 means
+perfectly in step). On this data only one pair passes that bar: `Nc` and
+`NRc`, two measures of the same shaft's speed, at 0.96. The paper keeps `Nc`, so the seventh is `NRc`
+(assumption A-10).
 
-There is a twist worth meeting early, because it is a good example of what this
-kind of study produces. The diagnostic flags a **seventh** uninformative
-sensor, `P15`, which takes only two distinct values across the whole training
-set. The paper *keeps* `P15`. This project keeps it too — the sensor graph is
-defined over the paper's fixed set of 14, and quietly changing the selection
-would make the reproduction something else — but the observation is recorded as
-a finding rather than swept up (finding F-01).
+The same diagnostic flags one more sensor, `P15`, which takes only two values,
+21.60 and 21.61, across all 20 631 training rows, so its reading can only jump
+between two levels, never drift gradually as the engine wears. The paper keeps
+`P15` anyway, and so does this project: the paper's map of which sensors are
+connected is drawn over exactly its 14, so removing one would change that map.
+The weakness is recorded as a fact about the paper (finding F-01).
 
 ---
 
-## The label: what the model is asked to predict
+## What the model is asked to predict
 
-You might expect the training label to be simply "cycles until this engine
-failed", counting down one per cycle. It is not, and the reason is physical.
+While it trains, a model is shown sensor readings together with the right
+answer, called the **label**. The obvious label is the number of cycles the
+engine really had left, counting down by one each cycle. That is not the label
+used here, and the reason is physical.
 
 A new engine is healthy. Its sensors barely move, and nothing in the readings
 distinguishes an engine with 300 cycles left from one with 250 left, because
 neither has begun to degrade. Asking a model to tell those apart is asking it
 to learn noise.
 
-So the label is **piecewise linear**: it is held at a ceiling while the engine
-is healthy, and only starts falling once degradation is under way.
+So the label is **piecewise linear**, made of two straight pieces: it is the
+smaller of two numbers, the cycles really left and a ceiling of 125. Far from
+failure the ceiling is the smaller, so the label stays flat; in the last 125
+cycles the real count is the smaller, so the label falls by one per cycle.
+Engine 1 of the training data ran 192 cycles:
 
-$$\mathrm{RUL}(t) = \min\left(T_{\text{total}} - t,\; \mathrm{RUL}_{\max}\right)$$
+| Cycle | Cycles really left (192 − cycle) | Label (smaller of that and 125) |
+|---|---|---|
+| 50 | 142 | 125 |
+| 67 | 125 | 125 |
+| 68 | 124 | 124 |
+| 152 | 40 | 40 |
 
 {{figure:rul-curve}}
 
-The solid line is the label this project uses. The dashed line is the
-alternative — counting down from the start — which would demand that the model
-distinguish states that are genuinely indistinguishable.
-
-The ceiling value is 125 cycles. **The paper never prints that number.** It
-defines the ceiling symbolically in its Equation 19 and leaves the value
-unstated. 125 was arrived at three ways: by reading it off the true-RUL curve
-in one of the paper's own figures at high magnification, by matching the
-paper's description of predictions holding "around 125" while an engine is
-healthy, and by noting that closely related work on the same dataset uses the
-same value. The choice is recorded with that reasoning (assumption A-01).
-
-That is the first judgement call of the path, and it is a fair example of the
-rest: the paper is specific about the shape of the thing and silent about a
-number the shape needs.
-
----
-
-## What you now know
-
-- **RUL** is remaining flight cycles, and predicting it enables predictive
-  maintenance.
-- The engine's sensors are **physically related** through the gas path, which
-  is the structure the method exploits.
-- **FD001** holds 100 training engines run to failure and 100 test engines cut
-  off partway, with lifetimes spread from 128 to 362 cycles.
-- **14 of 21 sensors** are used; six of the seven dropped ones are provably
-  flat in the data, and a seventh flat sensor is kept anyway (finding F-01).
-- The label is **held at a ceiling of 125** while the engine is healthy, and
-  that ceiling is a choice this project had to make (A-01).
-
-Next: what a graph is, and what a network built on one actually computes.
+The paper's Equation 19 uses a ceiling but **never prints its value**, so 125
+is this project's choice (assumption A-01). It is read off the paper's Fig. 7,
+whose FD001 panel draws the paper's own label for one engine, so the height of
+its flat part is the ceiling. Measured against that panel's axis ticks, the
+flat part sits at 125.2, which is 125 to within the width of the printed line.
+It also agrees with the paper's description of predictions holding "around
+125" while an engine is healthy, and with related work on the same data.

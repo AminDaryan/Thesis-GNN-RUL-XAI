@@ -42,6 +42,8 @@ __all__ = [
     "SettingsError",
     "compare_runs",
     "explanation_detail",
+    "explanation_label",
+    "job_label",
     "list_runs",
     "options",
     "paper_row_for",
@@ -89,164 +91,162 @@ def _extension(text: str) -> dict[str, str]:
     return _source("extension", "", text)
 
 
-# Every setting the page offers, in the order of the pipeline. Each carries the
-# source of its default, so the page can say beside every control whether the
-# paper states the value, whether a numbered assumption chose it, or neither.
+# Every setting the page offers, in the order of the pipeline. Each fact about
+# where a default comes from is said once: on the row when every option shares
+# it, on each option when the options differ, and nowhere when nothing sets it.
+# An empty text leaves the tag alone, where the value in the control says it.
 FIELDS: tuple[dict[str, Any], ...] = (
-    # -- 1. data -----------------------------------------------------------
+    # -- data: drawn at the top of the form, with no section of its own ----
     {"key": "subset", "group": "data", "label": "Sub-dataset", "kind": "choice",
      "default": "FD001",
-     "choices": [{"value": s, "label": s,
-                  "source": _paper("Table 5", "one of the four C-MAPSS sub-datasets")}
-                 for s in SUBSETS],
-     "source": _paper("Table 5", "the paper reports all four")},
-    # -- 2. preprocessing --------------------------------------------------
+     "choices": [{"value": s, "label": s, "source": None} for s in SUBSETS],
+     "source": _paper("Table 5", "")},
+    # -- procedure: set only by the two procedure cards, never a section ---
+    {"key": "validation_fraction", "group": "procedure",
+     "label": "Training engines held back",
+     "kind": "float", "default": 0.2, "min": 0.0, "max": 0.5, "step": 0.05,
+     "source": _choice("A-06", "")},
+    {"key": "early_stopping", "group": "procedure", "label": "Stop when held-back error stalls",
+     "kind": "bool", "default": True,
+     "source": _choice("A-18", "")},
+    {"key": "early_stopping_patience", "group": "procedure",
+     "label": "Passes allowed without improvement", "kind": "int",
+     "default": 20, "min": 1, "max": 1000,
+     "source": _choice("A-18", "")},
+    # -- preprocessing -----------------------------------------------------
     {"key": "window_size", "group": "preprocessing", "label": "Window length (cycles)",
      "kind": "int", "default": 30, "min": 1, "max": 100,
-     "source": _paper("Table 6", "\"Time steps 30\"")},
+     "source": _paper("Table 6", "")},
     {"key": "window_stride", "group": "preprocessing", "label": "Cycles between windows",
      "kind": "int", "default": 1, "min": 1, "max": 30,
-     "source": _choice("A-05", "the paper does not say how far apart windows start")},
+     "source": _choice("A-05", "")},
     {"key": "rul_max", "group": "preprocessing", "label": "Label ceiling (cycles)",
      "kind": "int", "default": 125, "min": 10, "max": 400,
-     "source": _choice("A-01", "read off Fig. 6 by calibrating its plateau against its own axis")},
+     "source": _choice("A-01", "read off Fig. 7 by calibrating its plateau against its own axis")},
     {"key": "clip_test_labels", "group": "preprocessing", "label": "Cap the test labels too",
      "kind": "bool", "default": True,
      "source": _choice("A-02", "can only move reported numbers favourably")},
     {"key": "normalization", "group": "preprocessing", "label": "Sensor scaling",
      "kind": "choice", "default": "zscore",
      "choices": [
-         {"value": "zscore", "label": "Mean and spread of the training engines",
-          "source": _choice("A-03", "the default; the paper never describes its scaling (F-10)")},
+         {"value": "zscore", "label": "Mean and spread of the training engines", "source": None},
          {"value": "minmax_per_condition", "label": "Range 0 to 1, per operating condition",
-          "source": _choice("A-03", "an alternative weighed against the default")},
-         {"value": "minmax_global", "label": "Range 0 to 1, over all rows",
-          "source": _choice("A-03", "an alternative weighed against the default")},
+          "source": None},
+         {"value": "minmax_global", "label": "Range 0 to 1, over all rows", "source": None},
      ],
-     "source": _choice("A-03", "the paper does not describe its scaling")},
+     "source": _choice("A-03", "the paper does not describe its scaling (F-10)")},
     {"key": "smoothing", "group": "preprocessing", "label": "Smooth each sensor",
      "kind": "bool", "default": True,
      "source": _choice("A-04", "exponential smoothing before windowing")},
     {"key": "smoothing_alpha", "group": "preprocessing", "label": "Smoothing weight on the newest reading",
      "kind": "float", "default": 0.5, "min": 0.01, "max": 1.0, "step": 0.05,
-     "source": _choice("A-04", "the paper gives no value")},
-    {"key": "validation_fraction", "group": "preprocessing",
-     "label": "Training engines held back",
-     "kind": "float", "default": 0.2, "min": 0.0, "max": 0.5, "step": 0.05,
-     "source": _choice("A-06", "the paper describes no held-back engines; 0 is its procedure")},
+     "source": _choice("A-04", "")},
     {"key": "graph", "group": "preprocessing", "label": "Sensor graph", "kind": "choice",
      "default": "physics",
      "choices": [
          {"value": "physics", "label": "The paper's physics graph",
-          "source": _paper("Table 3", "41 edges between 14 sensors, also drawn as Fig. 3")},
+          "source": _paper("Table 3", "")},
          {"value": "complete", "label": "Every sensor joined to every other",
-          "source": _choice("A-19", "stands in for the \"w/o Physics prior\" row of Table 11")},
+          "source": _choice("D-2", "averages every sensor equally, so it measures the cost "
+                                   "of averaging as much as the value of the physics")},
          {"value": "correlation", "label": "The 41 most correlated sensor pairs",
-          "source": _choice("A-27", "built from the training engines; the paper never "
-                                    "builds one")},
+          "source": _choice("A-27", "built from each seed's own training engines, so seeds "
+                                    "can get slightly different graphs")},
      ],
-     "source": _paper("Table 3", "the paper's own adjacency matrix")},
+     "source": None},
     {"key": "adjacency_normalization", "group": "preprocessing",
      "label": "Graph rescaling", "kind": "choice", "default": "row",
      "choices": [
-         {"value": "row", "label": "Each row sums to one",
-          "source": _choice("A-21", "the default")},
-         {"value": "symmetric", "label": "Symmetric, by both degrees",
-          "source": _choice("A-21", "the alternative, measured against the default")},
+         {"value": "row", "label": "Each row sums to one", "source": None},
+         {"value": "symmetric", "label": "Symmetric, by both degrees", "source": None},
      ],
      "source": _choice("A-21", "the paper describes the step but prints no formula")},
-    {"key": "seed", "group": "repeats", "label": "First seed", "kind": "int",
-     "default": 42, "min": 0, "max": 2**31 - 1,
-     "source": _project("each further seed adds one")},
-    # -- 3. temporal stage -------------------------------------------------
+    # -- temporal stage ----------------------------------------------------
     {"key": "temporal", "group": "temporal", "label": "Temporal stage", "kind": "choice",
      "default": "lstm",
      "choices": [
          {"value": "lstm", "label": "LSTM, one per sensor",
-          "source": _paper("Section 2.2", "a dedicated recurrent network for each of the 14 sensors")},
-         {"value": "last_cycle", "label": "Removed: keep only the last cycle",
-          "source": _choice("A-07", "the \"w/o LSTM\" row of Table 11")},
+          "source": _paper("Section 2.2", "")},
+         {"value": "last_cycle", "label": "w/o LSTM: keep only the last cycle",
+          "source": _choice("A-07", "")},
          {"value": "gru", "label": "GRU, one per sensor",
-          "source": _extension("a smaller recurrent cell; not in the paper")},
+          "source": _extension("a smaller recurrent cell")},
          {"value": "mean_window", "label": "Average over the window",
-          "source": _extension("no learned parameters; not in the paper")},
+          "source": _extension("no learned parameters")},
          {"value": "window_summary", "label": "Last reading, average and change over the window",
-          "source": _extension("three numbers per sensor, no learned parameters; not in the paper (A-28)")},
-         {"value": "raw_window", "label": "All 30 cycles straight into the graph layer",
-          "source": _extension("the arrangement the last-cycle stage replaced; not in the paper")},
+          "source": _extension("three numbers per sensor, no learned parameters (A-28)")},
+         {"value": "raw_window", "label": "The whole window straight into the graph layer",
+          "source": _extension("the arrangement the last-cycle stage replaced")},
      ],
-     "source": _paper("Section 2.2", "the paper's own stage")},
+     "source": None},
     {"key": "temporal_hidden", "group": "temporal", "label": "Hidden size", "kind": "int",
      "default": 32, "min": 1, "max": 512,
-     "source": _choice("A-26", "the paper never states the size")},
+     "source": _choice("A-26", "")},
     {"key": "temporal_out_features", "group": "temporal",
      "label": "Numbers handed to the graph per sensor", "kind": "int",
      "default": 1, "min": 1, "max": 64,
      "source": _choice("A-26", "1 is the node width Table 4 prints")},
     {"key": "shared_across_sensors", "group": "temporal",
      "label": "One network shared by all sensors", "kind": "bool", "default": False,
-     "source": _paper("Section 2.2", "the paper gives every sensor its own; sharing is not the paper")},
-    # -- 4. graph layers ---------------------------------------------------
+     "source": _extension("")},
+    # -- graph layers ------------------------------------------------------
     {"key": "gcn_hidden", "group": "graph", "label": "Graph layer widths", "kind": "widths",
      "default": [32, 64, 32], "min": 1, "max": 512, "length": 3,
-     "source": _paper("Table 4", "GCN-1, GCN-2 and GCN-3 output 32, 64 and 32")},
+     "source": _paper("Table 4", "")},
     {"key": "fc_hidden", "group": "graph", "label": "First fully connected width",
      "kind": "int", "default": 128, "min": 1, "max": 2048,
-     "source": _paper("Table 4", "FC-1 outputs 128")},
+     "source": _paper("Table 4", "")},
     {"key": "gcn_bias", "group": "graph", "label": "Bias in the graph layers",
      "kind": "bool", "default": False,
      "source": _choice("A-12", "Table 4 lists only a weight matrix per layer")},
-    # -- 5. training -------------------------------------------------------
+    # -- training ----------------------------------------------------------
     {"key": "epochs", "group": "training", "label": "Passes over the training data",
      "kind": "int", "default": TRAINING_SETTINGS["epochs"], "min": 1, "max": 1000,
-     "source": _paper("Table 6", "\"Epochs 200\"")},
+     "source": _paper("Table 6", "")},
     {"key": "batch_size", "group": "training", "label": "Windows per update",
      "kind": "int", "default": TRAINING_SETTINGS["batch_size"], "min": 1, "max": 4096,
-     "source": _paper("Table 6", "\"Batch size 32\"")},
+     "source": _paper("Table 6", "")},
     {"key": "learning_rate", "group": "training", "label": "First learning rate",
      "kind": "float", "default": TRAINING_SETTINGS["learning_rate"],
      "min": 1e-6, "max": 1.0, "step": 1e-4,
-     "source": _paper("Table 6", "\"1e-3 -> 1e-4\"")},
+     "source": _paper("Table 6", "")},
     {"key": "final_learning_rate", "group": "training", "label": "Last learning rate",
      "kind": "float", "default": TRAINING_SETTINGS["final_learning_rate"],
      "min": 1e-7, "max": 1.0, "step": 1e-5,
-     "source": _paper("Table 6", "\"1e-3 -> 1e-4\"")},
+     "source": _paper("Table 6", "")},
     {"key": "lr_schedule", "group": "training", "label": "How the rate gets there",
      "kind": "choice", "default": "step",
      "choices": [
-         {"value": v, "label": label, "source": _choice("A-17", note)}
-         for v, label, note in (
-             ("step", "One drop, halfway", "the default"),
-             ("exponential", "The same factor every pass", "an alternative"),
-             ("cosine", "A half cosine", "an alternative"),
-             ("plateau", "Drop when held-back error stalls", "needs held-back engines"),
-             ("constant", "Never changes", "ignores the last rate"),
+         {"value": v, "label": label, "source": None}
+         for v, label in (
+             ("step", "One drop, halfway"),
+             ("exponential", "The same factor every pass"),
+             ("cosine", "A half cosine"),
+             ("plateau", "Drop when held-back error stalls"),
+             ("constant", "Never changes"),
          )
      ],
-     "source": _choice("A-17", "the paper gives the first and last rate, not the path")},
-    {"key": "early_stopping", "group": "training", "label": "Stop when held-back error stalls",
-     "kind": "bool", "default": True,
-     "source": _choice("A-18", "the paper describes no early stopping")},
-    {"key": "early_stopping_patience", "group": "training",
-     "label": "Passes allowed without improvement", "kind": "int",
-     "default": 20, "min": 1, "max": 1000,
-     "source": _choice("A-18", "the paper gives no value")},
-    # -- 6. repeats --------------------------------------------------------
+     "source": _choice("A-17", "")},
+    # -- repeats -----------------------------------------------------------
+    {"key": "seed", "group": "repeats", "label": "First seed", "kind": "int",
+     "default": 42, "min": 0, "max": 2**31 - 1,
+     "source": None},
     {"key": "seeds", "group": "repeats", "label": "Seeds", "kind": "int",
      "default": RESULT_SEEDS, "min": 1, "max": 20,
-     "source": _project("rule 3: fewer than five is exploratory, never a result")},
+     "source": _project("")},
     {"key": "fixed_split", "group": "repeats", "label": "Same held-back engines for every seed",
      "kind": "bool", "default": False,
      "source": _project("understates the spread; say so wherever the number appears")},
     {"key": "device", "group": "repeats", "label": "Device", "kind": "choice",
      "default": "auto",
-     "choices": [{"value": v, "label": v, "source": _project("where the arithmetic runs")}
-                 for v in ("auto", "cpu", "cuda")],
-     "source": _project("where the arithmetic runs")},
+     "choices": [{"value": v, "label": v, "source": None} for v in ("auto", "cpu", "cuda")],
+     "source": None},
 )
 
 _BY_KEY = {spec["key"]: spec for spec in FIELDS}
 
+# The sections of the form. The "procedure" group is left out on purpose: its
+# three settings are drawn under the procedure cards, which are their only control.
 GROUPS = (
     ("data", "Data"),
     ("preprocessing", "Preprocessing"),
@@ -265,20 +265,22 @@ ABLATIONS = (
     {"key": "without_physics_prior", "label": "w/o Physics prior",
      "settings": {"temporal": "lstm", "graph": "complete"}},
     {"key": "without_gcn", "label": "w/o GCN", "settings": None,
-     "reason": "Removing the graph layers is not buildable here: they are the part "
-               "this playground holds fixed, and a model without them is not built yet."},
+     "reason": "The graph layers are the part this playground holds fixed."},
 )
 
-# The paper's training procedure, and this project's default one. F-16 is why
-# the difference is offered as a single switch: it moves what the LSTM is worth.
+# The two training procedures, and the only control for how many engines are
+# held back and whether the best pass's weights are restored. They are one
+# switch because the choice moves what the LSTM is worth (F-16). Neither sets
+# the number of passes, which stays with the training settings.
 PROCEDURES = (
     {"key": "paper", "label": "The paper's procedure",
-     "text": "Nothing held back, all 200 passes, the final weights (Table 6).",
-     "settings": {"validation_fraction": 0.0, "early_stopping": False, "epochs": 200}},
-    {"key": "project", "label": "This project's default",
-     "text": "A fifth of the engines held back; the best pass's weights are restored "
-             "(A-06, A-18). The paper never describes this step.",
-     "settings": {"validation_fraction": 0.2, "early_stopping": True, "epochs": 200}},
+     "text": "Nothing held back, every pass, the final weights (Table 6).",
+     "settings": {"validation_fraction": 0.0, "early_stopping": False}},
+    {"key": "project", "label": "Held back, best pass",
+     "text": "Engines held back and the best pass's weights restored, a step the paper "
+             "never describes (A-06, A-18). On FD001 it moved what the LSTM is worth "
+             "from 0.77 to 3.19 cycles (F-16).",
+     "settings": {"validation_fraction": 0.2, "early_stopping": True}},
 )
 
 
@@ -388,25 +390,27 @@ def paper_row_for(
             "score": row.score, "r2": row.r2, "asue": row.asue}, ""
 
 
-def caveats(settings: Mapping[str, Any]) -> list[dict[str, str]]:
+def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     """What a reader must be told before setting this configuration beside the paper."""
-    notes: list[dict[str, str]] = []
+    notes: list[dict[str, Any]] = []
 
-    def add(level: str, ref: str, text: str) -> None:
-        notes.append({"level": level, "ref": ref, "text": text})
+    # "run": it qualifies a stored run's numbers, so the run's page lists it.
+    # "design": it flags a conflict between settings the reader may not have
+    # open, so the Design tab shows it beside the Train button as well.
+    def add(level: str, ref: str, text: str, where: tuple[str, ...] = ("run",)) -> None:
+        notes.append({"level": level, "ref": ref, "text": text, "where": list(where)})
 
     seeds = int(settings.get("seeds") or 0)
     if seeds < RESULT_SEEDS:
-        add("warn", "rule 3", f"{seeds} seed(s) is exploratory. Quote nothing from it: "
-            "a result is a mean over at least five seeds, with its spread.")
-    if settings.get("temporal") == "lstm":
-        add("info", "A-26", "The LSTM's hidden size and projection are chosen here; "
-            "the paper states neither.")
+        add("warn", "", f"{seeds} seed{'' if seeds == 1 else 's'} is exploratory: quote "
+            "nothing from it. A result is a mean over at least five seeds, with its spread.",
+            ("design", "run"))
+    if settings.get("temporal") in ("lstm", "gru"):
+        add("info", "A-26", "The hidden size and the numbers handed to the graph per "
+            "sensor are chosen here; the paper states neither.")
     if settings.get("temporal") == "last_cycle":
-        add("info", "D-6", "Removing the stage this way also discards 29 of the 30 "
-            "cycles, which the paper's \"w/o LSTM\" model may not have done.")
-    if settings.get("temporal") in ("gru", "mean_window", "window_summary", "raw_window"):
-        add("info", "", "This temporal stage is not in the paper, so no published row applies.")
+        add("info", "D-6", "Only each window's last cycle reaches the graph layers, which "
+            "the paper's w/o LSTM model may not have done.")
     if settings.get("shared_across_sensors") and settings.get("temporal") in ("lstm", "gru"):
         add("info", "Section 2.2", "One shared network is not the paper's stage, which "
             "gives each sensor its own.")
@@ -414,25 +418,32 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, str]]:
             int(settings.get("fc_hidden") or 128) != 128:
         add("info", "Table 4", "The layer widths differ from Table 4.")
     if float(settings.get("validation_fraction") or 0.0) > 0:
-        add("warn", "F-16", "Held-back engines mean the best pass's weights are restored, "
-            "a step the paper never describes. On FD001 it moved what the LSTM is worth "
-            "from 0.77 to 3.19 cycles.")
+        add("warn", "F-16", "The paper never describes restoring the best pass; on FD001 "
+            "it moved what the LSTM is worth from 0.77 to 3.19 cycles.")
     elif settings.get("lr_schedule") == "plateau":
         add("warn", "A-17", "The plateau schedule needs held-back engines; with none the "
-            "rate never leaves its first value.")
+            "rate never leaves its first value.", ("design", "run"))
     if settings.get("clip_test_labels", True):
         add("info", "A-02", "Test labels are capped too, which can only flatter the numbers.")
     if settings.get("graph") == "complete":
-        add("info", "D-2", "Row-rescaled, the complete graph averages every sensor equally, "
-            "so it measures the cost of averaging as much as the value of the physics.")
+        # Every sensor of the complete graph has the same number of neighbours,
+        # so both rescalings give the same matrix, 1/14 everywhere.
+        add("info", "D-2", "The complete graph averages every sensor equally, so it "
+            "measures the cost of averaging as much as the value of the physics.")
     if settings.get("graph") == "correlation":
         add("info", "A-27", "The graph is rebuilt from each seed's own training engines, "
             "so two seeds can be given slightly different graphs.")
-    if settings.get("subset") in ("FD002", "FD004"):
-        add("warn", "A-23", "Test engines shorter than the window are left out, so the "
-            "score, which is a sum over engines, cannot be set beside Table 7.")
+    subset, window = settings.get("subset"), settings.get("window_size")
+    if subset in SUBSETS and isinstance(window, int) and not isinstance(window, bool):
+        counted = dataset_facts(str(subset), window)["counted"]
+        if counted and counted["left_out"] > 0:
+            one = counted["left_out"] == 1
+            add("warn", "A-23", f"{counted['left_out']} of {counted['test_engines']} test "
+                f"engines {'is' if one else 'are'} shorter than the window and "
+                f"{'was' if one else 'were'} left out, so the score cannot be set beside "
+                "Table 7.")
     if settings.get("fixed_split"):
-        add("info", "rule 3", "The same held-back engines for every seed understates the spread.")
+        add("info", "", "The same held-back engines for every seed understates the spread.")
     return notes
 
 
@@ -451,28 +462,27 @@ def _test_lengths(subset: str) -> tuple[int, ...]:
 
 
 def dataset_facts(subset: str, window_size: int) -> dict[str, Any]:
-    """What Table 5 says about a sub-dataset, and what the real files add for this window."""
+    """What Table 5 says about a sub-dataset, and how many test engines this window leaves out."""
     facts: dict[str, Any] = {"table5": DATASET_DESCRIPTION[subset], "counted": None}
     lengths = _test_lengths(subset)
     if lengths:
+        # An engine shorter than the window yields no window at all (A-23).
         facts["counted"] = {
             "test_engines": len(lengths),
-            "shortest_test_history": min(lengths),
             "left_out": sum(1 for n in lengths if n < window_size),
         }
     return facts
 
 
 def preview(settings: Mapping[str, Any]) -> dict[str, Any]:
-    """Everything the page shows before a run: the network built for real, and the caveats."""
+    """What the Design tab draws for these settings: the paper's row, the data, the network built for real."""
     row, reason = paper_row_for(settings["subset"], settings["temporal"], settings["graph"])
     answer: dict[str, Any] = {
         "paper_row": row,
         "no_row_reason": reason,
-        "caveats": caveats(settings),
         "dataset": dataset_facts(settings["subset"], int(settings["window_size"])),
-        "command": " ".join(train_arguments(settings, Path("<job>/preprocessing_config.yaml"),
-                                            None, display=True)),
+        "design_cautions": [note for note in caveats(settings) if "design" in note["where"]],
+        "torch": True,
     }
     try:
         from ..graph.adjacency import (
@@ -481,9 +491,11 @@ def preview(settings: Mapping[str, Any]) -> dict[str, Any]:
             normalize_adjacency,
         )
         from ..models import ModelConfig, build_model
-    except ImportError:
-        answer["network_error"] = ("Building the network needs PyTorch, which is not "
-                                   "installed. Nothing can be trained without it either.")
+    except ImportError as missing:
+        # Only a missing PyTorch is expected here; any other failed import is a fault.
+        if not (missing.name or "").startswith("torch"):
+            raise
+        answer["torch"] = False
         return answer
 
     # The correlation graph needs the training engines, which a preview does not
@@ -602,7 +614,7 @@ def options() -> dict[str, Any]:
     """Everything the page needs to draw its form, before anything is chosen."""
     from .figures import _graph_layout
 
-    graph, positions, degrees = _graph_layout()
+    graph, positions = _graph_layout()[:2]
     return {
         "fields": list(FIELDS),
         "groups": [{"key": k, "label": label} for k, label in GROUPS],
@@ -619,7 +631,6 @@ def options() -> dict[str, Any]:
         "graph": {
             "positions": {node: [round(x, 1), round(y, 1)] for node, (x, y) in positions.items()},
             "edges": [list(edge) for edge in graph.edges()],
-            "degrees": degrees,
             "width": 860,
             "height": 520,
         },
@@ -702,6 +713,7 @@ def _describe(path: Path) -> dict[str, Any] | None:
     commit = str(summary.get("commit", "unknown"))
     settings_for_caveats = {
         "seeds": seeds, "temporal": temporal, "subset": subset,
+        "window_size": config.get("window_size"),
         "graph": summary.get("graph"), "clip_test_labels": summary.get("clip_test_labels"),
         "validation_fraction": validation_fraction or 0.0,
         "fixed_split": summary.get("split") == "fixed",
@@ -721,7 +733,8 @@ def _describe(path: Path) -> dict[str, Any] | None:
         "temporal": temporal,
         "temporal_hidden": summary.get("temporal_hidden"),
         "graph": summary.get("graph"),
-        "adjacency_normalization": summary.get("adjacency_normalization"),
+        "adjacency_normalization": (summary.get("adjacency_normalization")
+                                    or config.get("adjacency_normalization")),
         "split": summary.get("split"),
         "normalization": config.get("normalization"),
         "smoothing_alpha": config.get("smoothing_alpha"),
@@ -870,20 +883,97 @@ def compare_runs(root: Path, first: str, second: str) -> dict[str, Any]:
 # The states a job can no longer leave.
 _ENDED = ("done", "failed", "cancelled", "interrupted")
 
-_STAGE_NAMES = {"lstm": "LSTM", "gru": "GRU", "last_cycle": "w/o LSTM", "mean_window": "window mean",
-                "window_summary": "window summary", "raw_window": "raw window"}
+# The one vocabulary the page uses for temporal stages and explanation methods.
+_STAGE_NAMES = {"lstm": "LSTM", "gru": "GRU", "last_cycle": "w/o LSTM",
+                "mean_window": "window average", "window_summary": "window summary",
+                "raw_window": "whole window"}
+_METHOD_NAMES = {"shap": "Exact Shapley values", "occlusion": "Occlusion"}
+# What a job is called when its folder holds nothing to name it by.
+_UNNAMED = {"train": "Training run", "explain": "Explanation"}
 
 
 def job_label(settings: Mapping[str, Any]) -> str:
-    """The short name a training job is listed under: what it trains, on what, how many times."""
+    """The name a training job is listed under: what it trains, on what, how many times."""
+    parts = [str(settings.get("subset") or "")]
     temporal = settings.get("temporal")
-    stage = _STAGE_NAMES.get(str(temporal), str(temporal))
-    if temporal in ("lstm", "gru"):
-        stage += f" {settings.get('temporal_hidden')}"
+    if temporal is not None:
+        stage = _STAGE_NAMES.get(str(temporal), str(temporal))
+        if temporal in ("lstm", "gru") and settings.get("temporal_hidden") is not None:
+            stage += f" {settings['temporal_hidden']}"
+        parts.append(stage)
+    graph = str(settings.get("graph") or "physics")
+    rescaling = settings.get("adjacency_normalization")
+    parts.append(f"{graph} graph" if rescaling in (None, "row") else f"{graph} · {rescaling} graph")
+    parts.append("best pass" if float(settings.get("validation_fraction") or 0.0) > 0
+                 else "final pass")
     seeds = int(settings.get("seeds") or 0)
-    kept = "best pass" if float(settings.get("validation_fraction") or 0.0) > 0 else "final pass"
-    return (f"{settings.get('subset')} · {stage} · {settings.get('graph') or 'physics'} graph · "
-            f"{kept} · {seeds} seed{'' if seeds == 1 else 's'}")
+    parts.append(f"{seeds} seed{'' if seeds == 1 else 's'}")
+    return " · ".join(part for part in parts if part)
+
+
+def explanation_label(request: Mapping[str, Any]) -> str:
+    """The name an explanation job is listed under: which method, on what, with which seed's weights."""
+    method = request.get("method")
+    parts = [_METHOD_NAMES.get(str(method), str(method or "Explanation"))]
+    if request.get("scope") == "test":
+        parts.append("test engines")
+    elif request.get("scope") == "engine":
+        engine = request.get("engine")
+        parts.append("longest engine" if engine is None else f"engine {engine}")
+    if request.get("seed") is not None:
+        parts.append(f"seed {request['seed']}")
+    return " · ".join(parts)
+
+
+def _plain_name(name: Any) -> bool:
+    """Whether a name read from a file is one plain folder name, with no way out of its folder."""
+    return (isinstance(name, str) and bool(name) and not name.startswith(".")
+            and ":" not in name and Path(name).name == name)
+
+
+def _explain_request(folder: Path, command: str, progress: Mapping[str, Any]) -> dict[str, Any]:
+    """What an explanation job asked for, from its command, and the engine it chose once it finished."""
+    request: dict[str, Any] = {"method": progress.get("method"), "scope": progress.get("scope")}
+    words = command.split()
+    for flag, key in (("--method", "method"), ("--scope", "scope"),
+                      ("--seed", "seed"), ("--engine", "engine")):
+        if flag in words[:-1]:
+            value = words[words.index(flag) + 1]
+            request[key] = int(value) if value.isdigit() else value
+    # With no engine asked for, the script picks the longest, and only its
+    # stored summary says which one that was. The jobs folder sits inside
+    # reports/, beside the run the explanation was written into.
+    result = progress.get("result") or {}
+    if _plain_name(result.get("run")) and _plain_name(result.get("directory")):
+        stored = (folder.parent.parent / result["run"] / "explanations"
+                  / result["directory"] / "summary.json")
+        try:
+            summary = json.loads(stored.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            summary = {}
+        if isinstance(summary, dict):
+            request.update({key: summary[key] for key in ("method", "scope", "seed")
+                            if summary.get(key) is not None})
+            if summary.get("unit") is not None:
+                request["engine"] = summary["unit"]
+    return request
+
+
+def _job_name(folder: Path, kind: str, command: str, progress: Mapping[str, Any],
+              fallback: str) -> str:
+    """The name a job is listed under, built the same way for this server's jobs and for folders read back."""
+    if kind == "train":
+        try:
+            settings = json.loads((folder / "settings.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            settings = None
+        if isinstance(settings, dict) and settings:
+            return job_label(settings)
+    elif kind == "explain":
+        request = _explain_request(folder, command, progress)
+        if request.get("method"):
+            return explanation_label(request)
+    return fallback
 
 
 def read_progress(folder: Path) -> dict[str, Any]:
@@ -1005,12 +1095,15 @@ class Job:
     def to_dict(self) -> dict[str, Any]:
         """The job as the page shows it."""
         now = time.time()
+        progress = self.progress()
         return _clean({
-            "id": self.id, "kind": self.kind, "label": self.label, "status": self.status,
+            "id": self.id, "kind": self.kind,
+            "label": _job_name(self.folder, self.kind, self.display, progress, self.label),
+            "status": self.status,
             "command": self.display, "created": self.created, "started": self.started,
             "finished": self.finished, "returncode": self.returncode,
             "elapsed": (self.finished or now) - self.started if self.started else None,
-            "progress": self.progress(),
+            "progress": progress,
             "log": self.log_tail() if self.status in ("failed", "cancelled") else "",
             "from_disk": False,
         })
@@ -1022,24 +1115,6 @@ def _stamp_to_time(stamp: str) -> float | None:
         return float(calendar.timegm(time.strptime(stamp, "%Y%m%dT%H%M%S")))
     except ValueError:
         return None
-
-
-def _label_from_folder(path: Path, kind: str, progress: Mapping[str, Any]) -> str:
-    """A name for a job whose server never wrote one, from what its folder holds."""
-    if kind == "train" and (path / "settings.json").is_file():
-        try:
-            settings = json.loads((path / "settings.json").read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            settings = {}
-        if settings:
-            return job_label(settings)
-    if kind == "explain":
-        result = progress.get("result") or {}
-        bits = [str(progress[key]) for key in ("method", "scope") if progress.get(key)]
-        if result.get("directory"):
-            bits.append(str(result["directory"]))
-        return " · ".join(bits) or "Explanation"
-    return f"{kind} job"
 
 
 def _describe_job_folder(path: Path) -> dict[str, Any] | None:
@@ -1068,12 +1143,16 @@ def _describe_job_folder(path: Path) -> dict[str, Any] | None:
             # A job still running when its server stopped never wrote its end.
             status = "interrupted"
     started, finished = recorded.get("started"), recorded.get("finished")
+    command = str(recorded.get("command") or "")
     return _clean({
         "id": path.name,
         "kind": kind,
-        "label": str(recorded.get("label") or _label_from_folder(path, kind, progress)),
+        # Rebuilt rather than read from job.json, so a folder an older server
+        # wrote is named in the same words as a job this server is running.
+        "label": _job_name(path, kind, command, progress, str(
+            recorded.get("label") or _UNNAMED.get(kind, f"{kind} job"))),
         "status": status,
-        "command": str(recorded.get("command") or ""),
+        "command": command,
         "created": recorded.get("created") or _stamp_to_time(parts[0]) or path.stat().st_mtime,
         "started": started,
         "finished": finished,
@@ -1117,8 +1196,8 @@ class JobManager:
         folder.mkdir(parents=True, exist_ok=True)
         return identifier, folder
 
-    def submit_training(self, settings: Mapping[str, Any], label: str) -> Job:
-        """Queue one training run of these settings."""
+    def submit_training(self, settings: Mapping[str, Any]) -> Job:
+        """Queue one training run of these settings, under the name job_label gives it."""
         identifier, folder = self._new_folder("train")
         config_path = folder / "preprocessing_config.yaml"
         config_path.write_text(
@@ -1127,17 +1206,17 @@ class JobManager:
         (folder / "settings.json").write_text(json.dumps(settings, indent=2), encoding="utf-8")
         relative = config_path.relative_to(self.root)
         job = Job(
-            id=identifier, kind="train", label=label, folder=folder,
+            id=identifier, kind="train", label=job_label(settings), folder=folder,
             arguments=train_arguments(settings, config_path, folder / "progress.jsonl"),
             display=" ".join(train_arguments(settings, relative, None, display=True)),
         )
         return self._enqueue(job)
 
-    def submit_explanation(self, request: Mapping[str, Any], label: str) -> Job:
-        """Queue one explanation of a stored run."""
+    def submit_explanation(self, request: Mapping[str, Any]) -> Job:
+        """Queue one explanation of a stored run, under the name explanation_label gives it."""
         identifier, folder = self._new_folder("explain")
         job = Job(
-            id=identifier, kind="explain", label=label, folder=folder,
+            id=identifier, kind="explain", label=explanation_label(request), folder=folder,
             arguments=explain_arguments(request, folder / "progress.jsonl"),
             display=" ".join(explain_arguments(request, None, display=True)),
         )

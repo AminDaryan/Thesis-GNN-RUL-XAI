@@ -608,8 +608,22 @@ running the pipeline on the real FD001 files, and they belong in the thesis.
 
 The bypass-duct pressure `P15` is one of the 14 sensors in the paper's
 adjacency matrix. On the FD001 training set it takes only **two** distinct
-values in 20 631 rows: 21.60 and 21.61. A signal with two levels cannot
-represent gradual wear.
+values in 20 631 rows: 21.60 and 21.61. A single reading with two possible
+levels cannot follow gradual wear.
+
+**Corrected 2026-09-16.** This entry first said a two-level signal "cannot
+represent gradual wear", which is too strong. How *often* the sensor sits at
+its lower level does change with wear. Measured on the FD001 training rows,
+grouped by cycles left before failure:
+
+| Cycles left | more than 125 | 101–125 | 76–100 | 51–75 | 26–50 | 0–25 |
+|---|---|---|---|---|---|---|
+| Rows at 21.60 | 4.00 % | 1.52 % | 1.28 % | 0.52 % | 0.08 % | 0 % |
+
+So `P15` carries a weak sign of wear, not none, which is what the heading
+already says. How weak: its correlation with the capped label is −0.108,
+against −0.678 for `T24`, −0.757 for `T50` and −0.775 for `Ps30`. It was
+found while checking the Learn pages, by counting the rows at each level.
 
 It is kept here anyway, because the adjacency matrix is defined over the
 paper's fixed 14-sensor set and dropping a node would change the graph the

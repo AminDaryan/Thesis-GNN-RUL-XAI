@@ -6,12 +6,28 @@
 
   var state = {};        // what this machine can do, from /api/state
   var catalog = null;    // every document, from /api/catalog
-  var order = [];        // the reading order, for the previous/next links
-  var results = null;    // runs and assumption entries, fetched once
+  var log = null;        // the assumptions log's entries and last re-check, fetched once
 
   var content = document.getElementById("content");
   var sidebar = document.getElementById("sidebar");
   var tocPanel = document.getElementById("toc");
+
+  // The site's own name, as shell.html's <title> gives it, for a tab with no
+  // page of its own to name.
+  var BRAND = document.title;
+
+  // The log whose page carries the result of the last re-check of its numbers.
+  var LOG_PATH = "docs/ASSUMPTIONS.md";
+
+  // Addresses of pages that were removed, and the page that now says the same
+  // thing. A bookmark or an old link lands there instead of on an error.
+  var MOVED = {
+    "explore/graph": "#/doc/docs/learn/02_graphs.md",
+    "figures": "#/doc/docs/learn/02_graphs.md",
+    "explore/architecture": "#/doc/docs/learn/05_the_model.md",
+    "explore/results": "#/explore/playground",
+    "explore/assumptions": "#/doc/docs/ASSUMPTIONS.md"
+  };
 
   // ------------------------------------------------------------- utilities
 
@@ -36,6 +52,11 @@
     });
   }
 
+  // A whole number with a space between thousands, as the figures print it.
+  function spaced(value) {
+    return Number(value).toLocaleString("en").replace(/,/g, " ");
+  }
+
   function get(url) {
     return fetch(url, { headers: { Accept: "application/json" } }).then(function (response) {
       return response.json().then(function (data) {
@@ -53,19 +74,24 @@
     box._timer = setTimeout(function () { box.hidden = true; }, milliseconds || 5000);
   }
 
+  function hideToast() {
+    var box = document.getElementById("toast");
+    clearTimeout(box._timer);
+    box.hidden = true;
+  }
+
   function fixed(value, places) {
     return value === null || value === undefined || isNaN(value)
       ? "—" : Number(value).toFixed(places === undefined ? 2 : places);
   }
 
-  // The heading block every generated page starts with: a small label saying
-  // where the page's contents come from, the title, and one lead sentence.
-  function pageHead(eyebrow, title, lead, extra) {
-    return '<div class="page-head">' +
-      (eyebrow ? '<div class="eyebrow">' + escapeHtml(eyebrow) + "</div>" : "") +
-      '<h1 class="page-title">' + title + "</h1>" +
-      (lead ? '<p class="page-lead">' + lead + "</p>" : "") +
-      (extra || "") + "</div>";
+  // The browser tab names the page alone, in the words the menu uses for it.
+  function setTitle(name) {
+    document.title = name || BRAND;
+  }
+
+  function chip(kind, label) {
+    return '<span class="chip' + (kind ? " chip--" + kind : "") + '">' + escapeHtml(label) + "</span>";
   }
 
   // ----------------------------------------------------------- navigation
@@ -184,7 +210,7 @@
 
   // Which sections the reader has folded away. Kept per browser so the menu
   // opens the way they left it; a browser that refuses storage just gets the
-  // default, which is what openByDefault decides.
+  // default, which is every section folded.
   function foldedSections() {
     try {
       return JSON.parse(localStorage.getItem("docsite-folded") || "{}") || {};
@@ -202,16 +228,18 @@
   function buildSidebar() {
     var folded = foldedSections();
     sidebar.innerHTML = "";
-    sidebar.appendChild(el("a", {
-      class: "nav-link nav-home", href: "#/",
-      html: "<strong>Home</strong><span class='nav-blurb-inline'>What this is, and where to start</span>"
-    }));
+    // The playground is what the site is for, so it is the one link above the
+    // sections, and every section starts folded until the reader opens it.
+    if (catalog.primary) {
+      sidebar.appendChild(el("a", {
+        class: "nav-link nav-primary", href: routeFor(catalog.primary),
+        "data-path": catalog.primary.path,
+        text: catalog.primary.title
+      }));
+    }
 
     catalog.sections.forEach(function (section) {
-      // Learn and Explore are where a new reader starts, so they open by
-      // default. The long reference lists stay folded until asked for.
-      var openByDefault = section.key === "learn" || section.key === "explore";
-      var open = folded[section.key] === undefined ? openByDefault : !folded[section.key];
+      var open = folded[section.key] === undefined ? false : !folded[section.key];
 
       var group = el("section", { class: "nav-section", "data-section": section.key });
 
@@ -224,8 +252,7 @@
           '<svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true">' +
           '<path d="M4 2.5 L8 6 L4 9.5" fill="none" stroke="currentColor" ' +
           'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-          "<span class='nav-toggle-title'>" + escapeHtml(section.title) + "</span>" +
-          "<span class='nav-count'>" + section.documents.length + "</span>"
+          "<span class='nav-toggle-title'>" + escapeHtml(section.title) + "</span>"
       });
 
       var body = el("div", {
@@ -233,17 +260,13 @@
         id: "nav-body-" + section.key,
         hidden: open ? null : "hidden"
       });
-      body.appendChild(el("div", { class: "nav-blurb", text: section.blurb }));
 
       section.documents.forEach(function (doc) {
-        var meta = doc.kind === "notebook" || doc.kind === "explore"
-          ? "" : "<span class='nav-meta'>" + doc.minutes + " min</span>";
         body.appendChild(el("a", {
-          class: "nav-link",
+          class: "nav-link" + (doc.depth ? " nav-link--sub" : ""),
           href: routeFor(doc),
           "data-path": doc.path,
-          html: meta + escapeHtml(doc.title) +
-                (doc.blurb ? "<span class='nav-blurb-inline'>" + escapeHtml(doc.blurb) + "</span>" : "")
+          text: doc.title
         }));
       });
 
@@ -258,19 +281,6 @@
       group.appendChild(body);
       sidebar.appendChild(group);
     });
-
-    // The gallery of every figure is built from the same list the server
-    // draws from, so this link cannot point at a figure that does not exist.
-    var figures = state.figures || [];
-    if (figures.length) {
-      sidebar.appendChild(el("div", { class: "nav-footer" }, [
-        el("a", {
-          class: "nav-link", href: "#/figures", "data-path": "figures",
-          html: "<span class='nav-meta'>" + figures.length + "</span>Every figure" +
-                "<span class='nav-blurb-inline'>All the diagrams, drawn from the repository as it stands</span>"
-        })
-      ]));
-    }
   }
 
   // A page the reader has navigated to must be visible in the menu, even if
@@ -299,14 +309,20 @@
     return "#/doc/" + doc.path;
   }
 
+  // The menu's name for a page, or nothing when the page is not in the menu.
+  function menuName(path) {
+    if (catalog.primary && catalog.primary.path === path) { return catalog.primary.title; }
+    var found = null;
+    catalog.sections.forEach(function (section) {
+      section.documents.forEach(function (doc) { if (doc.path === path) { found = doc.title; } });
+    });
+    return found;
+  }
+
   function markActive(path) {
     Array.prototype.forEach.call(sidebar.querySelectorAll(".nav-link"), function (link) {
       if (link.dataset.path === path) { link.setAttribute("aria-current", "page"); }
       else { link.removeAttribute("aria-current"); }
-    });
-    Array.prototype.forEach.call(sidebar.querySelectorAll(".nav-section"), function (group) {
-      var holdsCurrent = !!group.querySelector('.nav-link[aria-current="page"]');
-      group.classList.toggle("nav-section--current", holdsCurrent);
     });
     if (path) { revealSection(path); }
   }
@@ -361,7 +377,7 @@
   function expandFigures(html) {
     return html.replace(FIGURE_PATTERN, function (whole, name) {
       return '<figure class="figure" data-figure="' + name + '">' +
-             '<div class="loading">Drawing ' + name + '…</div></figure>';
+             '<div class="loading">Drawing the figure…</div></figure>';
     });
   }
 
@@ -371,10 +387,7 @@
       holder.dataset.filled = "1";
       fetch("/api/figure?name=" + encodeURIComponent(holder.dataset.figure))
         .then(function (r) { return r.text(); })
-        .then(function (svg) {
-          var caption = holder.getAttribute("data-caption");
-          holder.innerHTML = svg + (caption ? "<figcaption>" + caption + "</figcaption>" : "");
-        })
+        .then(function (svg) { holder.innerHTML = svg; })
         .catch(function (error) {
           holder.innerHTML = '<div class="figure-notice figure-notice--error">' +
             "<strong>This figure could not be loaded</strong><p>" +
@@ -413,22 +426,34 @@
       argument = argument.slice(0, hashIndex);
     }
 
+    // The site opens on the playground, and a removed page's address opens the
+    // page that took its place. replace() rather than assigning, so the Back
+    // button does not return to an address that only redirects.
+    var moved = MOVED[route.view + (argument ? "/" + argument : "")];
+    if (route.view === "home" || !route.view || moved) {
+      window.location.replace(moved || "#/explore/playground");
+      return;
+    }
+
+    // A menu link is keyed by its catalog path, which for the playground
+    // keeps the "explore/" the address splits off.
+    var path = route.view === "explore" ? "explore/" + argument : argument;
+
     window.scrollTo(0, 0);
     tocPanel.innerHTML = "";
     closeDrawer();
+    setTitle(menuName(path));
     content.innerHTML = '<div class="loading">Loading…</div>';
 
     var done;
-    if (route.view === "home" || !route.view) { done = viewHome(); }
-    else if (route.view === "doc") { done = viewDocument(argument); }
+    if (route.view === "doc") { done = viewDocument(argument); }
     else if (route.view === "notebook") { done = viewNotebook(argument); }
     else if (route.view === "source") { done = viewSource(argument); }
     else if (route.view === "explore") { done = viewExplore(argument); }
     else if (route.view === "entry") { done = viewEntry(argument); }
-    else if (route.view === "figures") { done = viewFigures(); }
     else { done = Promise.resolve(showError("No page at " + route.view, "")); }
 
-    markActive(route.view === "figures" ? "figures" : argument);
+    markActive(path);
     Promise.resolve(done).then(function () {
       if (fragment) {
         var target = document.getElementById(fragment);
@@ -446,196 +471,92 @@
     }));
   }
 
-  function crumbs(parts) {
-    return '<div class="crumbs">' + parts.map(function (part, index) {
-      return (index ? " › " : "") + (part.href
-        ? '<a href="' + part.href + '">' + escapeHtml(part.label) + "</a>"
-        : escapeHtml(part.label));
-    }).join("") + "</div>";
-  }
-
-  // ----------------------------------------------------------- view: home
-
-  function viewHome() {
-    var learn = catalog.sections.filter(function (s) { return s.key === "learn"; })[0];
-    var chips = [];
-    chips.push(chip(state.hasFD001 ? "good" : "warn",
-      state.hasFD001 ? "FD001 data present" : "FD001 data missing"));
-    chips.push(chip(state.torch ? "good" : "", state.torch ? "PyTorch available" : "PyTorch not installed"));
-    chips.push(chip(state.jupyter ? "good" : "", state.jupyter ? "JupyterLab available" : "JupyterLab not installed"));
-    chips.push(chip("", "commit " + state.commit));
-
-    var html = '<div class="hero">' +
-      "<h1>Predicting how much life is left in a jet engine — and explaining the answer</h1>" +
-      "<p>This site is the documentation of a master's thesis that re-implements one " +
-      "published method on the NASA C-MAPSS benchmark, and measures how far the paper " +
-      "alone can carry it. Everything here is generated from the repository as it " +
-      "stands right now.</p>" +
-      '<div class="chips">' + chips.join("") + "</div></div>";
-
-    html += '<div class="section-head"><h2>Start here</h2>' +
-      "<p>Eight pages that build the whole method from nothing. Each one takes a few minutes.</p></div>";
-
-    if (learn && learn.documents.length) {
-      html += '<div class="grid grid--2">' + learn.documents.map(function (doc, index) {
-        return '<a class="card" href="#/doc/' + doc.path + '">' +
-          '<span class="card-step">Step ' + (index + 1) + " · " + doc.minutes + " min</span>" +
-          "<h3>" + escapeHtml(doc.title) + "</h3>" +
-          "<p>" + escapeHtml(doc.blurb) + "</p></a>";
-      }).join("") + "</div>";
-    } else {
-      html += '<div class="error-box"><strong>The taught pages are missing</strong>' +
-        "docs/learn/ holds no Markdown files. Everything else on this site still works.</div>";
-    }
-
-    html += '<div class="section-head"><h2>Or go straight to</h2>' +
-      "<p>The notebooks run the whole chain on the real data. The explorers compute their figures now, from this repository.</p></div>";
-
-    html += '<div class="grid grid--3">' +
-      card("#/notebook/notebooks/01_preprocessing_fd001.ipynb", "Notebook 01",
-           "The raw text files becoming model-ready arrays, with every number shown.") +
-      card("#/notebook/notebooks/02_model_fd001.ipynb", "Notebook 02",
-           "Building the network, training it, scoring it, and testing its sensor graph.") +
-      card("#/notebook/notebooks/xai/01_shap_fd001.ipynb", "Explaining the network",
-           "Exact Shapley values for every sensor, at every cycle of one engine's life.") +
-      card("#/explore/graph", "The sensor graph",
-           "All 14 sensors, their 41 edges, and what three layers can reach.") +
-      card("#/explore/architecture", "The network",
-           "Every layer and its parameter count, built and measured live.") +
-      card("#/explore/results", "Stored runs",
-           "Every result in reports/, with the commit that produced it.") +
-      card("#/explore/assumptions", "Assumptions and findings",
-           "The 22 choices and 11 findings, as cards you can filter.") +
-      "</div>";
-
-    html += '<div class="section-head"><h2>How to read anything on this site</h2>' +
-      "<p>Three kinds of statement appear throughout, and they are never mixed.</p></div>" +
-      '<div class="grid grid--3">' +
-      '<div class="callout callout--paper"><div class="callout-title">The paper says X</div>' +
-      "Verifiable in the PDF, and cited to a table or an equation.</div>" +
-      '<div class="callout callout--choice"><div class="callout-title">We chose Y</div>' +
-      "A judgement call the paper left open. Every one has a numbered entry.</div>" +
-      '<div class="callout callout--measured"><div class="callout-title">We measured Z</div>' +
-      "A result, with the command that produced it and the seeds it averages.</div>" +
-      "</div>";
-
-    content.innerHTML = html;
-    return Promise.resolve();
-  }
-
-  function chip(kind, label) {
-    return '<span class="chip' + (kind ? " chip--" + kind : "") + '">' + escapeHtml(label) + "</span>";
-  }
-
-  function card(href, title, body) {
-    return '<a class="card" href="' + href + '"><h3>' + escapeHtml(title) + "</h3><p>" +
-      escapeHtml(body) + "</p></a>";
-  }
-
   // ------------------------------------------------------- view: document
 
   function viewDocument(path) {
     return get("/api/doc?path=" + encodeURIComponent(path)).then(function (doc) {
       var meta = [];
-      if (doc.minutes) { meta.push("about " + doc.minutes + " minutes"); }
-      if (doc.words) { meta.push(doc.words.toLocaleString("en") + " words"); }
+      if (doc.minutes) { meta.push("about " + doc.minutes + (doc.minutes === 1 ? " minute" : " minutes")); }
       meta.push("<code>" + escapeHtml(doc.path) + "</code>");
 
       content.innerHTML =
-        crumbs([{ label: "Home", href: "#/" }, { label: doc.title }]) +
         '<article class="prose">' + expandFigures(doc.html) + "</article>" +
-        '<div class="page-meta">' + meta.join(" · ") + "</div>" +
-        neighbourLinks(path);
+        '<div class="page-meta">' + meta.join(" · ") + "</div>";
 
+      if (path === LOG_PATH) { showVerification(content.querySelector(".prose h1")); }
       wrapTables(content);
       fillFigures(content);
       buildToc(doc.headings);
       typeset(content);
-      document.title = doc.title + " — Thesis documentation";
+      setTitle(doc.title);
     }).catch(function (error) {
       showError("That document could not be shown", error.message);
     });
   }
 
-  function neighbourLinks(path) {
-    var index = order.indexOf(path);
-    if (index < 0) { return ""; }
-    var previous = order[index - 1];
-    var next = order[index + 1];
-    if (!previous && !next) { return ""; }
-    var html = '<nav class="footer-nav">';
-    if (previous) {
-      html += '<a href="' + routeForPath(previous) + '"><small>Previous</small><span>' +
-        escapeHtml(titleOf(previous)) + "</span></a>";
-    }
-    if (next) {
-      html += '<a class="next" href="' + routeForPath(next) + '"><small>Next</small><span>' +
-        escapeHtml(titleOf(next)) + "</span></a>";
-    }
-    return html + "</nav>";
+  function loadLog() {
+    if (log) { return Promise.resolve(log); }
+    return get("/api/results").then(function (data) { log = data; return data; });
   }
 
-  function documentAt(path) {
-    var found = null;
-    catalog.sections.forEach(function (section) {
-      section.documents.forEach(function (doc) { if (doc.path === path) { found = doc; } });
+  // scripts/verify_claims.py recomputes the numbers the log quotes and fails
+  // if one disagrees. Its last result says how far the log can be trusted, so
+  // it sits under the log's title.
+  function showVerification(heading) {
+    if (!heading) { return; }
+    loadLog().then(function (data) {
+      if (!heading.isConnected) { return; }
+      heading.insertAdjacentHTML("afterend", '<div class="chips">' + verificationChip(data.verification) + "</div>");
+    }).catch(function () { /* the log still reads without it */ });
+  }
+
+  function verificationChip(checked) {
+    if (!checked) {
+      return chip("warn", "The numbers in this log have not been re-checked");
+    }
+    var when = checked.finished.slice(0, 4) + "-" + checked.finished.slice(4, 6) + "-" +
+      checked.finished.slice(6, 8);
+    var claims = spaced(checked.checked) + (checked.checked === 1 ? " claim" : " claims");
+    return chip(
+      checked.failed ? "warn" : "good",
+      checked.failed
+        ? spaced(checked.failed) + " of " + claims + " disagree (" + when + ")"
+        : claims + " re-checked, none disagree (" + when + ")"
+    );
+  }
+
+  function viewEntry(identifier) {
+    return loadLog().then(function (data) {
+      var entry = data.entries.filter(function (e) { return e.identifier === identifier; })[0];
+      if (!entry) {
+        showError("No entry called " + identifier, "The log holds " + data.entries.length + " entries.");
+        return;
+      }
+      window.location.replace("#/doc/" + LOG_PATH + "#" + entry.anchor);
     });
-    return found;
-  }
-
-  function titleOf(path) {
-    var doc = documentAt(path);
-    return doc ? doc.title : path;
-  }
-
-  function routeForPath(path) {
-    var doc = documentAt(path);
-    return doc ? routeFor(doc) : "#/doc/" + path;
   }
 
   // ------------------------------------------------------- view: notebook
 
   function viewNotebook(path) {
     return get("/api/notebook?path=" + encodeURIComponent(path)).then(function (notebook) {
-      var style = document.getElementById("notebook-style") || el("style", { id: "notebook-style" });
-      style.textContent = scopeNotebookCss(notebook.css);
-      document.head.appendChild(style);
-
-      var runHere = state.jupyter
-        ? '<button class="button" id="open-in-jupyter" type="button">Open this notebook in JupyterLab</button>'
-        : '<span class="chip">JupyterLab is not installed — install it with <code>pip install -e .[notebook]</code> to run these cells</span>';
+      var run = state.jupyter
+        ? 'Saved outputs. <button class="button button--small" id="open-in-jupyter" type="button">Open in JupyterLab</button>'
+        : "Saved outputs. To run these cells, install JupyterLab with <code>pip install -e .[notebook]</code>.";
 
       content.innerHTML =
-        crumbs([{ label: "Home", href: "#/" }, { label: "Notebooks" }, { label: notebook.title }]) +
-        pageHead("Notebook", escapeHtml(titleOf(path) || notebook.title),
-          "You are reading the outputs this notebook was saved with, produced on the real " +
-          "FD001 files. Nothing is being executed here.",
-          '<div class="chips">' + runHere + "</div>") +
+        '<p class="notebook-bar">' + run + "</p>" +
         '<div class="notebook-frame">' + notebook.html + "</div>";
 
       var button = document.getElementById("open-in-jupyter");
       if (button) {
-        button.addEventListener("click", function () { launchJupyter(path); });
+        button.addEventListener("click", function () { launchJupyter(path, button); });
       }
       buildToc(headingsIn(content));
       typeset(content);
-      document.title = notebook.title + " — Thesis documentation";
+      setTitle(notebook.title);
     }).catch(function (error) {
       showError("That notebook could not be shown", error.message);
-    });
-  }
-
-  function scopeNotebookCss(css) {
-    if (!css) { return ""; }
-    // nbconvert's stylesheet styles bare tags, which would leak into the site.
-    // Every rule is confined to the frame the notebook is drawn inside.
-    return css.replace(/(^|\})\s*([^@{}]+)\{/g, function (whole, brace, selectors) {
-      var scoped = selectors.split(",").map(function (selector) {
-        selector = selector.trim();
-        if (!selector || selector.charAt(0) === "@") { return selector; }
-        return ".notebook-frame " + selector;
-      }).join(", ");
-      return brace + " " + scoped + "{";
     });
   }
 
@@ -656,12 +577,12 @@
 
   function viewSource(path) {
     return get("/api/source?path=" + encodeURIComponent(path)).then(function (file) {
+      // The path is the page's name, and its ending already says the file's type.
       content.innerHTML =
-        crumbs([{ label: "Home", href: "#/" }, { label: "Source" }, { label: file.title }]) +
-        pageHead("Source file", "<code>" + escapeHtml(file.path) + "</code>", "",
-          '<div class="page-meta">' + file.lines + " lines</div>") +
+        '<div class="page-head"><h1 class="page-title"><code>' + escapeHtml(file.path) + "</code></h1>" +
+        '<div class="page-meta">' + spaced(file.lines) + " lines</div></div>" +
         '<article class="prose">' + file.html + "</article>";
-      document.title = file.title + " — Thesis documentation";
+      setTitle(file.title);
     }).catch(function (error) {
       showError("That file could not be shown", error.message);
     });
@@ -670,262 +591,13 @@
   // -------------------------------------------------------- view: explore
 
   function viewExplore(name) {
-    if (name === "graph") { return exploreGraph(); }
-    if (name === "architecture") { return exploreArchitecture(); }
-    if (name === "results") { return exploreResults(); }
-    if (name === "assumptions") { return exploreAssumptions(); }
     if (name === "playground" && window.thesisPlayground) {
       return window.thesisPlayground(content, {
         get: get, toast: toast, fixed: fixed, escapeHtml: escapeHtml, chip: chip,
-        crumbs: crumbs, buildToc: buildToc, pageHead: pageHead
+        buildToc: buildToc
       });
     }
-    showError("No explorer called " + name, "");
-    return Promise.resolve();
-  }
-
-  function figureBlock(name, caption) {
-    return '<figure class="figure" data-figure="' + name + '" data-caption="' +
-      escapeHtml(caption) + '"><div class="loading">Drawing…</div></figure>';
-  }
-
-  function exploreGraph() {
-    return get("/api/graph").then(function (data) {
-      var report = data.report;
-      var rows = Object.keys(report.degrees).map(function (symbol) {
-        return "<tr><td><code>" + symbol + "</code></td><td>" +
-          escapeHtml(data.descriptions[symbol] || "") + "</td>" +
-          '<td class="num">' + report.degrees[symbol] + "</td>" +
-          "<td>" + escapeHtml(data.stations[symbol] || "") + "</td>" +
-          '<td class="num">' + data.neighbours[symbol].join(", ") + "</td></tr>";
-      }).join("");
-
-      content.innerHTML =
-        crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "The sensor graph" }]) +
-        pageHead("Computed now, from graph/adjacency.py", "The sensor graph",
-          "The paper prints this graph twice — as Table 3 and again as Fig. 3 — and the two agree. " +
-          "Everything below is measured from the transcription in this repository, not copied from " +
-          "the paper's text.",
-          '<div class="chips">' +
-            chip("", report.n_nodes + " sensors") +
-            chip("", report.n_edges + " edges") +
-            chip("", "density " + fixed(report.density, 3)) +
-            chip("", "diameter " + report.diameter) +
-            chip(report.is_connected ? "good" : "warn", report.is_connected ? "connected" : "disconnected") +
-            chip("warn", "articulation point: " + report.articulation_points.join(", ")) +
-          "</div>") +
-        figureBlock("sensor-graph", "<strong>The graph itself.</strong> Node size is the number of " +
-          "neighbours; colour is the engine station the sensor sits at. T24 is circled because removing " +
-          "it would split the graph in two — the bypass-side sensors reach the core through it and " +
-          "nothing else.") +
-        figureBlock("message-passing", "<strong>What one graph layer does.</strong> A value at P15 " +
-          "spreads one edge per layer. After three layers it has reached everything except W32, which " +
-          "is four edges away and can never be mixed with it.") +
-        figureBlock("reach", "<strong>Why three layers is a real constraint.</strong> Of the 91 sensor " +
-          "pairs, four are further apart than the network is deep.") +
-        figureBlock("degrees", "<strong>How central the paper considers each sensor.</strong> " +
-          "Read off the transcribed Table 3.") +
-        figureBlock("adjacency", "<strong>The same graph as a table.</strong> The normalisation on the " +
-          "right is assumption A-21: the paper describes the step but never prints the formula.") +
-        '<div class="section-head"><h2>Every sensor, and who it is wired to</h2></div>' +
-        '<div class="table-wrap"><table class="data-table"><thead><tr><th>Sensor</th>' +
-        "<th>What it measures</th><th>Neighbours</th><th>Station</th><th>Wired to</th>" +
-        "</tr></thead><tbody>" + rows + "</tbody></table></div>";
-
-      fillFigures(content);
-      buildToc([]);
-      document.title = "The sensor graph — Thesis documentation";
-    }).catch(function (error) {
-      showError("The graph could not be measured", error.message);
-    });
-  }
-
-  function exploreArchitecture() {
-    return get("/api/model").then(function (data) {
-      if (data.error) {
-        content.innerHTML = '<div class="figure-notice figure-notice--torch"><strong>' +
-          "PyTorch is not installed</strong><p>" + escapeHtml(data.error) + "</p></div>";
-        return;
-      }
-      var rows = data.layers.map(function (layer) {
-        return "<tr><td><strong>" + escapeHtml(layer.layer) + "</strong></td>" +
-          "<td>" + escapeHtml(layer.type) + "</td>" +
-          "<td><code>" + escapeHtml(layer["in"]) + "</code></td>" +
-          "<td><code>" + escapeHtml(layer.out) + "</code></td>" +
-          '<td class="num">' + Number(layer.parameters).toLocaleString("en") + "</td>" +
-          "<td>" + escapeHtml(layer.activation) + "</td></tr>";
-      }).join("");
-
-      content.innerHTML =
-        crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "The network" }]) +
-        pageHead("Built now, from models/estgnn.py", "The network",
-          "This page builds the model in memory and reads its layers back. The parameter counts " +
-          "below are what the code really has, not what the documentation claims it has.",
-          '<div class="chips">' +
-            chip("good", Number(data.parameters).toLocaleString("en") + " trainable parameters") +
-            chip("", data.nodes + " nodes") +
-            chip("", data.in_features + " feature per node") +
-            chip("", "ceiling " + data.rul_max + " cycles") +
-          "</div>") +
-        figureBlock("architecture", "<strong>Every layer of the paper's Table 4.</strong> The " +
-          "per-sensor LSTM the paper places in front of the graph layers is deliberately absent " +
-          "(assumption A-11), so results from this network compare against the paper's own " +
-          "&ldquo;ESTGNN w/o LSTM&rdquo; row and never its headline figures.") +
-        '<div class="section-head"><h2>Layer by layer</h2>' +
-        "<p>The same table the paper prints, produced by <code>ESTGNN.layer_summary()</code>.</p></div>" +
-        '<div class="table-wrap"><table class="data-table"><thead><tr><th>Layer</th><th>Type</th>' +
-        "<th>In</th><th>Out</th><th>Parameters</th><th>Activation</th></tr></thead><tbody>" +
-        rows + "</tbody></table></div>" +
-        '<div class="callout callout--measured"><div class="callout-title">Why the last layer matters</div>' +
-        "The network ends in a sigmoid, so its output is a fraction between 0 and 1 that is multiplied " +
-        "by the ceiling. It is therefore <em>structurally incapable</em> of predicting more than " +
-        data.rul_max + " cycles. That is why the test labels are capped too (assumption A-02), and " +
-        "why that cap must be stated whenever these numbers are compared with published ones.</div>";
-
-      fillFigures(content);
-      buildToc([]);
-      document.title = "The network — Thesis documentation";
-    }).catch(function (error) {
-      showError("The network could not be built", error.message);
-    });
-  }
-
-  function exploreResults() {
-    return loadResults().then(function (data) {
-      var runs = data.runs;
-      var rows = runs.map(function (run) {
-        return "<tr>" +
-          "<td>" + escapeHtml(run.finished.replace("T", " ").replace("Z", "")) + "</td>" +
-          "<td><code>" + escapeHtml(run.commit) + "</code>" +
-            (run.dirty ? ' <span class="status status--reversed">dirty</span>' : "") + "</td>" +
-          "<td>" + escapeHtml(run.graph) + " / " + escapeHtml(run.adjacency_normalization) + "</td>" +
-          '<td class="num">' + run.seeds + "</td>" +
-          "<td>" + escapeHtml(run.split) + "</td>" +
-          '<td class="num">' + fixed(run.mean.rmse) +
-            (run.std.rmse === null ? "" : ' <span class="sd">± ' + fixed(run.std.rmse) + "</span>") + "</td>" +
-          '<td class="num">' + fixed(run.mean.score, 0) + "</td>" +
-          '<td class="num">' + fixed(run.mean.r2, 3) + "</td>" +
-          '<td class="num">' + fixed(run.mean.asue) + "</td>" +
-          "</tr>";
-      }).join("");
-
-      var dirty = runs.filter(function (r) { return r.dirty; }).length;
-      var multi = runs.filter(function (r) { return r.seeds >= 5; }).length;
-
-      content.innerHTML =
-        crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "Stored runs" }]) +
-        pageHead("Read from reports/", "Stored runs",
-          "Every run this repository has kept, newest first, each with the commit that produced " +
-          "it. A run whose commit ends in <code>-dirty</code> was made from a working tree with " +
-          "uncommitted changes, so it cannot be reproduced exactly from any committed state.",
-          '<div class="chips">' +
-            chip("", runs.length + " stored runs") +
-            chip("good", multi + " over five or more seeds") +
-            chip(dirty ? "warn" : "good", dirty + " from a dirty tree") +
-          "</div>") +
-        '<div class="callout callout--choice"><div class="callout-title">One seed is not a result</div>' +
-        "Anything quoted as a result of this project is a mean over at least five seeds, with its " +
-        "standard deviation. The seed varies the train/validation split as well as the initialisation " +
-        "and the batch order, so the spread is what a genuine repetition would show. Rows below with a " +
-        "seed count under five are diagnostic runs, not results.</div>" +
-        '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-        "<th>Finished (UTC)</th><th>Commit</th><th>Graph / normalisation</th><th>Seeds</th>" +
-        "<th>Split</th><th>RMSE</th><th>NASA score</th><th>R²</th><th>ASUE</th>" +
-        "</tr></thead><tbody>" + rows + "</tbody></table></div>";
-
-      buildToc([]);
-      document.title = "Stored runs — Thesis documentation";
-    }).catch(function (error) {
-      showError("The stored runs could not be read", error.message);
-    });
-  }
-
-  function exploreAssumptions() {
-    return loadResults().then(function (data) {
-      var entries = data.entries;
-      var assumptions = entries.filter(function (e) { return e.kind === "assumption"; });
-      var findings = entries.filter(function (e) { return e.kind === "finding"; });
-
-      function cardFor(entry) {
-        return '<div class="entry-card" data-kind="' + entry.kind + '" data-status="' + entry.status + '">' +
-          "<header><span class='entry-id'>" + entry.identifier + "</span>" +
-          "<h3>" + escapeHtml(entry.title) + "</h3>" +
-          '<span class="status status--' + entry.status + '">' + entry.status + "</span></header>" +
-          "<p>" + escapeHtml(entry.summary) + "</p>" +
-          (entry.where ? '<div class="where">' + escapeHtml(entry.where) + "</div>" : "") +
-          "<p style='margin:8px 0 0'><a href=\"#/doc/docs/ASSUMPTIONS.md#" + entry.anchor +
-          "\">Read the full entry →</a></p></div>";
-      }
-
-      content.innerHTML =
-        crumbs([{ label: "Home", href: "#/" }, { label: "Explore" }, { label: "Assumptions and findings" }]) +
-        pageHead("Parsed from docs/ASSUMPTIONS.md", "Assumptions and findings",
-          "An <strong>assumption</strong> is a choice this project had to make because the paper " +
-          "does not specify it. A <strong>finding</strong> is something established about the paper " +
-          "from the data. They are kept apart on purpose: one is ours, the other is a fact about the " +
-          "source.",
-          '<div class="chips">' +
-            chip("", assumptions.length + " assumptions") +
-            chip("", findings.length + " findings") +
-            chip("warn", entries.filter(function (e) { return e.status !== "active"; }).length +
-                 " withdrawn, reversed or superseded") +
-            verificationChip(data.verification) +
-          "</div>") +
-        '<div class="section-head"><h2>Assumptions — choices we made</h2>' +
-        "<p>Each appears in the code as a comment beginning <code>ASSUMPTION</code>, at the point where it is used.</p></div>" +
-        '<div class="grid grid--2">' + assumptions.map(cardFor).join("") + "</div>" +
-        '<div class="section-head"><h2>Findings — facts about the paper</h2>' +
-        "<p>Established from the data, not chosen. Several of these correct an earlier claim of this project's own.</p></div>" +
-        '<div class="grid grid--2">' + findings.map(cardFor).join("") + "</div>";
-
-      buildToc([]);
-      document.title = "Assumptions and findings — Thesis documentation";
-    }).catch(function (error) {
-      showError("The assumptions log could not be read", error.message);
-    });
-  }
-
-  // scripts/verify_claims.py recomputes the figures the log quotes and fails
-  // if one disagrees. Its last result is how far the log can be trusted, so
-  // it belongs beside the entries rather than buried in reports/.
-  function verificationChip(checked) {
-    if (!checked) {
-      return chip("warn", "verify_claims.py has not been run");
-    }
-    var when = checked.finished.slice(0, 8);
-    return chip(
-      checked.failed ? "warn" : "good",
-      checked.failed
-        ? checked.failed + " of " + checked.checked + " claims disagree (" + when + ")"
-        : checked.checked + " claims re-checked, none disagree (" + when + ")"
-    );
-  }
-
-  function loadResults() {
-    if (results) { return Promise.resolve(results); }
-    return get("/api/results").then(function (data) { results = data; return data; });
-  }
-
-  function viewEntry(identifier) {
-    return loadResults().then(function (data) {
-      var entry = data.entries.filter(function (e) { return e.identifier === identifier; })[0];
-      if (!entry) {
-        showError("No entry called " + identifier, "The log holds " + data.entries.length + " entries.");
-        return;
-      }
-      window.location.replace("#/doc/docs/ASSUMPTIONS.md#" + entry.anchor);
-    });
-  }
-
-  function viewFigures() {
-    content.innerHTML =
-      crumbs([{ label: "Home", href: "#/" }, { label: "Figures" }]) +
-      pageHead("Every figure", "Figures", "Each is drawn from this repository when the page loads.") +
-      (state.figures || []).map(function (name) {
-        return "<div class='section-head'><h2>" + escapeHtml(name) + "</h2></div>" +
-          figureBlock(name, "");
-      }).join("");
-    fillFigures(content);
+    showError("No page called " + name, "");
     return Promise.resolve();
   }
 
@@ -946,25 +618,29 @@
         get("/api/search?q=" + encodeURIComponent(query)).then(function (data) {
           panel.innerHTML = "";
           if (!data.hits.length) {
-            panel.appendChild(el("div", { class: "search-empty", text: "Nothing matches “" + query + "”." }));
+            panel.appendChild(el("div", { class: "search-note", text: "Nothing matches “" + query + "”." }));
           } else {
             var byDocument = {};
             data.hits.forEach(function (hit) {
               (byDocument[hit.path] = byDocument[hit.path] || []).push(hit);
             });
+            // Each document is named once, over the lines that matched in it.
             Object.keys(byDocument).slice(0, 12).forEach(function (path) {
-              byDocument[path].slice(0, 3).forEach(function (hit) {
+              var hits = byDocument[path];
+              panel.appendChild(el("div", { class: "search-where", text: hits[0].title }));
+              hits.slice(0, 3).forEach(function (hit) {
                 panel.appendChild(el("a", {
                   class: "search-hit",
                   href: "#/doc/" + hit.path,
-                  html: "<span class='where'>" + escapeHtml(hit.title) + " · line " + hit.line +
-                        "</span><span class='line'>" + mark(hit.context, query) + "</span>"
+                  html: mark(hit.context, query)
                 }));
               });
             });
+            var documents = Object.keys(byDocument).length;
             panel.appendChild(el("div", {
-              class: "search-empty",
-              text: data.hits.length + " matches in " + Object.keys(byDocument).length + " documents."
+              class: "search-note",
+              text: spaced(data.hits.length) + (data.hits.length === 1 ? " match" : " matches") +
+                " in " + spaced(documents) + (documents === 1 ? " document." : " documents.")
             }));
           }
           panel.hidden = false;
@@ -996,51 +672,33 @@
 
   // -------------------------------------------------------------- Jupyter
 
-  function initJupyter() {
-    var button = document.getElementById("jupyter-button");
-    var dot = document.getElementById("jupyter-dot");
-
-    function paint(status) {
-      if (status.running) { dot.dataset.state = "running"; button.title = "JupyterLab is running at " + status.url; }
-      else if (status.installed) { dot.dataset.state = "ready"; button.title = "Start JupyterLab on this project"; }
-      else { dot.dataset.state = "absent"; button.title = "JupyterLab is not installed"; }
-    }
-
-    get("/api/jupyter").then(paint).catch(function () { dot.dataset.state = "absent"; });
-    button.addEventListener("click", function () { launchJupyter(null); });
-  }
-
-  function launchJupyter(notebookPath) {
-    var dot = document.getElementById("jupyter-dot");
-    var button = document.getElementById("jupyter-button");
-
+  // Opens one notebook in JupyterLab, starting JupyterLab first if this site
+  // has not. The window that opens is the confirmation; a message says where
+  // JupyterLab is only when the browser blocked that window.
+  function launchJupyter(notebookPath, button) {
+    button.disabled = true;
     get("/api/jupyter").then(function (status) {
-      if (status.running) { openLab(status.url, notebookPath); return; }
+      if (status.running) { return status; }
       if (!status.installed) {
-        toast("JupyterLab is not installed in this environment. Install it with " +
-              "pip install -e .[notebook], then start this site again. The notebooks " +
-              "can still be read here in full.", 10000);
-        return;
+        throw new Error("JupyterLab is not installed. Install it with pip install -e .[notebook].");
       }
-      dot.dataset.state = "busy";
-      button.disabled = true;
-      toast("Starting JupyterLab. This takes a few seconds…", 20000);
-      fetch("/api/jupyter", { method: "POST" })
-        .then(function (response) { return response.json().then(function (d) {
-          if (!response.ok) { throw new Error(d.error || response.statusText); }
-          return d;
-        }); })
-        .then(function (started) {
-          dot.dataset.state = "running";
-          button.disabled = false;
-          toast("JupyterLab is running.", 4000);
-          openLab(started.url, notebookPath);
-        })
-        .catch(function (error) {
-          dot.dataset.state = "ready";
-          button.disabled = false;
-          toast("JupyterLab did not start: " + error.message, 12000);
+      toast("Starting JupyterLab. This takes a few seconds…", 60000);
+      return fetch("/api/jupyter", { method: "POST" }).then(function (response) {
+        return response.json().then(function (started) {
+          if (!response.ok) { throw new Error("JupyterLab did not start: " + (started.error || response.statusText)); }
+          return started;
         });
+      });
+    }).then(function (running) {
+      hideToast();
+      var address = labAddress(running.url, notebookPath);
+      if (!window.open(address, "jupyterlab")) {
+        toast("JupyterLab is running at " + address, 30000);
+      }
+    }).catch(function (error) {
+      toast(error.message, 12000);
+    }).then(function () {
+      button.disabled = false;
     });
   }
 
@@ -1050,7 +708,6 @@
   // The path is rebuilt rather than appended to, because appending to an
   // address that already ends in /lab produced /lab/lab/tree/... and a 404.
   function labAddress(url, notebookPath) {
-    if (!notebookPath) { return url; }
     try {
       var parsed = new URL(url);
       var base = parsed.pathname.replace(/\/lab\/?$/, "").replace(/\/$/, "");
@@ -1061,21 +718,7 @@
     }
   }
 
-  function openLab(url, notebookPath) {
-    window.open(labAddress(url, notebookPath), "jupyterlab");
-  }
-
   // ----------------------------------------------------------------- boot
-
-  function readingOrder() {
-    var paths = [];
-    catalog.sections.forEach(function (section) {
-      section.documents.forEach(function (doc) {
-        if (doc.kind !== "explore") { paths.push(doc.path); }
-      });
-    });
-    return paths;
-  }
 
   initTheme();
   loadMath();
@@ -1083,14 +726,12 @@
   Promise.all([get("/api/state"), get("/api/catalog")]).then(function (loaded) {
     state = loaded[0];
     catalog = loaded[1];
-    order = readingOrder();
     // A server too old to say when it started cannot run the check at all,
     // and is older than this page, which is the same thing.
     document.getElementById("stale").hidden = !(state.stale || state.started === undefined);
     buildSidebar();
     initNav();
     initSearch();
-    initJupyter();
     window.addEventListener("hashchange", navigate);
     navigate();
   }).catch(function (error) {

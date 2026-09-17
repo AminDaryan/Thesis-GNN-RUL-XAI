@@ -3,32 +3,30 @@
 ## Why a number is not enough
 
 Suppose the model says an engine has 40 cycles left. A maintenance engineer has
-to decide whether to act on that. The first question they will ask is *why* —
-what in the readings makes this engine look like a 40-cycle engine?
+to decide whether to act on that, and will first ask *why*: what in the readings
+makes this engine look like a 40-cycle engine?
 
-Without an answer, the number is unusable for a safety decision. You cannot
-distinguish a model that has learned genuine degradation from one that has
-latched onto an artefact of how the data was collected, and you cannot tell an
-engineer what to inspect.
+Without an answer, the engineer cannot tell a model that has learned genuine
+wear from one that has latched onto an artefact of how the data was collected,
+and does not know what to inspect.
 
 **Explainable artificial intelligence**, or **XAI**, is the family of methods
-that answer the "why" question — typically by saying which inputs mattered most
-for a particular prediction. Combining a graph-based model with an explanation
-method is the subject of the thesis this repository supports.
+that answer the "why" question, typically by saying which inputs mattered most
+for a particular prediction.
 
 ---
 
 ## Dividing credit fairly
 
-The explanation method used here comes from an unexpected place:
-**cooperative game theory**, the branch of mathematics that studies how a group
-of players who achieve something together should divide the credit for it.
+The explanation method used here comes from **cooperative game theory**, the
+branch of mathematics that studies how a group of players who achieve something
+together should divide the credit for it.
 
-The problem is genuinely hard. Imagine three people building something. You
-cannot just measure what each contributes alone, because contributions
-interact: two of them may be useless separately and excellent together. You
-cannot measure what is lost when each leaves, either, because that
-double-counts overlapping contributions.
+The problem is hard. Imagine three people building something. You cannot just
+measure what each contributes alone, because contributions interact: two of
+them may be useless separately and excellent together. You cannot measure what
+is lost when each leaves, either: each of those two would be credited with
+everything they achieve together, so their joint result would be counted twice.
 
 In 1953 Lloyd Shapley proposed the answer now called the **Shapley value**. It
 asks: for each player, **how much does the result change when that player
@@ -37,23 +35,19 @@ assembled?**
 
 {{figure:shapley}}
 
-With three players there are six orders. In some of them B joins an empty
-group; in others it joins after A, or after C, or after both. B's contribution
-is different in each case, and the Shapley value is the average across all of
-them.
+The order matters because B adds a different amount depending on who is already
+there when it joins.
 
-What makes this the *right* answer rather than one plausible answer is that it
-is the only way of dividing credit that satisfies a small set of natural
-fairness conditions simultaneously — among them that the shares add up to the
-total, and that two players who always contribute identically get identical
-shares.
+The Shapley value is the only way of dividing credit that meets a small set of
+fairness conditions at once, among them that the shares add up to the total,
+and that two players who always contribute identically get identical shares.
 
 ---
 
 ## SHAP: the same idea, applied to a model
 
-**SHAP** — *SHapley Additive exPlanations* — applies the Shapley value to
-machine learning. The translation is direct:
+**SHAP**, *SHapley Additive exPlanations*, applies the Shapley value to machine
+learning:
 
 | Game theory | Machine learning |
 |---|---|
@@ -61,47 +55,47 @@ machine learning. The translation is direct:
 | The result the group achieves | The model's prediction |
 | A player's fair share | How much that feature pushed the prediction up or down |
 
-In this project **the players are the 14 sensors**, and each one receives a
-number in flight cycles saying how far it moved the prediction away from the
-average.
+In this project **the players are the 14 sensors**. Each receives an
+**attribution**: a number of flight cycles saying how far that sensor moved the
+prediction away from the one the model makes when every sensor is replaced by
+its average training reading.
 
-The "adds up to the total" property becomes concrete and checkable here: the 14
-attributions plus a baseline must reconstruct the prediction **exactly**. This
-project has a test for precisely that,
-`test_efficiency_holds_to_machine_precision`. It matters more than it sounds.
-That property is what makes the numbers Shapley values rather than merely a
-plausible-looking ranking, and it is the single check that would catch an
-attribution method that had quietly stopped being one.
+The shares-add-up condition makes this checkable: the 14 attributions plus that
+average-reading prediction must equal the prediction itself, and
+`test_efficiency_holds_to_machine_precision` checks that they do to within
+0.0001 cycles. Numbers that failed it could not be Shapley values, however
+plausible their ranking looked.
 
 ---
 
 ## Exact, not sampled
 
-Here is the practical problem. With 14 sensors there are 14 factorial —
-87 178 291 200 — orders to average over. That is not a computation anyone runs.
+With 14 sensors there are 14 factorial (14 × 13 × … × 1), or
+87 178 291 200, orders to average over. That is not a computation anyone runs.
 
-The standard escape is to sample: try a few thousand random orders and average
-those. Most SHAP implementations do this, and the answer is an estimate with
-error bars.
+One way out is to sample: average over a random selection of orders, which
+gives an estimate rather than the exact value.
 
-This project does not need to. What actually matters is not the order but which
-sensors are **present**, and there are only $2^{14} = 16\,384$ distinct groups
-of 14 sensors. Every one can be evaluated. The formula weights each group by
-how many orders produce it — which is where the factorials in the paper's
-Equation 15 come from — and the result is the exact Shapley value, with no
-sampling error at all.
+This project does not need to. What a sensor adds depends only on which sensors
+are already **present**, not on the order they arrived in, and since each
+sensor is either in or out, there are only $2^{14} = 16\,384$ distinct groups
+that can be drawn from 14 sensors, counting the empty group and the full one.
+Every one can be evaluated. The formula weights each group by how many orders
+have exactly that group present when the sensor joins. In the three-player
+figure, B comes first in two of the six orders, after A alone in one, after C
+alone in one, and after both in two, so B's value is (2 × what B adds on its
+own + 1 × what it adds to A + 1 × what it adds to C + 2 × what it adds to A and
+C) ÷ 6. Counting orders this way for 14 sensors is where the factorials in the
+paper's Equation 15 come from, and the result is the exact Shapley value, with
+no sampling error at all.
 
-The cost is 16 384 runs of the network per window explained, which for a
-network of this size is seconds. The code refuses outright above 20 sensors,
-where the approach stops being reasonable, rather than silently switching to an
-approximation.
+The cost is 16 384 runs of the network per prediction explained. Each extra
+sensor doubles that, to 1 048 576 runs at 20 sensors, and the code refuses more
+than 20 rather than silently switching to sampling.
 
 ---
 
 ## What "removing a sensor" has to mean
-
-There is a subtlety the definition forces on us, and it is a good example of
-the kind of gap this project documents.
 
 The Shapley value needs to know what the model predicts from a *group* of
 sensors — say, 13 of the 14. But the network takes exactly 14 inputs. It cannot
@@ -109,90 +103,58 @@ be handed 13. Something has to occupy the fourteenth slot.
 
 The paper's Equation 15 requires this quantity and never says what it puts
 there. **This project replaces an absent sensor with its average reading across
-the training data** — the intuition being "this sensor is at its typical value,
-so it tells us nothing in particular" (assumption A-20).
+the training data**, so the model is shown "this sensor is at its typical value"
+(assumption A-20).
 
 It is not the only defensible option; substituting zero is another common
-choice. The two have been compared on the same trained model and the same
-windows, and the result is a small lesson in itself.
+choice, and the two have been compared by explaining the same predictions with
+each.
 
-Under the project's **current** scaling, which centres every sensor on its
-training mean, "substitute zero" and "substitute the mean" turn out to be very
-nearly the same instruction written two ways — the two rankings agree with a
-correlation of 0.996. Under the **previous** min-max scaling, where zero is the
-smallest value a sensor ever took rather than its typical one, the same
-comparison said the opposite.
+Under the project's **current** input scaling, which subtracts each sensor's
+training mean so that its typical reading becomes zero, "substitute zero" and
+"substitute the mean" are very nearly the same instruction: on one network
+trained on all 100 training engines, the sensor rankings they produce agree with
+a rank correlation of 0.965, where 1 would mean the same order. Under the
+**previous** min-max scaling, which put each sensor's smallest reading at zero
+instead, the two rankings were unrelated, at −0.16.
 
-So the choice of baseline matters exactly as much as the scaling makes it
-matter, and the original argument for the mean window — that zero would be
-actively misleading — turned out to be true only of the scaling in force when
-it was written. The entry now rests on a different reason that survives the
-change: the training mean keeps the explanation honest in the same sense the
-scaling is, because nothing from the test engines enters it.
-
-The general point is worth carrying away. An explanation method has its own
-assumptions, and an attribution is only as meaningful as the baseline it is
-measured against.
+So how much the stand-in matters depends on the scaling. The mean is kept
+because it stands for a typical reading under any scaling, where zero does so
+only under some, and because it is computed from the training engines alone, so
+nothing from the test engines enters it. An attribution is only as meaningful
+as the value it is measured against.
 
 ---
 
 ## Dynamic: the same calculation at every cycle
 
 A single explanation tells you which sensors drove one prediction. **Dynamic
-SHAP** repeats the calculation at every cycle of an engine's life, producing a
-trace of how the reasoning changes as the engine degrades.
+SHAP** repeats the calculation cycle after cycle along one engine's life,
+producing a trace of how the attributions change as the engine wears.
 
-This is the part of the method with the most obvious practical value. A sensor
-that dominates the explanation only in the last twenty cycles is describing a
-late-stage failure mode; one that matters throughout is describing gradual
-wear. That distinction is what a maintenance engineer can actually act on.
+That shows when in an engine's life the model relies on each sensor: one may
+dominate only in the last twenty cycles, another throughout. It describes the
+model, not the engine: a sensor the model leans on near failure is not thereby
+shown to be where the failure is.
 
-The playground's Explain tab draws this for a stored run, with the paper's own
-figures as the pattern: every sensor's values as a swarm of dots ranked by size
-and coloured by what the sensor was reading, as its Fig. 9, and the same
-ranking as a row of sensors beside it. Explain one engine at every cycle and it
-adds the prediction along that engine's life with the error shaded, as its
-Fig. 7, and one window on the sensor graph with the four largest values in red.
-Ask for Shapley values rather than occlusion and it adds the fifteen graphs of
-its Fig. 10, redrawn from its Table 12, above the same graphs of the stored
-engine.
+The playground's Explain tab draws these attributions for a stored run in the
+layouts the paper uses, and sets one engine's beside the paper's own (its
+Fig. 10).
 
 ---
 
-## A finding worth meeting
+## What SHAP says about the two-value sensor
 
-Recall from page 1 that `P15` takes only two distinct values across the entire
-training set, yet the paper includes it in the graph.
+`P15` takes only two distinct values across the whole training set, yet the
+paper keeps it in the graph. On the network behind the 0.965 above, exact
+Shapley values over every prediction along the lives of three of its training
+engines rank it last of the fourteen sensors on each engine, and the paper's
+Fig. 9 also puts it last. Its attribution is not always near zero, though. On engine 5, whose
+reading switches between the two values 34 times, one prediction gives it an
+attribution 6.8 cycles in size; on engine 25, whose reading never switches, none
+is larger than 1.7 (finding F-05).
 
-What does SHAP say about a sensor that carries almost no information? The
-answer is recorded in the log (finding F-05), and it has a history worth knowing: **the
-first version of that finding was wrong.** It was written from 14 sampled
-windows out of 240, and got both the size of the effect and the mechanism
-behind it wrong. It was corrected after being recomputed over the full set.
-
-The correction is still in the log, marked as one. That is the house style, and
-it is also a warning about attribution methods in general: they produce
-confident-looking numbers, and a confident-looking number computed from a
-non-representative sample looks exactly like a confident-looking number
-computed properly.
-
----
-
-## What you now know
-
-- **XAI** answers "why did the model say that", which a safety decision needs.
-- A **Shapley value** divides credit by averaging a player's contribution over
-  every joining order, and it is the unique method satisfying a set of natural
-  fairness conditions.
-- **SHAP** makes the sensors the players and the prediction the result; the
-  attributions plus a baseline must reconstruct the prediction exactly, and a
-  test enforces that.
-- This implementation is **exact** — all 16 384 groups — rather than sampled.
-- Removing a sensor means **substituting its training average**, which is a
-  choice the paper leaves open (A-20) — and how much that choice matters
-  depends on the input scaling.
-- **Dynamic SHAP** repeats the calculation every cycle, showing how the
-  reasoning changes as the engine wears.
-
-Next: the eight preprocessing steps, and the three that decide whether any of
-this is valid.
+Because attributions can vary this much from one prediction to the next, a
+claim about them has to be computed over every prediction. The first version of
+this result used 14 of engine 5's 240 predictions, and got both the size of the
+effect and its cause wrong.

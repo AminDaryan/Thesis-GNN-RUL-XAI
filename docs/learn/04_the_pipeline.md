@@ -3,13 +3,12 @@
 {{figure:pipeline}}
 
 Eight steps stand between the files NASA distributes and the arrays a network
-can be trained on. Their order is not free. Three of them, shown in orange
-above, decide whether the experiment is valid at all — get those wrong and the
-model will report excellent numbers that mean nothing.
-
-Below, each step with what it does and the shape the data has afterwards. Every
-shape was measured by running the pipeline on the real FD001 files with the
-project's default settings.
+can be trained on. Three of them are where **leakage** can happen: information
+the model would not have in real use — about the test engines, or from cycles
+later than the one it predicts at — reaching it anyway. A leak produces
+excellent numbers that mean nothing. Every shape and count below was measured
+by running the pipeline on the real FD001 files with the project's default
+settings.
 
 ---
 
@@ -21,57 +20,53 @@ space-separated, with no header row; the 26 columns are the engine number, the
 cycle number, three operating settings and 21 sensors.
 
 The remaining life at every training row is worked out here by counting
-backwards from each engine's last cycle.
+backwards from each engine's last cycle, and added as a 27th column.
 
 **After this step: 20 631 training rows, 27 columns.**
 
 ## 2 — Diagnose
 
-Before anything is thrown away, the data is asked which sensors carry
-information. Two tests: does the sensor ever change at all, and does it take at
+Before anything is thrown away, each sensor is checked for whether it carries
+any information. Two tests: does it ever change at all, and does it take at
 least three distinct values?
 
-This step **only reports**. It never changes which sensors are used. It exists
-so the paper's selection can be checked against the data rather than taken on
-trust — and it is what turned up that `P15` takes only two distinct values
-yet is kept by the paper (finding F-01).
+This step **only reports**. It exists so the paper's selection can be checked
+against the data rather than taken on trust — and it is what turned up that
+`P15` takes only two distinct values yet is kept by the paper (finding F-01).
 
 ## 3 — Select
 
 The paper's 14 sensors are kept, **in the exact order its Table 3 uses**.
 
-That order is load-bearing and must never change. The sensor graph is stored as
-a plain grid of numbers whose rows are matched to sensors by position alone, so
-reordering the list would quietly connect the wrong sensors to each other and
-leave everything apparently working. The code asserts the order the moment it
-is imported.
+The order matters because the sensor graph is stored as a plain grid of numbers
+whose rows are matched to sensors by position alone: reordering the list would
+quietly connect the wrong sensors to each other and leave everything apparently
+working.
 
 **After this step: 14 sensor columns instead of 21.**
 
 {{figure:correlation}}
 
-The paper's Fig. 5 shows how it chose: a table of the correlation between
-every pair of columns of FD001 — the engine number, the cycle, the two
-operating settings that vary, and the sensors — computed after the columns
-that never change were dropped, and its Section 3.2.2 says the selection then
-removed features whose correlation with another was above 0.95. The figure
-above is the same table computed here from the training file, with the
-paper's fourteen sensors in its order. The paper prints one value per cell, so
-the two can be set beside each other cell by cell.
+The paper's Fig. 5 prints the correlation between every pair of eighteen FD001
+columns: the engine number, the cycle, the two operating settings that vary,
+and the fourteen kept sensors. Its Section 3.2.2 says the selection removed
+columns that never change and columns correlating above 0.95 with another. In
+the figure above, recomputed from the training file, the most strongly
+correlated pair of kept sensors is `Ps30` and `phi` at −0.85 (the minus means
+one falls as the other rises), the same value the paper prints for that cell and
+well short of the 0.95 limit.
 
 ## 4 — Cap the labels
 
-The piecewise-linear ceiling from page 1 is applied: while the engine is
-healthy the label is held at 125, and it falls by one per cycle after that.
+The piecewise-linear label from page 1 is applied: each label is the smaller of
+the cycles really left and 125, so it holds at 125 until the last 125 cycles and
+then falls by one per cycle.
 
-The same ceiling is applied to the **test** labels as well. That is worth
-stating plainly, because it moves the reported numbers in the model's favour.
-The network's final layer is a sigmoid multiplied by the ceiling, so it is
-structurally incapable of predicting more than 125; leaving a test label at 140
-would charge the model for an error it cannot avoid. Applying the cap is this
-project's choice (assumption A-02), its effect has been measured, and the fact
-that it flatters the numbers must be repeated whenever they are compared with
-published ones.
+The same ceiling is applied to the **test** labels, and that moves the reported
+numbers in the model's favour: the network cannot predict above 125 (the next
+page shows why), so leaving a test label at 140 would charge it for an error it
+cannot avoid. The cap is this project's choice, and it must be stated whenever
+these numbers are compared with published ones (assumption A-02).
 
 ## 5 — Smooth *(leakage-critical)*
 
@@ -81,71 +76,75 @@ current reading and the previous smoothed value:
 
 $$S_t = \alpha X_t + (1 - \alpha) S_{t-1}, \qquad S_1 = X_1$$
 
+Here $X_t$ is the raw reading at cycle $t$, $S_t$ is its smoothed value, and
+$\alpha$, between 0 and 1, is the share of the blend given to the new reading.
+With $\alpha = 0.5$, engine 1's `T50` reads 1400.60 at cycle 1 and 1403.14 at
+cycle 2, so $S_1 = 1400.60$ and $S_2 = 0.5 \times 1403.14 + 0.5 \times 1400.60 = 1401.87$.
+
 {{figure:smoothing}}
 
-Measured over all 100 training engines, the median sensor loses **59.0 %** of
-its cycle-to-cycle jitter while the downward trend survives intact. Thirteen of
-the fourteen sensors land between 56.9 % and 59.1 %. The fourteenth is `P15` at
-49.4 % — the two-level sensor from page 1, behaving differently here as well.
+Over all 100 training engines, the filter removes **59.0 %** of the median
+sensor's jitter, measured as the average size of the jump from one cycle's
+reading to the next.
 
 Two things make this step safe, and both are enforced by tests:
 
 - **The filter only looks backwards.** Every smoothed value depends on the
-  current reading and earlier ones, never a later one. A filter that averaged
-  forwards and backwards would pull information from an engine's future into
-  its present — which is exactly the kind of mistake that produces excellent,
-  meaningless results.
+  current reading and earlier ones, never a later one. A filter that also
+  averaged forwards would carry an engine's future into its present.
 - **Each engine is filtered separately.** Running one filter across the
   concatenated data would blend the end of one engine's life into the start of
   the next.
 
-The strength $\alpha = 0.5$ is this project's reading of the paper (assumption
-A-04). The paper's own sentence on
-this is self-contradictory — it attaches the number 0.5 to the previous
-*smoothed value* rather than to the smoothing parameter — and reading it as the
-parameter is the only interpretation under which the sentence means anything.
+The value 0.5 is this project's reading of the paper, whose sentence attaches it
+to the previous *smoothed value* instead. That value changes at every cycle and
+so cannot be one number; reading 0.5 as $\alpha$ is the only way the sentence
+means anything (assumption A-04).
 
 ## 6 — Split *(leakage-critical)*
 
-If any engines are to be held back for validation, they are chosen **here**,
-before any statistic has been computed from the data.
+A fifth of the training engines are **held back**: kept out of training, so
+that while the model trains it can be scored on engines it has not learned
+from. They are chosen **here**, before any statistic has been computed from the
+data, under two rules that each have a test:
 
-Two rules govern this, and each has a test:
+- **Split by engine, never by window.** Two neighbouring windows (the 30-cycle
+  slices of step 8) from one engine share 29 of their 30 cycles. Splitting
+  windows at random would put nearly identical examples on both sides, and the
+  held-back score would measure memorisation rather than how the model copes
+  with an engine it has never seen.
+- **Split before fitting anything.** A held-back engine must never influence
+  the scale of a sensor.
 
-- **Split by engine, never by window.** Two neighbouring windows from one
-  engine share 29 of their 30 cycles. Splitting windows at random would put
-  nearly identical examples on both sides of the divide, and the validation
-  score would measure memorisation rather than generalisation.
-- **Split before fitting anything.** A held-out engine must never influence the
-  scale of a sensor.
-
-Since 2026-09-02 this project holds back **20 %** of the training engines, which
-reverses a decision taken on 2026-08-29 to hold nothing back. The paper
-describes no held-out set and trains a fixed 200 epochs, so holding engines out
-— and restoring the best-validation checkpoint, and stopping early — are all
-additions to it. Measured over five seeds they are worth 0.32 cycles, which the
-seed-to-seed spread cannot distinguish from zero (*p* = 0.234; assumptions
-A-06, A-18 and A-22).
+The paper describes no held-back engines and trains for a fixed 200 passes over
+the data, so holding engines back, keeping the weights from the pass that
+scored best on them, and stopping once that score stops improving are all
+additions to it. Over five runs with different random seeds, together they
+lower the error on the test engines by 0.32 cycles, which the run-to-run spread
+cannot distinguish from zero (*p* = 0.234; assumptions A-06 and A-18).
 
 ## 7 — Rescale *(leakage-critical)*
 
-Sensors live on wildly different scales: a temperature near 1400 degrees
-Rankine and a ratio near 8. Without rescaling, the temperature dominates
-everything simply by being a larger number.
+Sensors live on very different scales: `T50`, a temperature, reads near 1400
+degrees Rankine, while `BPR`, a ratio, reads near 8. Without rescaling, the
+temperature would dominate only because its numbers are larger.
 
 The rule that protects the experiment is that **every statistic is learned from
-the training engines only** and then applied unchanged to validation and test
-engines. A mean or a standard deviation computed over the test set is
-information from the future leaking backwards.
+the 80 engines the model trains on** and then applied unchanged to the
+held-back and test engines. A mean or a spread computed over the test engines
+would carry information about them into training.
 
-The paper **never describes its input scaling at all** — not the method, not
-where the statistics are fitted. This project uses z-scores, chosen by its rule
-of taking whichever unspecified option lands nearest the paper's own figure
-(assumption A-22), and the choice is worth 3.83 cycles against the
-per-condition min-max scaling used by a closely related paper. That makes it the
-largest measured effect of any single choice in the project: the input scaling
-the paper never describes accounts for most of the remaining gap to its
-reported figure (finding F-10).
+The paper **never describes its input scaling** — not the method, not where the
+statistics are fitted. This project uses the **z-score**: subtract the sensor's
+mean, then divide by its standard deviation (the typical distance of a reading
+from that mean), so each reading becomes its distance from the mean counted in
+standard deviations (assumption A-03). It was chosen by this project's rule for
+settings the paper leaves open: take whichever option lands nearest the paper's
+reported test error (assumption A-22). Against min-max scaling, which squeezes
+each sensor into the range 0 to 1, it lowered the test error by 3.83 cycles,
+towards the paper's figure, over five seeds under the project's earlier settings
+for the graph and the learning rate: the largest effect measured for any such
+setting (finding F-10).
 
 ## 8 — Window
 
@@ -154,82 +153,25 @@ size. So each history is cut into overlapping slices of 30 consecutive cycles.
 
 {{figure:windowing}}
 
-Engine 1 ran 192 cycles, so a 30-cycle window moving one cycle at a time yields
-**163 examples from that engine alone**. Across all 100 training engines the
-pipeline produces **17 731 examples**.
+Engine 1, the one page 1 follows, ran 192 cycles. Its first window covers
+cycles 1 to 30, the next 2 to 31, and the last 163 to 192:
+192 − 30 + 1 = **163 examples**. Across all 100 training engines that makes
+**17 731 examples**.
 
 The window length of 30 comes from the paper's Table 6. How far the window
-moves between examples does not appear in the text; a stride of one cycle is
-this project's choice (assumption A-05).
+moves between examples is not in the paper's text; its Fig. 1 labels the slide
+"t=1s", which this project reads as one cycle, since the data holds one reading
+per cycle and no seconds (assumption A-05).
 
 Test engines get exactly **one** window each — the last 30 cycles before the
-cut-off — because there is one true label per test engine. That gives 100 test
-examples for 100 test engines.
+cut-off — because there is one true label per test engine: 100 in all.
 
 ---
 
-## The shape that surprises people
+## What the model receives: one number per sensor, not thirty
 
-The pipeline hands over shape **(17 731, 14, 30)** — every cycle of every window.
-What reaches the **first graph layer** is **(17 731, 14, 1)**: fourteen sensors,
-and **one number each**.
-
-Not thirty. One.
-
-Those are two different statements, and the difference is the point. The reduction
-from thirty cycles to one number is a decision about the **model**, so it is made
-in the model, by a named stage in `models/temporal/`. It used to be made here,
-in the preprocessing, and that is what allowed the mistake described below.
-
-This follows from the paper's own Table 4, which prints an input of
-`[batch, 14, 1]` and a first weight matrix in $\mathbb{R}^{1 \times 32}$. In
-the paper's full method that single number per sensor is produced by a small
-recurrent network that reads the 30-cycle window and summarises it. This
-project builds that stage but does not use it by default — see the next page — so
-each sensor node
-carries **the last cycle of its window** instead, which keeps Table 4's shape
-exactly (assumption A-07).
-
-It is worth dwelling on, because getting it wrong is easy and expensive. An
-earlier version of this project let each node carry all 30 cycles. That made the
-first weight matrix `(30, 32)` instead of `(1, 32)` — 928 parameters the
-paper's architecture does not have, computing a bank of filters over time. It
-scored better. It was also, quietly, a different model: a temporal encoder,
-which is exactly what omitting the recurrent stage was supposed to avoid. The
-mode was removed and every affected number re-measured, and two of the
-project's three configuration comparisons **reversed direction** as a result.
-
----
-
-## The whole chain, with the counts filled in
-
-The strip at the top of this page names the eight steps. This one is the same
-chain with the data in it: what goes in, what comes out, how many rows and
-engines survive each step, and where the training and test sets stop being
-treated the same way.
-
-{{figure:notebook-map}}
-
-Every number in it was measured by running the pipeline while this page loaded,
-so it cannot fall behind the code. It is also the picture that opens
-`notebooks/01_preprocessing_fd001.ipynb`, which walks the same eight steps one
-cell at a time and checks each one.
-
----
-
-## What you now know
-
-- Eight steps: load, diagnose, select, cap, smooth, split, rescale, window.
-- Three of them are **leakage-critical**, and each is guarded by a test: the
-  filter looks only backwards, the split happens before any statistic is
-  learned, and the scaling is fitted on training engines alone.
-- The sensor **order** is load-bearing, because the graph is indexed by
-  position.
-- Smoothing removes **59.0 %** of the median sensor's jitter; windowing turns
-  100 engines into **17 731 examples** of shape **(14, 30)**, which the model's
-  temporal stage reduces to the **(14, 1)** Table 4 prints.
-- Four judgement calls live in this chain: the smoothing strength (A-04), the
-  stride (A-05), the test-label cap (A-02) and the entire input scaling (A-03,
-  measured in F-10).
-
-Next: the network those arrays are fed into.
+Each of the 17 731 examples leaves the pipeline with shape **(14, 30)**:
+fourteen sensors, thirty cycles each. The **first graph layer**, as the paper's
+Table 4 prints it, takes **(14, 1)**: one number per sensor. Turning thirty
+cycles into one is a decision about the model, so the model makes it, in a stage
+the next page describes.

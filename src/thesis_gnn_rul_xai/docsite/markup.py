@@ -15,11 +15,17 @@ from mistune.renderers.html import HTMLRenderer
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import get_lexer_by_name
+from pygments.styles import get_style_by_name
+from pygments.token import STANDARD_TYPES
 from pygments.util import ClassNotFound
 
 __all__ = [
+    "CODE_PANELS",
     "Heading",
     "RenderedDocument",
+    "code_block",
+    "contrast_ratio",
+    "name_first_heading",
     "pygments_stylesheet",
     "render_markdown",
     "rewrite_link",
@@ -55,6 +61,26 @@ _TAG = re.compile(r"<[^>]+>")
 
 _PYGMENTS = HtmlFormatter(nowrap=True)
 
+# The Pygments colour scheme for code in each theme, and the panel and ordinary
+# text colour it is drawn with: app.css's --panel and --ink for that theme. A
+# test checks these still match app.css, since the colours are chosen against
+# them.
+_CODE_STYLES = {"light": "default", "dark": "github-dark"}
+CODE_PANELS = {
+    "light": {"panel": "#f6f7f9", "ink": "#16191d"},
+    "dark": {"panel": "#171b21", "ink": "#e6e9ee"},
+}
+
+# CLAUDE.md rule 11: ordinary text must reach this contrast against its background.
+_MIN_CONTRAST = 4.5
+
+# The first level-one heading of a rendered page, split into its opening tag,
+# its words, and the small link to itself that both this site and nbconvert
+# put at its end.
+_FIRST_HEADING = re.compile(
+    r'(<h1\b[^>]*>)(.*?)(<a class="anchor(?:-link)?"[^>]*>[^<]*</a>)?(</h1>)',
+    re.DOTALL,
+)
 # Languages that appear in this project's documents. Anything else is shown
 # without colouring rather than guessed at.
 _KNOWN_LANGUAGES = frozenset(
@@ -201,21 +227,7 @@ class _SiteRenderer(HTMLRenderer):
 
     def block_code(self, code: str, info: str | None = None) -> str:
         language = info.strip().split()[0].lower() if info and info.strip() else ""
-        if language in _KNOWN_LANGUAGES:
-            try:
-                body = highlight(code, get_lexer_by_name(language), _PYGMENTS)
-            except ClassNotFound:  # pragma: no cover - Pygments knows these
-                body = html.escape(code)
-        else:
-            body = html.escape(code)
-        label = (
-            f'<span class="code-language">{html.escape(language)}</span>'
-            if language
-            else ""
-        )
-        return (
-            f'<div class="code-block">{label}<pre><code>{body}</code></pre></div>\n'
-        )
+        return code_block(code, language) + "\n"
 
     def link(self, text: str, url: str, title: str | None = None) -> str:
         return super().link(text, rewrite_link(url, self.source_path), title)
@@ -244,12 +256,7 @@ def _link_identifiers(rendered: str) -> str:
     return "".join(out)
 
 
-def render_markdown(
-    source: str,
-    *,
-    source_path: str = "",
-    link_identifiers: bool = True,
-) -> RenderedDocument:
+def render_markdown(source: str, *, source_path: str = "") -> RenderedDocument:
     """Render one Markdown document into the HTML the website displays."""
     hidden, formulas = _hide_math(source)
     renderer = _SiteRenderer(source_path)
@@ -259,8 +266,7 @@ def render_markdown(
     )
     body = str(parser(hidden))
     body = _restore_math(body, formulas)
-    if link_identifiers:
-        body = _link_identifiers(body)
+    body = _link_identifiers(body)
 
     title = next(
         (h.text for h in renderer.headings if h.level == 1),
@@ -274,6 +280,85 @@ def render_markdown(
     )
 
 
-def pygments_stylesheet(style: str = "default") -> str:
-    """The colour rules Pygments needs for the code blocks it produced."""
-    return HtmlFormatter(style=style).get_style_defs(".code-block pre code")
+def code_block(code: str, language: str, *, label: bool = True) -> str:
+    """One block of code, coloured, with its language named in a corner unless told not to."""
+    if language in _KNOWN_LANGUAGES:
+        try:
+            body = highlight(code, get_lexer_by_name(language), _PYGMENTS)
+        except ClassNotFound:  # pragma: no cover - Pygments knows these
+            body = html.escape(code)
+    else:
+        body = html.escape(code)
+    badge = (
+        f'<span class="code-language">{html.escape(language)}</span>'
+        if language and label
+        else ""
+    )
+    return f'<div class="code-block">{badge}<pre><code>{body}</code></pre></div>'
+
+
+def name_first_heading(rendered: str, name: str) -> str:
+    """Show a page's menu name in its first level-one heading, keeping the heading's anchor."""
+    return _FIRST_HEADING.sub(
+        lambda m: m.group(1) + html.escape(name) + (m.group(3) or "") + m.group(4),
+        rendered,
+        count=1,
+    )
+
+
+def _channels(colour: str) -> tuple[float, float, float]:
+    """The red, green and blue of a colour written #rrggbb, each between 0 and 1."""
+    digits = colour.lstrip("#")
+    red, green, blue = (int(digits[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    return red, green, blue
+
+
+def _luminance(colour: str) -> float:
+    """How bright a colour looks, as the contrast formula of the web guidelines defines it."""
+    linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in _channels(colour)]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_ratio(first: str, second: str) -> float:
+    """The contrast between two colours, from 1 (the same) to 21 (black on white)."""
+    brighter, darker = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (brighter + 0.05) / (darker + 0.05)
+
+
+def _readable(colour: str, panel: str, ink: str) -> str:
+    """The colour, mixed toward the ordinary text colour until it reads on the panel."""
+    start, target = _channels(colour), _channels(ink)
+    for percent in range(0, 101, 5):
+        share = percent / 100
+        mixed = "#" + "".join(
+            f"{round((a + (b - a) * share) * 255):02x}" for a, b in zip(start, target, strict=True)
+        )
+        if contrast_ratio(mixed, panel) >= _MIN_CONTRAST:
+            return mixed
+    return ink
+
+
+def pygments_stylesheet() -> str:
+    """The token colours for all code on the site in both themes, each readable on its own panel."""
+    # A code block in a document, and a code cell of a notebook, which nbconvert
+    # colours with the same token classes.
+    scopes = (".code-block pre code", ".notebook-frame .highlight pre")
+    rules: list[str] = []
+    for theme, style_name in _CODE_STYLES.items():
+        style = get_style_by_name(style_name)
+        panel, ink = CODE_PANELS[theme]["panel"], CODE_PANELS[theme]["ink"]
+        prefix = 'html[data-theme="dark"] ' if theme == "dark" else ""
+        # Every token class gets a full rule in both themes, so a colour the
+        # light scheme sets can never show through where the dark one sets none.
+        for token, name in STANDARD_TYPES.items():
+            if not name:
+                continue
+            found = style.style_for_token(token)
+            colour = _readable(f"#{found['color']}", panel, ink) if found["color"] else "inherit"
+            weight = "700" if found["bold"] else "400"
+            slant = "italic" if found["italic"] else "normal"
+            selector = ", ".join(f"{prefix}{scope} .{name}" for scope in scopes)
+            rules.append(
+                f"{selector} {{ color: {colour}; font-weight: {weight}; font-style: {slant}; }}"
+            )
+    return "\n".join(rules) + "\n"

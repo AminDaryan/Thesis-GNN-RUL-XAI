@@ -1,8 +1,8 @@
 # Evidence: keeping three things apart
 
-Everything on this site is one of three kinds of statement. The value of a
+Everything on this site is one of three kinds of statement, and the value of a
 re-implementation study depends entirely on a reader being able to tell which
-is which, so this page sets out how the distinction is kept.
+is which.
 
 ---
 
@@ -10,30 +10,26 @@ is which, so this page sets out how the distinction is kept.
 
 ### "The paper says X"
 
-Verifiable by opening the PDF, and always cited to a specific table, equation
-or section.
+A statement about the paper cites its table, equation or section, and is
+checked against the PDF rather than stated from memory.
 
-The rule behind these is strict: **never state a fact about the paper from
-memory.** Open it and check — every table value, every equation, every sentence
-quoted.
+Figures need more care. A value read off a small page image is a guess, so the
+region is rendered at high resolution before a number is read off an axis. The
+label ceiling of 125 was settled that way, by measuring the flat top of the true
+remaining-life curve in the paper's Fig. 7 against that figure's own axis ticks.
+The paper's Fig. 6 draws the ceiling at 120, but it is a schematic drawn with
+round numbers, not a plot of data (assumption A-01).
 
-Figures need more care than text. A value read off a page thumbnail is a guess.
-The region has to be rendered at high resolution before a number is read off an
-axis, and how it was obtained has to be said. The label ceiling of 125 was
-settled that way — by calibrating a plateau in the paper's figure against its
-own axis ticks — and in the course of doing so it emerged that the paper's
-schematic figure disagrees with its experimental one.
-
-Where the paper prints something twice, both copies are checked. The adjacency
-matrix appears in its Table 3 and again in its Fig. 3. They agree. **That is a
-finding, not an assumption** — it is something learned about the source, and
-recording it is what makes it possible to say the transcription is sound.
+Where the paper prints something twice, both copies are checked. The sensor
+graph's matrix appears as numbers in Table 3 and as a colour grid in Fig. 3;
+both were checked against this project's copy, and all 196 cells, 14 sensors by
+14, agree.
 
 ### "We chose Y" — an assumption
 
 The paper does not specify everything needed to rebuild the method. Where a
-value or a procedure had to be chosen, it gets a numbered entry, `A-01` through
-`A-27`, containing four things:
+value or a procedure had to be chosen, it gets a numbered entry containing four
+things:
 
 - **The gap** — quoting what the paper does and does not say.
 - **What was chosen.**
@@ -41,148 +37,85 @@ value or a procedure had to be chosen, it gets a numbered entry, `A-01` through
 - **How much it matters** — and if that is an argument rather than a
   measurement, the entry says so plainly.
 
-The identifier then appears in the code at the point of use, in a comment that
-**says what the choice was in words**, not just its number. A bare
-`# ASSUMPTION A-17` tells a reader nothing. The comment in the code reads
-"shrink the learning rate by the same factor every epoch; the paper gives the
-first and last rate but never how it gets between them" — everything needed,
-without leaving the file.
+The entry's number then appears in the code where the choice is used, in a
+comment that **says what the choice was in words**, not just its number. The
+one for the learning rate reads: "drop the learning rate once, by a single
+factor, at the halfway point. The paper gives the first and last rate but never
+how it gets between them."
 
-The same holds in every document written for a reader. A number like `A-17` is
-a pointer to where a choice is argued, never a word in its own right: a sentence
-says what the choice is, and the number follows in parentheses, "one drop of
-the learning rate at the halfway pass (assumption A-17)". Nobody should need to
-remember what 27 assumptions are called to follow a sentence.
-`python scripts/check_prose.py` fails when a number is used as a word.
+Documents for readers follow the same rule: a sentence says what the choice is,
+and the number follows in parentheses, as in "one drop of the learning rate at
+the halfway point (assumption A-17)". `python scripts/check_prose.py` fails when
+a number is used as a word.
 
 ### "We measured Z" — a result
 
-A number this code produced, with the command that produced it, averaged over
-at least five seeds, and traceable to the commit that made it.
-
-The rule is: **never report a number you have not computed.** No estimates, no
-"approximately", no figures carried over from an earlier draft without being
-re-derived.
+A number this code produced, given with the command that produced it and
+traceable to the commit, the saved version of the code, that made it. A trained
+model's number is never one training run's, for the reason
+[One seed is not a result](06_reading_results.md#one-seed-is-not-a-result)
+gives. Nothing is estimated, and no figure is carried over from an earlier
+draft without being recomputed.
 
 ---
 
 ## Assumptions are ours; findings are the paper's
 
-There is a fourth label, `F-01` through `F-16`, and keeping it separate from
-`A-xx` is the point.
+An **assumption** is a choice this project made. A **finding** is a checked
+fact, nearly always about the paper. Confusing the two would present this
+project's own decisions as facts about its source. Some of the findings:
 
-An **assumption** is a choice this project made. A **finding** is something
-established *about the paper* from the data. Confusing the two would let a
-project's own decisions be presented as facts about its source, which is the
-central thing a re-implementation study must not do.
-
-A few of the findings, to show the range:
-
-- **`P15` is in the paper's graph but takes only two distinct values** in the
-  training data (finding F-01).
-- **The paper's own stated construction rules for its graph require an edge
-  that its printed matrix does not contain** (finding F-07).
-- **The paper's Table 12 cannot hold signed Shapley values**, given what it
-  reports elsewhere (finding F-08).
-- **The input scaling the paper never describes accounts for most of the
-  remaining gap** between its figure and this reproduction's (finding F-10).
+- **The paper's own rules for building its graph require an edge that its
+  printed matrix does not contain** (finding F-07).
+- **The paper's Table 12 prints only positive Shapley values**, although its
+  own Equation 14 requires their sum to turn negative late in an engine's life
+  (finding F-08).
 - **The paper's Conclusions claim a "highest R²" that its own Table 9 refutes**
   (finding F-11).
-- **None of the twelve neighbouring papers on this benchmark gives a graph node
-  a single number**; the smallest node feature any of them uses is thirty wide
-  (finding F-12).
-
-None of those is a criticism dressed as a result. Each is a checkable statement
-about a published document, recorded because a reader comparing the two needs
-to know it.
+- **The paper gives each graph node a single number**, which none of the ten
+  other graph methods on the same NASA data read for this project does (finding
+  F-12).
 
 ---
 
 ## Corrections stay visible
 
-Several claims in this repository were wrong when first written. They were
-fixed after checking, and the record says so rather than being quietly
-overwritten.
+Several claims here were wrong when first written. Each was corrected with what
+was wrong left on the record, because that shows what kind of mistake this
+project is prone to:
 
-- **What the Shapley values say about `P15`** was first written from 14 sampled
-  windows out of 240, and had both its size and its explanation wrong (finding
-  F-05).
-- **The entry on the seventh sensor the paper drops** claimed a sensor was "the
-  only" one meeting a condition when seven qualified (assumption A-10).
+- **How much `P15` contributes to each prediction, by its Shapley value,** was
+  first written from 14 of one engine's 240 windows, and both how large the
+  contribution was and when in the engine's life it was large came out wrong
+  (finding F-05).
 - **The order of smoothing and scaling** was logged as a choice when the
   paper's Fig. 1 states it outright. It was withdrawn (assumption A-08).
-- **What the paper's sensor graph is worth** was first claimed to be 5.7
-  cycles. Re-measured, the difference was 0.044 cycles and not significant, and
-  the entry was reversed; it has moved again since, and a graph built from the
-  data showed most of the remaining cost was not the engineering knowledge at
-  all (finding F-04, and assumption A-27).
 
-The withdrawn and reversed entries are still there, marked as such, with their
-original text below the correction. A corrected record is worth more than a
-clean one — partly because it tells you what kind of mistake this project is
-prone to, which is information a clean record destroys.
-
-**The sharpest of these** is a results file that survived in the repository
-although no committed code could produce it (finding F-09). It happened to contradict a figure that
-was correct. It could as easily have corroborated one that was wrong. That is
-why every run now writes its commit — with a `-dirty` suffix when the working
-tree had uncommitted changes — into both its summary file and its own directory
-name, and why the **Stored runs** page shows those commits rather than only the
-numbers.
+One correction changed how results are stored. A results file that no
+committed version of the code could reproduce stayed in the repository (finding
+F-09). It happened to contradict a figure that was correct; it could as easily
+have supported one that was wrong. So every run now writes its commit, marked
+`-dirty` when the code had uncommitted changes, into both its summary file and
+its own directory name.
 
 ---
 
 ## The machinery that keeps this true
 
-Documentation drifts away from code. This project has suffered from it, so
-three things run automatically:
+Besides `check_prose.py`, two checks guard the claims. They run automatically on
+every push to the main branch and every pull request, but on a machine without
+the NASA files, where every check that needs the data skips itself:
 
 **`pytest`** checks that the code does what it claims. Some tests check
 *properties* rather than outputs, because a wrong answer in this domain still
-looks plausible: that the filter only looks backwards, that test data never
-influences the scaling, that training and validation engines never overlap,
-that the parameter counts match the paper's table, that message passing — the
-spreading of information along the graph's edges, one hop per layer — cannot
-reach further than the graph allows, that the attributions reconstruct the
-prediction exactly.
+looks plausible: that the smoothing filter only looks backwards, that the test
+engines never influence the scaling, that held-back engines never overlap the
+training engines, that the parameter counts match the paper's Table 4, and that
+information spreading along the graph's edges, one hop per layer, cannot reach
+further than the graph allows.
 
-**`ruff check`** catches unused imports, dead code and style drift.
-
-**`python scripts/verify_claims.py`** recomputes the figures the assumptions log
-quotes — the graph's edge counts, `P15`'s two levels, how many test labels the
-ceiling touches — prints each beside the recorded value, and exits non-zero on
-a disagreement. It exists because the log had drifted from the code more than
-once. When it was first written, **five of the entries it checks had already
-drifted.**
-
----
-
-## What this site adds
-
-Every page here is rendered from the repository's own files at the moment you
-request it. There is no build step and no generated copy, so a page cannot
-disagree with the file it came from.
-
-The figures go further: each is **computed** rather than drawn. The sensor
-graph is laid out from the transcribed matrix, its edge count and diameter
-measured by the same code the tests use. The network diagram is produced by
-building the model and reading its layers back. The label curve, the smoothing
-and the windowing are drawn from the real NASA files, and if those files are
-absent the figure says so and points at the download rather than substituting
-something with the right shape.
-
-That is the same rule the rest of the project follows, applied to its
-documentation: **show the thing, or say you cannot.**
-
----
-
-## Where to go next
-
-- **The assumptions and findings explorer** lists all 34 entries as cards you
-  can scan, each linking into the full log.
-- **The stored runs page** shows every result this repository has kept, with
-  its commit and whether the tree was clean.
-- **`docs/ASSUMPTIONS.md`** is the log itself — long, and the most important
-  document here.
-- **The notebooks** run the whole chain on real data with every number visible.
-- **The folder READMEs** hold the full argument for each step of the method.
+**`python scripts/verify_claims.py`** recomputes the figures the log of
+assumptions and findings quotes — the graph's edge counts, `P15`'s two levels,
+how many test labels exceed the ceiling — prints each beside the recorded
+value, and fails on any disagreement, because a number written into the log
+goes stale silently when the code changes.

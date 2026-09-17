@@ -15,10 +15,8 @@ notebooks is a difference between two methods and nothing else.
 Read `notebooks/README.md` first, for how every notebook is laid out, and
 notebook 02 before any of these, for what the network is.
 
-| Notebook | Method | In the paper? |
-|---|---|---|
-| `01_shap_fd001.ipynb` | Exact Shapley values: every combination of sensors tried | Yes, its Equations 14 to 16 |
-| `02_occlusion_fd001.ipynb` | Occlusion: one sensor at a time swapped for a typical reading | No |
+The notebooks so far, and what sets their methods apart, are in one table near
+the end of this page, after the words it uses have been explained.
 
 ## What every notebook here shares, and why
 
@@ -101,8 +99,10 @@ answers, in its own section, these seven:
 
 | | Shapley values | Occlusion |
 |---|---|---|
-| In the paper | Yes | No |
-| Network evaluations per window, for 14 sensors | 16,384, one per combination | 15, the window and one per sensor |
+| Notebook | `01_shap_fd001.ipynb` | `02_occlusion_fd001.ipynb` |
+| What it tries | every combination of sensors | one sensor at a time swapped for its stand-in |
+| In the paper | Yes, its Equations 14 to 16 | No |
+| Network evaluations per window, for 14 sensors | 16 384, one per combination | 15, the window and one per sensor |
 | Adds up to the prediction minus the reference prediction | Always, to rounding | No |
 | What "the sensor's effect" is measured against | every combination of the other sensors, averaged | only the one where every other sensor is present |
 
@@ -115,5 +115,5 @@ answers, in its own section, these seven:
    `load_seed`, explain the same engine, draw it with
    `plot_contributions_over_time` beside the Shapley values, answer the seven
    questions, and end with a final verification.
-3. Add it to the table at the top of this page and to the documentation site's
-   list in `src/thesis_gnn_rul_xai/docsite/catalog.py`.
+3. Add a column for it to the table above and a line to the documentation
+   site's list in `src/thesis_gnn_rul_xai/docsite/catalog.py`.

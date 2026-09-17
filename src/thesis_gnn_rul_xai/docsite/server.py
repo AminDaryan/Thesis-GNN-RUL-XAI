@@ -21,13 +21,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from ..graph.adjacency import adjacency_report
 from ..utils.logging_setup import get_logger
 from ..utils.paths import project_root
 from . import playground
 from .catalog import build_catalog, read_document, search
-from .figures import figure_names, render_figure
-from .markup import pygments_stylesheet, render_markdown
+from .figures import render_figure
+from .markup import code_block, name_first_heading, pygments_stylesheet, render_markdown
 from .notebooks import (
     JupyterProcess,
     NotebookUnavailable,
@@ -35,7 +34,7 @@ from .notebooks import (
     start_jupyter,
 )
 from .notebooks import render_notebook as convert_notebook
-from .results import latest_verification, load_entries, load_runs
+from .results import latest_verification, load_entries
 
 __all__ = ["DEFAULT_PORT", "DocsHandler", "DocsServer", "serve", "site_state"]
 
@@ -168,50 +167,8 @@ def site_state(root: Path | None = None) -> dict[str, object]:
             (raw / f"{part}_FD001.txt").is_file()
             for part in ("train", "test", "RUL")
         ),
-        "figures": list(figure_names()),
         "started": _STARTED,
         "stale": code_changed_since(_STARTED),
-    }
-
-
-def _graph_facts() -> dict[str, object]:
-    """Everything the graph explorer shows, measured from the transcribed table."""
-    from ..data.sensors import SENSORS
-    from ..graph.adjacency import build_physics_adjacency, to_networkx
-
-    matrix, symbols = build_physics_adjacency()
-    report = adjacency_report(matrix, symbols)
-    graph = to_networkx(matrix, symbols)
-    return {
-        "report": report,
-        "neighbours": {node: sorted(graph.neighbors(node)) for node in graph.nodes()},
-        "descriptions": {s.symbol: s.description for s in SENSORS},
-        "stations": {s.symbol: s.station for s in SENSORS},
-        "units": {s.symbol: s.unit for s in SENSORS},
-    }
-
-
-def _model_facts() -> dict[str, object]:
-    """Every layer of the network, read off a model this call just built."""
-    from ..graph.adjacency import build_physics_adjacency, normalize_adjacency
-
-    try:
-        from ..models.estgnn import ESTGNN
-    except ImportError:
-        return {
-            "error": "This page builds the real network to read its layer shapes "
-            "and parameter counts, which needs PyTorch. Install it with "
-            "'pip install torch' and reload. Nothing else on this site needs it."
-        }
-
-    matrix, _ = build_physics_adjacency()
-    model = ESTGNN(normalize_adjacency(matrix, method="row"), window_size=1)
-    return {
-        "layers": model.layer_summary(),
-        "parameters": model.count_parameters(),
-        "nodes": model.n_nodes,
-        "in_features": model.in_features,
-        "rul_max": model.rul_max,
     }
 
 
@@ -229,14 +186,17 @@ class DocsHandler(BaseHTTPRequestHandler):
 
     def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
         """Write one response, with the headers every reply here shares."""
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        # Everything here is read from disk as it is asked for, so a copy kept
-        # by the browser would be the stale copy this site exists to avoid.
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+        # A browser that leaves the page drops its open requests, and on Windows
+        # that surfaces while the headers are still being written. Nobody is
+        # left to read the answer, so it is not logged as a failure.
+        with contextlib.suppress(ConnectionError):
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            # Everything here is read from disk as it is asked for, so a copy
+            # kept by the browser would be the stale copy this site exists to avoid.
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
             self.wfile.write(body)
 
     def _json(self, payload: object, status: int = 200) -> None:
@@ -284,14 +244,9 @@ class DocsHandler(BaseHTTPRequestHandler):
                     render_figure(one("name")).encode("utf-8"),
                     "text/html; charset=utf-8",
                 )
-            elif route == "/api/graph":
-                self._json(_graph_facts())
-            elif route == "/api/model":
-                self._json(_model_facts())
             elif route == "/api/results":
                 self._json(
                     {
-                        "runs": [asdict(run) for run in load_runs(self.root)],
                         "entries": [asdict(e) for e in load_entries(self.root)],
                         "verification": (
                             asdict(checked)
@@ -384,14 +339,10 @@ class DocsHandler(BaseHTTPRequestHandler):
                         "Training needs PyTorch, which is not installed here."
                     )
                 settings = playground.validate_settings(body.get("settings", {}))
-                label = str(body.get("label") or "Training run")[:120]
-                self._json(job_manager(self.root).submit_training(settings, label).to_dict())
+                self._json(job_manager(self.root).submit_training(settings).to_dict())
             elif route == "/api/playground/explain":
                 request = playground.validate_explain(body, self.root)
-                label = str(body.get("label") or "Explanation")[:120]
-                self._json(
-                    job_manager(self.root).submit_explanation(request, label).to_dict()
-                )
+                self._json(job_manager(self.root).submit_explanation(request).to_dict())
             elif route == "/api/playground/cancel":
                 self._json(job_manager(self.root).cancel(str(body.get("id", ""))).to_dict())
             elif route == "/api/playground/forget":
@@ -430,17 +381,21 @@ class DocsHandler(BaseHTTPRequestHandler):
             raise ValueError(f"{path!r} is not a Markdown document.")
         source = read_document(path, self.root)
         rendered = render_markdown(source, source_path=path)
-        catalog = build_catalog(self.root)
-        document = catalog.get(path)
+        document = build_catalog(self.root).get(path)
+        # A page in the menu goes by its menu name, in its heading and its tab
+        # alike; a page reached only through a link keeps its own heading.
         self._json(
             {
                 "path": path,
-                "title": rendered.title,
-                "html": rendered.html,
+                "title": document.title if document else rendered.title,
+                "html": (
+                    name_first_heading(rendered.html, document.title)
+                    if document
+                    else rendered.html
+                ),
                 "hasMath": rendered.has_math,
                 "headings": [asdict(h) for h in rendered.headings],
                 "minutes": document.minutes if document else None,
-                "words": document.words if document else None,
             }
         )
 
@@ -464,16 +419,14 @@ class DocsHandler(BaseHTTPRequestHandler):
             )
         language = _SOURCE_LANGUAGE.get(target.suffix.lower(), "text")
         text = target.read_text(encoding="utf-8", errors="replace")
-        rendered = render_markdown(
-            f"```{language}\n{text}\n```", source_path=path, link_identifiers=False
-        )
+        # The path above the code already ends in the file's type, so the
+        # block does not name its language a second time.
         self._json(
             {
                 "path": path,
-                "title": path.rsplit("/", 1)[-1],
-                "html": rendered.html,
+                "title": path,
+                "html": code_block(text, language, label=False),
                 "lines": text.count("\n") + 1,
-                "headings": [],
             }
         )
 
@@ -482,16 +435,16 @@ class DocsHandler(BaseHTTPRequestHandler):
         if not path.lower().endswith(".ipynb"):
             raise ValueError(f"{path!r} is not a notebook.")
         try:
-            body, styles = convert_notebook(path, self.root)
+            body = convert_notebook(path, self.root)
         except NotebookUnavailable as refused:
             self._error(str(refused), HTTPStatus.SERVICE_UNAVAILABLE)
             return
+        document = build_catalog(self.root).get(path)
         self._json(
             {
                 "path": path,
-                "title": path.rsplit("/", 1)[-1],
-                "html": body,
-                "css": styles,
+                "title": document.title if document else path.rsplit("/", 1)[-1],
+                "html": name_first_heading(body, document.title) if document else body,
             }
         )
 
