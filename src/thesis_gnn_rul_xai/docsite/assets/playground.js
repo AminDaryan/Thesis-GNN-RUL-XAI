@@ -43,10 +43,24 @@
   var SEGMENTED = { subset: true, device: true };
   var SUBSETS = ["FD001", "FD002", "FD003", "FD004"];
   // Groups of settings that are not drawn as folding sections: the sub-dataset
-  // stands alone at the top of the form, and the procedure cards hold theirs.
+  // stands alone at the top of the form, and the procedure's settings are
+  // drawn inside Training, under the choice of procedure.
   var UNSECTIONED = { data: true, procedure: true };
+  // The value that takes a part out of the pipeline. Each is the setting of a
+  // variant of Table 11: "w/o LSTM" and "w/o Physics prior".
+  var REMOVED = { temporal: "last_cycle", graph: "complete" };
+  // What the pipeline calls the sensor graph the graph layers run on.
+  var PRIOR = { physics: "Physics prior", correlation: "Correlation graph" };
+  var GCN_FIXED = "The graph layers cannot be taken out: a network without them is not built here";
   var CHEVRON = '<svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 L8 6 L4 9.5" ' +
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var CROSS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3 L9 9 M9 3 L3 9" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  var PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 V9.5 M2.5 6 H9.5" ' +
+    'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  var INFO = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.3"/><path d="M8 7.2 V11.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+    '<circle cx="8" cy="4.9" r=".95" fill="currentColor"/></svg>';
 
   var T;          // the helpers app.js hands over
   var root;       // the element the page is drawn into
@@ -434,14 +448,32 @@
       }).join("") + "</div>";
   }
 
+  // Where a setting comes from, or what an option does, behind an i beside
+  // its name, so the form itself shows only names. It opens while the pointer
+  // rests on the i, while the keyboard is on it, and once the i is chosen,
+  // until something else is. html is what it says; about names the setting.
+  function info(html, about, id, untabbed) {
+    if (!html) { return ""; }
+    id = id || "pg-info-" + (++S.infos);
+    return '<span class="pg-info"><button type="button" class="pg-info-button" data-action="info"' +
+      (untabbed ? ' tabindex="-1"' : "") + ' aria-label="About ' + esc(about) + '" aria-describedby="' + id + '">' +
+      INFO + '</button><span class="pg-info-body" id="' + id + '" role="tooltip"><span class="pg-info-card">' + html +
+      "</span></span></span>";
+  }
+
+  // An option's own i is not a stop for the Tab key: the keyboard reaches
+  // its words through the radio button, which opens them and names them as
+  // its description.
   function optionList(name, choices, current, data, noteOf, labelledBy) {
     return '<div class="opts" role="radiogroup"' + (labelledBy ? ' aria-labelledby="' + labelledBy + '"' : "") + ">" +
-      choices.map(function (c) {
+      choices.map(function (c, i) {
         var note = noteOf(c);
+        var id = name + "-" + i;
         return '<label class="opt' + (c.value === current ? " is-active" : "") + '"><input type="radio" name="' + name +
-          '" value="' + esc(c.value) + '"' + (c.value === current ? " checked" : "") + " " + data + ">" +
-          '<span class="opt-label">' + esc(c.label) + "</span>" +
-          (note ? '<span class="opt-note">' + note + "</span>" : "") + "</label>";
+          '" value="' + esc(c.value) + '"' + (c.value === current ? " checked" : "") + " " + data +
+          ' aria-labelledby="' + id + '-label"' + (note ? ' aria-describedby="' + id + '-note"' : "") + ">" +
+          '<span class="opt-label"><span id="' + id + '-label">' + esc(c.label) + "</span>" +
+          info(note, c.label, id + "-note", true) + "</span></label>";
       }).join("") + "</div>";
   }
 
@@ -452,19 +484,19 @@
     }).join("") + "</select>";
   }
 
-  // One setting: its name and where it comes from on the left, its control on
-  // the right. A list of options is too wide to sit beside its name, so it
+  // One setting: its name, and the i that says where it comes from, on the
+  // left, its control on the right. A list of options is too wide to sit beside its name, so it
   // goes underneath instead.
   // A setting whose list of options is named by the section head above it
   // has no label of its own, and then no name column either.
+  // A setting that stands alone as a step of the form, spec.step, carries the step's number.
   function row(spec) {
     var name = !spec.label ? "" : spec.id
       ? '<label for="' + spec.id + '" id="' + spec.id + '-label">' + esc(spec.label) + "</label>"
       : '<span id="' + spec.key + '-label">' + esc(spec.label) + "</span>";
-    var nameColumn = name || spec.hint
-      ? '<div class="pg-row-name">' + (name ? '<div class="pg-row-label">' + name + "</div>" : "") +
-        '<div class="pg-row-hint"' + (spec.hint ? "" : " hidden") + ">" + (spec.hint || "") + "</div></div>"
-      : "";
+    if (name && spec.step) { name = stepNumber(spec.step) + name; }
+    var about = info(spec.hint, spec.label || "this setting");
+    var nameColumn = name || about ? '<div class="pg-row-name"><div class="pg-row-label">' + name + about + "</div></div>" : "";
     return '<div class="pg-row' + (spec.stacked ? " pg-row--stack" : "") + '"' +
       (spec.key ? ' data-row="' + spec.key + '"' : "") + (spec.hidden ? " hidden" : "") + ">" +
       nameColumn + '<div class="pg-row-control">' + spec.control + (spec.reset || "") + "</div></div>";
@@ -480,7 +512,9 @@
     if (window.__thesisPlaygroundTimer) { clearTimeout(window.__thesisPlaygroundTimer); }
     // seen: the last state each job was polled in. mine: the jobs this page
     // started, whose end is announced even when the first poll finds them ended.
+    // restore: what each part taken out of the pipeline was, so + puts that back.
     S = { tab: S.tab || "design", jobs: [], seen: {}, mine: {}, runs: null, selected: null, detail: null,
+      restore: S.restore || {}, infos: 0, step: "data",
       compare: [], filter: { subset: "all", results: false, weights: false },
       jobFilter: { kind: "all", status: "all" },
       sections: recall(SECTIONS) || {},
@@ -516,6 +550,17 @@
     root.addEventListener("click", onClick);
     root.addEventListener("change", onChange);
     root.addEventListener("input", onInput);
+    root.addEventListener("keydown", onKeydown);
+    root.addEventListener("focusin", function (event) {
+      unquiet();
+      placeInfo(event.target);
+      // Working in a step's controls makes it the current step.
+      var step = event.target.closest(".pg-section[data-group], .pg-data");
+      if (step) { setStep(step.getAttribute("data-group")); }
+    });
+    root.addEventListener("mouseover", function (event) {
+      if (event.target.closest(".pg-info")) { placeInfo(event.target); } else { unquiet(); }
+    });
   }
 
   function tabButton(key, step, label) {
@@ -542,12 +587,18 @@
   // data-action, data-tab, data-field and the like; the handler is found here.
 
   function onClick(event) {
-    var target = event.target.closest("[data-tab], [data-action], [data-ablation], [data-procedure], " +
+    $all(".pg-info.is-open").forEach(function (open) { if (!open.contains(event.target)) { open.classList.remove("is-open"); } });
+    // The words behind an option's i sit inside the option's label, and a
+    // click on them would otherwise choose the option. A link among them still works.
+    if (event.target.closest(".pg-info-body") && !event.target.closest("a")) { event.preventDefault(); return; }
+    // A procedure the settings only half follow is shown chosen, and choosing
+    // it again, which fires no change, sets both of its settings.
+    if (event.target.matches("input[data-procedure]")) { chooseProcedure(event.target.value); return; }
+    var target = event.target.closest("[data-tab], [data-action], [data-goto], " +
       "[data-section], [data-reset], tr[data-run], tr[data-explanation]");
     if (!target || !root.contains(target)) { return; }
     if (target.hasAttribute("data-tab")) { showTab(target.getAttribute("data-tab")); return; }
-    if (target.hasAttribute("data-ablation")) { applyPreset(S.options.ablations, target.getAttribute("data-ablation")); return; }
-    if (target.hasAttribute("data-procedure")) { chooseProcedure(target.getAttribute("data-procedure")); return; }
+    if (target.hasAttribute("data-goto")) { goTo(target.getAttribute("data-goto"), target.getAttribute("data-goto-row")); return; }
     if (target.hasAttribute("data-section")) { toggleSection(target.getAttribute("data-section")); return; }
     if (target.hasAttribute("data-reset")) { resetField(target.getAttribute("data-reset")); return; }
     // The named action is looked for first. A button in the job list carries
@@ -572,7 +623,11 @@
   var ACTIONS = {
     // One button that opens every folded section, or folds them all once none is folded.
     "toggle-sections": function () { setAllSections(!allSectionsOpen()); },
-    "reset-all": function () { S.settings = copy(S.options.defaults); saveSettings(); drawDesign(); },
+    "reset-all": function () { S.settings = copy(S.options.defaults); S.restore = {}; saveSettings(); drawDesign(); },
+    "info": function (button) { placeInfo(button); button.parentNode.classList.toggle("is-open"); },
+    // The pipeline's × and +: a part taken out, or put back as it was.
+    "remove-part": function (button) { removePart(button.getAttribute("data-part")); },
+    "add-part": function (button) { addPart(button.getAttribute("data-part")); },
     "run": function () { submit(S.settings); },
     "cancel": function (button) {
       post("/api/playground/cancel", { id: button.getAttribute("data-id") }).then(repoll)
@@ -598,7 +653,7 @@
       S.explain.shown = button.getAttribute("data-name"); S.explain.values = null; showTab("explain");
     },
     "back": function () { S.selected = null; drawResults(); },
-    "again": function () { S.settings = settingsFromRun(S.detail); saveSettings(); showTab("design"); },
+    "again": function () { S.settings = settingsFromRun(S.detail); S.restore = {}; saveSettings(); showTab("design"); },
     "explain-this": function () {
       S.explain.run = S.detail.name; S.explain.detail = null; S.explain.shown = null; showTab("explain");
     },
@@ -612,6 +667,7 @@
 
   function onChange(event) {
     var input = event.target;
+    if (input.hasAttribute("data-procedure")) { chooseProcedure(input.value); return; }
     if (input.hasAttribute("data-field")) { fieldChanged(input); return; }
     // The slider redraws when it is let go, not while it is being dragged.
     if (input.hasAttribute("data-window-index")) {
@@ -637,6 +693,29 @@
     if (input.hasAttribute("data-pred-seed")) { S.predSeed = input.value; drawDetail(); return; }
     if (input.hasAttribute("data-pred-order")) { S.predOrder = input.value; drawDetail(); return; }
     if (input.hasAttribute("data-explain")) { explainChanged(input); }
+  }
+
+  // Escape closes whatever i is open, until the focus or the pointer moves on.
+  function onKeydown(event) {
+    if (event.key !== "Escape") { return; }
+    $all(".pg-info").forEach(function (i) { i.classList.remove("is-open"); i.classList.add("is-quiet"); });
+  }
+
+  function unquiet() {
+    $all(".pg-info.is-quiet").forEach(function (i) { i.classList.remove("is-quiet"); });
+  }
+
+  // An i's words open under it, moved left as far as they must to stay
+  // inside the window. Placed before they show, for the i the pointer or the
+  // focus has reached, or for the option the focus is on.
+  function placeInfo(element) {
+    var holder = element && element.closest && element.closest(".pg-info, .opt");
+    var i = holder && (holder.classList.contains("pg-info") ? holder : holder.querySelector(".pg-info"));
+    if (!i) { return; }
+    var at = i.getBoundingClientRect();
+    var width = Math.min(320, window.innerWidth - 32);
+    var left = Math.max(16, Math.min(at.left - 8, window.innerWidth - 16 - width));
+    i.querySelector(".pg-info-body").style.left = Math.round(left - at.left) + "px";
   }
 
   // While the slider is being dragged only its caption follows it. Redrawing
@@ -869,41 +948,80 @@
     return found ? found.label : "";
   }
 
+  // A group's step number: its place in the form, the sub-dataset being 1.
+  function stepOf(group) {
+    return S.options.groups.map(function (g) { return g.key; }).indexOf(group) + 1;
+  }
+
+  // A step's number, filled in while that step is the one being worked on.
+  // The same step's number in the pipeline follows it.
+  function stepNumber(group) {
+    return '<span class="pg-step-n pg-step-n--form' + (S.step === group ? " is-current" : "") + '" data-step="' + group +
+      '">' + stepOf(group) + "</span>";
+  }
+
+  function setStep(group) {
+    if (S.step === group) { return; }
+    S.step = group;
+    $all("[data-step]").forEach(function (n) { n.classList.toggle("is-current", n.getAttribute("data-step") === group); });
+  }
+
+  function capitalise(text) { return text.charAt(0).toUpperCase() + text.slice(1); }
+
   function visible(key) {
     var s = S.settings;
     if (key === "temporal_hidden" || key === "temporal_out_features" || key === "shared_across_sensors") {
       return s.temporal === "lstm" || s.temporal === "gru";
     }
     if (key === "smoothing_alpha") { return !!s.smoothing; }
+    if (key === "validation_fraction") { return chosenProcedure().settings.validation_fraction > 0; }
     if (key === "early_stopping_patience") { return !!s.early_stopping; }
     return true;
   }
 
   function isChanged(f) { return !same(S.settings[f.key], f.default); }
 
+  // How many settings of a group differ from their defaults. Training counts
+  // the procedure as one setting, and the inputs only it shows as theirs.
   function changedIn(group) {
-    return fieldsOf(group).filter(function (f) { return visible(f.key) && isChanged(f); }).length;
+    var changed = fieldsOf(group).filter(function (f) { return visible(f.key) && isChanged(f); }).length;
+    if (group === "training") {
+      changed += fieldsOf("procedure").filter(function (f) {
+        return f.kind !== "bool" && visible(f.key) && isChanged(f);
+      }).length + (chosenProcedure() === defaultProcedure() && followsProcedure() ? 0 : 1);
+    }
+    return changed;
   }
 
-  function matches(settings) {
-    return Object.keys(settings).every(function (k) { return S.settings[k] === settings[k]; });
-  }
-
-  // The procedure card the settings follow. A card decides two things,
+  // The procedure some settings follow. A procedure decides two things,
   // whether any engines are held back and whether training stops early, so a
-  // held-back fraction other than the card's own still counts as that card.
-  // Settings that fit neither card (read back from an older run, say) count
-  // as the card that holds engines back, whose inputs then show them.
-  function chosenProcedure() {
+  // held-back fraction other than its own still counts as that procedure.
+  // Settings that fit neither (read back from an older run, say) count as the
+  // procedure that holds engines back, whose inputs then show them.
+  function procedureFor(settings) {
     var list = S.options.procedures;
     var found = list.filter(function (p) {
       return Object.keys(p.settings).every(function (k) {
-        var want = p.settings[k], have = S.settings[k];
+        var want = p.settings[k], have = settings[k];
         return typeof want === "number" ? (Number(have) > 0) === (want > 0) : have === want;
       });
     })[0];
     return found || list.filter(function (p) { return p.settings.validation_fraction > 0; })[0] || list[0];
   }
+
+  function chosenProcedure() { return procedureFor(S.settings); }
+
+  // Whether the settings follow the procedure shown exactly, both things it
+  // decides. Settings read back from an older run can follow neither.
+  function followsProcedure() {
+    var p = chosenProcedure();
+    return Object.keys(p.settings).every(function (k) {
+      var want = p.settings[k], have = S.settings[k];
+      return typeof want === "number" ? (Number(have) > 0) === (want > 0) : have === want;
+    });
+  }
+
+  function defaultProcedure() { return procedureFor(S.options.defaults); }
 
   function choiceLabel(key, value) {
     var found = (S.fields[key].choices || []).filter(function (c) { return c.value === value; })[0];
@@ -916,34 +1034,6 @@
     return m ? { label: m[1], unit: m[2] } : { label: label, unit: "" };
   }
 
-  // What a folded section holds right now, in one line. It is shown only
-  // while the section is folded; an open one shows the controls themselves.
-  function groupSummary(group) {
-    var s = S.settings;
-    switch (group) {
-      case "preprocessing":
-        return s.window_size + "-cycle windows, stride " + s.window_stride + " · ceiling " + s.rul_max +
-          " · " + choiceLabel("normalization", s.normalization).toLowerCase() +
-          " · " + (s.smoothing ? "smoothed" : "not smoothed") + " · " +
-          choiceLabel("graph", s.graph).toLowerCase() + " · " + choiceLabel("adjacency_normalization", s.adjacency_normalization).toLowerCase();
-      case "temporal":
-        if (s.temporal === "lstm" || s.temporal === "gru") {
-          return choiceLabel("temporal", s.temporal) + " · hidden " + s.temporal_hidden + " · " + s.temporal_out_features +
-            " per sensor" + (s.shared_across_sensors ? " · shared" : "");
-        }
-        return choiceLabel("temporal", s.temporal);
-      case "graph":
-        return "GCN " + s.gcn_hidden.join(" · ") + " → FC " + s.fc_hidden + (s.gcn_bias ? " · with bias" : "");
-      case "training":
-        return s.epochs + " passes · " + s.batch_size + " per update · " + s.learning_rate + " → " + s.final_learning_rate +
-          ", " + choiceLabel("lr_schedule", s.lr_schedule).toLowerCase();
-      case "repeats":
-        return "from " + s.seed + (s.fixed_split ? " · same split for every seed" : "") + " · " + s.device;
-      default:
-        return "";
-    }
-  }
-
   function sectionOpen(group) {
     return !!S.sections[group];
   }
@@ -952,77 +1042,191 @@
     return sectionGroups().every(function (g) { return sectionOpen(g.key); });
   }
 
+  // One column, in the order the work is done: the steps, then the card that
+  // runs them.
   function drawDesign() {
     $("#pg-panel").innerHTML =
-      '<div class="pg-design"><div class="pg-form">' + dataHtml() + presetsHtml() +
+      '<div class="pg-design">' + dataHtml() + pipelineHtml() +
       '<div class="pg-sections-bar"><h2 class="pg-block-title">Every setting</h2>' +
       '<button type="button" class="button button--quiet button--small" data-action="toggle-sections" id="pg-toggle-sections">' +
       (allSectionsOpen() ? "Collapse all" : "Expand all") + "</button>" +
       '<button type="button" class="pg-reset" data-action="reset-all">Reset all</button></div>' +
       sectionGroups().map(sectionHtml).join("") +
-      '</div><aside class="pg-summary pg-block" id="pg-summary"></aside></div>';
-    drawSummary($("#pg-summary"), null, null);
+      '<section class="pg-block pg-run" id="pg-run" aria-label="Run"></section></div>';
+    drawRunCard($("#pg-run"), null, null);
     refreshPreview();
   }
 
-  // The sub-dataset stands at the top of the form on its own: one setting
-  // needs no section around it.
+  // The sub-dataset stands at the top of the form on its own, as step 1: one
+  // setting needs no section around it.
   function dataHtml() {
-    return '<section class="pg-block pg-data">' + fieldsOf("data").map(fieldRow).join("") + "</section>";
+    return '<section class="pg-block pg-data" data-group="data">' + fieldsOf("data").map(fieldRow).join("") + "</section>";
   }
 
-  // The variants of Table 11 as one-click presets, each with the RMSE the
-  // paper prints for it on the chosen sub-dataset.
-  function variantsHtml() {
-    var o = S.options, subset = S.settings.subset;
-    return o.ablations.map(function (a) {
-      var paperRow = (o.paper[subset] || {})[a.key];
-      var active = !!(a.settings && matches(a.settings));
-      return '<button type="button" class="pg-variant' + (active ? " is-active" : "") + '"' +
-        (a.settings ? ' data-ablation="' + esc(a.key) + '" aria-pressed="' + active + '"' : " disabled") +
-        (a.reason ? ' title="' + esc(a.reason) + '"' : "") + ">" +
-        "<strong>" + esc(a.label) + "</strong>" +
-        (paperRow ? "<span>paper RMSE " + fixed(paperRow.rmse, 2) + "</span>" : "") +
-        (a.settings ? "" : "<em>not buildable here</em>") + "</button>";
-    }).join("");
+  // ------------------------------------------------------------- pipeline
+  // The model as a flowchart, in the order the data flows through it. A box
+  // opens its group of settings; × takes a part out and + puts it back, the
+  // two moves Table 11 makes one at a time.
+
+  function pipelineHtml() {
+    return '<section class="pg-block pg-pipeline" aria-labelledby="pg-pipeline-title">' +
+      '<h2 class="pg-block-title" id="pg-pipeline-title">Pipeline</h2>' +
+      '<div class="pg-flow" id="pg-flow" role="list">' + flowHtml() + "</div></section>";
   }
 
-  // The two procedures are the only control for holding engines back. The
-  // one that holds them back carries the inputs for how many, and for how
-  // long training may go without improving, while it is the one chosen.
-  function presetsHtml() {
-    var chosen = chosenProcedure();
-    var procedures = S.options.procedures.map(function (p) {
-      var active = p === chosen;
-      var inputs = p.settings.validation_fraction > 0
-        ? '<div class="pg-procedure-fields" id="pg-procedure-fields"' + (active ? "" : " hidden") + ">" +
-          fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; }).map(fieldRow).join("") + "</div>"
-        : "";
-      return '<div class="pg-procedure">' +
-        '<button type="button" class="pg-variant' + (active ? " is-active" : "") + '" data-procedure="' + esc(p.key) +
-        '" aria-pressed="' + active + '"><strong>' + esc(p.label) + "</strong><span>" + esc(p.text) + "</span></button>" +
-        inputs + "</div>";
-    }).join("");
-    return '<section class="pg-block" id="pg-presets">' +
-      '<h2 class="pg-block-title">Which model · the variants of Table 11</h2>' +
-      '<div class="pg-variants" id="pg-variants">' + variantsHtml() + "</div>" +
-      '<p class="pg-faint pg-no-row" id="pg-no-row" hidden></p>' +
-      '<h2 class="pg-block-title">How it is trained</h2>' +
-      '<div class="pg-variants pg-variants--two">' + procedures + "</div></section>";
+  // Preprocessing, the temporal stage when there is one, the graph layers with
+  // the sensor graph they run on, and what comes out. The graph layers cannot
+  // be taken out, and their cross says why instead of doing nothing silently.
+  function flowHtml() {
+    var s = S.settings;
+    var temporal = s.temporal === REMOVED.temporal
+      ? flowLink(addButton("temporal"))
+      : flowLink("") + stageBox("temporal", capitalise(temporalName(s.temporal)), removeButton("temporal", "pg-stage-x"), "") +
+        flowLink("");
+    var fixedCross = '<button type="button" class="pg-stage-x" aria-disabled="true" title="' + GCN_FIXED + '" aria-label="' +
+      GCN_FIXED + '">' + CROSS + "</button>";
+    return stageBox("preprocessing", "Preprocessing", "", "") + temporal +
+      stageBox("graph", "GCN", fixedCross, priorHtml()) + flowLink("") +
+      '<div class="pg-flow-end" role="listitem">Remaining life</div>';
   }
+
+  // One box: the number of its step and what the step is now, "3 LSTM"; its
+  // group's name is the step's name below, and the box is read out with it.
+  // The whole box opens the group; x is its cross, parts what sits inside it.
+  function stageBox(group, name, x, parts) {
+    return '<div class="pg-stage" role="listitem"><div class="pg-stage-top">' +
+      '<button type="button" class="pg-stage-main" data-goto="' + group + '" aria-label="' +
+      esc(groupLabel(group) + ": " + name) + '">' + stepNumber(group) +
+      '<span class="pg-stage-name">' + esc(name) + "</span></button>" + x + "</div>" + parts + "</div>";
+  }
+
+  // The arrow between two boxes: a drawing, hidden from screen readers, unless
+  // it carries the + of a part taken out from between them.
+  function flowLink(inner) {
+    return inner ? '<div class="pg-flow-link pg-flow-link--gap" role="listitem">' + inner + "</div>"
+      : '<div class="pg-flow-link" aria-hidden="true"></div>';
+  }
+
+  // The sensor graph, inside the graph layers' box: its name opens its
+  // setting, and × takes it out, which joins every sensor to every other.
+  function priorHtml() {
+    var graph = S.settings.graph;
+    return '<div class="pg-stage-parts">' + (graph === REMOVED.graph ? addButton("graph")
+      : '<span class="pg-part"><button type="button" class="pg-part-main" data-goto="graph" data-goto-row="graph" title="' +
+        esc(choiceLabel("graph", graph)) + '">' + esc(partName("graph", graph)) + "</button>" +
+        removeButton("graph", "pg-part-x") + "</span>") + "</div>";
+  }
+
+  // What the pipeline calls a part with a given value: "LSTM", "Physics prior".
+  function partName(part, value) {
+    return part === "temporal" ? capitalise(temporalName(value)) : (PRIOR[value] || choiceLabel(part, value));
+  }
+
+  function removeButton(part, className) {
+    var label = "Remove " + partName(part, S.settings[part]);
+    return '<button type="button" class="' + className + '" data-action="remove-part" data-part="' + part +
+      '" aria-label="' + esc(label) + '" title="' + esc(label) + '">' + CROSS + "</button>";
+  }
+
+  function addButton(part) {
+    var name = partName(part, restoreValue(part));
+    return '<button type="button" class="pg-add" data-action="add-part" data-part="' + part +
+      '" aria-label="Add ' + esc(name) + '">' + PLUS + esc(name) + "</button>";
+  }
+
+  // What + puts back: the part as it was taken out, or its default.
+  function restoreValue(part) {
+    return S.restore[part] || S.fields[part].default;
+  }
+
+  // A part's setting moved from before to its value now. When that took the
+  // part out, by the cross or in the form, what it was is kept for +.
+  function noteRemoval(key, before) {
+    if (REMOVED[key] !== undefined && S.settings[key] === REMOVED[key] && before !== REMOVED[key]) {
+      S.restore[key] = before;
+    }
+  }
+
+  function paintPipeline() {
+    var flow = $("#pg-flow");
+    if (flow) { flow.innerHTML = flowHtml(); }
+  }
+
+  // A box was chosen: its group opens, if folded, and comes into view, marked
+  // for a moment so the eye finds it. The focus moves with it, so the keyboard
+  // carries on from there.
+  function goTo(group, rowKey) {
+    if (!sectionOpen(group)) { toggleSection(group); }
+    setStep(group);
+    var section = $('.pg-section[data-group="' + group + '"]');
+    var target = (rowKey && $('[data-row="' + rowKey + '"]')) || section;
+    if (!target) { return; }
+    target.scrollIntoView({ block: "start" });
+    var focus = target === section ? section.querySelector(".pg-section-head")
+      : target.querySelector("input:checked") || target.querySelector("input");
+    if (focus) { focus.focus({ preventScroll: true }); }
+    // Taking the class off and reading the layout restarts the mark when the
+    // same box is chosen again while it still shows.
+    target.classList.remove("is-target");
+    void target.offsetWidth;
+    target.classList.add("is-target");
+  }
+
+  function removePart(part) {
+    var before = S.settings[part];
+    S.settings[part] = REMOVED[part];
+    noteRemoval(part, before);
+    setPart(part, REMOVED[part], '[data-action="add-part"][data-part="' + part + '"]');
+  }
+
+  function addPart(part) {
+    setPart(part, restoreValue(part), '[data-action="remove-part"][data-part="' + part + '"]');
+  }
+
+  // A part taken out or put back: its setting changes, its control in the
+  // form follows, and the focus lands on what replaced the button pressed.
+  function setPart(part, value, next) {
+    S.settings[part] = value;
+    syncControl(part);
+    settingsMoved([part]);
+    var button = $(next);
+    if (button) { button.focus(); }
+  }
+
+  // ---------------------------------------------------------------- groups
 
   function sectionHtml(g) {
     var open = sectionOpen(g.key);
     var changed = changedIn(g.key);
     return '<section class="pg-section" data-group="' + g.key + '">' +
       '<button type="button" class="pg-section-head" data-section="' + g.key + '" aria-expanded="' + open +
-      '" aria-controls="pg-section-' + g.key + '">' +
+      '" aria-controls="pg-section-' + g.key + '">' + stepNumber(g.key) +
       '<span class="pg-section-title" id="pg-section-title-' + g.key + '">' + esc(g.label) + "</span>" +
-      '<span class="pg-section-summary">' + esc(groupSummary(g.key)) + "</span>" +
       '<span class="pg-section-changed"' + (changed ? "" : " hidden") + ">" + changed + " changed</span>" +
       CHEVRON + "</button>" +
       '<div class="pg-section-body" id="pg-section-' + g.key + '"' + (open ? "" : " hidden") + ">" +
-      fieldsOf(g.key).map(fieldRow).join("") + "</div></section>";
+      (g.key === "training" ? procedureHtml() : "") + fieldsOf(g.key).map(fieldRow).join("") + "</div></section>";
+  }
+
+  // The first choice in Training: the procedure, drawn as one setting though
+  // it sets two, with the inputs only it controls under it. It is the only
+  // control for holding engines back, and moves what the LSTM is worth (F-16).
+  function procedureHtml() {
+    var choices = S.options.procedures.map(function (p) { return { value: p.key, label: p.label, text: p.text }; });
+    return row({
+      key: "procedure", label: "Procedure", stacked: true,
+      control: optionList("pg-procedure", choices, chosenProcedure().key, "data-procedure",
+        function (c) { return esc(c.text); }, "procedure-label"),
+      reset: procedureReset()
+    }) + '<div class="pg-subrows">' +
+      fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; }).map(fieldRow).join("") + "</div>";
+  }
+
+  function procedureReset() {
+    var back = defaultProcedure();
+    return '<span class="pg-reset-slot">' + (chosenProcedure() !== back || !followsProcedure()
+      ? '<button type="button" class="pg-reset" data-reset="procedure" title="Back to ' + esc(back.label) + '">Reset</button>'
+      : "") + "</span>";
   }
 
   // The words under a setting's name: where its default comes from and, for
@@ -1050,12 +1254,12 @@
     if (f.kind === "bool") {
       control = switchControl(id, !!value, data);
     } else if (f.kind === "choice" && SEGMENTED[f.key]) {
-      control = segmented(id, f.choices, value, data, id + "-label");
+      control = segmented(id, f.choices, value, data, f.key + "-label");
       id = null;
     } else if (f.kind === "choice") {
       stacked = true;
       control = optionList(id, f.choices, value, data, function (c) { return sourceNote(c.source); },
-        bare ? "pg-section-title-" + f.group : id + "-label");
+        bare ? "pg-section-title-" + f.group : f.key + "-label");
       id = null;
     } else if (f.kind === "widths") {
       control = '<div class="pg-widths">' + value.map(function (w, i) {
@@ -1068,6 +1272,7 @@
     }
     return row({
       key: f.key, id: id, label: bare ? "" : parts.label, stacked: stacked, hidden: !visible(f.key),
+      step: f.group === "data" ? "data" : "",
       hint: hintFor(f),
       control: control,
       reset: resetHtml(f)
@@ -1087,30 +1292,32 @@
     return String(f.default);
   }
 
-  function applyPreset(list, key) {
-    var preset = list.filter(function (x) { return x.key === key; })[0];
-    Object.keys(preset.settings).forEach(function (k) { S.settings[k] = preset.settings[k]; });
-    saveSettings();
-    drawDesign();
-  }
-
-  // Choosing the card already chosen leaves its inputs as they are.
+  // Choosing a procedure sets both things it decides, and the share held back
+  // comes back as the procedure's own, so that input is set to match.
   function chooseProcedure(key) {
-    if (chosenProcedure().key === key) { return; }
-    applyPreset(S.options.procedures, key);
+    if (chosenProcedure().key === key && followsProcedure()) { return; }
+    var preset = S.options.procedures.filter(function (p) { return p.key === key; })[0];
+    var keys = Object.keys(preset.settings);
+    keys.forEach(function (k) { S.settings[k] = preset.settings[k]; syncControl(k); });
+    settingsMoved(keys);
   }
 
+  // Resetting the procedure puts back both settings it decides.
   function resetField(key) {
-    S.settings[key] = copy(S.fields[key].default);
+    (key === "procedure" ? ["validation_fraction", "early_stopping"] : [key]).forEach(function (k) {
+      S.settings[k] = copy(S.fields[k].default);
+    });
     saveSettings();
     drawDesign();
   }
 
+  // Opening a group makes it the current step; folding the current one leaves none.
   function toggleSection(group) {
     S.sections[group] = !sectionOpen(group);
     remember(SECTIONS, S.sections);
     paintSection(group);
     paintSectionsToggle();
+    if (sectionOpen(group)) { setStep(group); } else if (S.step === group) { setStep(null); }
   }
 
   function setAllSections(open) {
@@ -1131,20 +1338,17 @@
     var open = sectionOpen(group);
     head.setAttribute("aria-expanded", String(open));
     body.hidden = !open;
-    head.querySelector(".pg-section-summary").textContent = groupSummary(group);
     var badge = head.querySelector(".pg-section-changed");
     var changed = changedIn(group);
     badge.hidden = !changed;
     badge.textContent = changed + " changed";
   }
 
-  // A control changed. The setting is read from it, then only what depends
-  // on it is redrawn: its row, the rows it can show or hide, the preset
-  // cards, the section heads and the run card. The control itself is left
-  // alone, so a number being typed keeps its focus.
+  // A control changed: the setting is read from it, then what depends on it is redrawn.
   function fieldChanged(input) {
     var key = input.getAttribute("data-field");
     var f = S.fields[key];
+    var before = S.settings[key];
     if (f.kind === "bool") { S.settings[key] = input.checked; }
     else if (f.kind === "choice") { S.settings[key] = input.value; }
     else if (f.kind === "widths") {
@@ -1152,13 +1356,35 @@
       widths[+input.getAttribute("data-index")] = input.value === "" ? input.value : Number(input.value);
       S.settings[key] = widths;
     } else { S.settings[key] = input.value === "" ? input.value : Number(input.value); }
+    noteRemoval(key, before);
+    settingsMoved([key]);
+  }
+
+  // A setting changed from somewhere other than its own control, the
+  // pipeline or the procedure: the control is set to match it.
+  function syncControl(key) {
+    var value = S.settings[key];
+    $all('[data-field="' + key + '"]').forEach(function (input) {
+      if (input.type === "radio") { input.checked = input.value === String(value); }
+      else if (input.type === "checkbox") { input.checked = !!value; }
+      else if (input.hasAttribute("data-index")) { input.value = value[+input.getAttribute("data-index")]; }
+      else { input.value = value; }
+    });
+  }
+
+  // Settings moved, from a control or from the pipeline. Only what depends
+  // on them is redrawn: their rows, the rows they show or hide, the
+  // procedure, the pipeline, the group heads and the run card. The controls
+  // themselves are left alone, so a number being typed keeps its focus.
+  function settingsMoved(keys) {
     saveSettings();
-    paintRow(key);
+    keys.forEach(paintRow);
     S.options.fields.forEach(function (other) {
       var box = $('[data-row="' + other.key + '"]');
       if (box) { box.hidden = !visible(other.key); }
     });
-    paintPresets();
+    paintProcedure();
+    paintPipeline();
     sectionGroups().forEach(function (g) { paintSection(g.key); });
     refreshPreview();
   }
@@ -1171,60 +1397,34 @@
     Array.prototype.forEach.call(box.querySelectorAll(".opt"), function (option) {
       option.classList.toggle("is-active", option.querySelector("input").checked);
     });
-    var hint = box.querySelector(".pg-row-hint");
-    if (hint) {
-      var text = hintFor(f);
-      hint.innerHTML = text;
-      hint.hidden = !text;
-    }
+    var words = box.querySelector(".pg-row-name .pg-info-card");
+    if (words) { words.innerHTML = hintFor(f); }
   }
 
-  // The cards are repainted in place rather than rebuilt: the procedure
-  // card holds inputs, and rebuilding it would take the focus from one.
-  function paintPresets() {
-    var variants = $("#pg-variants");
-    if (variants) { variants.innerHTML = variantsHtml(); }
-    var chosen = chosenProcedure();
-    $all("[data-procedure]").forEach(function (button) {
-      var active = button.getAttribute("data-procedure") === chosen.key;
-      button.classList.toggle("is-active", active);
-      button.setAttribute("aria-pressed", String(active));
+  function paintProcedure() {
+    var box = $('[data-row="procedure"]');
+    if (!box) { return; }
+    var chosen = chosenProcedure().key;
+    Array.prototype.forEach.call(box.querySelectorAll(".opt"), function (option) {
+      var input = option.querySelector("input");
+      input.checked = input.value === chosen;
+      option.classList.toggle("is-active", input.checked);
     });
-    var inputs = $("#pg-procedure-fields");
-    if (inputs) { inputs.hidden = !(chosen.settings.validation_fraction > 0); }
-    paintNoRow();
-  }
-
-  // When no variant card fits the settings, the reason the paper has no row
-  // for them is said once, under the cards. It comes with the preview, so it
-  // is shown only once the preview describes the settings on screen.
-  function paintNoRow() {
-    var slot = $("#pg-no-row");
-    if (!slot) { return; }
-    var fits = S.options.ablations.some(function (a) { return a.settings && matches(a.settings); });
-    var current = S.preview && S.previewFor === JSON.stringify(S.settings);
-    var reason = !fits && current && !S.preview.paper_row ? S.preview.no_row_reason : "";
-    slot.textContent = reason || "";
-    slot.hidden = !reason;
+    box.querySelector(".pg-reset-slot").outerHTML = procedureReset();
   }
 
   function refreshPreview() {
     clearTimeout(S.previewTimer);
     S.previewTimer = setTimeout(function () {
-      var box = $("#pg-summary");
+      var box = $("#pg-run");
       if (!box) { return; }
       var asked = JSON.stringify(S.settings);
       post("/api/playground/preview", S.settings).then(function (preview) {
         if (asked !== JSON.stringify(S.settings)) { return; }  // a newer request is on its way
-        S.preview = preview;
-        S.previewFor = asked;
-        drawSummary(box, preview, null);
-        paintNoRow();
+        drawRunCard(box, preview, null);
       }).catch(function (error) {
         if (asked !== JSON.stringify(S.settings)) { return; }
-        S.preview = null;
-        drawSummary(box, null, error.message);
-        paintNoRow();
+        drawRunCard(box, null, error.message);
       });
     }, 220);
   }
@@ -1251,9 +1451,10 @@
     return layers;
   }
 
-  // The right-hand card: the one action, then only what stops it or
-  // qualifies it, then the network these settings build.
-  function drawSummary(box, preview, error) {
+  // The card that ends the form: the network these settings build, then only
+  // what stops the run or qualifies it, then the one action, so each caution
+  // sits directly above the button it is about.
+  function drawRunCard(box, preview, error) {
     if (!box) { return; }
     var counted = preview && preview.dataset ? preview.dataset.counted : null;
     var torch = S.torch !== false && !(preview && preview.torch === false);
@@ -1291,8 +1492,9 @@
         "</details></div>";
     }
 
-    box.innerHTML = '<button type="button" class="button button--primary pg-train" data-action="run"' + (canRun ? "" : " disabled") +
-      ">Train " + plural(S.settings.seeds, "seed") + "</button>" + caveatList(notes) + network;
+    box.innerHTML = network + caveatList(notes) + '<div class="pg-run-action">' +
+      '<button type="button" class="button button--primary pg-train" data-action="run"' + (canRun ? "" : " disabled") +
+      ">Train " + plural(S.settings.seeds, "seed") + "</button></div>";
   }
 
   // Queue a run. The server names the job. A toast confirms it only when the

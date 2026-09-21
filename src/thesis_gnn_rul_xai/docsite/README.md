@@ -315,25 +315,48 @@ swapped and the effect seen. It has three tabs, in the order the work happens,
 and a fourth for the jobs:
 
 1. **Design a run.** Choose the sub-dataset, the preprocessing, the temporal
-   stage, the widths of the graph layers and the training settings. The graph
-   layers themselves stay the three of the paper's Table 4; only their sizes
-   change.
+   stage, the sensor graph and the widths of the graph layers, and the
+   training settings. The graph layers themselves stay the three of the
+   paper's Table 4; only their sizes change.
 2. **Results.** Every stored run, its four measures beside the paper's, every
    seed's curve and predictions, and any two runs paired seed by seed.
 3. **Explain.** Explain one stored run's predictions, with the paper's method
    or a cheaper one, and read back how much each sensor moved them.
 
 The design tab has twenty-nine settings, and shown all at once they ran to five
-screens. So the form opens with the sub-dataset on its own, then the four
-variants of Table 11 and the two training procedures as cards, and below them
-the other settings in five groups that fold. A folded group's heading says what
-it holds right now — "30-cycle windows, stride 1 · ceiling 125 …" — and how
-many of its settings differ from their defaults, so nothing is hidden by
-folding it; an open group shows the controls instead, and a setting that
-differs carries a Reset. Which groups are open is remembered in the reader's
-own browser, as the menu's folds are. The column on the right does not scroll
-away: it holds the button that starts the run, what stops or qualifies that
-run, and the network the settings build.
+screens. So the form is laid out as numbered steps. Step 1, the sub-dataset,
+stands on its own at the top. Under it the **pipeline** draws the network as a
+flowchart, in the order the data passes through it: the preprocessing, the
+temporal stage, the graph layers with the sensor graph they run on, and the
+remaining life that comes out. Below that, the other settings sit in five
+groups that fold, numbered 2 to 6 — Preprocessing, Temporal stage, Graph
+layers, Training and Repeats. Each box of the pipeline shows its group's number
+and what that step is now, "3 LSTM" or "3 GRU", so the group's name is said
+once, on the group, and the number ties the two together. Choosing a box opens
+its group and brings it into view; choosing the sensor graph inside the graph
+layers' box goes straight to that setting.
+
+The sensor graph is built while the data is prepared, but its setting sits in
+the Graph layers group, beside the layers that use it, because that is where
+the pipeline draws it.
+
+A folded group's heading shows only its number, its name and how many of its
+settings differ from their defaults. It does not repeat what the group holds:
+the pipeline shows the choice that matters for each stage, and the count says
+whether anything else was moved. An open group shows the controls, and a
+setting that differs carries a Reset. Which groups are open is remembered in the
+reader's own browser, as the menu's folds are.
+
+One step is the current one: step 1 when the page opens, then whichever group
+was last opened, reached from the pipeline, or worked in. Its number is filled
+in, on its group and on its box in the pipeline, and every other number is an
+outline, which also keeps the form's numbers from reading as the numbers of
+the Design, Results and Explain tabs above them.
+
+The form ends, below step 6, with the card that runs it: the network the
+settings build, what stops or qualifies the run, and the button that starts it.
+It stands last so the page reads from top to bottom in the order the work is
+done, and so each caution sits directly above the button it is about.
 
 ### Why the page never computes a result of its own
 
@@ -354,7 +377,7 @@ never as one line of text for a shell to split, so no setting typed into the
 page can become a second command.
 
 Fewer than five seeds is allowed, because trying things out is the point. It is
-marked where it matters: beside the Train button before the run, as a
+marked where it matters: above the Train button before the run, as a
 warning-coloured seed count in the list of runs, and among the cautions on the
 run's own page.
 
@@ -374,27 +397,7 @@ Some things need no training, and the page shows them as the settings change:
   numbers there. Settings the network refuses — thirty raw cycles handed
   straight to a graph layer, for one — are refused with the network's own
   message.
-- **The row of the paper a result may be set beside.** Which row is decided by
-  what the settings remove, one part at a time, the way the paper's Table 11
-  does:
-
-  | Temporal stage | Sensor graph | Published row |
-  |---|---|---|
-  | LSTM | the paper's | ESTGNN (Full), Tables 7 to 10 |
-  | w/o LSTM | the paper's | ESTGNN w/o LSTM, Table 11 |
-  | LSTM | every sensor joined | ESTGNN w/o Physics prior, Table 11 |
-  | w/o LSTM | every sensor joined | none: two parts removed at once |
-  | anything | the 41 most correlated pairs | none: the paper builds no such graph |
-  | anything else | the paper's or every sensor joined | none: the paper has no row for the stage |
-  | not recorded, in an older stored run | the paper's or every sensor joined | none: no row can be chosen |
-
-  Removing one part of a model to see what it was worth is called an
-  **ablation**, and the variant cards at the top of the form set exactly the
-  settings of each row, with the paper's RMSE on each. The card the settings
-  match is marked; when none matches, the reason from the table's last column
-  is printed once under the cards. "w/o GCN" is shown and disabled: a model
-  without graph layers is not built.
-- **What stops or qualifies the run**, directly under the Train button: that
+- **What stops or qualifies the run**, directly above the Train button: that
   PyTorch or the NASA files are missing, the network's refusal, how many test
   engines are shorter than the window and will be left out (counted from the
   real file), and two cautions about settings that conflict — fewer than five
@@ -406,17 +409,54 @@ Some things need no training, and the page shows them as the settings change:
 The cautions come from one function, `caveats()`, and each carries a `where`:
 `"run"` for a caution that qualifies a stored run's numbers, which the run's
 own page lists in full, and `"design"` for the two above. Most cautions are
-`"run"` only, because on the design tab the tag beside the setting already says
+`"run"` only, because on the design tab the i beside the setting already says
 the same thing, while a stored run's page shows no settings and the caution is
 the only copy there.
 
+### Which row of the paper a run is set beside
+
+Removing one part of a model to see what it was worth is called an
+**ablation**, and the pipeline makes the two that can be built here. The cross
+on the temporal stage's box keeps only each window's last cycle, which is the
+w/o LSTM row's stage, and the box leaves the flowchart. The **physics prior**
+is the paper's own sensor graph, the matrix of its Table 3, which the authors
+built by hand from how a turbofan engine works; the form calls it "The paper's
+physics graph". The cross on it joins every sensor to every other instead, the
+w/o Physics prior row's graph. Each leaves a dashed button in its place that puts
+the part back as it was, however it was taken out: a GRU, the smaller recurrent
+network this project offers beside the LSTM, comes back as a GRU. The graph
+layers' box has a cross drawn faint that does nothing and says why when
+pointed at: a network without graph layers is not built here, so "w/o GCN" has
+no settings.
+
+A stored run is set beside one row of the paper, decided by what its settings
+remove, one part at a time, the way the paper's Table 11 does:
+
+| Temporal stage | Sensor graph | Published row |
+|---|---|---|
+| LSTM | the paper's | ESTGNN (Full), Tables 7 to 10 |
+| w/o LSTM | the paper's | ESTGNN w/o LSTM, Table 11 |
+| LSTM | every sensor joined | ESTGNN w/o Physics prior, Table 11 |
+| w/o LSTM | every sensor joined | none: two parts removed at once |
+| anything | the 41 most correlated pairs | none: the paper builds no such graph |
+| anything else | the paper's or every sensor joined | none: the paper has no row for the stage |
+| not recorded, in an older stored run | the paper's or every sensor joined | none: no row can be chosen |
+
+The list of runs gives that row's RMSE in its Paper column, and a run's own
+page names the row and sets its figures beside the run's, or gives the reason
+from the table's last column. The design tab names no row: the pipeline already
+shows which parts are in, and the paper's number belongs beside a result, not
+beside settings that are still being chosen.
+
 ### Where each default comes from
 
-Every setting carries a label saying which of four things set its default,
-because that is the distinction the thesis depends on. Pointing at a label
-gives its meaning in a few words.
+Every setting has an i beside its name. Pointing at the i, reaching it with
+the keyboard, or choosing it opens a small card with a tag saying which of four
+things set the default, because that is the distinction the thesis depends on,
+and a few words on why. The form itself shows only names, so it reads as a list
+of choices rather than a list of citations. Escape closes the card.
 
-| Label | Meaning | Example |
+| Tag | Meaning | Example |
 |---|---|---|
 | Paper | the paper prints the value | 200 passes over the training data, Table 6 |
 | Our choice | the paper is silent, so a numbered assumption chose | the label ceiling of 125 (assumption A-01) |
@@ -424,20 +464,24 @@ gives its meaning in a few words.
 | Not in the paper | an option offered for comparison | the GRU stage |
 
 Each fact is said once: when every option of a setting shares one source, the
-label sits on the setting; when the options differ, as for the sensor graph and
-the temporal stage, each option carries its own.
+tag is behind the setting's i; when the options differ, as for the sensor graph
+and the temporal stage, each option has an i of its own. An option's i is not a
+stop for the Tab key. Moving onto the option with the arrow keys opens its card,
+and a screen reader reads the card as the option's description. The cards of
+the Explain tab's options work the same way.
 
 A pass over the whole training set is what PyTorch calls an **epoch**; the page
 says "pass" throughout.
 
-The training procedure gets cards of its own: **the paper's procedure**
-(nothing held back, every pass, the final weights) and **held back, best pass**
-(a fifth of the training engines held back, and the weights of the pass that
-scored best on them restored). The cards are the only control for those two
-things; while the second is chosen, the share of engines held back and how many
-passes may go by without improvement sit under it. Neither card sets the number
-of passes. They are one switch because on FD001 the choice changed what the
-LSTM stage was worth from 3.19 cycles to 0.77 (finding F-16).
+The training procedure is the first choice in the Training group: **the
+paper's procedure** (nothing held back, every pass, the final weights) or
+**held back, best pass** (a fifth of the training engines held back, and the
+weights of the pass that scored best on them restored). It is the only control
+for those two things; while the second is chosen, the share of engines held
+back and how many passes may go by without improvement sit under it. It does
+not set the number of passes, which is the next setting in the group. The two
+things are one choice because on FD001 it changed what the LSTM stage was worth
+from 3.19 cycles to 0.77 (finding F-16).
 
 ### Jobs: one at a time, and what stopping means
 

@@ -104,18 +104,48 @@ def test_where_a_default_comes_from_is_said_once_per_setting():
         assert all(c["source"] is not None for c in spec["choices"]), key
 
 
-def test_the_procedure_cards_are_the_only_control_for_what_is_held_back():
+def test_the_procedure_is_the_only_control_for_what_is_held_back():
     groups = {f["key"]: f["group"] for f in playground.FIELDS}
     assert {key for key, group in groups.items() if group == "procedure"} == {
         "validation_fraction", "early_stopping", "early_stopping_patience"}
-    # Not a section of the form: the page draws these under the cards.
+    # Not a section of the form: the page draws these inside Training, under
+    # the choice of procedure.
     assert "procedure" not in {key for key, _ in playground.GROUPS}
+    assert "training" in {key for key, _ in playground.GROUPS}
     paper, held_back = playground.PROCEDURES
     assert paper["settings"] == {"validation_fraction": 0.0, "early_stopping": False}
     assert held_back["label"] == "Held back, best pass"
     assert held_back["settings"] == {"validation_fraction": 0.2, "early_stopping": True}
     for procedure in playground.PROCEDURES:
         playground.validate_settings(procedure["settings"])
+
+
+def test_the_pipeline_takes_out_one_part_at_a_time_as_table_11_does():
+    """The page's pipeline takes a part out by setting the value its cross
+    names. Those values must be the settings of the variants of Table 11, each
+    of which differs from the full model in one setting, or the line under the
+    pipeline would name a row the boxes do not show."""
+    import re
+
+    script = (ROOT / "src/thesis_gnn_rul_xai/docsite/assets/playground.js").read_text(encoding="utf-8")
+    removed = dict(re.findall(r'(\w+): "(\w+)"', re.search(r"var REMOVED = \{(.*?)\};", script).group(1)))
+    variants = {a["key"]: a["settings"] for a in playground.ABLATIONS}
+    full = variants["full"]
+    defaults = {f["key"]: f["default"] for f in playground.FIELDS}
+    # The pipeline opens on the full model.
+    assert all(defaults[key] == value for key, value in full.items())
+    taken_out = {}
+    for key in ("without_lstm", "without_physics_prior"):
+        moved = {k: v for k, v in variants[key].items() if full[k] != v}
+        assert len(moved) == 1, key
+        taken_out.update(moved)
+    assert removed == taken_out == {"temporal": "last_cycle", "graph": "complete"}
+    # A model without graph layers is not built, so that box has no cross.
+    assert variants["without_gcn"] is None
+    # The sensor graph is drawn inside the graph layers' box, so its setting
+    # is in their group, where choosing it in the pipeline leads.
+    groups = {f["key"]: f["group"] for f in playground.FIELDS}
+    assert groups["graph"] == groups["adjacency_normalization"] == groups["gcn_hidden"] == "graph"
 
 
 def test_the_defaults_the_paper_states_are_the_ones_it_prints():
@@ -234,6 +264,8 @@ def test_the_preview_carries_only_what_the_design_tab_draws():
 
     answer = playground.preview(playground.validate_settings({}))
     assert "command" not in answer and "caveats" not in answer
+    # The row of the paper is shown for a stored run, not while designing one.
+    assert "paper_row" not in answer and "no_row_reason" not in answer
     assert set(answer["dataset"]) == {"table5", "counted"}
     assert answer["design_cautions"] == []
     assert answer["torch"] is (importlib.util.find_spec("torch") is not None)

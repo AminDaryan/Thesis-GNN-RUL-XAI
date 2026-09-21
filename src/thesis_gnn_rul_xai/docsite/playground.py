@@ -101,7 +101,7 @@ FIELDS: tuple[dict[str, Any], ...] = (
      "default": "FD001",
      "choices": [{"value": s, "label": s, "source": None} for s in SUBSETS],
      "source": _paper("Table 5", "")},
-    # -- procedure: set only by the two procedure cards, never a section ---
+    # -- procedure: set by the choice of procedure at the top of Training ---
     {"key": "validation_fraction", "group": "procedure",
      "label": "Training engines held back",
      "kind": "float", "default": 0.2, "min": 0.0, "max": 0.5, "step": 0.05,
@@ -141,26 +141,6 @@ FIELDS: tuple[dict[str, Any], ...] = (
     {"key": "smoothing_alpha", "group": "preprocessing", "label": "Smoothing weight on the newest reading",
      "kind": "float", "default": 0.5, "min": 0.01, "max": 1.0, "step": 0.05,
      "source": _choice("A-04", "")},
-    {"key": "graph", "group": "preprocessing", "label": "Sensor graph", "kind": "choice",
-     "default": "physics",
-     "choices": [
-         {"value": "physics", "label": "The paper's physics graph",
-          "source": _paper("Table 3", "")},
-         {"value": "complete", "label": "Every sensor joined to every other",
-          "source": _choice("D-2", "averages every sensor equally, so it measures the cost "
-                                   "of averaging as much as the value of the physics")},
-         {"value": "correlation", "label": "The 41 most correlated sensor pairs",
-          "source": _choice("A-27", "built from each seed's own training engines, so seeds "
-                                    "can get slightly different graphs")},
-     ],
-     "source": None},
-    {"key": "adjacency_normalization", "group": "preprocessing",
-     "label": "Graph rescaling", "kind": "choice", "default": "row",
-     "choices": [
-         {"value": "row", "label": "Each row sums to one", "source": None},
-         {"value": "symmetric", "label": "Symmetric, by both degrees", "source": None},
-     ],
-     "source": _choice("A-21", "the paper describes the step but prints no formula")},
     # -- temporal stage ----------------------------------------------------
     {"key": "temporal", "group": "temporal", "label": "Temporal stage", "kind": "choice",
      "default": "lstm",
@@ -189,7 +169,29 @@ FIELDS: tuple[dict[str, Any], ...] = (
     {"key": "shared_across_sensors", "group": "temporal",
      "label": "One network shared by all sensors", "kind": "bool", "default": False,
      "source": _extension("")},
-    # -- graph layers ------------------------------------------------------
+    # -- graph layers: the graph they run on, then their sizes -------------
+    # The sensor graph is built while the data is prepared, but it is drawn
+    # with the layers that use it, where the page's pipeline shows it too.
+    {"key": "graph", "group": "graph", "label": "Sensor graph", "kind": "choice",
+     "default": "physics",
+     "choices": [
+         {"value": "physics", "label": "The paper's physics graph",
+          "source": _paper("Table 3", "")},
+         {"value": "complete", "label": "Every sensor joined to every other",
+          "source": _choice("D-2", "averages every sensor equally, so it measures the cost "
+                                   "of averaging as much as the value of the physics")},
+         {"value": "correlation", "label": "The 41 most correlated sensor pairs",
+          "source": _choice("A-27", "built from each seed's own training engines, so seeds "
+                                    "can get slightly different graphs")},
+     ],
+     "source": None},
+    {"key": "adjacency_normalization", "group": "graph",
+     "label": "Graph rescaling", "kind": "choice", "default": "row",
+     "choices": [
+         {"value": "row", "label": "Each row sums to one", "source": None},
+         {"value": "symmetric", "label": "Symmetric, by both degrees", "source": None},
+     ],
+     "source": _choice("A-21", "the paper describes the step but prints no formula")},
     {"key": "gcn_hidden", "group": "graph", "label": "Graph layer widths", "kind": "widths",
      "default": [32, 64, 32], "min": 1, "max": 512, "length": 3,
      "source": _paper("Table 4", "")},
@@ -245,8 +247,9 @@ FIELDS: tuple[dict[str, Any], ...] = (
 
 _BY_KEY = {spec["key"]: spec for spec in FIELDS}
 
-# The sections of the form. The "procedure" group is left out on purpose: its
-# three settings are drawn under the procedure cards, which are their only control.
+# The sections of the form, numbered on the page in this order. The "procedure"
+# group is left out on purpose: its settings are drawn at the top of Training,
+# under the choice of procedure, which is their only control.
 GROUPS = (
     ("data", "Data"),
     ("preprocessing", "Preprocessing"),
@@ -256,22 +259,22 @@ GROUPS = (
     ("repeats", "Repeats"),
 )
 
-# The four model variants of Table 11, as settings. "w/o GCN" cannot be built:
-# the graph layers are the one part this playground keeps.
+# The four model variants of Table 11, as settings: a stored run is set beside
+# the row whose settings it has. Taking the LSTM out of the page's pipeline
+# gives "w/o LSTM", taking the physics prior out gives "w/o Physics prior".
+# "w/o GCN" has no settings: the graph layers are the one part this playground
+# keeps, so their box has nothing to take them out with.
 ABLATIONS = (
-    {"key": "full", "label": "Full ESTGNN", "settings": {"temporal": "lstm", "graph": "physics"}},
-    {"key": "without_lstm", "label": "w/o LSTM",
-     "settings": {"temporal": "last_cycle", "graph": "physics"}},
-    {"key": "without_physics_prior", "label": "w/o Physics prior",
-     "settings": {"temporal": "lstm", "graph": "complete"}},
-    {"key": "without_gcn", "label": "w/o GCN", "settings": None,
-     "reason": "The graph layers are the part this playground holds fixed."},
+    {"key": "full", "settings": {"temporal": "lstm", "graph": "physics"}},
+    {"key": "without_lstm", "settings": {"temporal": "last_cycle", "graph": "physics"}},
+    {"key": "without_physics_prior", "settings": {"temporal": "lstm", "graph": "complete"}},
+    {"key": "without_gcn", "settings": None},
 )
 
 # The two training procedures, and the only control for how many engines are
 # held back and whether the best pass's weights are restored. They are one
-# switch because the choice moves what the LSTM is worth (F-16). Neither sets
-# the number of passes, which stays with the training settings.
+# choice because it moves what the LSTM is worth (F-16), and the first one in
+# the Training group. Neither sets the number of passes, which is the next one.
 PROCEDURES = (
     {"key": "paper", "label": "The paper's procedure",
      "text": "Nothing held back, every pass, the final weights (Table 6).",
@@ -373,21 +376,16 @@ def paper_row_for(
     """The row of the paper a configuration may be set beside, or why there is none."""
     if graph == "correlation":
         return None, "The paper never builds a graph from correlations, so no row describes one."
-    if temporal == "lstm" and graph == "physics":
-        key = "full"
-    elif temporal == "last_cycle" and graph == "physics":
-        key = "without_lstm"
-    elif temporal == "lstm" and graph == "complete":
-        key = "without_physics_prior"
-    elif temporal is None:
+    for variant in ABLATIONS:
+        if variant["settings"] == {"temporal": temporal, "graph": graph}:
+            row = published_row(variant["key"], subset)
+            return {"key": row.key, "label": row.label, "source": row.source, "rmse": row.rmse,
+                    "score": row.score, "r2": row.r2, "asue": row.asue}, ""
+    if temporal is None:
         return None, "The run did not record its temporal stage, so no row can be chosen."
-    elif temporal == "last_cycle" and graph == "complete":
+    if temporal == "last_cycle" and graph == "complete":
         return None, "Two parts are removed at once; Table 11 removes one at a time."
-    else:
-        return None, "The paper has no row for this temporal stage."
-    row = published_row(key, subset)
-    return {"key": row.key, "label": row.label, "source": row.source, "rmse": row.rmse,
-            "score": row.score, "r2": row.r2, "asue": row.asue}, ""
+    return None, "The paper has no row for this temporal stage."
 
 
 def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -475,11 +473,8 @@ def dataset_facts(subset: str, window_size: int) -> dict[str, Any]:
 
 
 def preview(settings: Mapping[str, Any]) -> dict[str, Any]:
-    """What the Design tab draws for these settings: the paper's row, the data, the network built for real."""
-    row, reason = paper_row_for(settings["subset"], settings["temporal"], settings["graph"])
+    """What the Design tab draws for these settings: the data, the cautions, the network built for real."""
     answer: dict[str, Any] = {
-        "paper_row": row,
-        "no_row_reason": reason,
         "dataset": dataset_facts(settings["subset"], int(settings["window_size"])),
         "design_cautions": [note for note in caveats(settings) if "design" in note["where"]],
         "torch": True,
@@ -618,16 +613,10 @@ def options() -> dict[str, Any]:
     return {
         "fields": list(FIELDS),
         "groups": [{"key": k, "label": label} for k, label in GROUPS],
-        "ablations": list(ABLATIONS),
         "procedures": list(PROCEDURES),
         "defaults": {spec["key"]: spec["default"] for spec in FIELDS},
         "result_seeds": RESULT_SEEDS,
         "dataset": DATASET_DESCRIPTION,
-        "paper": {
-            subset: {key: _row_dict(key, subset) for key in
-                     ("full", "without_lstm", "without_physics_prior", "without_gcn")}
-            for subset in SUBSETS
-        },
         "graph": {
             "positions": {node: [round(x, 1), round(y, 1)] for node, (x, y) in positions.items()},
             "edges": [list(edge) for edge in graph.edges()],
@@ -640,12 +629,6 @@ def options() -> dict[str, Any]:
             "ring": list(FIG_10_RING),
         },
     }
-
-
-def _row_dict(key: str, subset: str) -> dict[str, Any]:
-    row = published_row(key, subset)
-    return {"key": row.key, "label": row.label, "source": row.source, "rmse": row.rmse,
-            "score": row.score, "r2": row.r2, "asue": row.asue}
 
 
 # -- stored runs ------------------------------------------------------------
