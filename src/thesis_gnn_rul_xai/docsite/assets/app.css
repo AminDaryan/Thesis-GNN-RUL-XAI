@@ -6,7 +6,16 @@
 
 /* ------------------------------------------------------------------ tokens */
 
+/* The width of a line of text, worked out once in the article's own font
+   and handed down as a length: 74ch measured in a heading's font would be
+   a different width. */
+@property --text-w { syntax: '<length>'; inherits: true; initial-value: 0px; }
+
 :root {
+  /* Tells the browser which of its own controls to draw: radio buttons,
+     number arrows and scroll bars. Without it they stay light on the dark
+     page, where an empty radio button reads as a chosen one. */
+  color-scheme: light;
   --page: #ffffff;
   --panel: #f6f7f9;
   --panel-2: #eceff3;
@@ -52,13 +61,19 @@
   --topbar-h: 56px;
   --measure: 74ch;
   --measure-wide: 1080px;
-  --measure-form: 880px;
+  --measure-form: 960px;
+  --measure-app: 1280px;
+  --pipeline-w: 400px;
+  --pipeline-w-max: 480px;
+  --content-pad-bottom: 48px;
+  --cell-w: 184px;
   --radius: 10px;
   --control-h: 36px;
   --ease: cubic-bezier(.2, .7, .2, 1);
 }
 
 html[data-theme="dark"] {
+  color-scheme: dark;
   --page: #101317;
   --panel: #171b21;
   --panel-2: #1e242c;
@@ -100,6 +115,11 @@ html[data-theme="dark"] {
 * { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
+/* The scroll bar's room is kept whether or not the page is long enough to
+   need one, so nothing drawn at the page's width is too wide once the page
+   grows long enough to scroll. Where scroll bars float over the page, on a
+   phone or a Mac, this keeps nothing. */
+html { scrollbar-gutter: stable; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
@@ -138,7 +158,7 @@ button, input, select { font: inherit; color: inherit; }
 .brand-mark { width: 24px; height: 24px; flex: 0 0 auto; }
 .brand-text { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; }
 
-.search { position: relative; flex: 1 1 auto; max-width: 520px; margin: 0 auto; }
+.search { position: relative; flex: 1 1 0; min-width: 0; max-width: 520px; margin: 0 auto; }
 .search input {
   width: 100%; height: var(--control-h);
   padding: 0 12px 0 32px;
@@ -198,12 +218,14 @@ button, input, select { font: inherit; color: inherit; }
 .button--quiet { background: none; border-color: transparent; box-shadow: none; color: var(--accent); padding: 0 8px; }
 .button--quiet:hover { background: var(--accent-soft); border-color: transparent; }
 .button--small { height: 32px; padding: 0 8px; font-size: 12px; }
-.icon-button { width: var(--control-h); padding: 0; }
+.icon-button { width: var(--control-h); padding: 0; flex: 0 0 auto; }
 .button svg { flex: 0 0 auto; }
 
-/* A server whose Python is older than the files on disk says so here. */
+/* A server whose Python is older than the files on disk says so here. It
+   scrolls away with the page: pinned, it covered the top of the menu, of the
+   contents list and every heading a link leads to. */
 .stale {
-  position: sticky; top: var(--topbar-h); z-index: 39;
+  position: static;
   padding: 8px 16px; font-size: 13px; line-height: 1.5;
   background: var(--warn-soft); color: var(--warn); border-bottom: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
 }
@@ -232,18 +254,26 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
   display: none; position: fixed; inset: var(--topbar-h) 0 0 0; z-index: 30;
   background: rgba(16, 24, 40, .35);
 }
+html[data-theme="dark"] .scrim { background: rgba(0, 0, 0, .6); }
 
+/* The page's column is no wider than a wide block and its margins; on a
+   wide screen it and the contents list stand together, centred in the space
+   right of the menu, rather than at opposite edges with a band of nothing
+   between. The playground keeps the whole width. */
 .content {
   flex: 1 1 auto; min-width: 0;
-  padding: 32px 40px 48px;
+  max-width: calc(var(--measure-wide) + 80px); margin-left: auto;
+  padding: 32px 40px var(--content-pad-bottom);
 }
+.content:has(+ .toc:empty) { margin-right: auto; }
+.content:has(.pg) { max-width: none; }
 .content:focus { outline: none; }
 
 .toc {
   position: sticky; top: var(--topbar-h);
-  width: var(--toc-w); flex: 0 0 var(--toc-w);
+  width: var(--toc-w); flex: 0 0 var(--toc-w); margin-right: auto;
   height: calc(100vh - var(--topbar-h));
-  overflow-y: auto;
+  overflow-y: auto; overscroll-behavior: contain;
   padding: 32px 20px 48px 4px;
   font-size: 12px;
 }
@@ -253,10 +283,28 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
 .toc a:hover { color: var(--ink); }
 .toc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
 .toc a[data-level="3"] { padding-left: 20px; font-size: 12px; }
-.toc a[data-level="4"] { padding-left: 32px; font-size: 11px; }
+.toc a[data-level="4"] { padding-left: 32px; font-size: 11px; line-height: 16px; }
+/* The same links, folded at the top of the page, where the list beside it
+   does not fit. */
+.toc-inline { display: none; max-width: var(--text-w, var(--measure)); margin: 0 0 24px; font-family: var(--sans); font-size: 13px; }
+.toc-inline summary { cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); padding: 4px 0; }
+.toc-inline a { display: block; padding: 4px 8px; color: var(--ink-soft); text-decoration: none; border-left: 2px solid var(--line-soft); line-height: 1.4; }
+.toc-inline a[data-level="3"] { padding-left: 20px; }
+.toc-inline a[data-level="4"] { padding-left: 32px; }
 
-@media (max-width: 1180px) { .toc { display: none; } }
-@media (max-width: 900px) {
+/* The contents list shows only where it fits beside a full line of text:
+   from 1152 with the menu closed or open as a drawer over the page (the
+   page's margins 80, the text 848, the list 224), and from 1424 with it
+   open beside the page (the menu 272 more). Where it does not, the same
+   links sit folded at the top of the page. Like the drawer's 1200, the sums
+   leave out the browser's scroll bar; the README says what that costs. */
+@media (max-width: 1151px) { .toc { display: none; } .toc-inline { display: block; } }
+@media (min-width: 1200px) and (max-width: 1423px) { html[data-nav="open"] .toc { display: none; } html[data-nav="open"] .toc-inline { display: block; } }
+@media (max-width: 1151px) { .content { margin-right: auto; } }
+/* Below 1200 the menu is a drawer over the page, closed until asked for: at
+   its side it would take 272 pixels from a line of text that needs them.
+   app.js and shell.html use the same width. */
+@media (max-width: 1199px) {
   .sidebar {
     position: fixed; left: 0; z-index: 35;
     margin-left: 0; visibility: visible;
@@ -267,9 +315,25 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
   html[data-nav="closed"] .sidebar { margin-left: 0; visibility: hidden; transform: translateX(-100%); }
   html[data-nav="open"] .sidebar { transform: none; }
   html[data-nav="open"] .scrim { display: block; }
-  .content { padding: 20px 16px 48px; }
+  /* In the dark the drawer is lifted off the page behind it. */
+  html[data-theme="dark"] .sidebar { background: var(--panel); border-right-color: var(--line-strong); }
+}
+@media (max-width: 900px) {
+  .content { padding: 20px 16px var(--content-pad-bottom); }
+  .topbar { gap: 8px; padding: 0 16px; }
+  /* Search results take the screen's width under the bar, not the width of
+     the search box, and a match wraps as prose, not as code. */
+  .search-results { position: fixed; top: var(--topbar-h); left: 8px; right: 8px; max-height: calc(100vh - var(--topbar-h) - 16px); }
+  .search-hit { font-family: var(--sans); }
+}
+/* A tablet keeps a wider margin than a phone. */
+@media (min-width: 600px) and (max-width: 900px) {
+  .content { padding-inline: 32px; }
+  .topbar { padding-inline: 24px; }
+}
+/* The site's name gives way only where it no longer fits beside the search. */
+@media (max-width: 639px) {
   .brand-text { display: none; }
-  .topbar { gap: 8px; padding: 0 8px; }
   .search { max-width: none; }
 }
 
@@ -313,7 +377,14 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
 
 /* ---------------------------------------------------------------- article */
 
-.prose { max-width: var(--measure); font-family: var(--serif); font-size: 18px; line-height: 1.72; }
+/* The article is as wide as the page's column; each block of text in it
+   keeps the reading measure, 74 characters, and tables, code and figures may
+   grow to the wide measure beside it. A word longer than a line, such as a
+   web address, breaks rather than push the page sideways. */
+.prose { --text-w: var(--measure); font-family: var(--serif); font-size: 18px; line-height: 1.72; overflow-wrap: break-word; }
+.prose > * { max-width: var(--text-w); }
+.prose > .figure { max-width: min(var(--measure-wide), 100%); }
+.prose > .table-scroll, .prose > .code-block { width: max-content; min-width: min(var(--text-w), 100%); max-width: min(var(--measure-wide), 100%); }
 .prose > *:first-child { margin-top: 0; }
 
 .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
@@ -326,9 +397,13 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
 .prose h4 { font-size: 16px; margin: 1.5em 0 .4em; color: var(--ink-soft); }
 .prose h5, .prose h6 { font-size: 14px; margin: 1.3em 0 .35em; color: var(--ink-soft); }
 
-.prose .anchor { opacity: 0; margin-left: .35em; color: var(--ink-faint); text-decoration: none; font-weight: 400; }
+.prose .anchor { opacity: 0; display: inline-block; min-width: 24px; text-align: center; margin-left: .2em; color: var(--ink-faint); text-decoration: none; font-weight: 400; }
 .prose h1:hover .anchor, .prose h2:hover .anchor, .prose h3:hover .anchor,
 .prose h4:hover .anchor, .prose h5:hover .anchor { opacity: .6; }
+/* A touch screen has no pointer to rest on a heading, and the keyboard needs
+   to see where it is, so there the # always shows. */
+@media (hover: none) { .prose .anchor { opacity: .6; } }
+.prose .anchor:focus-visible { opacity: 1; }
 
 .prose p { margin: 0 0 1.05em; }
 .prose ul, .prose ol { margin: 0 0 1.05em; padding-left: 1.4em; }
@@ -345,11 +420,16 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
 .prose blockquote p { margin: .9em 0; }
 
 .prose hr { border: 0; border-top: 1px solid var(--line); margin: 2.4em 0; }
+/* A section heading draws its own rule, so a Markdown rule just before it
+   would be a second line 50 pixels above the first. */
+.prose hr:has(+ h2), .prose hr:has(+ hr), .notebook-frame hr:has(+ h2) { display: none; }
 
+/* A name in code breaks only when it cannot fit on a line of its own; it is
+   never under 11 pixels, even in a table's 12-pixel heading. */
 .prose code {
-  font-family: var(--mono); font-size: .86em;
+  font-family: var(--mono); font-size: max(.86em, 11px);
   background: var(--panel-2); border-radius: 6px; padding: .12em .38em;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .prose a code { color: inherit; }
 
@@ -359,6 +439,8 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
   border-radius: var(--radius); overflow: hidden;
 }
 .code-block pre { margin: 0; padding: 12px 16px; overflow-x: auto; font-size: 13px; line-height: 1.62; }
+/* The language's name stands in the top corner; the first line starts below it. */
+.code-block:has(.code-language) pre { padding-top: 24px; }
 .code-block code { font-family: var(--mono); font-size: 13px; line-height: 1.62; background: none; padding: 0; white-space: pre; }
 .code-language {
   position: absolute; top: 0; right: 0;
@@ -377,35 +459,72 @@ html[data-nav="closed"] .sidebar { margin-left: calc(-1 * var(--nav-w)); visibil
 .prose .table-scroll { overflow-x: auto; margin: 1.4em 0; }
 .prose .table-scroll table { margin: 0; }
 .prose th, .prose td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
-.prose thead th { border-bottom: 1.5px solid var(--line); font-weight: 600; font-size: 12px; letter-spacing: .01em; color: var(--ink-soft); white-space: nowrap; }
+/* A heading may wrap: kept on one line it set the table's narrowest width
+   and pushed whole tables sideways on a phone. */
+.prose thead th { border-bottom: 1.5px solid var(--line); font-weight: 600; font-size: 12px; letter-spacing: .01em; color: var(--ink-soft); }
+@media (max-width: 600px) { .prose th, .prose td { padding: 8px; } }
 .prose tbody tr:hover { background: var(--panel); }
 .prose td code { font-size: 12px; }
 
 .prose img { max-width: 100%; height: auto; border-radius: 6px; }
 
+/* An identifier is a link at least 24 pixels tall, and never under 11
+   pixels of text; in a table it takes the table's own 12. */
 .prose .identifier {
-  font-family: var(--mono); font-size: .84em; font-weight: 600;
-  display: inline-block; padding: .25em .5em; border-radius: 6px;
+  font-family: var(--mono); font-size: max(.84em, 11px); font-weight: 600;
+  display: inline-flex; align-items: center; min-height: 24px; padding: 0 .5em; border-radius: 6px;
   background: var(--accent-soft); color: var(--accent);
   text-decoration: none; white-space: nowrap;
 }
 .prose .identifier:hover { text-decoration: underline; }
+.prose table .identifier { font-size: 12px; }
 
 .math-inline { font-family: var(--serif); font-style: italic; }
 .math-display { display: block; margin: 1.2em auto; text-align: center; font-family: var(--serif); font-style: italic; overflow-x: auto; }
+/* MathJax's hidden copy for screen readers reached below the formula and
+   gave it a scroll bar of its own; it is held to the formula's height. */
+.math-display mjx-assistive-mml { max-height: 100%; }
 html.no-math .math-inline, html.no-math .math-display {
   font-family: var(--mono); font-style: normal; font-size: .88em;
   background: var(--panel); padding: .1em .4em; border-radius: 6px;
 }
 html.no-math .math-display { padding: 8px 12px; text-align: left; }
 
+/* Whatever scrolls sideways shows a shadow at the edge that hides more:
+   phones draw no scroll bar until the box is touched. The pale covers move
+   with the content and hide each shadow while its edge is reached. */
+.prose .table-scroll, .code-block pre, .math-display, .prose > .figure,
+.notebook-frame pre, .notebook-frame .output_subarea, .notebook-frame .table-scroll,
+.pg-graph-stage, .pg-fig10-stage {
+  --cover: var(--page);
+  background:
+    linear-gradient(to right, var(--cover) 30%, transparent) left center / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--cover) 30%, transparent) right center / 40px 100% no-repeat local,
+    linear-gradient(to right, color-mix(in srgb, var(--ink) 16%, transparent), transparent) left center / 14px 100% no-repeat scroll,
+    linear-gradient(to left, color-mix(in srgb, var(--ink) 16%, transparent), transparent) right center / 14px 100% no-repeat scroll,
+    var(--cover);
+}
+.code-block pre, .notebook-frame pre, .prose blockquote .math-display, .prose > .figure { --cover: var(--panel); }
+/* A picture covers the shadow drawn behind it, so a notebook's picture that
+   scrolls gets its shadows drawn over it instead, app.js marking which edges
+   hide more. The shadow is dark in both themes, since every picture stands
+   on white. */
+.pic-edges { position: relative; }
+.pic-edges::before, .pic-edges::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 14px;
+  pointer-events: none; opacity: 0; transition: opacity .12s;
+}
+.pic-edges::before { left: 0; background: linear-gradient(to right, rgb(0 0 0 / 18%), transparent); }
+.pic-edges::after { right: 0; background: linear-gradient(to left, rgb(0 0 0 / 18%), transparent); }
+.pic-edges.more-left::before, .pic-edges.more-right::after { opacity: 1; }
+
 /* ----------------------------------------------------------------- pieces */
 
 .page-head { max-width: var(--measure); margin-bottom: 24px; }
 .page-title { font-family: var(--sans); font-size: 30px; font-weight: 600; letter-spacing: -0.022em; line-height: 1.25; margin: 0 0 8px; }
-.page-title code { font-size: .85em; }
+.page-title code { font-size: .85em; overflow-wrap: anywhere; }
 .page-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; color: var(--ink-faint); margin-top: 12px; }
-.page-meta code { font-family: var(--mono); font-size: 12px; }
+.page-meta code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 
 .figure {
   margin: 24px 0 32px; max-width: var(--measure-wide);
@@ -413,6 +532,12 @@ html.no-math .math-display { padding: 8px 12px; text-align: left; }
   border-radius: var(--radius); padding: 12px 12px 4px;
 }
 .figure-svg { display: block; width: 100%; height: auto; font-family: var(--sans); }
+/* A figure never shrinks below a width its words can be read at, 820
+   pixels: wherever its box is narrower, on a phone or a tablet, the box
+   scrolls sideways. Shrunk to a phone's screen its labels fell to 2 to 7
+   pixels. */
+.prose > .figure { overflow-x: auto; overscroll-behavior-x: contain; }
+.prose .figure-svg { min-width: 820px; }
 
 .figure-notice { padding: 16px 20px; border-radius: var(--radius); font-family: var(--sans); font-size: 14px; line-height: 1.55; }
 .figure-notice strong { display: block; margin-bottom: 4px; font-size: 14px; }
@@ -448,8 +573,21 @@ html.no-math .math-display { padding: 8px 12px; text-align: left; }
   font-size: 13px; color: var(--ink-soft);
 }
 .notebook-bar code { font-family: var(--mono); font-size: 12px; }
+/* A notebook is no wider than the wide measure; its text keeps the reading
+   measure, and every output, table and code panel scrolls sideways on its
+   own rather than push the page. */
+.notebook-frame { max-width: var(--measure-wide); }
+.notebook-frame .text_cell_render { --text-w: 74ch; font-family: var(--serif); font-size: 16px; }
+.notebook-frame .text_cell_render > :is(p, ul, ol, blockquote, h1, h2, h3, h4, hr, .toc-inline) { max-width: var(--text-w); }
+.notebook-frame .text_cell_render :is(p, li) { overflow-wrap: break-word; }
+.notebook-frame .text_cell_render code { font-family: var(--mono); font-size: .86em; overflow-wrap: break-word; }
+.notebook-frame .output_subarea { overflow-x: auto; }
+.notebook-frame .output_subarea > pre { margin: 0; }
+.notebook-frame .table-scroll { overflow-x: auto; margin: 12px 0; }
+.notebook-frame .output_subarea > svg.figure-svg { min-width: 640px; }
+.notebook-frame .output_subarea > img { min-width: var(--nb-min, 0); }
 .notebook-frame .jp-Cell, .notebook-frame .cell { margin-bottom: 16px; }
-.notebook-frame pre { font-family: var(--mono); font-size: 13px; line-height: 1.6; overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 12px; }
+.notebook-frame pre { font-family: var(--mono); font-size: 13px; line-height: 1.6; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 12px; }
 .notebook-frame img { max-width: 100%; height: auto; background: #fff; border-radius: 6px; padding: 4px; }
 .notebook-frame table { border-collapse: collapse; font-size: 13px; font-family: var(--sans); }
 .notebook-frame table td, .notebook-frame table th { border: 1px solid var(--line); padding: 4px 8px; }
@@ -492,20 +630,27 @@ html[data-theme="dark"] .notebook-frame img { filter: none; }
 }
 .field:hover { border-color: color-mix(in srgb, var(--ink) 22%, var(--line)); }
 .field:focus { border-color: var(--accent); box-shadow: var(--focus); }
-input.field[type="number"] { width: 120px; font-variant-numeric: tabular-nums; }
+input.field[type="number"] { width: 96px; font-variant-numeric: tabular-nums; }
 select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2379828f' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 8px center; background-size: 16px; }
 .field-unit { display: inline-flex; align-items: center; gap: 4px; }
 .field-unit span { font-size: 12px; color: var(--ink-faint); }
+/* A phone's browser zooms the page in on any field whose text is under 16
+   pixels when it is tapped; on a touch screen every field's text is 16. It
+   stands after the rules above, which it has to override. */
+@media (pointer: coarse) { .search input, .field { font-size: 16px; } }
 
 .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--panel-2); border-radius: var(--radius); max-width: 100%; }
-.seg label { position: relative; flex: 0 0 auto; }
+.seg label { position: relative; flex: 1 1 auto; }
 .seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
-.seg span { display: block; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--ink-soft); line-height: 1.4; white-space: nowrap; }
+.seg span { flex: 1 1 auto; text-align: center; display: block; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--ink-soft); line-height: 1.4; white-space: nowrap; }
 .seg input:checked + span { background: var(--page); color: var(--ink); box-shadow: var(--shadow-sm); }
-.seg input:focus-visible + span { box-shadow: var(--focus); }
+/* The input itself is invisible, so the ring is drawn on what shows, solid,
+   as on every other control: the pale --focus glow measured 1.5 to 1 here. */
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .seg input:disabled + span { opacity: .45; }
+@media (max-width: 480px) { .seg span { padding: 4px 8px; } }
 
 .switch { position: relative; display: inline-block; width: 40px; height: 24px; flex: 0 0 auto; }
 .switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
@@ -516,9 +661,15 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 }
 .switch input:checked + .switch-track { background: var(--accent); }
 .switch input:checked + .switch-track::after { transform: translateX(16px); }
-.switch input:focus-visible + .switch-track { box-shadow: var(--focus); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.opts { display: grid; gap: 4px; width: 100%; }
+/* A list of options stands two across wherever the form has room, so six
+   options take three short rows instead of six long ones; three across would
+   break most options' words onto a second line. An option's words are its
+   value, so they are the regular weight, and the setting's name above them
+   the bold one. */
+.opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px 16px; width: 100%; }
+@container pg-fields (min-width: 400px) { .opts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .opt {
   display: grid; grid-template-columns: 16px 1fr; column-gap: 8px; align-items: start;
   padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius);
@@ -527,7 +678,11 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .opt:hover { border-color: color-mix(in srgb, var(--ink) 25%, var(--line)); }
 .opt.is-active { border-color: var(--accent); background: var(--accent-soft); }
 .opt input { margin: 4px 0 0; accent-color: var(--accent); }
-.opt-label { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.opt-label { font-size: 13px; font-weight: 400; line-height: 20px; }
+/* A name's last word and the i after it, which never part across two lines;
+   playground.js says why the name is drawn in two parts for this. */
+.pg-tail { white-space: nowrap; }
+.pg-nowrap { white-space: nowrap; }
 
 /* The i beside a name, and the words it holds: where a default comes from, or
    what an option does. They open while the pointer rests on the i, while the
@@ -537,13 +692,17 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .pg-info { position: relative; display: inline-flex; vertical-align: middle; margin-left: 4px; }
 .pg-info-button {
   display: inline-grid; place-items: center; width: 32px; height: 32px; margin: -8px -4px; padding: 0;
-  border: 0; border-radius: 50%; background: none; color: var(--ink-faint); cursor: pointer;
+  border: 0; border-radius: 50%; background: none; color: var(--ink-faint); cursor: help;
 }
+/* The pointer over an i is the arrow with a question mark, the one that
+   says help is to be had here, not the hand of a link or a button. */
 .pg-info-button svg { width: 16px; height: 16px; }
-/* Beside a setting's name the row's own gap already separates them. */
-.pg-row-label .pg-info { margin-left: -4px; }
 .pg-info-button:hover, .pg-info.is-open .pg-info-button { color: var(--accent); }
 .pg-info-body { display: none; position: absolute; top: 100%; left: -8px; z-index: 30; padding-top: 4px; width: max-content; max-width: min(320px, calc(100vw - 32px)); cursor: auto; }
+/* Inside the pipeline, while it scrolls on its own, playground.js places the
+   words against the window, below the i or above it. */
+.pg-info.is-loose .pg-info-body { position: fixed; }
+.pg-info.is-above .pg-info-body { padding-top: 0; padding-bottom: 4px; }
 .pg-info:hover .pg-info-body, .pg-info.is-open .pg-info-body,
 .pg-info:has(:focus-visible) .pg-info-body, .opt:has(input:focus-visible) .pg-info-body { display: block; }
 .pg .pg-info.is-quiet .pg-info-body { display: none; }
@@ -570,7 +729,9 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
   overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
 }
 
-.content:has(.pg) { max-width: none; }
+/* The Results, Explain and Jobs tabs stop at --measure-app on a wide screen,
+   as the Design tab stops at its form and pipeline. */
+.pg-panel > :not(.pg-design) { max-width: min(100%, var(--measure-app)); }
 .pg { --pg-gap: 12px; font-size: 14px; }
 .pg-faint { color: var(--ink-faint); font-size: 12px; line-height: 1.5; }
 .pg-lead { color: var(--ink-soft); font-size: 14px; line-height: 1.6; margin: 0 0 8px; max-width: var(--measure); }
@@ -625,11 +786,29 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .pg-code { display: block; margin-top: 8px; padding: 8px; background: var(--page); border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; white-space: pre-wrap; word-break: break-all; font-family: var(--mono); line-height: 1.5; }
 @media (max-width: 700px) { .pg-job { grid-template-columns: 1fr; } }
 
-/* Design tab: one column in the order the work is done, ending with the card
-   that runs it: the network, what qualifies the run, and the button. The
-   column is narrower than the page so a setting's name and its control stay
-   within one glance of each other. */
+/* Design tab: the pipeline, then the form in the order the work is done,
+   ending with the card that runs it: the network, what qualifies the run,
+   and the button. Where the tab is wide enough for both, the pipeline stands
+   in a column to the right of the form and stays in view while the page
+   scrolls, scrolling on its own when a step's flowchart is taller than the
+   window. The column is 400 pixels, and grows to 480 as 30% of a wide page;
+   the form takes the rest, up to 960. At 880 the form beside the column
+   keeps 456 pixels, room for two cells of its grid inside the card (418). */
+.pg-panel { container: pg-panel / inline-size; }
 .pg-design { max-width: var(--measure-form); }
+@container pg-panel (min-width: 880px) {
+  .pg-design {
+    display: grid; column-gap: 24px; align-items: start; max-width: none;
+    grid-template-columns: minmax(0, var(--measure-form)) clamp(var(--pipeline-w), 30%, var(--pipeline-w-max));
+  }
+  .pg-design > .pg-form { grid-column: 1; grid-row: 1; }
+  .pg-design > .pg-pipeline {
+    grid-column: 2; grid-row: 1; margin-bottom: 0;
+    position: sticky; top: calc(var(--topbar-h) + 16px);
+    max-height: min(var(--pg-form-h, 100vh), calc(100vh - var(--topbar-h) - 16px - var(--content-pad-bottom)));
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+}
 .pg-run .loading { padding: 0; font-size: 13px; }
 .pg-run .pg-caveats { margin-top: 12px; }
 .pg-run-action { display: flex; justify-content: flex-end; margin-top: 16px; }
@@ -640,18 +819,19 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .pg-block > .pg-block-title:not(:first-child) { margin-top: 16px; }
 .pg-block-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 8px; }
 .pg-block-head .pg-block-title { margin: 0; }
-.pg-block-head .pg-faint { margin-left: auto; }
-.pg-data .pg-row { padding: 0; }
+/* The last row of cells brings its own space below; a card's padding takes its place. */
+.pg-block > .pg-fields { margin-bottom: -16px; }
 
-/* The pipeline: the model as a flowchart, in the order the data flows. Each
-   box opens its group of settings; the cross takes a part out and the dashed
-   button that takes its place puts it back. The boxes stand in a row, or in a
-   column when the form is too narrow for them side by side. */
+/* The pipeline: the run as a flowchart, in the order the data flows. Each
+   box opens its step's own flowchart; the cross takes a part out and the
+   dashed button that takes its place puts it back. The boxes stand in a row,
+   each as wide as its words need, or in a column when the form is too narrow
+   for them side by side; no name is ever broken inside a word. */
 .pg-pipeline { container-type: inline-size; }
 /* Boxes of different heights meet their arrows at their middles. */
 .pg-flow { display: flex; align-items: center; }
 .pg-stage {
-  position: relative; flex: 1 1 0; min-width: 0;
+  position: relative; flex: 1 1 auto;
   display: flex; flex-direction: column; gap: 8px; padding: 12px;
   border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--page);
   transition: border-color .12s, background .12s;
@@ -660,29 +840,22 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 /* The number and the name, then the cross in a column of its own, so the
    two can never meet however narrow the box. */
 .pg-stage-top { display: flex; align-items: center; gap: 4px; }
-.pg-stage-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.pg-stage-main { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 /* The whole box answers the pointer; its cross and its parts sit above that. */
 .pg-stage-main::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
 .pg-stage-main:focus-visible { outline: none; }
 .pg-stage-main:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
-.pg-stage-name { min-width: 0; font-size: 16px; font-weight: 700; line-height: 20px; overflow-wrap: anywhere; }
+.pg-stage-name { font-size: 16px; font-weight: 700; line-height: 20px; white-space: nowrap; }
 .pg-stage-x {
   position: relative; z-index: 1; flex: 0 0 auto;
   display: grid; place-items: center; width: 36px; height: 36px; margin: -8px -8px -8px 0; padding: 0;
   border: 0; border-radius: 6px; background: none; color: var(--ink-soft); cursor: pointer;
 }
-.pg-stage-x svg, .pg-part-x svg, .pg-add svg { width: 12px; height: 12px; flex: 0 0 auto; }
-.pg-stage-x:hover, .pg-part-x:hover { background: var(--warn-soft); color: var(--warn); }
+.pg-stage-x svg, .pg-add svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.pg-stage-x:hover { background: var(--warn-soft); color: var(--warn); }
 /* The graph layers' cross: there to show they stay, not to be pressed. */
 .pg-stage-x[aria-disabled="true"] { color: var(--line-strong); cursor: not-allowed; }
 .pg-stage-x[aria-disabled="true"]:hover { background: none; color: var(--line-strong); }
-/* Only as wide as what it holds, so the rest of the row still opens the box. */
-.pg-stage-parts { position: relative; z-index: 1; align-self: flex-start; display: flex; flex-wrap: wrap; gap: 4px; max-width: 100%; }
-/* A part inside a box: the sensor graph inside the graph layers. */
-.pg-part { display: inline-flex; align-items: center; max-width: 100%; height: 32px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--page); }
-.pg-part-main { min-width: 0; height: 100%; padding: 0 4px 0 12px; border: 0; border-radius: 999px 0 0 999px; background: none; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pg-part-main:hover { text-decoration: underline; }
-.pg-part-x { display: grid; place-items: center; width: 32px; height: 100%; padding: 0; border: 0; border-radius: 0 999px 999px 0; background: none; color: var(--ink-soft); cursor: pointer; flex: 0 0 auto; }
 /* What puts a part back: dashed, as the place a box would stand. */
 .pg-add {
   position: relative; z-index: 1;
@@ -702,70 +875,198 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 /* What comes out: words at the end of the last arrow, not a box, since
    nothing opens from it. */
 .pg-flow-end { flex: 0 0 auto; padding: 0 4px; color: var(--ink-soft); font-size: 13px; font-weight: 600; line-height: 20px; white-space: nowrap; }
-@container (width < 600px) {
-  .pg-flow { flex-direction: column; align-items: stretch; }
-  .pg-flow-link { flex: 0 0 24px; }
-  .pg-flow-link::before { left: 50%; right: auto; top: 4px; bottom: 8px; border-top: 0; border-left: 1px solid var(--line-strong); }
-  .pg-flow-link::after {
-    left: 50%; right: auto; top: auto; bottom: 4px; margin: 0 0 0 -4px;
-    border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--line-strong); border-bottom: 0;
+/* playground.js measures whether the row fits: when it does not, the
+   output's words go first (is-tight), then the boxes stand in a column
+   (is-stacked). The width alone cannot say, since the names vary in length. */
+.pg-pipeline.is-tight .pg-flow-out { display: none; }
+.pg-pipeline.is-stacked .pg-flow-out { display: block; }
+.pg-pipeline.is-stacked .pg-flow { flex-direction: column; align-items: stretch; }
+.pg-pipeline.is-stacked .pg-flow-link { flex: 0 0 24px; }
+.pg-pipeline.is-stacked .pg-flow-link::before { left: 50%; right: auto; top: 4px; bottom: 8px; border-top: 0; border-left: 1px solid var(--line-strong); }
+.pg-pipeline.is-stacked .pg-flow-link::after {
+  left: 50%; right: auto; top: auto; bottom: 4px; margin: 0 0 0 -4px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--line-strong); border-bottom: 0;
+}
+.pg-pipeline.is-stacked .pg-flow-link--gap { flex: 0 0 auto; justify-content: center; padding: 8px 0 12px; }
+.pg-pipeline.is-stacked .pg-flow-end { align-self: center; }
+/* Above the form, on a phone, the column of boxes is drawn shorter, so the
+   settings start on the first screen; beside the form it keeps its size. */
+@container pg-panel (width < 880px) {
+  .pg-pipeline.is-stacked .pg-stage { padding: 8px 12px; }
+  .pg-pipeline.is-stacked .pg-flow-link { flex: 0 0 12px; min-height: 12px; }
+  .pg-pipeline.is-stacked .pg-flow-link::before { top: 0; bottom: 4px; }
+  .pg-pipeline.is-stacked .pg-flow-link::after { bottom: 0; }
+}
+
+/* One step's own flowchart, in the pipeline's place: the way back, the step,
+   then its steps from top to bottom. Each step says
+   what it is, the values that decide it (a value a setting decides leads to
+   that setting), the shape of what it hands on and how many numbers it
+   learns; what it does and where it comes from are behind its i. */
+.pg-zoom-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.pg-zoom-back { margin-left: -8px; }
+.pg-zoom-back svg { width: 12px; height: 12px; }
+.pg-zoom-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 700; line-height: 20px; }
+/* The columns of shapes and learned numbers have fixed widths, measured to
+   hold the longest either gets at the largest sizes the form allows, so they
+   line up from one step to the next. */
+.pg-vflow { list-style: none; margin: 0; padding: 0; display: grid; gap: 24px; }
+.pg-vflow > li { position: relative; }
+.pg-vflow > li + li::before { content: ""; position: absolute; left: 50%; top: -20px; height: 12px; border-left: 1px solid var(--line-strong); }
+.pg-vflow > li + li::after {
+  content: ""; position: absolute; left: 50%; top: -8px; margin-left: -4px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--line-strong);
+}
+.pg-vstep {
+  display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 3fr) 136px 112px;
+  align-items: center; gap: 4px 16px; padding: 8px 12px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--page);
+}
+.pg-vstep--edge { border-color: transparent; background: none; padding-top: 0; padding-bottom: 0; }
+.pg-vstep--edge .pg-vstep-name { font-weight: 400; color: var(--ink-soft); }
+.pg-vstep--edge .pg-vstep-shape { grid-column: 3; }
+/* Steps that work side by side on the same input, in one row. */
+.pg-vgroup { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.pg-vstep--small { grid-template-columns: minmax(0, 1fr) auto; align-content: start; }
+.pg-vstep--small .pg-vstep-name, .pg-vstep--small .pg-vstep-values { grid-column: 1 / -1; }
+.pg-vstep--small .pg-vstep-learned:empty { display: none; }
+.pg-vstep-name { display: flex; align-items: center; font-size: 14px; font-weight: 600; line-height: 20px; }
+/* The sensor graph's × or +, at the end of its step's name. */
+.pg-vstep-part { margin-left: auto; padding-left: 8px; }
+.pg-vstep-part .pg-stage-x { margin: -8px -8px -8px 0; }
+.pg-vstep-part .pg-add { margin: -8px 0; }
+.pg-vstep-values { min-width: 0; font-size: 13px; line-height: 20px; color: var(--ink-soft); }
+.pg-vstep-value { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+button.pg-vstep-value { color: var(--accent); cursor: pointer; }
+button.pg-vstep-value:hover { text-decoration: underline; }
+.pg-vstep-dot { color: var(--ink-faint); }
+.pg-vstep-shape { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.pg-vstep-learned { justify-self: end; font-size: 12px; color: var(--ink-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Numbers for settings that have since changed, while the new ones are read:
+   the colours go grey, which keeps every text at its contrast, and the header
+   says so beside the title, so nothing on the page moves. The colours are
+   swapped rather than filtered, since a filter would hold the i's words
+   inside the pipeline and cut them off at its edges. */
+.pg-zoom-steps.is-stale {
+  --accent: var(--ink-soft); --accent-soft: var(--panel-2); --warn: var(--ink-soft); --warn-soft: var(--panel-2);
+  --fig-lpc: var(--ink-soft); cursor: progress;
+}
+.pg-zoom-updating { font-size: 12px; color: var(--ink-soft); }
+.pg-zoom-updating:empty { display: none; }
+.pg-zoom-note { margin: 0 0 16px; padding: 8px 12px; border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+@container (width < 640px) {
+  .pg-vstep { grid-template-columns: minmax(0, 1fr) auto; }
+  .pg-vstep-name { grid-column: 1 / -1; }
+  .pg-vstep-learned { grid-column: 2; }
+  .pg-vstep-shape { justify-self: end; text-align: right; }
+  .pg-vstep--edge .pg-vstep-name { grid-column: 1; }
+  .pg-vstep--edge .pg-vstep-shape { grid-column: 2; }
+}
+
+/* The settings card: the six steps of the form as tabs along its top, and
+   under them the chosen step's settings. The chosen tab is underlined in the
+   accent colour and its number filled in. When the six names do not fit in
+   one row, playground.js marks the row is-compact and only the chosen tab
+   shows its name; the others show their numbers, and keep their names for
+   screen readers; on the narrowest phones, where even that row does not
+   fit, every tab shows only its number (is-numbers), the chosen one filled
+   in and underlined. A dot on a number says that step has a setting away
+   from its default; on the chosen tab the Resets in view say it instead.
+   Reset all stands at the foot of the card, under whichever step shows. */
+.pg-settings { padding: 0; container: pg-settings / inline-size; }
+.pg-tabs { display: flex; overflow-x: auto; scrollbar-width: thin; box-shadow: inset 0 -1px 0 var(--line); }
+.pg-tab {
+  position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0 8px; border: 0; background: none; color: var(--ink-soft);
+  font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.pg-tab:first-child { padding-left: 16px; }
+.pg-tab:hover { color: var(--ink); }
+.pg-tab[aria-selected="true"] { color: var(--ink); }
+.pg-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 999px; background: var(--accent); }
+.pg-tab:first-child[aria-selected="true"]::after { left: 16px; }
+.pg-tab:focus-visible { outline-offset: -4px; }
+.pg-tabs.is-compact .pg-tab:not([aria-selected="true"]) .pg-tab-name,
+.pg-tabs.is-numbers .pg-tab .pg-tab-name {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.pg-tab[aria-selected="true"] .pg-tab-words { display: none; }
+.pg-tab-num { position: relative; display: inline-flex; }
+.pg-tab-changed { position: absolute; top: -4px; right: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--page); }
+.pg-tab[aria-selected="true"] .pg-tab-changed { visibility: hidden; }
+.pg-settings-foot { display: flex; justify-content: flex-end; padding: 0 16px 16px; }
+/* Every step's settings lie in one place, one over another, and only the
+   chosen one is shown: the box is as tall as the tallest step at this width,
+   so choosing another tab never moves what is below. Where the settings
+   stand one across, on a phone, the tallest step would leave the others a
+   screen of empty box, so each step takes its own height there; so it does
+   on a screen less than 640 pixels tall, a phone on its side, where the box
+   and the top bar (614 pixels together) could not show at once anyway.
+   416 is where the settings go two across: two cells of --cell-w, the 16
+   between them and the 16 of padding each side. A container query cannot
+   read a custom property, so the number is written out. */
+.pg-tabpanels { padding: 16px 16px 0; }
+.pg-tabpanel:not(.is-active) { display: none; }
+@media (min-height: 640px) {
+  @container pg-settings (min-width: 416px) {
+    .pg-tabpanels { display: grid; }
+    .pg-tabpanel { grid-area: 1 / 1; min-width: 0; }
+    .pg-tabpanel:not(.is-active) { display: block; visibility: hidden; }
   }
-  .pg-flow-link--gap { flex: 0 0 auto; justify-content: center; padding: 8px 0 12px; }
-  .pg-flow-end { align-self: center; }
 }
-
-/* The inputs only the chosen procedure shows: their names are set in under
-   it, their controls stay in line with every other row's. */
-.pg-subrows .pg-row-name { padding-left: 24px; }
-@media (max-width: 700px) {
-  .pg-subrows .pg-row { padding-left: 24px; }
-  .pg-subrows .pg-row-name { padding-left: 0; }
+/* Where a value in a flowchart leads, marked for a moment on arrival. */
+.pg-field { scroll-margin-top: calc(var(--topbar-h) + 16px); }
+.pg-field.is-target { position: relative; isolation: isolate; }
+.pg-field.is-target::before {
+  content: ""; position: absolute; inset: -8px; z-index: -1; border-radius: var(--radius);
+  animation: pg-arrive-field .9s var(--ease);
 }
-
-.pg-sections-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 4px 0 8px; }
-.pg-sections-bar .pg-block-title { flex: 1 1 auto; margin: 0; }
-
-/* One folding group of settings: its step number, its name, and how many of
-   its settings differ from their defaults. */
-.pg-section { border: 1px solid var(--line); border-radius: var(--radius); background: var(--page); margin-bottom: 8px; }
-.pg-section-head {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  padding: 12px 12px; background: none; border: 0; border-radius: calc(var(--radius) - 1px); text-align: left; cursor: pointer; color: inherit;
-}
-.pg-section-head[aria-expanded="true"] { border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; }
-.pg-section-head:hover { background: var(--panel); }
-.pg-section-head:focus-visible { outline-offset: -2px; }
-.pg-section-title { font-size: 14px; font-weight: 600; flex: 0 1 auto; min-width: 0; }
-.pg-section-changed { flex: 0 0 auto; margin-left: auto; font-size: 11px; font-weight: 600; line-height: 20px; color: var(--warn); background: var(--warn-soft); padding: 0 8px; border-radius: 999px; }
-.pg-section-head[aria-expanded="true"] .pg-section-changed { display: none; }
-.pg-section-head .nav-chevron { flex: 0 0 auto; color: var(--ink-faint); margin-left: auto; }
-.pg-section-head[aria-expanded="false"] .pg-section-changed:not([hidden]) + .nav-chevron { margin-left: 0; }
-.pg-section-head[aria-expanded="true"] .nav-chevron { transform: rotate(90deg); }
-.pg-section-body { padding: 0 16px 8px; border-top: 1px solid var(--line-soft); }
-/* Where a box of the pipeline leads, marked for a moment on arrival. */
-.pg-section, .pg-row { scroll-margin-top: calc(var(--topbar-h) + 16px); }
-.pg-section.is-target { animation: pg-arrive-box .9s var(--ease); }
-.pg-row.is-target { animation: pg-arrive-row .9s var(--ease); }
-@keyframes pg-arrive-box { 0%, 60% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); } 100% { box-shadow: 0 0 0 3px transparent; } }
-@keyframes pg-arrive-row { 0%, 60% { background: var(--accent-soft); } 100% { background: transparent; } }
+@keyframes pg-arrive-field { 0%, 60% { background: var(--accent-soft); } 100% { background: transparent; } }
 /* On a phone the four tabs fit only without their step numbers. */
 @media (max-width: 700px) { .pg-step-tab .pg-step-n { display: none; } .pg-step-tab { padding: 8px; } }
+/* Below 360 the count of queued jobs would push the Jobs tab past the edge. */
+@media (max-width: 360px) { .pg-step-tab { padding: 8px 4px; } }
 
-/* One setting: its name and source on the left, its control on the right. */
-.pg-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 4px 24px; padding: 12px 0; border-top: 1px solid var(--line-soft); align-items: start; }
-.pg-row:first-child { border-top: 0; }
-.pg-row--stack { grid-template-columns: 1fr; }
-.pg-row-label { font-size: 13px; font-weight: 600; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.pg-row-label label { cursor: default; }
-.pg-row-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
-.pg-row--stack .pg-row-control { margin-top: 4px; }
-.pg-reset, .pg-link { font-size: 12px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; }
+/* The settings of a step, as cells in a grid, each setting's name directly
+   above its control, so the eye moves a line down from one to the other
+   rather than across the page. The cells of one row share their two lines
+   (a subgrid): a name that takes two lines pushes its neighbours' controls
+   down with its own, and every name sits on the line just above the
+   controls. A list of options takes the whole row (--wide), and so does the
+   sub-dataset, its four choices under its name like every other control;
+   the graph layer widths take two cells (--double) where there are two. */
+.pg-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cell-w), 1fr)); column-gap: 16px; container: pg-fields / inline-size; }
+.pg-field { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 4px; margin-bottom: 16px; min-width: 0; }
+.pg-field--wide { grid-column: 1 / -1; }
+@container pg-fields (min-width: 384px) { .pg-field--double { grid-column: span 2; } }
+.pg-field-label { align-self: end; min-height: 20px; font-size: 13px; font-weight: 600; line-height: 20px; }
+.pg-field-label label { cursor: default; }
+.pg-field-label .pg-reset-slot:not(:empty) { margin-left: 8px; }
+/* The controls of a row stand on its bottom line, so an input beside the
+   graph layer widths, whose boxes carry their own names above them, lines
+   up with theirs; a switch, shorter than a field, keeps a field's height so
+   it stays level with the fields beside it. An empty Reset slot takes no
+   room. */
+.pg-field-control { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-end; gap: 8px 12px; min-width: 0; }
+.pg-field-control > .switch { margin-block: calc((var(--control-h) - 24px) / 2); }
+.pg-field-control > .pg-reset-slot:empty { display: none; }
+/* A list its step's tab names has no first line; its Reset goes under the
+   options, where it moves only what the choice itself moves. */
+.pg-field--bare { grid-row: span 1; grid-template-rows: auto; }
+.pg-field--bare > .pg-field-label { display: none; }
+/* The inputs only the chosen procedure shows, set in under its options,
+   with a line down their left edge that ends where they end. */
+.pg-fields--sub { flex: 1 1 100%; margin: 8px 0 0; row-gap: 16px; padding-left: 16px; border-left: 2px solid var(--line); }
+.pg-fields--sub > .pg-field { margin-bottom: 0; }
+.pg-fields--sub:not(:has(> .pg-field:not([hidden]))) { display: none; }
+/* The padding enlarges what can be clicked to 24 pixels and more; the equal
+   negative margin keeps the words exactly where they were. */
+.pg-reset, .pg-link { display: inline-block; font-size: 12px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 4px 8px; margin: -4px -8px; border-radius: 6px; }
 .pg-reset:hover, .pg-link:hover { text-decoration: underline; }
 .pg-widths { display: flex; flex-wrap: wrap; gap: 8px; }
 .pg-widths label { display: flex; flex-direction: column; font-size: 11px; color: var(--ink-faint); gap: 4px; }
-.pg-widths input { width: 84px; }
+.pg-widths input { width: 72px; }
 .pg-run-name { font-size: 13px; }
-@media (max-width: 700px) { .pg-row { grid-template-columns: 1fr; } }
 
 /* The comparison card and the small tables inside cards. */
 .pg-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; background: var(--page); font-size: 13px; line-height: 1.5; }
@@ -782,12 +1083,14 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .pg-mini td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
 .pg-mini code { font-size: 11px; }
 .pg-details { margin-top: 8px; }
-.pg-details summary { cursor: pointer; font-size: 12px; color: var(--accent); font-weight: 600; width: max-content; }
+.pg-details summary { cursor: pointer; font-size: 12px; color: var(--accent); font-weight: 600; width: max-content; padding: 4px 0; }
 .pg-details summary:hover { text-decoration: underline; }
 .pg-details .pg-faint { margin: 8px 0 0; }
 
 /* Cautions, in one style wherever they appear. */
 .pg-caveats { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+/* Words beside a chart or a result keep a readable line length however wide the tab. */
+.pg-caveat, .pg-figure > figcaption, .pg-fig10-count, .pg-detail .pg-faint, #pg-compare .pg-faint { max-width: var(--measure); }
 .pg-caveat { position: relative; font-size: 12px; line-height: 1.45; padding: 8px 8px 8px 24px; border-radius: var(--radius); background: var(--panel-2); color: var(--ink-soft); margin: 0; }
 .pg-caveat::before { content: "i"; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; border-radius: 50%; font-size: 11px; font-weight: 700; line-height: 12px; text-align: center; background: var(--ink-faint); color: var(--page); }
 .pg-caveat--warn { background: var(--warn-soft); color: var(--warn); }
@@ -797,16 +1100,24 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 
 /* Results tab. */
 .pg-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
-.pg-toolbar .pg-faint { margin-left: auto; }
 .pg-toolbar label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 .pg-figure-toolbar { gap: 8px 12px; margin-bottom: 8px; }
-.pg-runs { border: 1px solid var(--line); border-radius: var(--radius); max-height: 68vh; overflow: auto; margin: 12px 0; }
+.pg-runs { width: max-content; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius); overflow: auto; margin: 12px 0; }
+/* On a short window the list is not a box that scrolls inside a page that
+   also scrolls; the page alone does. */
+@media (min-height: 600px) { .pg-runs { max-height: 68vh; } }
 .pg-runs .data-table thead th { position: sticky; top: 0; background: var(--page); z-index: 1; }
 .pg-runs tbody tr { cursor: pointer; }
 .pg-runs tr.is-selected { background: var(--accent-soft); }
 /* The spread's faint grey is too faint on the tint of a ticked row in the dark theme. */
 .pg-runs tr.is-selected .sd { color: var(--ink-soft); }
 .pg-runs td input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; display: block; }
+/* The whole first cell ticks the box: a 16-pixel box alone is too small a
+   target, and a near miss would open the run. */
+.pg-runs td.pg-tick-cell label { display: grid; place-items: center; min-width: 40px; min-height: 40px; margin: -8px; cursor: pointer; }
+/* On a narrow panel the commit is left out, the column least needed to read
+   a result; how the weights were chosen stays, since it qualifies the RMSE. */
+@container pg-panel (width < 880px) { .pg-runs .col-commit { display: none; } }
 .pg-runs .data-table td, .pg-runs .data-table th { padding: 8px 8px; }
 .pg-commit--dirty { color: var(--warn); }
 .pg-compare { margin: 12px 0; }
@@ -819,44 +1130,58 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .pg-metric-name { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
 .pg-metric-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pg-metric-value span { font-size: 13px; color: var(--ink-faint); font-weight: 400; }
-.pg-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 12px; margin-top: 16px; }
+/* One column of charts, no wider than --measure-wide. playground.js draws
+   each chart at the width it is shown at and again when that changes, so
+   one unit of a drawing is one pixel on screen and its words keep their size. */
+.pg-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 16px; max-width: var(--measure-wide); }
 .pg-figure { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 12px; background: var(--page); min-width: 0; }
 .pg-figure--wide { grid-column: 1 / -1; }
 .pg-figure figcaption { font-size: 13px; color: var(--ink-soft); margin-bottom: 8px; line-height: 1.5; }
 .pg-plot { width: 100%; height: auto; display: block; font-family: var(--sans); }
-/* Text inside a drawing: a unit of the drawing, scaled with it (rule 11 exempts it). */
-.pg-tick { font-size: 10.5px; fill: var(--fig-axis); }
-.pg-axis { font-size: 11.5px; fill: var(--ink-soft); }
-.pg-node { font-size: 11px; font-weight: 600; fill: var(--fig-ink); font-family: var(--mono); }
+/* The charts are drawn one unit of the drawing to one pixel of the screen,
+   so their text is a size on the screen and keeps the 11-pixel floor. */
+.pg-tick { font-size: 11px; fill: var(--fig-axis); }
+.pg-axis { font-size: 12px; fill: var(--ink-soft); }
+.pg-node { font-size: 11px; font-weight: 600; fill: var(--fig-ink); font-family: var(--mono); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 3px; }
 .pg-strip { max-width: 640px; margin: 0 auto 8px; }
-.pg-strip-label { font-size: 8.5px; font-weight: 700; font-family: var(--mono); fill: var(--fig-ink); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 2px; }
+.pg-strip-label { font-size: 11px; font-weight: 700; font-family: var(--mono); fill: var(--fig-ink); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 2px; }
 .pg-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
 .pg-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
 
 /* Explain tab and the explanation views. */
-.pg-explain { display: grid; gap: var(--pg-gap); }
+/* One column no wider than the page: the table of stored explanations
+   scrolls inside its own frame on a phone instead of widening the page. */
+.pg-explain { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pg-gap); }
 .pg-explain .pg-block { margin-bottom: 0; }
-.pg-explain .pg-row-control select.field { min-width: 0; max-width: 100%; }
+.pg-explain .pg-field-control select.field { min-width: 0; max-width: 100%; }
+.pg-explain .pg-fields { max-width: var(--measure-form); }
 .pg-heat-wrap { overflow-x: auto; }
 .pg-heat { display: block; font-family: var(--mono); }
 /* The heat map is drawn at its own size, not scaled, so its labels keep the 11-pixel floor. */
 .pg-heat-label { font-size: 11px; fill: var(--fig-axis); }
-.pg-graph { width: 100%; max-width: 540px; height: auto; display: block; margin: 0 auto; }
+/* The sensor graph never shrinks below 540 pixels, where its names are
+   8.6: narrower, on a phone, it scrolls sideways. */
+.pg-graph-stage { overflow-x: auto; overscroll-behavior-x: contain; }
+.pg-graph { width: 100%; min-width: 540px; max-width: 688px; height: auto; display: block; margin: 0 auto; }
 .pg-fig10-caption { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-start; }
 .pg-fig10-caption > span { flex: 1 1 320px; }
-.pg-fig10-stage { margin: 8px 0 12px; }
+/* Five rings to a row, each at least 150 pixels, so their names stay
+   readable; where a stage is narrower it scrolls sideways, its heading and
+   row names staying in view. */
+.pg-fig10-stage { margin: 8px 0 12px; overflow-x: auto; }
 .pg-fig10-head { font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
-.pg-fig10-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; align-items: center; margin-bottom: 4px; }
+.pg-fig10-row { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); min-width: calc(5 * 150px + 4 * 4px); gap: 4px; align-items: center; margin-bottom: 4px; }
+.pg-fig10-head, .pg-fig10-who { position: sticky; left: 0; justify-self: start; }
 .pg-fig10-who { grid-column: 1 / -1; font-size: 12px; color: var(--ink-faint); }
 .pg-ring { margin: 0; min-width: 0; }
 .pg-ring svg { width: 100%; max-width: 190px; height: auto; display: block; margin: 0 auto; }
 .pg-ring--key { flex: 0 0 190px; }
 .pg-figure .pg-ring figcaption { font-size: 11px; text-align: center; margin: 0; font-family: var(--mono); color: var(--ink-faint); }
-.pg-ring-label { font-size: 5.4px; font-weight: 700; font-family: var(--mono); fill: var(--fig-ink); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 1.2px; }
+.pg-ring-label { font-size: 5.4px; font-weight: 700; font-family: var(--mono); fill: var(--fig-ink); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 1.2px; pointer-events: none; }
 .pg-ring-missing { font-size: 8px; fill: var(--ink-faint); }
 .pg-fig10-count { font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin: 4px 0; }
 .pg-slider { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: 8px; }
-.pg-slider input { width: min(240px, 100%); accent-color: var(--accent); }
+.pg-slider input { width: min(240px, 100%); height: 24px; accent-color: var(--accent); }
 
 /* An inline reference is something the pointer has to hit, so its box is
    taller than the text it sits inside; the negative margin keeps the line
@@ -871,9 +1196,11 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 /* One small panel per sensor, holding that sensor's value at every window.
    Every panel shares one vertical scale, so their heights can be compared. */
 .pg-smalls {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 45%), 1fr));
   gap: 12px; margin: 8px 0 12px;
 }
+/* On a phone the panels stand two across (45% of the row) rather than one,
+   which would make the figure over 2000 pixels tall. */
 .pg-sm { margin: 0; min-width: 0; }
 .pg-sm svg { width: 100%; height: auto; display: block; background: var(--panel); border-radius: var(--radius); }
 .pg-figure .pg-sm figcaption {

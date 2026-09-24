@@ -81,6 +81,22 @@ def test_every_default_passes_its_own_check():
     assert settings == {f["key"]: f["default"] for f in playground.FIELDS}
 
 
+def test_every_number_default_lies_on_its_fields_steps():
+    """A browser's number field allows only min + k * step, for a whole k, and
+    marks anything else invalid; its arrow keys then can never land on the
+    default again. Three fields once held their defaults off that grid."""
+    import math
+
+    for spec in playground.FIELDS:
+        if spec["kind"] not in ("int", "float", "widths"):
+            continue
+        step = spec.get("step", 1)
+        defaults = spec["default"] if spec["kind"] == "widths" else [spec["default"]]
+        for value in defaults:
+            k = (value - spec["min"]) / step
+            assert math.isclose(k, round(k), abs_tol=1e-9), (spec["key"], value, spec["min"], step)
+
+
 def test_where_a_default_comes_from_is_said_once_per_setting():
     """A source sits on the row or on its options, never both, so the page draws one tag per fact."""
     kinds = {"paper", "assumption", "project", "extension"}
@@ -108,7 +124,7 @@ def test_the_procedure_is_the_only_control_for_what_is_held_back():
     groups = {f["key"]: f["group"] for f in playground.FIELDS}
     assert {key for key, group in groups.items() if group == "procedure"} == {
         "validation_fraction", "early_stopping", "early_stopping_patience"}
-    # Not a section of the form: the page draws these inside Training, under
+    # Not a tab of the form: the page draws these inside Training, under
     # the choice of procedure.
     assert "procedure" not in {key for key, _ in playground.GROUPS}
     assert "training" in {key for key, _ in playground.GROUPS}
@@ -123,8 +139,8 @@ def test_the_procedure_is_the_only_control_for_what_is_held_back():
 def test_the_pipeline_takes_out_one_part_at_a_time_as_table_11_does():
     """The page's pipeline takes a part out by setting the value its cross
     names. Those values must be the settings of the variants of Table 11, each
-    of which differs from the full model in one setting, or the line under the
-    pipeline would name a row the boxes do not show."""
+    of which differs from the full model in one setting, or a stored run would
+    be set beside a row the pipeline did not build."""
     import re
 
     script = (ROOT / "src/thesis_gnn_rul_xai/docsite/assets/playground.js").read_text(encoding="utf-8")
@@ -142,10 +158,159 @@ def test_the_pipeline_takes_out_one_part_at_a_time_as_table_11_does():
     assert removed == taken_out == {"temporal": "last_cycle", "graph": "complete"}
     # A model without graph layers is not built, so that box has no cross.
     assert variants["without_gcn"] is None
-    # The sensor graph is drawn inside the graph layers' box, so its setting
-    # is in their group, where choosing it in the pipeline leads.
+    # The sensor graph is a step of the graph layers' own flowchart, so its
+    # setting is in their group, where that step's link leads.
     groups = {f["key"]: f["group"] for f in playground.FIELDS}
     assert groups["graph"] == groups["adjacency_normalization"] == groups["gcn_hidden"] == "graph"
+
+
+@pytest.mark.parametrize("graph", ["physics", "complete", "correlation"])
+def test_the_sensor_graph_is_taken_out_from_one_step_of_the_graph_box(graph):
+    """The page puts the cross that takes the sensor graph out, and the + that
+    puts it back, on the graph box's step whose value links to the graph
+    setting. Exactly one step must, whichever graph is chosen, or the control
+    would vanish or appear twice."""
+    pytest.importorskip("torch")
+    answer = _flowchart("graph", graph=graph)
+    holding = [step["name"] for step in _steps(answer)
+               if any(part.get("setting") == "graph" for part in step.get("parts") or [])]
+    assert holding == ["Sensor graph"]
+
+
+# -- a box of the pipeline, as its own flowchart ----------------------------------
+
+TEMPORAL_CHOICES = ["lstm", "gru", "last_cycle", "mean_window", "window_summary", "raw_window"]
+
+
+def _flowchart(stage: str, **settings) -> dict:
+    return playground.stage_detail(stage, playground.validate_settings(settings))
+
+
+def _steps(answer: dict) -> list[dict]:
+    """Every step of a flowchart, the ones drawn side by side included, without what enters or leaves."""
+    flat = []
+    for step in answer["steps"]:
+        flat += step["steps"] if step.get("kind") == "group" else [step]
+    return [step for step in flat if step.get("kind") != "edge"]
+
+
+def _step(answer: dict, name: str) -> dict:
+    return next(step for step in _steps(answer) if step["name"] == name)
+
+
+def test_a_box_the_pipeline_does_not_have_is_refused():
+    with pytest.raises(playground.SettingsError):
+        _flowchart("output")
+
+
+@pytest.mark.parametrize("temporal", TEMPORAL_CHOICES)
+def test_every_value_a_flowchart_links_opens_a_setting_the_form_has(temporal):
+    """A value drawn as a link leads to a setting, so the setting must exist."""
+    pytest.importorskip("torch")
+    keys = {f["key"] for f in playground.FIELDS}
+    for stage in playground.STAGES:
+        answer = _flowchart(stage, temporal=temporal)
+        assert "error" not in answer, (stage, temporal, answer.get("error"))
+        for step in _steps(answer):
+            for part in step["parts"]:
+                assert part["setting"] in keys | {None}, (stage, step["name"], part)
+
+
+@pytest.mark.parametrize("settings", [
+    *({"temporal": t} for t in TEMPORAL_CHOICES),
+    {"temporal": "lstm", "shared_across_sensors": True, "temporal_out_features": 3},
+    {"temporal": "gru", "gcn_bias": True, "gcn_hidden": [16, 8, 4], "fc_hidden": 20},
+])
+def test_the_two_boxes_of_the_network_show_every_learned_number_once(settings):
+    """The temporal box and the graph box together show what the built network learns, no more and no less."""
+    pytest.importorskip("torch")
+    checked = playground.validate_settings(settings)
+    shown = sum(step["learned"] or 0 for stage in ("temporal", "graph")
+                for step in _steps(playground.stage_detail(stage, checked)))
+    assert shown == playground.preview(checked)["parameters"]
+
+
+@pytest.mark.parametrize("temporal", TEMPORAL_CHOICES)
+def test_what_leaves_the_temporal_box_is_what_enters_the_graph_box(temporal):
+    pytest.importorskip("torch")
+    out = _flowchart("temporal", temporal=temporal, temporal_out_features=2)["steps"][-1]
+    into = _flowchart("graph", temporal=temporal, temporal_out_features=2)["steps"][0]
+    assert out["kind"] == into["kind"] == "edge"
+    assert out["shape"] == into["shape"]
+
+
+def test_a_window_the_summary_cannot_measure_change_over_is_refused_in_words():
+    answer = _flowchart("temporal", temporal="window_summary", window_size=1)
+    assert answer["steps"] == []
+    assert "at least 2 cycles" in answer["error"]
+
+
+def test_a_changed_value_never_wears_the_tag_of_the_default():
+    """The paper prints a window of 30; a window of 40 is this reader's, and the step must not say 'Paper'."""
+    default = _step(_flowchart("preprocessing"), "Cut into windows")
+    assert default["source"] == {"kind": "paper", "ref": "Table 6", "text": ""}
+    changed = _step(_flowchart("preprocessing", window_size=40), "Cut into windows")
+    assert changed["source"] is None
+    assert "\"Window length\" was changed from its default, 30 cycles (the paper's Table 6)." in changed["does"]
+
+
+def test_a_count_of_one_takes_a_singular_noun_and_verb():
+    """A window of one cycle and widths of one are allowed, so the words must still agree with them."""
+    pytest.importorskip("torch")
+    import re
+
+    wrong = re.compile(r"\b1 (reading|number|cycle|pattern|pair|engine)s\b|\b1 reading (become|are)\b")
+    for temporal in [*TEMPORAL_CHOICES[:4], "raw_window"]:
+        for stage in ("temporal", "graph"):
+            answer = _flowchart(stage, temporal=temporal, window_size=1, temporal_hidden=1,
+                                gcn_hidden=[1, 1, 1], fc_hidden=1)
+            for step in _steps(answer):
+                for text in [step["does"]] + [part["text"] for part in step["parts"]]:
+                    assert not wrong.search(text), (stage, temporal, text)
+
+
+def test_one_network_shared_by_all_sensors_is_never_tagged_as_the_papers():
+    """Section 2.2 gives each sensor its own network, so the shared one cites it only as the thing it departs from."""
+    pytest.importorskip("torch")
+    answer = _flowchart("temporal", shared_across_sensors=True)
+    for name in ("Split by sensor", "One LSTM for all sensors"):
+        assert _step(answer, name)["source"]["kind"] == "extension", name
+    network = _step(answer, "One LSTM for all sensors")
+    assert network["shape"].startswith("(B x 14, ")
+
+
+def test_with_nothing_held_back_no_step_speaks_of_held_back_windows(raw_dir):
+    answer = _flowchart("preprocessing", validation_fraction=0.0, early_stopping=False)
+    names = [step["name"] for step in _steps(answer)]
+    assert "Two sets of windows" in names and "Three sets of windows" not in names
+    assert "held-back" not in _step(answer, "Rescale each sensor")["does"]
+
+
+def test_the_rescaled_graph_says_what_its_rows_sum_to_as_measured():
+    """Symmetric rescaling leaves the rows of the complete graph summing to 1, and the words must not deny it."""
+    pytest.importorskip("torch")
+    complete = _step(_flowchart("graph", graph="complete", adjacency_normalization="symmetric"), "Rescale the graph")
+    assert "no longer sum to 1" not in complete["does"] and "1/14 everywhere" in complete["does"]
+    physics = _step(_flowchart("graph", adjacency_normalization="symmetric"), "Rescale the graph")
+    assert "not to 1" in physics["does"]
+
+
+def test_the_data_box_counts_the_rows_the_loader_reads(loaded):
+    answer = _flowchart("data")
+    assert _step(answer, "Training engines")["shape"] == f"({playground._count(len(loaded.train))}, 26)"
+    assert _step(answer, "Test engines")["shape"] == f"({playground._count(len(loaded.test))}, 26)"
+
+
+def test_the_preprocessing_box_counts_the_windows_the_pipeline_makes(raw_dir):
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    settings = playground.validate_settings({"window_size": 25})
+    prepared = run_preprocessing(PreprocessingConfig(**playground.preprocessing_settings(settings)))
+    step = _step(playground.stage_detail("preprocessing", settings), "Three sets of windows")
+    count = playground._count
+    assert step["parts"][0]["text"] == (f"{count(len(prepared.train))} training · "
+                                        f"{count(len(prepared.validation))} held back · {count(len(prepared.test))} test")
 
 
 def test_the_defaults_the_paper_states_are_the_ones_it_prints():
@@ -340,6 +505,12 @@ def test_another_web_page_cannot_start_work(site: str):
     status, answer = _post(site + "/api/playground/cancel", {"id": "x"}, origin="http://example.com")
     assert status == 403
     assert "did not come from this site" in answer["error"]
+
+
+def test_the_site_refuses_a_box_it_has_no_flowchart_for(site: str):
+    status, answer = _post(site + "/api/playground/stage", {"stage": "output", "settings": {}}, origin=site)
+    assert status == 400
+    assert "stage must be one of" in answer["error"]
 
 
 def test_the_site_explains_a_refused_setting(site: str):

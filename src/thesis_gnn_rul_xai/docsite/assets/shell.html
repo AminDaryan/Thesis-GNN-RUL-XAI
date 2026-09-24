@@ -13,7 +13,7 @@
   (function () {
     var root = document.documentElement;
     try {
-      var narrow = window.matchMedia("(max-width: 900px)").matches;
+      var narrow = window.matchMedia("(max-width: 1199px)").matches;
       root.setAttribute("data-nav", narrow ? "closed" : (localStorage.getItem("docsite-nav") || "open"));
       var theme = localStorage.getItem("docsite-theme") || "auto";
       if (theme === "auto") { theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
@@ -39,7 +39,7 @@
   </div>
 
   <div class="search">
-    <input id="search-input" type="search" placeholder="Search every document…" autocomplete="off" spellcheck="false" aria-label="Search the documentation">
+    <input id="search-input" type="search" placeholder="Search the site" autocomplete="off" spellcheck="false" aria-label="Search the documentation">
     <div id="search-results" class="search-results" hidden></div>
   </div>
 

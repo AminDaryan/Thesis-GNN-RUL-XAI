@@ -79,7 +79,7 @@ $$S_t = \alpha X_t + (1 - \alpha) S_{t-1}, \qquad S_1 = X_1$$
 Here $X_t$ is the raw reading at cycle $t$, $S_t$ is its smoothed value, and
 $\alpha$, between 0 and 1, is the share of the blend given to the new reading.
 With $\alpha = 0.5$, engine 1's `T50` reads 1400.60 at cycle 1 and 1403.14 at
-cycle 2, so $S_1 = 1400.60$ and $S_2 = 0.5 \times 1403.14 + 0.5 \times 1400.60 = 1401.87$.
+cycle 2, so $S_1 = 1400.60$ and $S_2 = 0.5 \times 1403.14 + 0.5 \times 1400.60$, which is $1401.87$.
 
 {{figure:smoothing}}
 

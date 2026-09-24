@@ -36,7 +36,7 @@ and `scripts/explain.py`, but what they compute is theirs, stored by them in
 | `figures.py` | Draws the diagrams the taught pages and the notebooks show, each from this repository's own data. |
 | `results.py` | Reads the entries of `docs/ASSUMPTIONS.md`, and the last re-check of the numbers the log quotes. |
 | `notebooks.py` | Turns a notebook into HTML for reading, and starts JupyterLab for running. |
-| `playground.py` | Checks the playground's settings, builds the command that runs them, queues the jobs, and reads stored runs and explanations back. |
+| `playground.py` | Checks the playground's settings, describes each box of its pipeline as a flowchart of its own, builds the command that runs them, queues the jobs, and reads stored runs and explanations back. |
 | `assets/playground.js` | The playground page: its form, its job list, its charts. |
 | `assets/shell.html` | The page the browser loads first: a menu, a search box, and an empty middle. |
 | `assets/app.css` | How it looks. The settings at the top decide it; the rules below only apply them. |
@@ -88,8 +88,9 @@ Say you click on the assumptions log. Six things happen.
    words of its first heading, and sends back a small parcel: the HTML, that
    name, the headings, and how long the document takes to read.
 6. `app.js` puts the HTML in the middle of the page, names the browser tab with
-   the same menu name, and builds the "On this page" list down the right-hand
-   side from the headings.
+   the same menu name, and builds the "On this page" list from the headings:
+   down the right-hand side where there is room beside the text, folded at the
+   top of the page where there is not.
 
 The whole exchange is one request. There is no framework involved on either
 side — the server is Python's own `http.server`, and the browser code is plain
@@ -136,7 +137,13 @@ The browser then typesets the formulas with MathJax, which it fetches from the
 internet. If you are offline that fetch fails, and the page falls back to
 showing the LaTeX source in a fixed-width face — which is what a plain text
 editor shows too, and is still readable. Everything else on the site works
-offline.
+offline. MathJax may arrive after the page is drawn, on a first visit; once it
+is ready it typesets whatever the page holds then, so no formula is left as
+LaTeX because the page won the race. A notebook's text cells keep their
+formulas between dollar signs, since nbconvert, not `markup.py`, turns them
+into HTML; `app.js` finds them there, outside code, and puts each in the same
+element a document's formula arrives in, so the one typesetting step draws
+both.
 
 ### The links have to keep working
 
@@ -314,49 +321,288 @@ The page at `#/explore/playground` is where the parts of the method can be
 swapped and the effect seen. It has three tabs, in the order the work happens,
 and a fourth for the jobs:
 
-1. **Design a run.** Choose the sub-dataset, the preprocessing, the temporal
-   stage, the sensor graph and the widths of the graph layers, and the
-   training settings. The graph layers themselves stay the three of the
-   paper's Table 4; only their sizes change.
+1. **Design a run.** Choose the sub-dataset (one of the four parts of NASA's
+   simulated turbofan engine data, FD001 to FD004), the preprocessing, the
+   temporal stage (the part that turns each sensor's window of recent cycles
+   into the few numbers per sensor the graph layers receive; the paper's is an
+   LSTM, a kind of recurrent network, one for each sensor), the sensor graph
+   and the widths of the graph layers (GCN, for graph convolutional network,
+   the layers in which each sensor's numbers are mixed with its neighbours'
+   in the graph), and the training settings. The graph layers themselves stay
+   the three of the paper's Table 4; only their sizes change.
 2. **Results.** Every stored run, its four measures beside the paper's, every
    seed's curve and predictions, and any two runs paired seed by seed.
 3. **Explain.** Explain one stored run's predictions, with the paper's method
    or a cheaper one, and read back how much each sensor moved them.
 
 The design tab has twenty-nine settings, and shown all at once they ran to five
-screens. So the form is laid out as numbered steps. Step 1, the sub-dataset,
-stands on its own at the top. Under it the **pipeline** draws the network as a
-flowchart, in the order the data passes through it: the preprocessing, the
-temporal stage, the graph layers with the sensor graph they run on, and the
-remaining life that comes out. Below that, the other settings sit in five
-groups that fold, numbered 2 to 6 — Preprocessing, Temporal stage, Graph
-layers, Training and Repeats. Each box of the pipeline shows its group's number
-and what that step is now, "3 LSTM" or "3 GRU", so the group's name is said
-once, on the group, and the number ties the two together. Choosing a box opens
-its group and brings it into view; choosing the sensor graph inside the graph
-layers' box goes straight to that setting.
+screens. So the form is laid out as six numbered steps, with a map of them. The
+**pipeline** draws the whole run as a flowchart, in the order the data passes
+through it: the sub-dataset, the preprocessing, the temporal stage, the graph
+layers, and the remaining life that comes out. The form shows one step at a
+time, under six tabs numbered 1 to 6 — Data, Preprocessing, Temporal stage,
+Graph layers, Training and Repeats. Each box of the pipeline shows its step's
+number and what that step is now, "1 FD001", "3 GRU" or "4 GCN", so a step's
+name is said once, on its tab, and the number ties the two together. The
+preprocessing box is the exception: its step has no one value to show, so it
+carries its step's name, and a screen reader hears that name once.
+
+The six steps' settings are all drawn, one over another in the same place, and
+only the chosen tab's are shown. The box that holds them is therefore as tall
+as the tallest step at the window's width, and choosing another tab never moves
+anything on the page: at a window 1440 pixels wide with the menu open it is
+593 pixels tall whichever tab is chosen, the height of Training, and 517 with
+the menu closed, where the wider form fits more settings in a row. The first
+version had the six groups fold open one under another, which moved everything
+below each time one opened. On a phone, where the settings stand one across,
+the tallest step would leave the others a screen of empty box, so there each
+step takes its own height; so it does on a screen less than 640 pixels tall,
+such as a phone on its side, where the box and the top bar could not both show
+at once anyway.
+
+When the six names do not fit in one row, only the chosen tab keeps its name on
+screen and the others show their numbers, each still named for a screen reader
+and when the pointer rests on its number. On the narrowest phones, where even
+that row does not fit, every tab shows only its number, the chosen one filled
+in and underlined: at 320 pixels wide that happens with Preprocessing, Temporal
+stage or Graph layers chosen, whose names are the longest. All of it is
+measured, not guessed from the width: at a window 1440 pixels wide with the
+menu open all six names fit, at 1280 they do not, and at 375 the chosen tab
+always keeps its name. The arrow keys, Home and End move from tab to tab, as in any row of
+tabs. The chosen step is remembered in the reader's own browser, and the page
+opens on it.
+
+A tab carries a small dot on its number while any of its step's settings
+differs from its default. The chosen tab does not, because there every such
+setting shows its own Reset. Reset all stands at the foot of the settings card,
+under whichever step is shown; with no heading above the card, it starts level
+with the pipeline's card beside it.
+
+Where the Design tab's own area, the page to the right of the menu less its
+margins, is at least 880 pixels wide, the pipeline stands top to bottom in a
+column to the right of the form, and stays where it is while the page scrolls,
+so the map is always in view. The column is 400 pixels wide, and on a wide
+screen grows with the Design tab's area, as 30% of it, up to 480; the form
+takes the rest, up to 960. A step's flowchart taller than the column scrolls
+inside it on its own. The column is never taller than the form beside it, nor
+than the window less the top bar and the page's bottom margin, so it never
+lengthens the page and never slides under the top bar at the page's end. At
+880 the form beside the column keeps 456 pixels, room for two cells of its
+grid (next section): the card needs 418 for them, 384 for the two cells and
+the space between them, plus its padding and border. On a narrower
+area there is no room for both, and the pipeline stands above the form instead,
+left to right when its boxes fit. With the menu open, the area reaches 880 in a
+window 1232 pixels wide plus the width of the browser's scroll bar.
+
+Choosing a box opens that step's own flowchart in the pipeline's place, and
+opens the same step's tab in the form, so beside the form the settings are
+next to the drawing of what they decide; above the form, on a narrower area,
+the tab is further down the page, and each value in the flowchart leads to its
+setting. "Pipeline" (or Escape) leads back; the section after next says what
+each flowchart shows.
 
 The sensor graph is built while the data is prepared, but its setting sits in
-the Graph layers group, beside the layers that use it, because that is where
-the pipeline draws it.
+the Graph layers step, beside the layers that use it, because that is where
+the pipeline draws it: as the first step of the graph layers' own flowchart,
+not as a label on their box.
 
-A folded group's heading shows only its number, its name and how many of its
-settings differ from their defaults. It does not repeat what the group holds:
-the pipeline shows the choice that matters for each stage, and the count says
-whether anything else was moved. An open group shows the controls, and a
-setting that differs carries a Reset. Which groups are open is remembered in the
-reader's own browser, as the menu's folds are.
+The chosen step is the current one. Its number is filled in, on its tab and on
+its box in the pipeline, and every other number is an outline, which also keeps
+the form's numbers from reading as the numbers of the Design, Results and
+Explain tabs above them.
 
-One step is the current one: step 1 when the page opens, then whichever group
-was last opened, reached from the pipeline, or worked in. Its number is filled
-in, on its group and on its box in the pipeline, and every other number is an
-outline, which also keeps the form's numbers from reading as the numbers of
-the Design, Results and Explain tabs above them.
-
-The form ends, below step 6, with the card that runs it: the network the
+The form ends, below the settings, with the card that runs it: the network the
 settings build, what stops or qualifies the run, and the button that starts it.
 It stands last so the page reads from top to bottom in the order the work is
 done, and so each caution sits directly above the button it is about.
+
+### How a setting is drawn
+
+Each setting's name stands directly above its control, followed by its i
+where it has one (the small circled i beside a name, which opens a card saying
+where the default comes from; the section "Where each default comes from",
+further down this part, describes it), and the settings of a step stand side
+by side in a grid of cells, as many across as fit at 184 pixels or more each. The first version put the name at the left of a row and
+the control in the row's right half, so the eye crossed the page from one to
+the other. Measured at a window 1440 pixels wide, from the end of each
+setting's name to the start of its control, that crossing was 252 pixels for
+the middle one of the 28 settings on show and 355 at the most; with the name
+above, the middle one is 6 pixels. Rows of cells also take less height than a
+row for every setting: with every group open one under another, the groups took
+2814 pixels, and 1995 once their settings stood in cells, before the groups
+became tabs.
+
+The cells of one row share their two lines, the names' and the controls': a
+name that needs two lines pushes its neighbours' controls down with its own,
+so the controls of a row always stand on one line and every name sits on the
+line just above its control. A name that wraps keeps its i on the line of its
+last word. The browser will break a line where a name's element ends and the
+i begins, whatever character stands between the two, so each name is drawn in
+two parts, all but its last word and then its last word held on one line with
+the i; both parts name the control, and Chrome's accessibility tree reads
+"Passes over the training data" as the name of that field, not the first part
+alone.
+
+A list of options, such as the sensor scaling, takes a whole row and stands two
+options across, or one where a step's grid of settings is narrower than 400
+pixels. Three
+across would break most options' words onto a second line, and one across, as
+before, gave the temporal stage's six options six long rows. The words of an
+option are its value, so they are set in the regular weight, and the setting's
+name above them in the heavier one. The graph layer widths take two cells, for
+their three number fields. The sub-dataset takes a row of its own, its four
+choices under its name like every other setting's control. Inside a step, the
+lists about what the step is for come first: the temporal stage, the sensor graph and its rescaling. The
+small settings are kept together so that they fill their rows, and a list about
+something else, the sensor scaling or the learning rate's course, follows them
+on a row of its own; `FIELDS` in `playground.py` holds that order.
+
+Reset, which appears once a setting differs from its default, is put where it
+can appear without moving what the pointer is on: beside a small setting's
+control, beside a list's name, and under a list that has no name of its own
+because its step's tab names it, as the temporal stage's does. Choosing
+it leaves the keyboard's focus on the setting's control, and Reset all leaves
+it on Reset all; neither draws the form again, so the page does not move. The
+inputs
+only the chosen procedure shows are indented under its options, with a thin
+line down their left edge, so they read as belonging to it.
+
+The Explain tab's form is drawn the same way, by the same function.
+
+A number field's value is reported when the field loses the focus, which a
+press of the mouse elsewhere causes. What depends on the settings is therefore
+changed in place, never drawn again, unless what it shows has changed: a click
+on a pipeline box, a flowchart's value or a Reset, made straight after typing a
+number, would otherwise land on a button that had just been replaced, and be
+lost. For the same reason a step's open flowchart only turns grey when the
+settings move, and its steps are replaced when the new answer arrives.
+
+Each number field's default lies on the steps its arrow keys take, counted
+from its lowest allowed value; a test checks it. The browser marks any other
+value invalid, and three fields once held their defaults between two steps,
+so their arrow keys could never land on the paper's values again. Their lowest
+allowed values were moved onto the steps: a first learning rate of at least
+0.0001, a last one of at least 0.00001, and a smoothing weight of at least 0.05.
+
+The page tells the browser which of its two colour schemes is showing, so the
+browser's own parts of a control, a radio button's circle and a number field's
+arrows, are drawn to match. Before, the dark page left them light, and an
+empty radio button read as a chosen one. A switch or a row of choices shows a
+solid ring in the accent colour when the keyboard reaches it, as every other
+control does, since the pale glow used before measured 1.5 to 1 against the
+page.
+
+### A box's own flowchart
+
+A box of the pipeline stands for several steps of the code, and its flowchart
+shows them, top to bottom, in the order the code runs them. Steps that work
+side by side on the same input, such as the three files of a sub-dataset, share
+one row. Each step gives its name, the values that decide it, the shape of what
+it hands on and how many numbers it learns; what it does, in a sentence, and
+where it comes from are behind its i. Each value a setting decides is a link to
+that setting, so a step decided by two settings, such as the window's length and
+its spacing, carries two links. In a shape, `B` is the number of windows the
+network is handed at a time.
+
+| Box | Its steps |
+|---|---|
+| 1 Data | the training engines, the test engines and the file of their remaining life, side by side; a remaining life for every row; and the 14 of 21 sensors kept, in Table 3's order |
+| 2 Preprocessing | capping the labels, smoothing, holding engines back, finding the operating conditions, rescaling, cutting windows, and the two or three sets of windows that result |
+| 3 Temporal stage | for the LSTM or the GRU: splitting the window by sensor, one network per sensor (or one shared by all), its last hidden state, and the one weighted sum, shared by all sensors, that turns it into the numbers the graph layers receive; for the other stages, what each does to a window instead |
+| 4 Graph layers | the sensor graph, its rescaling, the three graph layers, the flattening, the fully connected layer, the output and its scaling to cycles |
+
+**A tag never claims a value the paper did not print.** Where a step is an
+operation the paper describes, its tag names that part of the paper whatever
+the value: capping the labels is the paper's Eq. 19 at any ceiling, and the
+ceiling of 125, read off the paper's Fig. 7, is this project's choice
+(assumption A-01), said in words. Where a step is itself one setting's value,
+such as the window length, the share of engines held back or the kind of
+rescaling, it carries that setting's tag only while the value is the default.
+Any value that is not the default is said to be so in words, naming the setting
+and where its default came from; for a window of 40 cycles the step reads that
+the window length "was changed from its default, 30 cycles (the paper's Table
+6)", and carries no tag. This rule came from a review that found the first
+version tagging a changed window with Table 6, and a shared LSTM with the
+Section 2.2 it departs from.
+
+Nothing in a flowchart is typed in by hand as a number. `stage_detail()` counts
+the rows and engines from the NASA files, runs the real preprocessing for the
+windows and the operating conditions, and builds the real network for the
+shapes and the learned numbers, reading them from `layer_summary()`. Of a
+preprocessing run it keeps only those counts and the sensor graph, never the
+windows, for the last sixteen groups of settings, and it runs one at a time, so
+a second request for the same settings finds the first one's answer; the
+sensor graph and its rescaling are not part of what it is kept under, since
+neither changes the preprocessing, unless the graph is built from the data.
+FD004 takes several seconds; while a new answer is on its way the old one stays
+on screen with its coloured parts, the links and the tags, turned grey, which
+keeps every text at its contrast, and "Updating…" appears beside the step's
+name, so nothing on the page moves. The grey is made by giving those colours
+grey values, not by a filter over the whole flowchart. A filter, a visual
+effect the browser applies to an element and everything inside it, would also
+make the flowchart the frame an i's card is positioned against, in place of the
+browser window, and the pipeline's column would then cut the card off at its
+edge. The correlation
+graph is built
+from the training engines here, where the preview uses the paper's graph in its
+place, so its box can say which sensors it leaves alone and which it makes
+identical, and whether every seed of a run gets the same graph: only when
+engines are held back, each seed drawing its own, do the graphs differ. On the
+paper's own graph that check finds three groups of sensors whose rescaled rows
+are identical, so the layers after it can read each group only as a sum (audit
+item D-1), and four pairs of sensors further apart than three graph layers
+reach, which only the fully connected layer combines. A missing file is never
+remembered: once the NASA files are put in place, the next request counts them.
+
+Above the form, on a narrower area, the overview stands in a row when its boxes
+fit, and that is measured, not guessed from the width: when they do not fit,
+the words "Remaining life" are dropped first, and then the boxes stand in a
+column, where the words come back. The names differ in length, "LSTM" against
+"Window summary", so no one width could decide it. Beside the form the column
+is never wide enough for the row, and the same measurement stands the boxes in
+a column there.
+
+Inside the pipeline, while it scrolls on its own beside the form, an i's card
+is positioned relative to the browser window rather than to the i: the
+column's own scrolling would otherwise cut off whatever passed its edges. The
+card opens under the i, or above it when the window has no room below,
+follows the i when the column or the page scrolls, and closes once the i has
+scrolled out of the column's view rather than point at nothing.
+
+The pipeline comes first in the page's order, for the keyboard and for screen
+readers, although beside the form it is drawn on the right. It is the short
+map of the form: six stops of the Tab key pass over it, where the form takes
+between six, on the Data tab, and nineteen, on Training, with the default
+settings, PyTorch installed and the NASA files in place, so the map is reached
+at once and left at once. The same order holds when it stands above the form.
+Of the page's own four tabs, and of the six steps' tabs, only the chosen one is
+a stop; the arrow keys, Home and End move along the row, and with Alt or Ctrl
+held they are left to the browser, where Alt with an arrow goes back or
+forward.
+
+"Pipeline", or Escape pressed inside the pipeline or with nothing focused (no
+control selected for the keyboard), leads back to the overview, with the
+keyboard's focus on the box that was open, or on the + that would put it back
+when that box has since been taken out. Escape first closes an i's words, if
+any are showing; pressed in the form, it leaves the flowchart alone. A value
+that links to one of the graph layer widths puts the focus on that layer's own
+number field. When a new answer replaces a flowchart's steps, the focus stays
+with the button it was on, or moves to the one that took its place: after the
+sensor graph's cross, to the + that puts it back.
+
+The words were written from an account of each stage read out of the code and
+then checked against it by a second reader, not from the paper: where the code
+and the paper's figures differ, the flowchart follows the code. Tests hold the
+parts that can drift: the learned numbers of the temporal and graph boxes add
+up to the network's own count, what leaves the temporal box is what enters the
+graph box, every linked value names a setting the form has, a changed value
+never carries its default's tag, a shared network is never tagged as the
+paper's, nothing held back means no held-back windows are spoken of, the
+rescaled graph's row sums are said as measured, a count of one takes a singular
+noun and verb, the data and preprocessing counts equal what the loader and the
+pipeline produce, and the sensor graph is the only step of the graph box whose
+value links to the sensor graph setting, which is what puts the cross and the
++ there.
 
 ### Why the page never computes a result of its own
 
@@ -402,9 +648,9 @@ Some things need no training, and the page shows them as the settings change:
   engines are shorter than the window and will be left out (counted from the
   real file), and two cautions about settings that conflict — fewer than five
   seeds, and the learning rate that waits for the held-back error to stall with
-  no engines held back. Those two are here because the settings involved sit in
-  groups that may be folded, and "Set these settings up again" on a stored run
-  can bring either in without the reader opening a group.
+  no engines held back. Those two are here because the settings involved sit
+  under tabs that may not be the one on show, and "Set these settings up again"
+  on a stored run can bring either in without the reader opening a tab.
 
 The cautions come from one function, `caveats()`, and each carries a `where`:
 `"run"` for a caution that qualifies a stored run's numbers, which the run's
@@ -421,8 +667,10 @@ on the temporal stage's box keeps only each window's last cycle, which is the
 w/o LSTM row's stage, and the box leaves the flowchart. The **physics prior**
 is the paper's own sensor graph, the matrix of its Table 3, which the authors
 built by hand from how a turbofan engine works; the form calls it "The paper's
-physics graph". The cross on it joins every sensor to every other instead, the
-w/o Physics prior row's graph. Each leaves a dashed button in its place that puts
+physics graph". It is not drawn on the overview, whose boxes are stages; it is
+the first step of the graph layers' own flowchart, "Sensor graph", and the
+cross on that step joins every sensor to every other instead, the w/o Physics
+prior row's graph. Each cross leaves a dashed button in its place that puts
 the part back as it was, however it was taken out: a GRU, the smaller recurrent
 network this project offers beside the LSTM, comes back as a GRU. The graph
 layers' box has a cross drawn faint that does nothing and says why when
@@ -442,7 +690,9 @@ remove, one part at a time, the way the paper's Table 11 does:
 | anything else | the paper's or every sensor joined | none: the paper has no row for the stage |
 | not recorded, in an older stored run | the paper's or every sensor joined | none: no row can be chosen |
 
-The list of runs gives that row's RMSE in its Paper column, and a run's own
+The list of runs gives that row's root mean squared error (RMSE: the square
+root of the average squared difference between the predicted and the true
+remaining life, in cycles) in its Paper column, and a run's own
 page names the row and sets its figures beside the run's, or gives the reason
 from the table's last column. The design tab names no row: the pipeline already
 shows which parts are in, and the paper's number belongs beside a result, not
@@ -450,11 +700,14 @@ beside settings that are still being chosen.
 
 ### Where each default comes from
 
-Every setting has an i beside its name. Pointing at the i, reaching it with
-the keyboard, or choosing it opens a small card with a tag saying which of four
-things set the default, because that is the distinction the thesis depends on,
-and a few words on why. The form itself shows only names, so it reads as a list
-of choices rather than a list of citations. Escape closes the card.
+Every setting whose default something decides has an i beside its name; the
+first seed and the device have none, since no source decides either. Pointing
+at the i or reaching it with the keyboard shows a small card with a tag saying
+which of four things set the default, because that is the distinction the
+thesis depends on, and a few words on why. Choosing the i keeps the card open,
+and only then can the keyboard reach a link in it; the card closes once the
+focus moves on, or with Escape. The form itself shows only names, so it reads
+as a list of choices rather than a list of citations.
 
 | Tag | Meaning | Example |
 |---|---|---|
@@ -473,13 +726,13 @@ the Explain tab's options work the same way.
 A pass over the whole training set is what PyTorch calls an **epoch**; the page
 says "pass" throughout.
 
-The training procedure is the first choice in the Training group: **the
+The training procedure is the first choice in the Training step: **the
 paper's procedure** (nothing held back, every pass, the final weights) or
 **held back, best pass** (a fifth of the training engines held back, and the
 weights of the pass that scored best on them restored). It is the only control
 for those two things; while the second is chosen, the share of engines held
 back and how many passes may go by without improvement sit under it. It does
-not set the number of passes, which is the next setting in the group. The two
+not set the number of passes, which is the next setting in the step. The two
 things are one choice because on FD001 it changed what the LSTM stage was worth
 from 3.19 cycles to 0.77 (finding F-16).
 
@@ -539,9 +792,31 @@ also announced when the very first poll already finds it ended.
 
 ### A run, and two runs
 
+The list of runs gives, after when each finished, its RMSE and the paper's,
+then the settings that produced it, and last the commit; a narrow panel leaves
+the commit out, the column least needed to read a result. The date is written
+without its year ("09-14 23:39"), the column's heading says the zone, and the
+full date shows when the pointer rests on it: with the result third, a phone
+shows it without scrolling the table. How the weights were chosen stays at any
+width, since it qualifies the RMSE beside it (finding F-16), and so does the
+"files" mark beside it, the one sign that a run kept its networks and can be
+explained. A run is ticked for
+comparison anywhere in its first cell, a target 40 pixels square, and a click
+there never opens the run.
+
 Click a run and it opens on its own, in place of the list, with a button back
 to every run; the list is long, and a run's curves and predictions drawn
-underneath it were a screen's scroll away. A commit ending in `-dirty` had
+underneath it were a screen's scroll away. Its charts stand in one column no
+wider than 1080 pixels, and each is drawn at the width it is shown at, again
+whenever that width changes: one unit of the drawing is then one pixel on the
+screen, so the numbers on its axes are held to the site's smallest size, 11
+pixels, and its axis names are 12, at every width. Drawn once at a fixed width
+and stretched to the column, as they first were, they fell to 4 pixels on a
+phone and grew to 36 at 2560. A chart drawn again replaces the old one where
+it stands, with no loading line between, so a change of width, the menu
+closing or a different seed chosen for Fig. 8 leaves the reader where they
+were, and the focus on the control they used. The Results, Explain and Jobs tabs stop at 1280 pixels on a wide screen,
+and the words beside a chart keep a readable line length however wide the tab. A commit ending in `-dirty` had
 uncommitted changes, so no committed state of the code reproduces that run;
 the list colours such a commit, and its column heading says so when pointed at.
 
@@ -607,7 +882,111 @@ fallen to 1.18 and the four largest are Ps30 4.23, Nc 2.60, phi 1.51 and T50
 nothing joins. The page counts the stored engine the same way, and, when every
 window was explained, over all of that engine's steps as well. A large count
 means the sensors this network leans on move from one window to the next, which
-is not something the paper's table shows.
+is not something the paper's table shows. Each stage's rings stand five to a
+row at no less than 150 pixels each, so the names inside them stay readable;
+where a stage is narrower, on a phone, it scrolls sideways, with its heading
+staying in view, and in the first stage the names of its two rows, the
+paper's and this engine's. Every name in the rings and on the sensor graph is
+drawn after all the circles, so no circle covers one, and resting the pointer
+on a name shows the same words as its circle. The sensor graph never shrinks
+below 540 pixels, where its names are 8.6: on a phone it scrolls sideways
+instead of falling to 4. In the ranked row above it, each circle is 50
+pixels across, room for the longest name, htBleed, at 11.
+
+---
+
+## How every page fits the screen
+
+The author's complaint was that the pages were "not responsive at all", and
+measured on 2026-09-23 it was so: pages of every kind could be scrolled
+sideways at the widths of phones, tablets and laptops, the notebooks' tables by
+up to 637 pixels, one of them even at 1024. Two audits of every kind of page at
+widths from 320 to 2560 followed, each finding checked by a second reader
+before it was acted on. Afterwards none of the 44 pages the menu links to
+scrolls sideways at any of 16 widths (320, 375, 414, 600, 768, 901, 940, 1024,
+1152, 1199, 1200, 1280, 1424, 1440, 1920 and 2560), nor does the playground
+with a run or an explanation open, measured on 2026-09-24 with a 15-pixel
+scroll bar; nothing on them reaches past the window except inside a box that
+scrolls on its own. What the pages now do, and
+why:
+
+- **The menu is a drawer below 1200 pixels**, for the reason given under
+  "The menu can be closed" further down, and **the contents list shows only
+  where it fits** beside a full line of text: from 1152 pixels with the menu
+  closed or open as a drawer over the page (the page's margins 80, the text
+  848, the list 224), and from 1424 with it open beside the page (the menu's
+  272 more). Where it does not fit, the same links sit folded at the top of
+  the page, under "On this page". A tablet keeps a 32-pixel margin, a phone
+  16.
+- **These widths, and the drawer's 1200, leave out the browser's scroll
+  bar**, since a phone's and a Mac's float over the page and take no room.
+  Where it does take room, 15 pixels on Windows, a line of text is up to 15
+  pixels short of 848 in the first 15 pixels past each width, and never
+  shorter than 833: measured, the line is 833 at 1152, 1200 and 1424 and 848
+  at 1167, 1215 and 1439. The 848 itself is 74 characters of Sitka Text, the
+  serif Windows picks from the page's list of fonts; a system that picks
+  another font has another width for the same 74 characters. Every page
+  keeps the scroll bar's room whether or not it is long enough to scroll, so
+  a chart drawn before the page grew long is not 15 pixels too wide after.
+- **On a wide screen the text keeps its line of 74 characters, 848 pixels**,
+  and tables, code and figures may grow beside it to 1080; the page's column
+  and the contents list stand together, centred in the space right of the
+  menu, rather than at the screen's two edges with a band of nothing between.
+  At 1920 a figure is 1080 pixels wide beside 848 of text.
+- **A table's headings may wrap**, and a name in code inside a cell breaks
+  after a dot, an underscore, a slash, a colon, a bracket, a comma or an
+  equals sign, never between two letters. Kept on one line, the headings set
+  each table's narrowest width and pushed it sideways on a phone; allowed to
+  break anywhere, the names were squeezed into fragments.
+- **Whatever still scrolls sideways shows a shadow at the edge that hides
+  more**: tables, code, formulas, figures, a notebook's output and pictures,
+  and the playground's sensor graph and Fig. 10 rings. A phone draws no
+  scroll bar until the box is touched. A picture would cover a shadow drawn
+  behind it, so a notebook's picture has its shadows drawn over it, dark in
+  both themes because every picture stands on white.
+- **A long word breaks** rather than push the page wide: a web address, a
+  file path, the path at the foot of every page, which breaks after a slash.
+- **A code block's language stands above its first line**, not over it; **a
+  horizontal line (`---` in the Markdown) just before a section heading is
+  not drawn**, since the heading draws its own; **a formula has no scroll bar
+  of its own** (MathJax's hidden copy for screen readers reached below it);
+  three formulas too wide for a phone were rewritten: one split into two
+  shorter formulas, in `docs/learn/04_the_pipeline.md`, and two in
+  `06_reading_results.md`, one whose label moved into the sentence before it
+  and one with shorter labels.
+- **A figure never shrinks below a width its words can be read at**, 820
+  pixels: wherever its box is narrower, on a phone or a tablet, it scrolls
+  sideways. Shrunk to a phone's screen, its labels fell to 2 to 7 pixels. A
+  notebook's plot keeps 65% of the size it was saved at, but no more than
+  820, for the same reason.
+- **A notebook is held to 1080 pixels**, its text to the reading line, and
+  every output and table in it scrolls on its own.
+- **Every link to a section works**: the contents list's links, and the # a
+  heading shows when the pointer rests on it, lead to the section without
+  loading the page again, and each names its page as well, so it can be
+  copied or opened in a new tab. Before, the part of `app.js` that reads the
+  address after the # and chooses the page to draw read "#section" as the
+  address of a page that did not exist. A section whose name holds a
+  character beyond plain letters, the "²" of R² or a notebook's "—", is found
+  too, and a page opened at a section goes straight to it, rather than
+  gliding towards where the heading stood before the figures above it
+  arrived. On a touch screen, which has no pointer to rest, the # always
+  shows.
+- **Search on a phone** opens across the screen under the top bar, not as
+  wide as the search box, and closes once a result is chosen; its hint reads
+  "Search the site", short enough not to be cut at 320. The site's name gives
+  way only below 640, where it no longer fits beside the search box.
+- **The text in every field is 16 pixels on a touch screen**, the
+  playground's included, where a phone's browser would otherwise zoom the
+  page in on it.
+
+Four things the audit found were left: the settings box on the Design tab
+keeps the height of its tallest step, as the author asked, although on the
+Data tab that puts the Train button below the first screen of a laptop; the
+top bar stays pinned on very short windows; the text sizes are in pixels, so
+a reader's own default size in the browser does not change them (the page's
+zoom still does); and the step names give way to numbers beside the pipeline
+from 1232 to about 1417 with the menu open.
 
 ---
 
@@ -694,7 +1073,9 @@ which then asks for things the old code does not send. That happened here on
 paper's Table 12 and did not get it. The server now compares the modification
 time of every Python file in the package with the moment it started, reports
 the answer as `stale` in `/api/state`, and the page shows a banner under the
-top bar telling the reader to restart it. A server too old to report the
+top bar telling the reader to restart it. The banner scrolls away with the
+page: pinned under the bar, as it first was, it covered the top of the menu,
+of the contents list and every heading a link leads to. A server too old to report the
 answer at all is treated as out of date, since the page asking is newer than
 it — that is the case the banner was first needed for. Every reply has always
 carried `Cache-Control: no-store`, which covers the other half of the same
@@ -719,10 +1100,18 @@ advice used to say. `tests/test_docsite.py` holds a server on a port and
 requires a second one to be refused.
 
 **The menu can be closed, and the two screen sizes close it differently.** The
-button at the left of the top bar hides or shows it. On a wide screen the page
-takes the width the menu gave up, and the choice is remembered in the browser,
+button at the left of the top bar hides or shows it. On a wide screen the
+playground spreads into the width the menu gave up, a document keeps its line
+of text and moves to the middle of the wider space, and from 1200 to 1423
+pixels the contents list comes back beside the text. The choice is remembered
+in the browser,
 so a reader who works in the playground with the menu shut finds it shut next
-time. On a narrow screen the menu is a drawer over the page: it starts closed,
+time. A narrow screen is one below 1200 pixels: the menu (272), the page's
+margins (80) and a full line of text (848) need 1200 side by side, and below
+that a menu beside the page took 272 pixels from the text (the section "How
+every page fits the screen" says what the browser's scroll bar adds). There
+the menu is a
+drawer over the page: it starts closed,
 opens over a dimmed page, and closes when the dimmed page is tapped, when
 Escape is pressed, or when a page is chosen from it. The state is one
 attribute on the document, `data-nav`, and a few lines in `shell.html` set it

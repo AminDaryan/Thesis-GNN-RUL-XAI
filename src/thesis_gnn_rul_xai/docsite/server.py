@@ -333,6 +333,9 @@ class DocsHandler(BaseHTTPRequestHandler):
             body = self._body()
             if route == "/api/playground/preview":
                 self._json(playground.preview(playground.validate_settings(body)))
+            elif route == "/api/playground/stage":
+                self._json(playground.stage_detail(
+                    str(body.get("stage", "")), playground.validate_settings(body.get("settings", {}))))
             elif route == "/api/playground/train":
                 if not _module_present("torch"):
                     raise playground.SettingsError(

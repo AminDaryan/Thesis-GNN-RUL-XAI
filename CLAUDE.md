@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 332 tests; must all pass
+pytest                # 369 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -857,11 +857,13 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — all 332
-pass (measured 2026-09-21, after the playground's Design tab drew the model as
-a pipeline and one test came with it, tying the pipeline's crosses to the
-variants of Table 11; 331 had passed on 2026-09-17, after the website was
-rebuilt so that nothing on it is said twice).
+With everything present — the data, PyTorch and the stored runs — all 369
+pass (measured 2026-09-24, after tests that every number field's default lies
+on its step, that a figure placeholder inside code stays text, that the menu
+turns into a drawer at one width everywhere and that the page scripts hold
+nothing older Safari cannot read; 365 had passed on
+2026-09-23, after the playground's sensor graph moved into the graph layers'
+own flowchart, and 332 on 2026-09-21).
 
 `pytest` needs the real FD001 files in `data/raw/`. Without them the
 data-dependent tests skip with a download link rather than failing. The model,
@@ -879,7 +881,7 @@ and 87 skipped; without PyTorch as well, 137 passing and 57 skipped.
 The failing test was stopping a playground job that had just been marked
 running, which did nothing because its process did not exist yet. It is fixed,
 and it needs neither the data, nor PyTorch, nor a stored run. The suite has
-grown from 260 tests to 332 since those counts (this sentence said "eight" until
+grown from 260 tests to 369 since those counts (this sentence said "eight" until
 2026-09-21, long after that stopped being true), so each of them is now low by
 an amount nobody has measured: re-measure them before quoting one.
 

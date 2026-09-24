@@ -98,8 +98,10 @@
 
   // The navigation is open or closed, recorded on <html> as data-nav. On a
   // wide screen the choice is remembered; on a narrow one it is a drawer that
-  // starts closed and closes again whenever a page is chosen.
-  var narrowScreen = window.matchMedia("(max-width: 900px)");
+  // starts closed and closes again whenever a page is chosen. Narrow means
+  // below 1200: the menu (272), the page's margins (80) and a full line of
+  // text (848) need 1200 side by side. app.css and shell.html use the same width.
+  var narrowScreen = window.matchMedia("(max-width: 1199px)");
 
   function navIsOpen() {
     return document.documentElement.getAttribute("data-nav") !== "closed";
@@ -174,7 +176,19 @@
     window.MathJax = {
       tex: { inlineMath: [], displayMath: [] },
       options: { skipHtmlTags: ["script", "noscript", "style", "textarea", "pre", "code"] },
-      startup: { typeset: false }
+      // The page may be drawn before MathJax has loaded; once it is ready it
+      // typesets whatever the page holds then, so a first visit never keeps
+      // its raw formulas.
+      startup: {
+        typeset: false,
+        ready: function () {
+          window.MathJax.startup.defaultReady();
+          window.MathJax.startup.promise.then(function () {
+            document.documentElement.classList.remove("no-math");
+            typeset(content);
+          });
+        }
+      }
     };
     var script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
@@ -329,20 +343,80 @@
 
   // ----------------------------------------------------------------- TOC
 
+  // The page's own address, without the section a link may add after it.
+  function pageRoute() {
+    return window.location.hash.replace(/^(#\/[^#]*).*$/, "$1");
+  }
+
+  // Each link names the page and the section, "#/doc/…md#section", so it can
+  // be copied and still lead there. Where the list beside the page does not
+  // fit, the same links sit folded at the top of the page instead.
   function buildToc(headings) {
     tocPanel.innerHTML = "";
+    var old = content.querySelector(".toc-inline");
+    if (old) { old.parentNode.removeChild(old); }
     var useful = (headings || []).filter(function (h) { return h.level >= 2 && h.level <= 4; });
     if (useful.length < 2) { return; }
     tocPanel.appendChild(el("div", { class: "toc-title", text: "On this page" }));
+    var folded = el("details", { class: "toc-inline" });
+    folded.appendChild(el("summary", { text: "On this page" }));
     useful.forEach(function (heading) {
-      tocPanel.appendChild(el("a", {
-        href: "#" + heading.anchor,
+      var link = {
+        href: pageRoute() + "#" + heading.anchor,
         "data-level": heading.level,
         "data-anchor": heading.anchor,
         text: heading.text
-      }));
+      };
+      tocPanel.appendChild(el("a", link));
+      folded.appendChild(el("a", link));
     });
+    var title = content.querySelector(".prose > h1, .notebook-frame h1");
+    if (title) { title.parentNode.insertBefore(folded, title.nextSibling); }
     spyOnScroll();
+  }
+
+  // A link to a section of the page on show scrolls to it and changes the
+  // address in place, rather than loading the page again; a link written as
+  // "#section" alone would otherwise be read as the address of a page that
+  // does not exist.
+  function initSectionLinks() {
+    document.addEventListener("click", function (event) {
+      var link = event.target.closest && event.target.closest('a[href^="#"]');
+      if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) { return; }
+      var href = link.getAttribute("href");
+      var cut = href.indexOf("#", 1);
+      var route = href.charAt(1) === "/" ? (cut < 0 ? href : href.slice(0, cut)) : "";
+      var anchor = href.charAt(1) === "/" ? (cut < 0 ? "" : href.slice(cut + 1)) : href.slice(1);
+      if (!anchor || (route && route !== pageRoute())) { return; }
+      var target = findSection(anchor);
+      if (!target) { return; }
+      event.preventDefault();
+      history.replaceState(null, "", pageRoute() + "#" + anchor);
+      // The folded list closes first: closed after, it would shorten the page
+      // above the heading once the scroll had already been measured.
+      var folded = link.closest(".toc-inline");
+      if (folded) { folded.open = false; }
+      target.scrollIntoView();
+    });
+  }
+
+  // A notebook's heading ids hold their "%E2%80%94" as written, a document's
+  // hold the "²" itself; the id is tried as it stands, then decoded.
+  function findSection(anchor) {
+    var target = document.getElementById(anchor);
+    if (!target) {
+      try { target = document.getElementById(decodeURIComponent(anchor)); } catch (e) { target = null; }
+    }
+    return target;
+  }
+
+  // A heading's own # names its page as well, so it can be copied or opened
+  // in a new tab; "#section" alone is the address of no page.
+  function fullSectionLinks(root) {
+    var page = pageRoute();
+    Array.prototype.forEach.call(root.querySelectorAll('a[href^="#"]:not([href^="#/"])'), function (link) {
+      link.setAttribute("href", page + link.getAttribute("href"));
+    });
   }
 
   var spyObserver = null;
@@ -361,6 +435,12 @@
             other.classList.remove("active");
           });
           link.classList.add("active");
+          // The list scrolls on its own, so the section being read is kept in
+          // its view; the page itself is never moved by this.
+          var top = link.offsetTop;
+          if (top < tocPanel.scrollTop + 40 || top > tocPanel.scrollTop + tocPanel.clientHeight - 60) {
+            tocPanel.scrollTo({ top: top - tocPanel.clientHeight / 3 });
+          }
         }
       });
     }, { rootMargin: "-70px 0px -75% 0px", threshold: 0 });
@@ -372,7 +452,9 @@
 
   // -------------------------------------------------------------- figures
 
-  var FIGURE_PATTERN = /(?:<p>\s*)?\{\{\s*figure:([a-z0-9-]+)\s*\}\}(?:\s*<\/p>)?/gi;
+  // Only a placeholder that is a paragraph of its own is a figure; one written
+  // inside code, to show the syntax, stays text.
+  var FIGURE_PATTERN = /<p>\s*\{\{\s*figure:([a-z0-9-]+)\s*\}\}\s*<\/p>/gi;
 
   function expandFigures(html) {
     return html.replace(FIGURE_PATTERN, function (whole, name) {
@@ -396,12 +478,43 @@
     });
   }
 
+  // Every table gets a box of its own that scrolls sideways when the table is
+  // wider than the page. A name in code inside a cell may break after a dot,
+  // an underscore, a slash, a colon, a bracket, a comma or an equals sign,
+  // rather than between any two letters, so a column is not squeezed into
+  // fragments of a name.
   function wrapTables(root) {
-    Array.prototype.forEach.call(root.querySelectorAll(".prose > table"), function (table) {
+    Array.prototype.forEach.call(root.querySelectorAll(".prose > table, .notebook-frame .text_cell_render > table"), function (table) {
       var wrapper = el("div", { class: "table-scroll" });
       table.parentNode.insertBefore(wrapper, table);
       wrapper.appendChild(table);
     });
+    Array.prototype.forEach.call(root.querySelectorAll(".table-scroll td code"), breakAtPunctuation);
+  }
+
+  function breakAtPunctuation(node) {
+    Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+      if (child.nodeType !== 3 || !/[._\/:(,=]/.test(child.nodeValue)) { return; }
+      // Split at each mark and put the mark back on the piece before it; a
+      // lookbehind would do this in one step, but Safari before 16.4 cannot
+      // read one, and then reads none of this file.
+      var raw = child.nodeValue.split(/([._\/:(,=])/), parts = [];
+      for (var k = 0; k < raw.length; k += 2) {
+        var piece = raw[k] + (raw[k + 1] || "");
+        if (piece) { parts.push(piece); }
+      }
+      var frag = document.createDocumentFragment();
+      parts.forEach(function (part, i) {
+        frag.appendChild(document.createTextNode(part));
+        if (i < parts.length - 1) { frag.appendChild(document.createElement("wbr")); }
+      });
+      node.replaceChild(frag, child);
+    });
+  }
+
+  // A file path may break only after a folder's slash.
+  function breakablePath(path) {
+    return escapeHtml(path).split("/").join("/<wbr>");
   }
 
   // --------------------------------------------------------------- router
@@ -439,7 +552,11 @@
     // keeps the "explore/" the address splits off.
     var path = route.view === "explore" ? "explore/" + argument : argument;
 
-    window.scrollTo(0, 0);
+    // A new page starts at its top, and a section it is opened at is reached
+    // at once rather than by the page's smooth scroll: a smooth scroll is
+    // aimed where the heading stood when it began, and the figures and
+    // formulas that arrive meanwhile move it down by hundreds of pixels.
+    window.scrollTo({ top: 0, behavior: "instant" });
     tocPanel.innerHTML = "";
     closeDrawer();
     setTitle(menuName(path));
@@ -456,8 +573,8 @@
     markActive(path);
     Promise.resolve(done).then(function () {
       if (fragment) {
-        var target = document.getElementById(fragment);
-        if (target) { target.scrollIntoView(); }
+        var target = findSection(fragment);
+        if (target) { target.scrollIntoView({ behavior: "instant" }); }
       }
       content.focus({ preventScroll: true });
     });
@@ -476,14 +593,15 @@
   function viewDocument(path) {
     return get("/api/doc?path=" + encodeURIComponent(path)).then(function (doc) {
       var meta = [];
-      if (doc.minutes) { meta.push("about " + doc.minutes + (doc.minutes === 1 ? " minute" : " minutes")); }
-      meta.push("<code>" + escapeHtml(doc.path) + "</code>");
+      if (doc.minutes) { meta.push("<span>about " + doc.minutes + (doc.minutes === 1 ? " minute" : " minutes") + "</span>"); }
+      meta.push("<code>" + breakablePath(doc.path) + "</code>");
 
       content.innerHTML =
         '<article class="prose">' + expandFigures(doc.html) + "</article>" +
-        '<div class="page-meta">' + meta.join(" · ") + "</div>";
+        '<div class="page-meta">' + meta.join("") + "</div>";
 
       if (path === LOG_PATH) { showVerification(content.querySelector(".prose h1")); }
+      fullSectionLinks(content.querySelector(".prose"));
       wrapTables(content);
       fillFigures(content);
       buildToc(doc.headings);
@@ -552,11 +670,73 @@
       if (button) {
         button.addEventListener("click", function () { launchJupyter(path, button); });
       }
+      fullSectionLinks(content.querySelector(".notebook-frame"));
+      wrapTables(content);
+      markMath(content);
+      keepPicturesReadable(content);
       buildToc(headingsIn(content));
       typeset(content);
       setTitle(notebook.title);
     }).catch(function (error) {
       showError("That notebook could not be shown", error.message);
+    });
+  }
+
+  // A notebook's text cells write their maths between dollar signs, which the
+  // server leaves as they are. Each formula is put in the same element a
+  // document's formulas arrive in, so the one typesetting step draws both.
+  // Code and printed output are left alone.
+  function markMath(root) {
+    var pattern = /(\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$)/g;
+    Array.prototype.forEach.call(root.querySelectorAll(".notebook-frame .text_cell_render"), function (cell) {
+      var walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          return node.parentNode.closest("code, pre") || node.nodeValue.indexOf("$") < 0
+            ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      var texts = [];
+      while (walker.nextNode()) { texts.push(walker.currentNode); }
+      texts.forEach(function (text) {
+        var value = text.nodeValue, last = 0, frag = document.createDocumentFragment(), found = false, m;
+        pattern.lastIndex = 0;
+        while ((m = pattern.exec(value))) {
+          if (m.index > 0 && value.charAt(m.index - 1) === "\\") { continue; }
+          found = true;
+          frag.appendChild(document.createTextNode(value.slice(last, m.index)));
+          var span = document.createElement("span");
+          span.className = m[2] !== undefined ? "math-display" : "math-inline";
+          span.textContent = (m[2] !== undefined ? m[2] : m[3]).trim();
+          frag.appendChild(span);
+          last = m.index + m[0].length;
+        }
+        if (!found) { return; }
+        frag.appendChild(document.createTextNode(value.slice(last)));
+        text.parentNode.replaceChild(frag, text);
+      });
+    });
+  }
+
+  // A plot never shrinks below 65% of the size it was saved at, nor is held
+  // wider than the 820 pixels a figure keeps, so its words stay legible; its
+  // output box scrolls sideways instead. The picture would cover a shadow
+  // drawn behind it, so the edges that hide more are marked on a box around
+  // the output, and the stylesheet draws their shadows over the picture.
+  function keepPicturesReadable(root) {
+    Array.prototype.forEach.call(root.querySelectorAll(".notebook-frame .output_subarea > img"), function (img) {
+      var set = function () { img.style.setProperty("--nb-min", Math.min(820, Math.round(img.naturalWidth * 0.65)) + "px"); };
+      if (img.complete && img.naturalWidth) { set(); } else { img.addEventListener("load", set); }
+      var box = img.parentNode;
+      if (box.parentNode.classList.contains("pic-edges")) { return; }
+      var edges = el("div", { class: "pic-edges" });
+      box.parentNode.insertBefore(edges, box);
+      edges.appendChild(box);
+      var mark = function () {
+        edges.classList.toggle("more-left", box.scrollLeft > 0);
+        edges.classList.toggle("more-right", box.scrollLeft + box.clientWidth < box.scrollWidth - 1);
+      };
+      box.addEventListener("scroll", mark, { passive: true });
+      if (window.ResizeObserver) { new ResizeObserver(mark).observe(box); } else { mark(); }
     });
   }
 
@@ -579,7 +759,7 @@
     return get("/api/source?path=" + encodeURIComponent(path)).then(function (file) {
       // The path is the page's name, and its ending already says the file's type.
       content.innerHTML =
-        '<div class="page-head"><h1 class="page-title"><code>' + escapeHtml(file.path) + "</code></h1>" +
+        '<div class="page-head"><h1 class="page-title"><code>' + breakablePath(file.path) + "</code></h1>" +
         '<div class="page-meta">' + spaced(file.lines) + " lines</div></div>" +
         '<article class="prose">' + file.html + "</article>";
       setTitle(file.title);
@@ -650,6 +830,11 @@
 
     input.addEventListener("keydown", function (event) {
       if (event.key === "Escape") { input.value = ""; close(); input.blur(); }
+    });
+    // A result chosen opens its page, and the panel, which covers the page on
+    // a phone, closes with it.
+    panel.addEventListener("click", function (event) {
+      if (event.target.closest(".search-hit")) { close(); }
     });
     document.addEventListener("click", function (event) {
       if (!panel.contains(event.target) && event.target !== input) { close(); }
@@ -732,6 +917,7 @@
     buildSidebar();
     initNav();
     initSearch();
+    initSectionLinks();
     window.addEventListener("hashchange", navigate);
     navigate();
   }).catch(function (error) {

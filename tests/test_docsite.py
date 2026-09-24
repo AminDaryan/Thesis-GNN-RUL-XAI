@@ -592,6 +592,51 @@ def test_every_figure_a_taught_page_asks_for_exists(root: Path):
             assert name in known, f"{page.name} asks for unknown figure {name!r}"
 
 
+def test_a_figure_placeholder_inside_code_stays_text(root: Path):
+    """The page turns {{figure:name}} into a figure only where it stands as a
+    paragraph of its own; one written inside code, to show the syntax, once
+    became an error box in the middle of a sentence."""
+    import re
+
+    script = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.js").read_text(encoding="utf-8")
+    pattern = re.compile(re.search(r"var FIGURE_PATTERN = /(.+)/gi;", script).group(1), re.IGNORECASE)
+    html = markup.render_markdown(
+        "{{figure:smoothing}}\n\nWrite `{{figure:name}}` on a line of its own.\n", source_path="x.md").html
+    assert pattern.findall(html) == ["smoothing"]
+
+
+def test_the_menu_becomes_a_drawer_at_one_width_everywhere(root: Path):
+    """The stylesheet, the first-paint script and the page's script each decide
+    where the menu turns into a drawer; they must agree, or the menu opens
+    beside the page in one and over it in another."""
+    import re
+
+    assets = root / "src/thesis_gnn_rul_xai/docsite/assets"
+    widths = [
+        re.search(r'var narrowScreen = window\.matchMedia\("\(max-width: (\d+)px\)"\)',
+                  (assets / "app.js").read_text(encoding="utf-8")).group(1),
+        re.search(r'var narrow = window\.matchMedia\("\(max-width: (\d+)px\)"\)',
+                  (assets / "shell.html").read_text(encoding="utf-8")).group(1),
+        re.search(r"@media \(max-width: (\d+)px\) \{\s*\.sidebar \{\s*position: fixed",
+                  (assets / "app.css").read_text(encoding="utf-8")).group(1),
+    ]
+    assert widths == ["1199"] * 3
+    # The open menu takes the contents list's room only where it stands
+    # beside the page; as a drawer over the page it takes none.
+    beside = re.search(r'@media \(min-width: (\d+)px\) and \(max-width: \d+px\) \{ html\[data-nav="open"\] \.toc',
+                       (assets / "app.css").read_text(encoding="utf-8")).group(1)
+    assert int(beside) == int(widths[0]) + 1
+
+
+def test_the_page_scripts_parse_in_older_safari(root: Path):
+    """A lookbehind in a regular expression stops Safari before 16.4 from
+    reading the whole file it is in, and with it every page of the site."""
+    assets = root / "src/thesis_gnn_rul_xai/docsite/assets"
+    for name in ("app.js", "playground.js"):
+        text = (assets / name).read_text(encoding="utf-8")
+        assert "(?<=" not in text and "(?<!" not in text, name
+
+
 def test_the_taught_pages_do_not_use_an_identifier_the_log_does_not_have(root: Path):
     import re
 

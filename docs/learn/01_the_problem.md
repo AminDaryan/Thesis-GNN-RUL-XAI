@@ -50,9 +50,9 @@ in `data/raw/`:
 | Rows of training data (one per engine per cycle) | 20 631 |
 | Test engines | 100 |
 | Rows of test data | 13 096 |
-| Shortest training life | 128 cycles |
-| Median training life | 199 cycles |
-| Longest training life | 362 cycles |
+| Shortest training life | 128&nbsp;cycles |
+| Median training life | 199&nbsp;cycles |
+| Longest training life | 362&nbsp;cycles |
 
 Every training engine is run to failure, so its last row is the moment it
 broke. Every test engine is cut off partway through, and a separate file gives

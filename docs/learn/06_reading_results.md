@@ -1,9 +1,10 @@
 # Reading a result
 
 A prediction $\hat{y}$ is a number of cycles, and so is the true remaining life
-$y$. The error is the difference between them:
+$y$. The error is the difference between them, positive when the model was
+optimistic:
 
-$$d = \hat{y} - y \qquad \text{positive means the model was optimistic}$$
+$$d = \hat{y} - y$$
 
 An optimistic model expects failure later than it comes, which leaves a failing
 engine flying. A pessimistic one, with a negative error, sends an engine for
@@ -28,8 +29,8 @@ which is what makes results comparable.
 ### The NASA score
 
 $$s_i = \begin{cases}
-e^{-d_i/13} - 1 & d_i < 0 \quad \text{(early — safe)} \\
-e^{\;d_i/10} - 1 & d_i \ge 0 \quad \text{(late — dangerous)}
+e^{-d_i/13} - 1 & d_i < 0 \quad \text{early} \\
+e^{\;d_i/10} - 1 & d_i \ge 0 \quad \text{late}
 \end{cases}$$
 
 Each test engine $i$ gets a penalty $s_i$, and the score, from NASA's 2008

@@ -15,7 +15,7 @@
 
   var ROUTE = "#/explore/playground";
   var STORAGE = "thesis-playground-settings";
-  var SECTIONS = "thesis-playground-sections";
+  var STEP = "thesis-playground-step";
   var PALETTE = ["var(--fig-accent)", "var(--fig-warn)", "var(--fig-lpt)", "var(--fig-lpc)",
     "var(--fig-core)", "var(--fig-cool)", "var(--fig-burn)", "var(--fig-fan)"];
   // The one vocabulary for temporal stages, job states and methods: the same
@@ -39,23 +39,19 @@
   var SOURCE_TITLES = { paper: "The paper prints this value", assumption: "The paper is silent, so this project chose",
     project: "A rule of this repository", extension: "An option offered for comparison" };
   // Choices short enough to sit side by side in one control. Every other
-  // choice is a list of options, each with the source of its value.
+  // choice is a grid of options, each with the source of its value.
   var SEGMENTED = { subset: true, device: true };
   var SUBSETS = ["FD001", "FD002", "FD003", "FD004"];
-  // Groups of settings that are not drawn as folding sections: the sub-dataset
-  // stands alone at the top of the form, and the procedure's settings are
-  // drawn inside Training, under the choice of procedure.
-  var UNSECTIONED = { data: true, procedure: true };
   // The value that takes a part out of the pipeline. Each is the setting of a
   // variant of Table 11: "w/o LSTM" and "w/o Physics prior".
   var REMOVED = { temporal: "last_cycle", graph: "complete" };
   // What the pipeline calls the sensor graph the graph layers run on.
   var PRIOR = { physics: "Physics prior", correlation: "Correlation graph" };
   var GCN_FIXED = "The graph layers cannot be taken out: a network without them is not built here";
-  var CHEVRON = '<svg class="nav-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 L8 6 L4 9.5" ' +
-    'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var CROSS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3 L9 9 M9 3 L3 9" ' +
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  var BACK = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 L4 6 L7.5 9.5" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 V9.5 M2.5 6 H9.5" ' +
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   var INFO = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" ' +
@@ -113,6 +109,13 @@
   function when(stamp) {
     var m = /^(\d{4})-?(\d\d)-?(\d\d)T(\d\d):?(\d\d)/.exec(stamp || "");
     return m ? m[1] + "-" + m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] + " UTC" : (stamp || "—");
+  }
+
+  // The same moment without its year or zone, "09-14 23:39", for a column
+  // whose heading says the zone; the full form is kept for the pointer.
+  function whenShort(stamp) {
+    var m = /^(\d{4})-?(\d\d)-?(\d\d)T(\d\d):?(\d\d)/.exec(stamp || "");
+    return m ? m[2] + "-" + m[3] + " " + m[4] + ":" + m[5] : (stamp || "—");
   }
 
   function whenSeconds(seconds) {
@@ -330,6 +333,49 @@
     return out + (legend ? '<div class="pg-legend">' + legend + "</div>" : "");
   }
 
+  // How wide a chart is drawn: the width it is shown at, so one unit of the
+  // drawing is one pixel on the screen and its words keep their size at every
+  // width, rather than shrinking on a phone and swelling on a wide screen.
+  // The charts stand in one column no wider than --measure-wide (1080), less
+  // the figure's padding and border (26).
+  function chartWidth() {
+    var panel = $("#pg-panel");
+    var shown = panel ? Math.min(panel.clientWidth, 1080) : 666;
+    return Math.max(240, Math.round(shown - 26));
+  }
+
+  // A chart's height follows its width within limits: never so short that
+  // its lines crowd on a phone, never taller than a laptop screen can show.
+  function chartHeight(width) {
+    return Math.round(Math.max(220, Math.min(360, width * 0.4)));
+  }
+
+  // The charts are drawn again when the width they would be drawn at
+  // changes, since each was drawn for the width it had. The watcher is kept
+  // here rather than in S, which every visit to the playground replaces, and
+  // it stops itself once its panel has left the page, so it never redraws,
+  // or scrolls, a page the reader has moved on to.
+  var chartWatch = null, chartTimer = null;
+  function watchCharts() {
+    var panel = $("#pg-panel");
+    if (chartWatch) { chartWatch.disconnect(); chartWatch = null; }
+    clearTimeout(chartTimer);
+    if (!panel || !window.ResizeObserver) { return; }
+    var watch = chartWatch = new ResizeObserver(function () {
+      clearTimeout(chartTimer);
+      if (!panel.isConnected) { watch.disconnect(); return; }
+      chartTimer = setTimeout(function () {
+        if (!panel.isConnected || !onPage() || chartWidth() === S.chartsDrawnAt) { return; }
+        var y = window.scrollY;
+        if (S.tab === "results" && S.selected && S.detail) { drawDetail(); }
+        else if (S.tab === "explain" && S.explain.shown && S.explain.values) { drawExplanation(); }
+        else { return; }
+        window.scrollTo({ top: y, behavior: "instant" });
+      }, 200);
+    });
+    watch.observe(panel);
+  }
+
   // The blue-to-red scale the paper's Fig. 9 colours its dots with: a low
   // reading blue, a high one red. Fixed colours, because the mix is computed
   // here rather than by the stylesheet.
@@ -346,9 +392,9 @@
   // coloured by the sensor's own reading at that window. An explanation
   // stored before the readings were kept colours by the window's place in
   // the sequence instead, and the legend says which.
-  function beeswarm(rows, ranked) {
+  function beeswarm(rows, ranked, width) {
     var hasReadings = rows.length > 0 && rows[0]["reading_" + ranked[0]] !== undefined;
-    var rowH = 20, left = 64, right = 18, top = 10, bottom = 34, W = 640, dot = 2.4, step = 5.2;
+    var rowH = 20, left = 64, right = 18, top = 10, bottom = 34, W = width || 640, dot = 2.4, step = 5.2;
     var H = top + rowH * ranked.length + bottom;
     var xs = [];
     rows.forEach(function (r) { ranked.forEach(function (s) { xs.push(r[s]); }); });
@@ -400,27 +446,33 @@
   // them: the four with the largest average values red, deeper for larger;
   // the other ten blue, from deep to light as they matter less. Each circle
   // has the average it is ranked by written under it.
-  function rankedStrip(meanAbs, ranked) {
+  function rankedStrip(meanAbs, ranked, width) {
     var st = fig10Style(meanAbs, ranked);
     // Each row is tall enough for a circle and the average written under it,
-    // so the frame round the four largest encloses both.
-    var perRow = Math.ceil(ranked.length / 2), gap = 88, r = 19, W = 640, rowH = 68;
+    // so the frame round the four largest encloses both. Drawn at the width
+    // it is shown at, it takes as many rows as that width needs, with the
+    // four largest always together in the first; the circles draw closer on
+    // a narrow screen before a row gives up a place. A circle is 50 pixels
+    // across, room for the longest name, htBleed, at 11 pixels (45).
+    var W = width || 640, r = 25, rowH = 2 * r + 32, room = W - 2 * r - 24;
+    var perRow = Math.max(4, Math.min(Math.ceil(ranked.length / 2), Math.floor(room / 88) + 1));
+    var gap = Math.min(88, room / (perRow - 1));
     var x0 = (W - (perRow - 1) * gap) / 2;
-    var H = 2 * rowH + 4;
+    var H = Math.ceil(ranked.length / perRow) * rowH + 4;
     var out = '<svg class="pg-plot pg-strip" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="The sensors ranked">';
     var box = function (from, to, colour) {
       var row = Math.floor(from / perRow), col = from % perRow, cols = to - from;
       return '<rect x="' + (x0 + col * gap - r - 12) + '" y="' + (row * rowH + 4) + '" width="' + ((cols - 1) * gap + 2 * r + 24) +
-        '" height="' + (2 * r + 24) + '" rx="8" fill="none" stroke="' + colour + '" stroke-width="1.4" stroke-dasharray="4 3"/>';
+        '" height="' + (2 * r + 26) + '" rx="8" fill="none" stroke="' + colour + '" stroke-width="1.4" stroke-dasharray="4 3"/>';
     };
     out += box(0, Math.min(4, perRow), "var(--fig-burn)");
     ranked.forEach(function (s, rank) {
       var row = Math.floor(rank / perRow), col = rank % perRow;
-      var cx = x0 + col * gap, cy = row * rowH + 30, k = st.style[s];
+      var cx = x0 + col * gap, cy = row * rowH + r + 11, k = st.style[s];
       out += '<g><title>' + esc(s + ": rank " + (rank + 1) + " of " + ranked.length) + "</title>" +
         '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/>' +
-        '<text x="' + cx + '" y="' + (cy + 3) + '" text-anchor="middle" class="pg-strip-label">' + esc(s) + "</text>" +
-        '<text x="' + cx + '" y="' + (cy + r + 12) + '" text-anchor="middle" class="pg-tick">' + fixed(meanAbs[s], 2) + "</text></g>";
+        '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" class="pg-strip-label">' + esc(s) + "</text>" +
+        '<text x="' + cx + '" y="' + (cy + r + 13) + '" text-anchor="middle" class="pg-tick">' + fixed(meanAbs[s], 2) + "</text></g>";
     });
     return out + "</svg>";
   }
@@ -429,10 +481,12 @@
   // Each returns the HTML of one control. `data` is the attribute string that
   // tells the page's one change listener what the control sets.
 
+  // A unit drawn beside the field, "cycles", is read out with it too.
   function numberField(id, spec, value, data, unit) {
     var input = '<input class="field" type="number" id="' + id + '" min="' + spec.min + '" max="' + spec.max +
-      '" step="' + (spec.step || 1) + '" value="' + esc(value) + '" ' + data + ">";
-    return unit ? '<span class="field-unit">' + input + "<span>" + esc(unit) + "</span></span>" : input;
+      '" step="' + (spec.step || 1) + '" value="' + esc(value) + '" ' + data +
+      (unit ? ' aria-describedby="' + id + '-unit"' : "") + ">";
+    return unit ? '<span class="field-unit">' + input + '<span id="' + id + '-unit">' + esc(unit) + "</span></span>" : input;
   }
 
   function switchControl(id, checked, data) {
@@ -452,14 +506,41 @@
   // its name, so the form itself shows only names. It opens while the pointer
   // rests on the i, while the keyboard is on it, and once the i is chosen,
   // until something else is. html is what it says; about names the setting.
+  // A link among the words is a stop for the Tab key only while the words
+  // are opened, by the i being chosen: words shown while the pointer rests
+  // on the i close as soon as the focus leaves it, and a stop inside them
+  // would lead nowhere.
   function info(html, about, id, untabbed) {
     if (!html) { return ""; }
     id = id || "pg-info-" + (++S.infos);
     return '<span class="pg-info"><button type="button" class="pg-info-button" data-action="info"' +
-      (untabbed ? ' tabindex="-1"' : "") + ' aria-label="About ' + esc(about) + '" aria-describedby="' + id + '">' +
-      INFO + '</button><span class="pg-info-body" id="' + id + '" role="tooltip"><span class="pg-info-card">' + html +
+      (untabbed ? ' tabindex="-1"' : "") + ' aria-label="About ' + esc(about) + '" aria-describedby="' + id + '"' +
+      ' aria-expanded="false">' + INFO + '</button><span class="pg-info-body" id="' + id + '"><span class="pg-info-card">' +
+      html.replace(/<a /g, '<a tabindex="-1" ') +
       "</span></span></span>";
   }
+
+  // An i's words opened or closed by choosing the i: its links join the Tab
+  // order while they are open, and leave it when they close.
+  function setOpen(i, open) {
+    i.classList.toggle("is-open", open);
+    var button = i.querySelector(".pg-info-button");
+    if (button) { button.setAttribute("aria-expanded", String(open)); }
+    Array.prototype.forEach.call(i.querySelectorAll(".pg-info-card a"), function (a) { a.tabIndex = open ? 0 : -1; });
+  }
+
+  // A name followed by its i. The browser will break a line where a name's
+  // element ends and the i begins, whatever character stands between them,
+  // and leave the i alone on a line; so the name is drawn in two parts, and
+  // its last word is kept on one line with the i. part(words, n) draws part
+  // n, 0 or 1; both parts together name the control.
+  function withInfo(text, about, part) {
+    var m = /^(.*\s)?(\S+)$/.exec(text) || [text, "", text];
+    return part(m[1] || "", 0) + '<span class="pg-tail">' + part(m[2], 1) + about + "</span>";
+  }
+
+  // The ids of a name drawn in two parts, for aria-labelledby.
+  function nameIds(key) { return key + "-label " + key + "-label-end"; }
 
   // An option's own i is not a stop for the Tab key: the keyboard reaches
   // its words through the radio button, which opens them and names them as
@@ -471,9 +552,10 @@
         var id = name + "-" + i;
         return '<label class="opt' + (c.value === current ? " is-active" : "") + '"><input type="radio" name="' + name +
           '" value="' + esc(c.value) + '"' + (c.value === current ? " checked" : "") + " " + data +
-          ' aria-labelledby="' + id + '-label"' + (note ? ' aria-describedby="' + id + '-note"' : "") + ">" +
-          '<span class="opt-label"><span id="' + id + '-label">' + esc(c.label) + "</span>" +
-          info(note, c.label, id + "-note", true) + "</span></label>";
+          ' aria-labelledby="' + nameIds(id) + '"' + (note ? ' aria-describedby="' + id + '-note"' : "") + ">" +
+          '<span class="opt-label">' + withInfo(c.label, info(note, c.label, id + "-note", true), function (words, n) {
+            return '<span id="' + id + (n ? "-label-end" : "-label") + '">' + esc(words) + "</span>";
+          }) + "</span></label>";
       }).join("") + "</div>";
   }
 
@@ -484,22 +566,27 @@
     }).join("") + "</select>";
   }
 
-  // One setting: its name, and the i that says where it comes from, on the
-  // left, its control on the right. A list of options is too wide to sit beside its name, so it
-  // goes underneath instead.
-  // A setting whose list of options is named by the section head above it
-  // has no label of its own, and then no name column either.
-  // A setting that stands alone as a step of the form, spec.step, carries the step's number.
-  function row(spec) {
-    var name = !spec.label ? "" : spec.id
-      ? '<label for="' + spec.id + '" id="' + spec.id + '-label">' + esc(spec.label) + "</label>"
-      : '<span id="' + spec.key + '-label">' + esc(spec.label) + "</span>";
-    if (name && spec.step) { name = stepNumber(spec.step) + name; }
+  // One setting: its name, with the i that says where it comes from, directly
+  // above its control, so the eye goes straight down from one to the other.
+  // Settings stand side by side in a grid of cells (.pg-fields); spec.size
+  // "wide" takes the grid's whole width, for a list of options, and "double"
+  // two cells.
+  // Reset sits where it can appear without moving what the pointer is on:
+  // beside a narrow cell's control, on a wide cell's first line beside its
+  // name, or under a list its step's tab names, which has no name of its own.
+  function cell(spec) {
     var about = info(spec.hint, spec.label || "this setting");
-    var nameColumn = name || about ? '<div class="pg-row-name"><div class="pg-row-label">' + name + about + "</div></div>" : "";
-    return '<div class="pg-row' + (spec.stacked ? " pg-row--stack" : "") + '"' +
+    var name = !spec.label ? "" : withInfo(spec.label, about, spec.id
+      ? function (words, n) {
+        return '<label for="' + spec.id + '"' + (n ? "" : ' id="' + spec.id + '-label"') + ">" + esc(words) + "</label>";
+      }
+      : function (words, n) { return '<span id="' + spec.key + (n ? "-label-end" : "-label") + '">' + esc(words) + "</span>"; });
+    var top = spec.size === "wide" && !!name;
+    var size = spec.size === "wide" && !name && !about ? "wide pg-field--bare" : spec.size;
+    return '<div class="pg-field' + (size ? " pg-field--" + size : "") + '"' +
       (spec.key ? ' data-row="' + spec.key + '"' : "") + (spec.hidden ? " hidden" : "") + ">" +
-      nameColumn + '<div class="pg-row-control">' + spec.control + (spec.reset || "") + "</div></div>";
+      '<div class="pg-field-label">' + (name || about) + (top ? spec.reset || "" : "") + "</div>" +
+      '<div class="pg-field-control">' + spec.control + (top ? "" : spec.reset || "") + "</div></div>";
   }
 
   function chip(kind, label) { return T.chip(kind, label); }
@@ -514,10 +601,9 @@
     // started, whose end is announced even when the first poll finds them ended.
     // restore: what each part taken out of the pipeline was, so + puts that back.
     S = { tab: S.tab || "design", jobs: [], seen: {}, mine: {}, runs: null, selected: null, detail: null,
-      restore: S.restore || {}, infos: 0, step: "data",
+      restore: S.restore || {}, infos: 0, step: S.step || recall(STEP) || "data", zoom: S.zoom || null, zoomed: null,
       compare: [], filter: { subset: "all", results: false, weights: false },
       jobFilter: { kind: "all", status: "all" },
-      sections: recall(SECTIONS) || {},
       explain: { run: null, detail: null, seed: null, method: "shap", scope: "engine", engine: "",
         every: 1, shown: null, values: null, index: 0 } };
 
@@ -527,6 +613,8 @@
       S.fields = {};
       options.fields.forEach(function (f) { S.fields[f.key] = f; });
       S.settings = loadSettings(options.defaults);
+      // A step remembered from an older page that no longer has it opens the first.
+      if (!groupLabel(S.step)) { S.step = options.groups[0].key; }
       frame();
       showTab(S.tab);
       pollJobs();
@@ -543,36 +631,51 @@
       '<div id="pg-current" class="pg-current" aria-live="polite" hidden></div>' +
       '<div class="pg-steps" role="tablist" aria-label="The three steps, and the jobs">' +
       tabButton("design", 1, "Design a run") + tabButton("results", 2, "Results") + tabButton("explain", 3, "Explain") +
-      '<button type="button" role="tab" class="pg-step-tab pg-step-tab--aside" data-tab="jobs" aria-controls="pg-panel">Jobs ' +
-      '<span class="pg-jobs-badge" id="pg-jobs-badge"></span></button>' +
+      '<button type="button" role="tab" class="pg-step-tab pg-step-tab--aside" id="pg-step-tab-jobs" data-tab="jobs" ' +
+      'aria-controls="pg-panel">Jobs <span class="pg-jobs-badge" id="pg-jobs-badge"></span></button>' +
       "</div>" +
       '<div id="pg-panel" class="pg-panel" role="tabpanel"></div></div>';
+    // The same functions every time, so coming back to the page, which
+    // draws into the same element, never adds a listener twice.
     root.addEventListener("click", onClick);
     root.addEventListener("change", onChange);
     root.addEventListener("input", onInput);
-    root.addEventListener("keydown", onKeydown);
-    root.addEventListener("focusin", function (event) {
-      unquiet();
-      placeInfo(event.target);
-      // Working in a step's controls makes it the current step.
-      var step = event.target.closest(".pg-section[data-group], .pg-data");
-      if (step) { setStep(step.getAttribute("data-group")); }
-    });
-    root.addEventListener("mouseover", function (event) {
-      if (event.target.closest(".pg-info")) { placeInfo(event.target); } else { unquiet(); }
-    });
+    root.addEventListener("focusin", onFocusin);
+    root.addEventListener("mouseover", onMouseover);
+    watchCharts();
+    if (!window.__thesisPlaygroundKeys) {
+      window.__thesisPlaygroundKeys = true;
+      document.addEventListener("keydown", function (event) { if (onPage()) { onKeydown(event); } });
+    }
+  }
+
+  // An i's words that were opened close once the focus moves somewhere
+  // outside them, so they never cover the field the keyboard moves to.
+  function onFocusin(event) {
+    $all(".pg-info.is-open").forEach(function (open) { if (!open.contains(event.target)) { setOpen(open, false); } });
+    unquiet();
+    placeInfo(event.target);
+  }
+
+  function onMouseover(event) {
+    if (event.target.closest(".pg-info")) { placeInfo(event.target); } else { unquiet(); }
   }
 
   function tabButton(key, step, label) {
-    return '<button type="button" role="tab" class="pg-step-tab" data-tab="' + key + '" aria-controls="pg-panel">' +
-      '<span class="pg-step-n">' + step + "</span>" + label + "</button>";
+    return '<button type="button" role="tab" class="pg-step-tab" id="pg-step-tab-' + key + '" data-tab="' + key +
+      '" aria-controls="pg-panel"><span class="pg-step-n">' + step + "</span>" + label + "</button>";
   }
 
+  // One tab of the row is a stop for the Tab key, the chosen one; the arrow
+  // keys move along the row, and the panel is named by its tab.
   function showTab(tab) {
     S.tab = tab;
     $all(".pg-step-tab").forEach(function (button) {
-      button.setAttribute("aria-selected", String(button.getAttribute("data-tab") === tab));
+      var on = button.getAttribute("data-tab") === tab;
+      button.setAttribute("aria-selected", String(on));
+      button.tabIndex = on ? 0 : -1;
     });
+    $("#pg-panel").setAttribute("aria-labelledby", "pg-step-tab-" + tab);
     // The banner is hidden while the Jobs tab lists the same job, so it is
     // checked again whenever the tab changes, not only when jobs are polled.
     paintBanner();
@@ -587,19 +690,23 @@
   // data-action, data-tab, data-field and the like; the handler is found here.
 
   function onClick(event) {
-    $all(".pg-info.is-open").forEach(function (open) { if (!open.contains(event.target)) { open.classList.remove("is-open"); } });
+    $all(".pg-info.is-open").forEach(function (open) { if (!open.contains(event.target)) { setOpen(open, false); } });
     // The words behind an option's i sit inside the option's label, and a
     // click on them would otherwise choose the option. A link among them still works.
     if (event.target.closest(".pg-info-body") && !event.target.closest("a")) { event.preventDefault(); return; }
     // A procedure the settings only half follow is shown chosen, and choosing
     // it again, which fires no change, sets both of its settings.
     if (event.target.matches("input[data-procedure]")) { chooseProcedure(event.target.value); return; }
-    var target = event.target.closest("[data-tab], [data-action], [data-goto], " +
-      "[data-section], [data-reset], tr[data-run], tr[data-explanation]");
+    var target = event.target.closest("[data-tab], [data-action], [data-goto], [data-zoom], " +
+      "[data-step-tab], [data-reset], tr[data-run], tr[data-explanation]");
     if (!target || !root.contains(target)) { return; }
     if (target.hasAttribute("data-tab")) { showTab(target.getAttribute("data-tab")); return; }
-    if (target.hasAttribute("data-goto")) { goTo(target.getAttribute("data-goto"), target.getAttribute("data-goto-row")); return; }
-    if (target.hasAttribute("data-section")) { toggleSection(target.getAttribute("data-section")); return; }
+    if (target.hasAttribute("data-goto")) {
+      goTo(target.getAttribute("data-goto"), target.getAttribute("data-goto-row"), target.getAttribute("data-goto-index"));
+      return;
+    }
+    if (target.hasAttribute("data-zoom")) { zoomTo(target.getAttribute("data-zoom")); return; }
+    if (target.hasAttribute("data-step-tab")) { setStep(target.getAttribute("data-step-tab")); return; }
     if (target.hasAttribute("data-reset")) { resetField(target.getAttribute("data-reset")); return; }
     // The named action is looked for first. A button in the job list carries
     // both an action and the name of the run it opens, and the two branches
@@ -610,7 +717,7 @@
       return;
     }
     if (target.matches("tr[data-run]")) {
-      if (event.target.tagName !== "INPUT") { openRun(target.getAttribute("data-run")); }
+      if (!event.target.closest("td.pg-tick-cell")) { openRun(target.getAttribute("data-run")); }
       return;
     }
     if (target.matches("tr[data-explanation]")) {
@@ -621,10 +728,18 @@
   }
 
   var ACTIONS = {
-    // One button that opens every folded section, or folds them all once none is folded.
-    "toggle-sections": function () { setAllSections(!allSectionsOpen()); },
-    "reset-all": function () { S.settings = copy(S.options.defaults); S.restore = {}; saveSettings(); drawDesign(); },
-    "info": function (button) { placeInfo(button); button.parentNode.classList.toggle("is-open"); },
+    // Every setting back to its default, each control set to match, and
+    // nothing else drawn again: the page stays where it is, and so does the
+    // focus, on the button just pressed.
+    "reset-all": function () {
+      S.settings = copy(S.options.defaults);
+      S.restore = {};
+      var keys = Object.keys(S.fields);
+      keys.forEach(syncControl);
+      settingsMoved(keys);
+    },
+    "unzoom": function () { unzoom(); },
+    "info": function (button) { placeInfo(button); setOpen(button.parentNode, !button.parentNode.classList.contains("is-open")); },
     // The pipeline's × and +: a part taken out, or put back as it was.
     "remove-part": function (button) { removePart(button.getAttribute("data-part")); },
     "add-part": function (button) { addPart(button.getAttribute("data-part")); },
@@ -674,7 +789,7 @@
       S.explain.index = Number(input.value);
       var y = window.scrollY;
       drawExplanation();
-      window.scrollTo(0, y);
+      window.scrollTo({ top: y, behavior: "instant" });
       return;
     }
     if (input.hasAttribute("data-filter")) {
@@ -690,15 +805,52 @@
       paintBanner();
       return;
     }
-    if (input.hasAttribute("data-pred-seed")) { S.predSeed = input.value; drawDetail(); return; }
-    if (input.hasAttribute("data-pred-order")) { S.predOrder = input.value; drawDetail(); return; }
+    // Fig. 8 is drawn again with its controls, so the focus is put back on
+    // the control that was changed.
+    if (input.hasAttribute("data-pred-seed") || input.hasAttribute("data-pred-order")) {
+      if (input.hasAttribute("data-pred-seed")) { S.predSeed = input.value; } else { S.predOrder = input.value; }
+      var again = input.hasAttribute("data-pred-seed") ? "#pg-pred-seed" : 'input[name="pg-pred-order"]:checked';
+      drawDetail().then(function () {
+        var control = $(again);
+        if (control) { control.focus({ preventScroll: true }); }
+      });
+      return;
+    }
     if (input.hasAttribute("data-explain")) { explainChanged(input); }
   }
 
   // Escape closes whatever i is open, until the focus or the pointer moves on.
+  // When no i's words are showing, it leads from a step's flowchart back to
+  // the pipeline instead.
+  // In a row of tabs the arrow keys, Home and End move to another tab and
+  // choose it, as tabs do everywhere else.
   function onKeydown(event) {
+    var tab = event.target && event.target.closest ? event.target.closest('[role="tab"]') : null;
+    // With Alt, Ctrl or the command key held the keys are the browser's own:
+    // Alt with an arrow goes back or forward.
+    var plain = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    if (tab && plain && /^(ArrowLeft|ArrowRight|Home|End)$/.test(event.key)) {
+      var all = Array.prototype.slice.call(tab.parentNode.querySelectorAll('[role="tab"]'));
+      var at = all.indexOf(tab), n = all.length;
+      var next = event.key === "Home" ? all[0] : event.key === "End" ? all[n - 1]
+        : all[(at + (event.key === "ArrowRight" ? 1 : n - 1)) % n];
+      event.preventDefault();
+      next.focus();
+      next.click();
+      return;
+    }
     if (event.key !== "Escape") { return; }
-    $all(".pg-info").forEach(function (i) { i.classList.remove("is-open"); i.classList.add("is-quiet"); });
+    // Words placed against the window have no offsetParent even while shown,
+    // so what is drawn is asked instead.
+    var showing = $all(".pg-info-body").some(function (body) { return body.getClientRects().length > 0; });
+    $all(".pg-info").forEach(function (i) { setOpen(i, false); i.classList.add("is-quiet"); });
+    var target = event.target && event.target.nodeType === 1 ? event.target : document.body;
+    // A link inside the words that just closed would leave the focus
+    // nowhere, so it goes back to the words' own i.
+    var card = target.closest(".pg-info-card");
+    if (card) { card.closest(".pg-info").querySelector(".pg-info-button").focus(); }
+    var here = target.closest("#pg-pipeline") || target === document.body || target.matches("main, .content");
+    if (!showing && here && S.zoom && S.tab === "design") { unzoom(); }
   }
 
   function unquiet() {
@@ -708,6 +860,10 @@
   // An i's words open under it, moved left as far as they must to stay
   // inside the window. Placed before they show, for the i the pointer or the
   // focus has reached, or for the option the focus is on.
+  // Inside the pipeline, when it scrolls on its own beside the form, the
+  // words are placed against the window instead of against the i, since the
+  // pipeline would otherwise cut off whatever passes its edges; they open
+  // above the i when there is no room below it.
   function placeInfo(element) {
     var holder = element && element.closest && element.closest(".pg-info, .opt");
     var i = holder && (holder.classList.contains("pg-info") ? holder : holder.querySelector(".pg-info"));
@@ -715,7 +871,67 @@
     var at = i.getBoundingClientRect();
     var width = Math.min(320, window.innerWidth - 32);
     var left = Math.max(16, Math.min(at.left - 8, window.innerWidth - 16 - width));
-    i.querySelector(".pg-info-body").style.left = Math.round(left - at.left) + "px";
+    var body = i.querySelector(".pg-info-body");
+    var side = i.closest("#pg-pipeline");
+    var loose = side && getComputedStyle(side).overflowY !== "visible";
+    i.classList.toggle("is-loose", !!loose);
+    if (!loose) {
+      body.style.left = Math.round(left - at.left) + "px";
+      body.style.top = body.style.bottom = "";
+      i.classList.remove("is-above");
+      return;
+    }
+    var above = at.bottom + (body.offsetHeight || 160) > window.innerHeight - 16;
+    i.classList.toggle("is-above", above);
+    body.style.left = Math.round(left) + "px";
+    body.style.top = above ? "auto" : Math.round(at.bottom) + "px";
+    body.style.bottom = above ? Math.round(window.innerHeight - at.top) + "px" : "auto";
+  }
+
+  // The pipeline beside the form is never taller than the form, so the form
+  // alone decides how tall their row is: a flowchart taller than the form
+  // would otherwise lengthen the row, and the pipeline would scroll away with
+  // the page instead of staying in view. The stylesheet reads the height.
+  function watchForm() {
+    var form = $(".pg-form"), design = $(".pg-design");
+    if (S.formWatch) { S.formWatch.disconnect(); S.formWatch = null; }
+    if (!form || !design) { return; }
+    var set = function () { design.style.setProperty("--pg-form-h", form.offsetHeight + "px"); };
+    set();
+    if (window.ResizeObserver) {
+      S.formWatch = new ResizeObserver(set);
+      S.formWatch.observe(form);
+    }
+  }
+
+  // The pipeline's i's that are showing follow their i when the pipeline or
+  // the page scrolls, and close once their i has scrolled out of the
+  // pipeline's view, rather than point at nothing.
+  function watchPipeline() {
+    var box = $("#pg-pipeline");
+    if (!box || box.__scrolls) { return; }
+    box.__scrolls = true;
+    var follow = function () {
+      var view = box.getBoundingClientRect();
+      Array.prototype.forEach.call(box.querySelectorAll(".pg-info.is-loose"), function (i) {
+        if (!i.querySelector(".pg-info-body").getClientRects().length) { return; }
+        var at = i.getBoundingClientRect();
+        if (at.bottom <= view.top || at.top >= view.bottom) {
+          setOpen(i, false);
+          i.classList.add("is-quiet");
+        } else {
+          placeInfo(i);
+        }
+      });
+    };
+    box.addEventListener("scroll", follow, { passive: true });
+    if (!window.__thesisPlaygroundScroll) {
+      window.__thesisPlaygroundScroll = true;
+      window.addEventListener("scroll", function () {
+        var now = document.getElementById("pg-pipeline");
+        if (now && onPage()) { now.dispatchEvent(new Event("scroll")); }
+      }, { passive: true });
+    }
   }
 
   // While the slider is being dragged only its caption follows it. Redrawing
@@ -938,10 +1154,6 @@
     return S.options.fields.filter(function (f) { return f.group === group; });
   }
 
-  // The folding sections: every group except those drawn somewhere else.
-  function sectionGroups() {
-    return S.options.groups.filter(function (g) { return !UNSECTIONED[g.key]; });
-  }
 
   function groupLabel(key) {
     var found = S.options.groups.filter(function (g) { return g.key === key; })[0];
@@ -960,10 +1172,29 @@
       '">' + stepOf(group) + "</span>";
   }
 
+  // The step being worked on: its tab is chosen and its settings shown, its
+  // number is filled in on its tab and on its box in the pipeline, and it is
+  // remembered, so the page opens on it next time.
   function setStep(group) {
-    if (S.step === group) { return; }
+    if (!groupLabel(group)) { return; }
     S.step = group;
+    remember(STEP, group);
     $all("[data-step]").forEach(function (n) { n.classList.toggle("is-current", n.getAttribute("data-step") === group); });
+    $all("[data-step-tab]").forEach(function (tab) {
+      var on = tab.getAttribute("data-step-tab") === group;
+      tab.setAttribute("aria-selected", String(on));
+      tab.tabIndex = on ? 0 : -1;
+    });
+    $all(".pg-tabpanel").forEach(function (panel) {
+      var on = panel.getAttribute("data-group") === group;
+      panel.classList.toggle("is-active", on);
+      if (on) { panel.removeAttribute("inert"); } else { panel.setAttribute("inert", ""); }
+    });
+    // The pipeline's numbers were just changed in place, so the markup it is
+    // compared against when settings move is brought up to date with them.
+    var pipeline = $("#pg-pipeline");
+    if (pipeline && pipeline.__zoom === S.zoom) { pipeline.__html = pipelineInner(); }
+    fitTabs();
   }
 
   function capitalise(text) { return text.charAt(0).toUpperCase() + text.slice(1); }
@@ -1034,70 +1265,313 @@
     return m ? { label: m[1], unit: m[2] } : { label: label, unit: "" };
   }
 
-  function sectionOpen(group) {
-    return !!S.sections[group];
-  }
-
-  function allSectionsOpen() {
-    return sectionGroups().every(function (g) { return sectionOpen(g.key); });
-  }
-
-  // One column, in the order the work is done: the steps, then the card that
-  // runs them.
+  // The pipeline, then the form in the order the work is done: the settings,
+  // one step at a time under six tabs with Reset all at the foot of their
+  // card, then the card that runs them. On a wide page the pipeline stands
+  // to the right of the form and stays in view while the page scrolls; on a
+  // narrow one it stands above it. The two cards beside each other start
+  // level, since neither has a heading above it.
   function drawDesign() {
     $("#pg-panel").innerHTML =
-      '<div class="pg-design">' + dataHtml() + pipelineHtml() +
-      '<div class="pg-sections-bar"><h2 class="pg-block-title">Every setting</h2>' +
-      '<button type="button" class="button button--quiet button--small" data-action="toggle-sections" id="pg-toggle-sections">' +
-      (allSectionsOpen() ? "Collapse all" : "Expand all") + "</button>" +
-      '<button type="button" class="pg-reset" data-action="reset-all">Reset all</button></div>' +
-      sectionGroups().map(sectionHtml).join("") +
-      '<section class="pg-block pg-run" id="pg-run" aria-label="Run"></section></div>';
+      '<div class="pg-design">' + pipelineHtml() + '<div class="pg-form">' +
+      '<section class="pg-block pg-settings" aria-label="Settings">' + tabsHtml() +
+      '<div class="pg-tabpanels">' + S.options.groups.map(panelHtml).join("") + "</div>" +
+      '<div class="pg-settings-foot"><button type="button" class="pg-reset" data-action="reset-all">Reset all</button></div>' +
+      "</section>" +
+      '<section class="pg-block pg-run" id="pg-run" aria-label="Run"></section></div></div>';
+    // What the pipeline was just drawn with, so the first change of settings
+    // finds it unchanged instead of drawing it again under the pointer.
+    var pipeline = $("#pg-pipeline");
+    pipeline.__html = pipelineInner();
+    pipeline.__zoom = S.zoom;
     drawRunCard($("#pg-run"), null, null);
+    watchPipeline();
+    watchForm();
+    watchTabs();
+    fitFlow();
+    fitTabs();
     refreshPreview();
+    requestZoom(true);
   }
 
-  // The sub-dataset stands at the top of the form on its own, as step 1: one
-  // setting needs no section around it.
-  function dataHtml() {
-    return '<section class="pg-block pg-data" data-group="data">' + fieldsOf("data").map(fieldRow).join("") + "</section>";
+  // ----------------------------------------------------------------- steps
+  // The six steps of the form as tabs, in the order the work is done. Every
+  // step's settings are drawn, one on top of another, and only the chosen
+  // one is shown, so the box is as tall as the tallest step and does not
+  // change height when another tab is chosen. A tab carries a dot while any
+  // setting of its step differs from its default and the step is not the
+  // one on show, where each such setting has its own Reset.
+  function tabsHtml() {
+    return '<div class="pg-tabs" role="tablist" aria-label="Steps of the run" id="pg-tabs">' +
+      S.options.groups.map(function (g) {
+        var on = g.key === S.step;
+        return '<button type="button" role="tab" class="pg-tab" id="pg-tab-' + g.key + '" data-step-tab="' + g.key +
+          '" aria-selected="' + on + '" aria-controls="pg-tabpanel-' + g.key + '" tabindex="' + (on ? 0 : -1) + '">' +
+          '<span class="pg-tab-num">' + stepNumber(g.key) + changedDot(g.key) + "</span>" +
+          '<span class="pg-tab-name" id="pg-tab-name-' + g.key + '">' + esc(g.label) + "</span>" +
+          changedWords(g.key) + "</button>";
+      }).join("") + "</div>";
+  }
+
+  // The dot is drawn on the number; what it says is read after the step's
+  // name, "2 Preprocessing, 1 setting changed".
+  function changedDot(group) {
+    var n = changedIn(group);
+    return '<span class="pg-tab-changed" aria-hidden="true" data-n="' + n + '"' + (n ? "" : " hidden") + "></span>";
+  }
+
+  function changedWords(group) {
+    var n = changedIn(group);
+    return '<span class="pg-tab-words visually-hidden" data-n="' + n + '">' +
+      (n ? ", " + n + (n === 1 ? " setting" : " settings") + " changed" : "") + "</span>";
+  }
+
+  function panelHtml(g) {
+    var on = g.key === S.step;
+    return '<div class="pg-tabpanel' + (on ? " is-active" : "") + '" role="tabpanel" id="pg-tabpanel-' + g.key +
+      '" data-group="' + g.key + '" aria-labelledby="pg-tab-' + g.key + '"' + (on ? "" : " inert") +
+      '><div class="pg-fields">' + (g.key === "training" ? procedureHtml() : "") +
+      fieldsOf(g.key).map(fieldRow).join("") + "</div></div>";
+  }
+
+  // Every changed-setting dot, after settings moved.
+  function paintTabs() {
+    S.options.groups.forEach(function (g) {
+      var dot = $("#pg-tab-" + g.key + " .pg-tab-changed");
+      var words = $("#pg-tab-" + g.key + " .pg-tab-words");
+      if (dot && dot.getAttribute("data-n") !== String(changedIn(g.key))) {
+        dot.outerHTML = changedDot(g.key);
+        words.outerHTML = changedWords(g.key);
+      }
+    });
+    fitTabs();
+  }
+
+  // The tabs name every step when all six names fit in one row. When they do
+  // not, only the chosen tab keeps its name on screen and the others show
+  // their numbers (is-compact); on the narrowest phones, where even that row
+  // does not fit, every tab shows only its number, the chosen one filled in
+  // and underlined (is-numbers). Each tab keeps its name for a screen
+  // reader, and shows it when the pointer rests on its number. Measured, not
+  // guessed from the width, as the pipeline's row is.
+  function fitTabs() {
+    var tabs = $("#pg-tabs");
+    if (!tabs) { return; }
+    var over = function () { return tabs.scrollWidth > tabs.clientWidth + 1; };
+    tabs.classList.remove("is-compact", "is-numbers");
+    var tight = over();
+    tabs.classList.toggle("is-compact", tight);
+    tabs.classList.toggle("is-numbers", tight && over());
+    Array.prototype.forEach.call(tabs.querySelectorAll(".pg-tab"), function (tab) {
+      var num = tab.querySelector(".pg-tab-num");
+      if (tight) { num.title = tab.querySelector(".pg-tab-name").textContent; } else { num.removeAttribute("title"); }
+    });
+  }
+
+  function watchTabs() {
+    var tabs = $("#pg-tabs");
+    if (!tabs || tabs.__watched || !window.ResizeObserver) { return; }
+    tabs.__watched = true;
+    var width = tabs.clientWidth;
+    new ResizeObserver(function () {
+      if (tabs.clientWidth !== width) { width = tabs.clientWidth; fitTabs(); }
+    }).observe(tabs);
   }
 
   // ------------------------------------------------------------- pipeline
-  // The model as a flowchart, in the order the data flows through it. A box
-  // opens its group of settings; × takes a part out and + puts it back, the
-  // two moves Table 11 makes one at a time.
+  // The run as a flowchart, in the order the data flows through it. A box
+  // opens that step's own flowchart in its place, and a button leads back;
+  // × takes a part out and + puts it back, the two moves Table 11 makes one
+  // at a time: the LSTM from the overview, the sensor graph from inside the
+  // graph layers' own flowchart. S.zoom is the step whose flowchart is open, or null.
 
   function pipelineHtml() {
-    return '<section class="pg-block pg-pipeline" aria-labelledby="pg-pipeline-title">' +
-      '<h2 class="pg-block-title" id="pg-pipeline-title">Pipeline</h2>' +
-      '<div class="pg-flow" id="pg-flow" role="list">' + flowHtml() + "</div></section>";
+    return '<section class="pg-block pg-pipeline" id="pg-pipeline" aria-labelledby="pg-pipeline-title">' +
+      pipelineInner() + "</section>";
   }
 
-  // Preprocessing, the temporal stage when there is one, the graph layers with
-  // the sensor graph they run on, and what comes out. The graph layers cannot
-  // be taken out, and their cross says why instead of doing nothing silently.
+  function pipelineInner() {
+    if (!S.zoom) {
+      return '<h2 class="pg-block-title" id="pg-pipeline-title">Pipeline</h2>' +
+        '<div class="pg-flow" id="pg-flow" role="list">' + flowHtml() + "</div>";
+    }
+    return '<div class="pg-zoom-head">' +
+      '<button type="button" class="button button--quiet button--small pg-zoom-back" data-action="unzoom" ' +
+      'aria-label="Back to the pipeline">' + BACK +
+      "Pipeline</button>" +
+      '<h2 class="pg-zoom-title" id="pg-pipeline-title" data-name="' + esc(boxName(S.zoom)) + '">' + stepNumber(S.zoom) +
+      esc(boxName(S.zoom)) + "</h2>" +
+      '<span class="pg-zoom-updating" id="pg-zoom-updating" role="status"></span></div>' +
+      '<div id="pg-zoom-body">' + zoomBody() + "</div>";
+  }
+
+  // What a box says the step is now: the sub-dataset, the stage, the layers.
+  function boxName(group) {
+    var s = S.settings;
+    if (group === "data") { return s.subset; }
+    if (group === "temporal") {
+      var name = temporalName(s.temporal);
+      return name.indexOf("w/o") === 0 ? name : capitalise(name);
+    }
+    if (group === "graph") { return "GCN"; }
+    return groupLabel(group);
+  }
+
+  // The data, preprocessing, the temporal stage when there is one, the graph
+  // layers, and what comes out. The graph layers cannot be taken out, and
+  // their cross says why instead of doing nothing silently; the sensor graph
+  // they run on is a step of their own flowchart, taken out there.
   function flowHtml() {
     var s = S.settings;
     var temporal = s.temporal === REMOVED.temporal
       ? flowLink(addButton("temporal"))
-      : flowLink("") + stageBox("temporal", capitalise(temporalName(s.temporal)), removeButton("temporal", "pg-stage-x"), "") +
-        flowLink("");
+      : flowLink("") + stageBox("temporal", removeButton("temporal", "pg-stage-x")) + flowLink("");
     var fixedCross = '<button type="button" class="pg-stage-x" aria-disabled="true" title="' + GCN_FIXED + '" aria-label="' +
       GCN_FIXED + '">' + CROSS + "</button>";
-    return stageBox("preprocessing", "Preprocessing", "", "") + temporal +
-      stageBox("graph", "GCN", fixedCross, priorHtml()) + flowLink("") +
-      '<div class="pg-flow-end" role="listitem">Remaining life</div>';
+    return stageBox("data", "") + flowLink("") + stageBox("preprocessing", "") + temporal +
+      stageBox("graph", fixedCross) + '<div class="pg-flow-link pg-flow-out" aria-hidden="true"></div>' +
+      '<div class="pg-flow-end pg-flow-out" role="listitem">Remaining life</div>';
   }
 
   // One box: the number of its step and what the step is now, "3 LSTM"; its
-  // group's name is the step's name below, and the box is read out with it.
-  // The whole box opens the group; x is its cross, parts what sits inside it.
-  function stageBox(group, name, x, parts) {
+  // step's name is on the step's tab, and the box is read out with it.
+  // The whole box opens the step's flowchart; x is its cross.
+  function stageBox(group, x) {
+    var name = boxName(group);
     return '<div class="pg-stage" role="listitem"><div class="pg-stage-top">' +
-      '<button type="button" class="pg-stage-main" data-goto="' + group + '" aria-label="' +
-      esc(groupLabel(group) + ": " + name) + '">' + stepNumber(group) +
-      '<span class="pg-stage-name">' + esc(name) + "</span></button>" + x + "</div>" + parts + "</div>";
+      '<button type="button" class="pg-stage-main" data-zoom="' + group + '" aria-label="' +
+      esc((groupLabel(group) === name ? name : groupLabel(group) + ": " + name) + ", its flowchart") + '">' + stepNumber(group) +
+      '<span class="pg-stage-name">' + esc(name) + "</span></button>" + x + "</div></div>";
+  }
+
+  // One step's own flowchart, as the server describes it from the code and
+  // the data: top to bottom, each step with its values, the shape of what it
+  // hands on and how many numbers it learns. The last answer stays on screen
+  // while a newer one is asked for.
+  function zoomBody() {
+    var d = S.zoomed;
+    if (!d || d.stage !== S.zoom) { return '<div class="loading">Reading the step…</div>'; }
+    // An answer for settings that have since changed stays on screen, greyed,
+    // until the new one arrives: FD004's preprocessing takes several seconds.
+    var stale = d.asked !== zoomKey();
+    var note = d.note ? '<p class="pg-zoom-note">' + esc(d.note) + "</p>" : "";
+    var body = d.error ? errorBox(d.error) : '<ol class="pg-vflow">' + d.steps.map(vstepHtml).join("") + "</ol>";
+    return '<div class="pg-zoom-steps' + (stale ? " is-stale" : "") + '">' + note + body + "</div>";
+  }
+
+  // The request an answer belongs to: the open step and every setting.
+  function zoomKey() { return S.zoom + JSON.stringify(S.settings); }
+
+  // One step: its name, the values that decide it (each a link to its
+  // setting), the shape of what it hands on and how many numbers it learns.
+  // Steps that work side by side on the same input share one row.
+  function vstepHtml(step) {
+    if (step.kind === "edge") {
+      return '<li class="pg-vstep pg-vstep--edge"><span class="pg-vstep-name">' + esc(step.name) + "</span>" +
+        (step.shape ? '<code class="pg-vstep-shape">' + esc(step.shape) + "</code>" : "") + "</li>";
+    }
+    if (step.kind === "group") {
+      return '<li class="pg-vgroup">' + step.steps.map(function (s) {
+        return '<div class="pg-vstep pg-vstep--small">' + vstepInner(s) + "</div>";
+      }).join("") + "</li>";
+    }
+    return '<li class="pg-vstep">' + vstepInner(step) + "</li>";
+  }
+
+  function vstepInner(step) {
+    var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
+      '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
+    var words = [step.source ? sourceTag(step.source) : "", step.does ? esc(step.does) : ""].filter(Boolean).join(" ");
+    return '<span class="pg-vstep-name">' + esc(step.name) + info(words, step.name) + partControl(step) + "</span>" +
+      '<span class="pg-vstep-values">' + values + "</span>" +
+      '<code class="pg-vstep-shape">' + esc(step.shape || "") + "</code>" +
+      '<span class="pg-vstep-learned">' + (step.learned ? count(step.learned) + " learned" : "") + "</span>";
+  }
+
+  // A value a setting decides leads to that setting, as the boxes of the
+  // overview lead to their steps. A setting the form hides for these
+  // settings leads to the one that decides it.
+  function valueHtml(part) {
+    var field = part.setting && S.fields[part.setting];
+    if (!field) { return '<span class="pg-vstep-value">' + esc(part.text) + "</span>"; }
+    var group = field.group === "procedure" ? "training" : field.group;
+    var row = part.setting === "validation_fraction" && !visible(part.setting) ? "procedure" : part.setting;
+    var index = part.index === null || part.index === undefined ? "" : ' data-goto-index="' + part.index + '"';
+    // Read out on its own, "at 125 cycles" says nothing; its name also says
+    // which setting it leads to, and keeps the words shown, as a name must.
+    var dest = row === "procedure" ? "Procedure" : splitUnit(S.fields[row].label).label;
+    return '<button type="button" class="pg-vstep-value" data-goto="' + group + '" data-goto-row="' + row + '"' +
+      index + ' aria-label="' + esc(part.text + ", " + dest + " setting") + '">' + esc(part.text) + "</button>";
+  }
+
+  // A box's flowchart opens in the pipeline, and its step's tab in the form,
+  // so the step's settings are beside the drawing of what they decide.
+  function zoomTo(group) {
+    S.zoom = group;
+    setStep(group);
+    paintPipeline();
+    requestZoom(true);
+    var back = $(".pg-zoom-back");
+    if (back) { back.focus(); }
+  }
+
+  // Back to the overview, with the focus on the box that was open, or, when
+  // that box has since been taken out, on the + that would put it back.
+  function unzoom() {
+    var was = S.zoom;
+    clearTimeout(S.zoomTimer);
+    S.zoom = null;
+    paintPipeline();
+    var box = $('button[data-zoom="' + was + '"]') || $('[data-action="add-part"][data-part="' + was + '"]');
+    if (box) { box.focus(); }
+  }
+
+  // Ask the server for the open step's flowchart, for the settings on screen.
+  function requestZoom(now) {
+    if (!S.zoom) { return; }
+    clearTimeout(S.zoomTimer);
+    S.zoomTimer = setTimeout(function () {
+      if (!S.zoom) { return; }  // the flowchart was left while this waited
+      var asked = zoomKey(), stage = S.zoom;
+      post("/api/playground/stage", { stage: stage, settings: S.settings }).then(function (answer) {
+        if (asked !== zoomKey()) { return; }  // a newer request is on its way
+        answer.asked = asked;
+        S.zoomed = answer;
+        paintZoom();
+      }).catch(function (error) {
+        if (asked !== zoomKey()) { return; }
+        S.zoomed = { stage: stage, asked: asked, error: error.message };
+        paintZoom();
+      });
+    }, now ? 0 : 220);
+  }
+
+  // A new answer replaces the steps. A button the keyboard was on is
+  // replaced with them, so the focus moves to its counterpart: the same
+  // action on the same part, the + that replaced a ×, or else the button in
+  // the same place.
+  function paintZoom() {
+    var body = $("#pg-zoom-body");
+    if (body) {
+      var active = document.activeElement;
+      var was = active && body.contains(active) ? active : null;
+      var place = was ? Array.prototype.indexOf.call(body.querySelectorAll("button"), was) : -1;
+      body.innerHTML = zoomBody();
+      $("#pg-pipeline").__html = null;
+      if (was) {
+        var part = was.getAttribute("data-part");
+        var again = (part && body.querySelector('[data-part="' + part + '"]')) || body.querySelectorAll("button")[place];
+        if (again) { again.focus({ preventScroll: true }); }
+      }
+    }
+    paintStatus();
+  }
+
+  // "Updating…" beside the title while the steps shown are for older settings.
+  function paintStatus() {
+    var status = $("#pg-zoom-updating");
+    var d = S.zoomed;
+    if (status) { status.textContent = d && d.stage === S.zoom && d.asked !== zoomKey() ? "Updating…" : ""; }
   }
 
   // The arrow between two boxes: a drawing, hidden from screen readers, unless
@@ -1107,14 +1581,19 @@
       : '<div class="pg-flow-link" aria-hidden="true"></div>';
   }
 
-  // The sensor graph, inside the graph layers' box: its name opens its
-  // setting, and × takes it out, which joins every sensor to every other.
-  function priorHtml() {
-    var graph = S.settings.graph;
-    return '<div class="pg-stage-parts">' + (graph === REMOVED.graph ? addButton("graph")
-      : '<span class="pg-part"><button type="button" class="pg-part-main" data-goto="graph" data-goto-row="graph" title="' +
-        esc(choiceLabel("graph", graph)) + '">' + esc(partName("graph", graph)) + "</button>" +
-        removeButton("graph", "pg-part-x") + "</span>") + "</div>";
+  // The sensor graph is taken out from its own step in the graph layers'
+  // flowchart: × joins every sensor to every other, the setting of "w/o
+  // Physics prior", and + puts back the graph that was there. The button
+  // follows the settings on screen, not the answer being shown, so it is
+  // right even while an older answer waits to be replaced.
+  function partControl(step) {
+    var part = (step.parts || []).filter(function (p) { return p.setting === "graph"; })[0];
+    if (S.zoom !== "graph" || !part) { return ""; }
+    return '<span class="pg-vstep-part" data-removed="' + (S.settings.graph === REMOVED.graph) + '">' + partButton() + "</span>";
+  }
+
+  function partButton() {
+    return S.settings.graph === REMOVED.graph ? addButton("graph") : removeButton("graph", "pg-stage-x");
   }
 
   // What the pipeline calls a part with a given value: "LSTM", "Physics prior".
@@ -1147,23 +1626,71 @@
     }
   }
 
+  // The pipeline after settings moved. Its markup is written again only
+  // when it has changed: a change to a number field is reported as the
+  // field loses the focus, which a press of the mouse causes, so rewriting
+  // here would replace the very button being clicked and lose the click.
+  // With a step's flowchart open, only what the settings decide on screen
+  // is updated in place: the title, the grey of an answer for older
+  // settings, and the sensor graph's cross or +. The steps themselves are
+  // replaced when the new answer arrives.
   function paintPipeline() {
-    var flow = $("#pg-flow");
-    if (flow) { flow.innerHTML = flowHtml(); }
+    var box = $("#pg-pipeline");
+    if (!box) { return; }
+    var body = $("#pg-zoom-body");
+    if (S.zoom && body && box.__zoom === S.zoom) {
+      var title = $("#pg-pipeline-title");
+      if (title && title.getAttribute("data-name") !== boxName(S.zoom)) {
+        title.innerHTML = stepNumber(S.zoom) + esc(boxName(S.zoom));
+        title.setAttribute("data-name", boxName(S.zoom));
+      }
+      var steps = body.querySelector(".pg-zoom-steps");
+      if (steps) { steps.classList.toggle("is-stale", !!S.zoomed && S.zoomed.asked !== zoomKey()); }
+      var removed = String(S.settings.graph === REMOVED.graph);
+      $all(".pg-vstep-part").forEach(function (slot) {
+        if (slot.getAttribute("data-removed") !== removed) {
+          slot.innerHTML = partButton();
+          slot.setAttribute("data-removed", removed);
+        }
+      });
+    } else {
+      var html = pipelineInner();
+      if (box.__html !== html) { box.innerHTML = html; box.__html = html; }
+      box.__zoom = S.zoom;
+    }
+    fitFlow();
+    paintStatus();
   }
 
-  // A box was chosen: its group opens, if folded, and comes into view, marked
-  // for a moment so the eye finds it. The focus moves with it, so the keyboard
-  // carries on from there.
-  function goTo(group, rowKey) {
-    if (!sectionOpen(group)) { toggleSection(group); }
+  // The overview stands in a row when its boxes fit, however long their
+  // names; else it first drops the output's words, then stands in a column.
+  // Measured, not guessed from the width, and again whenever the width moves.
+  function fitFlow() {
+    var box = $("#pg-pipeline"), flow = $("#pg-flow");
+    if (!box) { return; }
+    box.classList.remove("is-tight", "is-stacked");
+    if (!flow) { return; }
+    if (flow.scrollWidth > flow.clientWidth + 1) { box.classList.add("is-tight"); }
+    if (flow.scrollWidth > flow.clientWidth + 1) { box.classList.add("is-stacked"); }
+    if (!box.__watched && window.ResizeObserver) {
+      box.__watched = true;
+      var width = box.clientWidth;
+      new ResizeObserver(function () {
+        if (box.clientWidth !== width) { width = box.clientWidth; fitFlow(); }
+      }).observe(box);
+    }
+  }
+
+  // A value in a flowchart was chosen: its step's tab opens and the setting
+  // comes into view, marked for a moment so the eye finds it. The focus
+  // moves to its control, so the keyboard carries on from there.
+  function goTo(group, rowKey, index) {
     setStep(group);
-    var section = $('.pg-section[data-group="' + group + '"]');
-    var target = (rowKey && $('[data-row="' + rowKey + '"]')) || section;
+    var target = rowKey && $('.pg-tabpanel[data-group="' + group + '"] [data-row="' + rowKey + '"]:not([hidden])');
     if (!target) { return; }
-    target.scrollIntoView({ block: "start" });
-    var focus = target === section ? section.querySelector(".pg-section-head")
-      : target.querySelector("input:checked") || target.querySelector("input");
+    target.scrollIntoView({ block: "nearest" });
+    var focus = (index !== null && index !== undefined && target.querySelector('input[data-index="' + index + '"]')) ||
+      target.querySelector("input:checked") || target.querySelector("input");
     if (focus) { focus.focus({ preventScroll: true }); }
     // Taking the class off and reading the layout restarts the mark when the
     // same box is chosen again while it still shows.
@@ -1195,37 +1722,27 @@
 
   // ---------------------------------------------------------------- groups
 
-  function sectionHtml(g) {
-    var open = sectionOpen(g.key);
-    var changed = changedIn(g.key);
-    return '<section class="pg-section" data-group="' + g.key + '">' +
-      '<button type="button" class="pg-section-head" data-section="' + g.key + '" aria-expanded="' + open +
-      '" aria-controls="pg-section-' + g.key + '">' + stepNumber(g.key) +
-      '<span class="pg-section-title" id="pg-section-title-' + g.key + '">' + esc(g.label) + "</span>" +
-      '<span class="pg-section-changed"' + (changed ? "" : " hidden") + ">" + changed + " changed</span>" +
-      CHEVRON + "</button>" +
-      '<div class="pg-section-body" id="pg-section-' + g.key + '"' + (open ? "" : " hidden") + ">" +
-      (g.key === "training" ? procedureHtml() : "") + fieldsOf(g.key).map(fieldRow).join("") + "</div></section>";
-  }
-
   // The first choice in Training: the procedure, drawn as one setting though
-  // it sets two, with the inputs only it controls under it. It is the only
-  // control for holding engines back, and moves what the LSTM is worth (F-16).
+  // it sets two, with the inputs only it controls set in under its options.
+  // It is the only control for holding engines back, and moves what the LSTM
+  // is worth (F-16).
   function procedureHtml() {
     var choices = S.options.procedures.map(function (p) { return { value: p.key, label: p.label, text: p.text }; });
-    return row({
-      key: "procedure", label: "Procedure", stacked: true,
+    return cell({
+      key: "procedure", label: "Procedure", size: "wide",
       control: optionList("pg-procedure", choices, chosenProcedure().key, "data-procedure",
-        function (c) { return esc(c.text); }, "procedure-label"),
+        function (c) { return esc(c.text); }, nameIds("procedure")) +
+        '<div class="pg-fields pg-fields--sub">' +
+        fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; }).map(fieldRow).join("") + "</div>",
       reset: procedureReset()
-    }) + '<div class="pg-subrows">' +
-      fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; }).map(fieldRow).join("") + "</div>";
+    });
   }
 
   function procedureReset() {
     var back = defaultProcedure();
     return '<span class="pg-reset-slot">' + (chosenProcedure() !== back || !followsProcedure()
-      ? '<button type="button" class="pg-reset" data-reset="procedure" title="Back to ' + esc(back.label) + '">Reset</button>'
+      ? '<button type="button" class="pg-reset" data-reset="procedure" title="Back to ' + esc(back.label) +
+        '" aria-label="Reset Procedure">Reset</button>'
       : "") + "</span>";
   }
 
@@ -1248,20 +1765,21 @@
     var id = "pg-" + f.key;
     var data = 'data-field="' + f.key + '"';
     var parts = splitUnit(f.label);
-    // A list of options whose name is its section's name is labelled by the section head.
+    // A list of options whose name is its step's name is labelled by the step's tab.
     var bare = f.kind === "choice" && !SEGMENTED[f.key] && f.label === groupLabel(f.group);
-    var stacked = false, control;
+    var size = "", control;
     if (f.kind === "bool") {
       control = switchControl(id, !!value, data);
     } else if (f.kind === "choice" && SEGMENTED[f.key]) {
-      control = segmented(id, f.choices, value, data, f.key + "-label");
+      control = segmented(id, f.choices, value, data, nameIds(f.key));
       id = null;
     } else if (f.kind === "choice") {
-      stacked = true;
+      size = "wide";
       control = optionList(id, f.choices, value, data, function (c) { return sourceNote(c.source); },
-        bare ? "pg-section-title-" + f.group : f.key + "-label");
+        bare ? "pg-tab-name-" + f.group : nameIds(f.key));
       id = null;
     } else if (f.kind === "widths") {
+      size = "double";
       control = '<div class="pg-widths">' + value.map(function (w, i) {
         return "<label><span>GCN-" + (i + 1) + '</span><input class="field" type="number" min="' + f.min + '" max="' + f.max +
           '" step="1" value="' + w + '" ' + data + ' data-index="' + i + '"></label>';
@@ -1270,9 +1788,9 @@
     } else {
       control = numberField(id, f, value, data, parts.unit);
     }
-    return row({
-      key: f.key, id: id, label: bare ? "" : parts.label, stacked: stacked, hidden: !visible(f.key),
-      step: f.group === "data" ? "data" : "",
+    return cell({
+      key: f.key, id: id, label: bare ? "" : parts.label, hidden: !visible(f.key),
+      size: f.group === "data" ? "wide" : size,
       hint: hintFor(f),
       control: control,
       reset: resetHtml(f)
@@ -1281,7 +1799,8 @@
 
   function resetHtml(f) {
     return '<span class="pg-reset-slot">' + (isChanged(f)
-      ? '<button type="button" class="pg-reset" data-reset="' + f.key + '" title="Back to ' + esc(defaultText(f)) + '">Reset</button>'
+      ? '<button type="button" class="pg-reset" data-reset="' + f.key + '" title="Back to ' + esc(defaultText(f)) +
+        '" aria-label="' + esc("Reset " + splitUnit(f.label).label) + '">Reset</button>'
       : "") + "</span>";
   }
 
@@ -1302,46 +1821,20 @@
     settingsMoved(keys);
   }
 
-  // Resetting the procedure puts back both settings it decides.
+  // Resetting the procedure puts back both settings it decides. The
+  // controls are set to match and the rest follows as for any other change,
+  // so the page does not move; the focus goes to the setting's control,
+  // since the Reset that was pressed is gone.
   function resetField(key) {
-    (key === "procedure" ? ["validation_fraction", "early_stopping"] : [key]).forEach(function (k) {
+    var keys = key === "procedure" ? ["validation_fraction", "early_stopping"] : [key];
+    keys.forEach(function (k) {
       S.settings[k] = copy(S.fields[k].default);
+      syncControl(k);
     });
-    saveSettings();
-    drawDesign();
-  }
-
-  // Opening a group makes it the current step; folding the current one leaves none.
-  function toggleSection(group) {
-    S.sections[group] = !sectionOpen(group);
-    remember(SECTIONS, S.sections);
-    paintSection(group);
-    paintSectionsToggle();
-    if (sectionOpen(group)) { setStep(group); } else if (S.step === group) { setStep(null); }
-  }
-
-  function setAllSections(open) {
-    sectionGroups().forEach(function (g) { S.sections[g.key] = open; paintSection(g.key); });
-    remember(SECTIONS, S.sections);
-    paintSectionsToggle();
-  }
-
-  function paintSectionsToggle() {
-    var button = $("#pg-toggle-sections");
-    if (button) { button.textContent = allSectionsOpen() ? "Collapse all" : "Expand all"; }
-  }
-
-  function paintSection(group) {
-    var head = $('[data-section="' + group + '"]');
-    var body = $("#pg-section-" + group);
-    if (!head || !body) { return; }
-    var open = sectionOpen(group);
-    head.setAttribute("aria-expanded", String(open));
-    body.hidden = !open;
-    var badge = head.querySelector(".pg-section-changed");
-    var changed = changedIn(group);
-    badge.hidden = !changed;
-    badge.textContent = changed + " changed";
+    settingsMoved(keys);
+    var box = $('[data-row="' + key + '"]');
+    var control = box && (box.querySelector("input:checked") || box.querySelector("input, select"));
+    if (control) { control.focus({ preventScroll: true }); }
   }
 
   // A control changed: the setting is read from it, then what depends on it is redrawn.
@@ -1374,8 +1867,9 @@
 
   // Settings moved, from a control or from the pipeline. Only what depends
   // on them is redrawn: their rows, the rows they show or hide, the
-  // procedure, the pipeline, the group heads and the run card. The controls
-  // themselves are left alone, so a number being typed keeps its focus.
+  // procedure, the pipeline and the step's flowchart, the tabs' dots and the
+  // run card. The controls themselves are left alone, so a number being
+  // typed keeps its focus.
   function settingsMoved(keys) {
     saveSettings();
     keys.forEach(paintRow);
@@ -1385,7 +1879,8 @@
     });
     paintProcedure();
     paintPipeline();
-    sectionGroups().forEach(function (g) { paintSection(g.key); });
+    requestZoom(false);
+    paintTabs();
     refreshPreview();
   }
 
@@ -1393,12 +1888,23 @@
     var f = S.fields[key];
     var box = $('[data-row="' + key + '"]');
     if (!box) { return; }
-    box.querySelector(".pg-reset-slot").outerHTML = resetHtml(f);
+    paintSlot(box, isChanged(f), resetHtml(f));
     Array.prototype.forEach.call(box.querySelectorAll(".opt"), function (option) {
       option.classList.toggle("is-active", option.querySelector("input").checked);
     });
-    var words = box.querySelector(".pg-row-name .pg-info-card");
-    if (words) { words.innerHTML = hintFor(f); }
+    var words = box.querySelector(".pg-field-label .pg-info-card");
+    var hint = hintFor(f);
+    if (words && words.getAttribute("data-hint") !== hint) {
+      words.innerHTML = hint.replace(/<a /g, '<a tabindex="-1" ');
+      words.setAttribute("data-hint", hint);
+    }
+  }
+
+  // A setting's Reset slot, written again only when Reset should appear or
+  // go: rewriting it at every change would replace a Reset being clicked.
+  function paintSlot(box, changed, html) {
+    var slot = box.querySelector(".pg-reset-slot");
+    if (slot && !!slot.firstChild !== changed) { slot.outerHTML = html; }
   }
 
   function paintProcedure() {
@@ -1410,7 +1916,7 @@
       input.checked = input.value === chosen;
       option.classList.toggle("is-active", input.checked);
     });
-    box.querySelector(".pg-reset-slot").outerHTML = procedureReset();
+    paintSlot(box, chosenProcedure() !== defaultProcedure() || !followsProcedure(), procedureReset());
   }
 
   function refreshPreview() {
@@ -1482,7 +1988,7 @@
     } else if (preview && torch && !preview.network_error && preview.layers) {
       network = '<div class="pg-network"><h2 class="pg-block-title">Network</h2>' +
         '<div class="pg-big">' + count(preview.parameters) + " <span>learned numbers</span></div>" +
-        '<details class="pg-details"><summary>Layer by layer</summary>' +
+        '<details class="pg-details" data-layers' + (S.layersOpen ? " open" : "") + "><summary>Layer by layer</summary>" +
         '<table class="pg-mini"><thead><tr><th>Layer</th><th>Out</th><th class="num">Learned numbers</th></tr></thead><tbody>' +
         table4Rows(preview.layers).map(function (l) {
           return "<tr><td>" + esc(l.layer) + (l.from ? ' <span class="pg-faint">from ' + esc(l.from) + "</span>" : "") +
@@ -1492,9 +1998,19 @@
         "</details></div>";
     }
 
+    // The card is drawn again after every change of settings. What the
+    // keyboard was on in it keeps the focus, and "Layer by layer" stays as
+    // the reader left it, rather than closing at every change.
+    var active = box.contains(document.activeElement) ? document.activeElement : null;
+    var had = active && (active.matches("summary") ? "summary" : active.matches(".pg-train") ? ".pg-train" : null);
     box.innerHTML = network + caveatList(notes) + '<div class="pg-run-action">' +
       '<button type="button" class="button button--primary pg-train" data-action="run"' + (canRun ? "" : " disabled") +
       ">Train " + plural(S.settings.seeds, "seed") + "</button></div>";
+    var layers = box.querySelector("details[data-layers]");
+    if (layers) { layers.addEventListener("toggle", function () { S.layersOpen = layers.open; }); }
+    var again = had && box.querySelector(had);
+    if (again && !again.disabled) { again.focus({ preventScroll: true }); }
+    else if (active) { box.setAttribute("tabindex", "-1"); box.focus({ preventScroll: true }); }
   }
 
   // Queue a run. The server names the job. A toast confirms it only when the
@@ -1532,9 +2048,10 @@
       // The count is said only when a filter hides some runs and shows some.
       var counted = shown.length && shown.length < runs.length ? count(shown.length) + " of " + plural(runs.length, "run") + " · " : "";
       panel.innerHTML =
-        '<div class="pg-toolbar">' +
+        // The four sub-datasets need no name on screen, but a screen reader needs one.
+        '<div class="pg-toolbar"><span class="visually-hidden" id="pg-f-subset-label">Sub-dataset</span>' +
         segmented("pg-f-subset", [{ value: "all", label: "All" }].concat(SUBSETS.map(function (s) { return { value: s, label: s }; })),
-          f.subset, 'data-filter="subset"') +
+          f.subset, 'data-filter="subset"', "pg-f-subset-label") +
         "<label>" + switchControl("pg-f-results", f.results, 'data-filter="results"') + "Five seeds or more</label>" +
         "<label>" + switchControl("pg-f-weights", f.weights, 'data-filter="weights"') + "Kept their weights</label>" +
         (shown.length ? '<span class="pg-faint">' + counted + "click a row to open it</span>" : "") + "</div>" +
@@ -1558,24 +2075,29 @@
     var subsets = {};
     runs.forEach(function (r) { subsets[r.subset] = true; });
     var showData = S.filter.subset === "all" && Object.keys(subsets).length > 1;
-    return '<div class="pg-runs"><table class="data-table"><thead><tr><th><span class="visually-hidden">Compare</span></th><th>Finished</th>' +
-      (showData ? "<th>Data</th>" : "") +
-      '<th>Temporal stage</th><th>Graph</th><th>Seeds</th><th>Weights</th><th class="num">RMSE</th><th class="num">Paper</th>' +
-      '<th title="' + esc(DIRTY) + '">Commit</th></tr></thead><tbody>' +
+    // The result comes straight after when the run finished, so a phone
+    // shows it without scrolling the table; the settings that produced it
+    // follow, and the commit, which a narrow panel leaves out, comes last.
+    // The whole first cell ticks the box, and a click there never opens the run.
+    return '<div class="pg-runs"><table class="data-table"><thead><tr><th><span class="visually-hidden">Compare</span></th>' +
+      '<th>Finished, UTC</th><th class="num">RMSE</th><th class="num">Paper</th>' + (showData ? "<th>Data</th>" : "") +
+      '<th>Temporal stage</th><th>Graph</th><th>Seeds</th><th>Weights</th>' +
+      '<th class="col-commit" title="' + esc(DIRTY) + '">Commit</th></tr></thead><tbody>' +
       runs.map(function (r) {
         var m = r.mean || {}, sd = r.std || {};
         var ticked = S.compare.indexOf(r.name) >= 0;
-        return '<tr data-run="' + esc(r.name) + '"' + (ticked ? ' class="is-selected"' : "") + '><td><input type="checkbox" data-compare="' +
-          esc(r.name) + '"' + (ticked ? " checked" : "") + ' aria-label="Compare this run"></td>' +
-          "<td>" + when(r.finished) + "</td>" + (showData ? "<td>" + esc(r.subset) + "</td>" : "") +
-          "<td>" + esc(stageName(r.temporal, r.temporal_hidden)) + "</td><td>" + esc(graphName(r.graph, r.adjacency_normalization)) + "</td>" +
-          '<td><span class="chip' + (r.exploratory ? " chip--warn" : "") + '">' + count(r.seeds) + "</span></td>" +
-          "<td>" + (r.reported_weights === "final_epoch" ? "final pass" : "best pass") + "</td>" +
+        return '<tr data-run="' + esc(r.name) + '"' + (ticked ? ' class="is-selected"' : "") + '><td class="pg-tick-cell"><label>' +
+          '<input type="checkbox" data-compare="' + esc(r.name) + '"' + (ticked ? " checked" : "") +
+          ' aria-label="Compare this run"></label></td>' +
+          '<td title="' + esc(when(r.finished)) + '">' + whenShort(r.finished) + "</td>" +
           '<td class="num">' + number(m.rmse, 3) + (sd.rmse !== null && sd.rmse !== undefined ? ' <span class="sd">± ' + number(sd.rmse, 3) + "</span>" : "") + "</td>" +
           '<td class="num" title="' + esc(r.paper_row ? r.paper_row.label + ", " + r.paper_row.source : r.no_row_reason) + '">' +
-          (r.paper_row ? fixed(r.paper_row.rmse, 2) : "—") + "</td>" +
-          '<td><code class="pg-commit' + (r.dirty ? " pg-commit--dirty" : "") + '">' + esc(r.commit) + "</code>" +
-          (r.has_weights ? ' <span class="chip chip--good">files</span>' : "") + "</td></tr>";
+          (r.paper_row ? fixed(r.paper_row.rmse, 2) : "—") + "</td>" + (showData ? "<td>" + esc(r.subset) + "</td>" : "") +
+          "<td>" + esc(stageName(r.temporal, r.temporal_hidden)) + "</td><td>" + esc(graphName(r.graph, r.adjacency_normalization)) + "</td>" +
+          '<td><span class="chip' + (r.exploratory ? " chip--warn" : "") + '">' + count(r.seeds) + "</span></td>" +
+          "<td>" + (r.reported_weights === "final_epoch" ? "final pass" : "best pass") +
+          (r.has_weights ? ' <span class="chip chip--good">files</span>' : "") + "</td>" +
+          '<td class="col-commit"><code class="pg-commit' + (r.dirty ? " pg-commit--dirty" : "") + '">' + esc(r.commit) + "</code></td></tr>";
       }).join("") + "</tbody></table></div>";
   }
 
@@ -1595,6 +2117,12 @@
     if (run && run.finished) { return when(run.finished); }
     var m = /_(\d{8}T\d{6}Z)$/.exec(name || "");
     return m ? when(m[1]) : name;
+  }
+
+  // A date is never broken at its hyphens; the time may still move to the
+  // next line.
+  function keepDate(text) {
+    return esc(text).replace(/^(\d{4}-\d\d-\d\d)/, '<span class="pg-nowrap">$1</span>');
   }
 
   function drawComparison() {
@@ -1625,11 +2153,15 @@
             (e.p === null || e.p === undefined ? "—" : e.p < 0.001 ? e.p.toExponential(1) : fixed(e.p, 3)) + "</td></tr>";
         }).join("");
         box.innerHTML = '<section class="pg-card pg-compare"><h2 class="pg-block-title">Comparison</h2>' + caveatList(cautions) +
-          '<table class="pg-mini"><thead><tr><th>Setting that differs</th><th>First, ' + esc(runTime(c.first.name)) +
-          "</th><th>Second, " + esc(runTime(c.second.name)) + "</th></tr></thead><tbody>" +
+          '<table class="pg-mini"><thead><tr><th>Setting that differs</th><th>First, ' + keepDate(runTime(c.first.name)) +
+          "</th><th>Second, " + keepDate(runTime(c.second.name)) + "</th></tr></thead><tbody>" +
           (c.differences.length ? c.differences.map(function (d) {
-            return "<tr><td>" + esc(settingLabel(d.setting)) + "</td><td>" + esc(settingWords(d.setting, d.first)) +
-              "</td><td>" + esc(settingWords(d.setting, d.second)) + "</td></tr>";
+            var whole = function (v) {
+              var words = esc(settingWords(d.setting, v));
+              return d.setting === "commit" ? '<span class="pg-nowrap">' + words + "</span>" : words;
+            };
+            return "<tr><td>" + esc(settingLabel(d.setting)) + "</td><td>" + whole(d.first) +
+              "</td><td>" + whole(d.second) + "</td></tr>";
           }).join("") : '<tr><td colspan="3">Nothing, not even the commit.</td></tr>') + "</tbody></table>" +
           (c.shared_seeds.length ? '<table class="pg-mini"><thead><tr><th>Measure</th>' +
             '<th class="num">Second − first</th><th class="num">paired t</th><th class="num">p</th></tr></thead><tbody>' + rows + "</tbody></table>" +
@@ -1641,13 +2173,17 @@
       });
   }
 
+  // A run already read is drawn again over its old drawing, with no loading
+  // line between: the page never shrinks to one line and back, which would
+  // throw the reader to its top.
   function drawDetail() {
     var panel = $("#pg-panel");
-    if (!panel || !S.selected) { return; }
-    panel.innerHTML = '<div class="loading">Reading the run…</div>';
-    var load = S.detail && S.detail.name === S.selected ? Promise.resolve(S.detail)
+    if (!panel || !S.selected) { return Promise.resolve(); }
+    var held = S.detail && S.detail.name === S.selected;
+    if (!held) { panel.innerHTML = '<div class="loading">Reading the run…</div>'; }
+    var load = held ? Promise.resolve(S.detail)
       : T.get("/api/playground/run?name=" + encodeURIComponent(S.selected));
-    load.then(function (d) {
+    return load.then(function (d) {
       if (S.tab !== "results") { return; }
       S.detail = d;
       var seeds = Object.keys(d.per_seed);
@@ -1671,8 +2207,9 @@
         : '<p class="pg-faint">' + esc(d.no_row_reason) + "</p>";
       var cautions = (d.caveats || []).filter(function (c) { return cautionFor(c, "run"); });
 
+      var W = S.chartsDrawnAt = chartWidth();
       var perSeedPlot = plot({
-        width: 420, height: 220, xlabel: "seed", ylabel: "test RMSE (cycles)", label: "test RMSE per seed",
+        width: W, height: 200, xlabel: "seed", ylabel: "test RMSE (cycles)", label: "test RMSE per seed",
         series: [{ points: d.results.map(function (r) { return [r.seed, r.rmse]; }), colour: "var(--fig-accent)", dots: true, line: false, radius: 5 }],
         hlines: paperRow ? [{ y: paperRow.rmse, label: "paper", colour: "var(--fig-lpc)" }] : []
       });
@@ -1680,7 +2217,7 @@
       var hasValidation = curves && d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== undefined &&
         d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== null;
       var curvePlot = curves ? plot({
-        width: 640, height: 260, xlabel: "pass over the training data", label: "training curves",
+        width: W, height: chartHeight(W), xlabel: "pass over the training data", label: "training curves",
         ylabel: hasValidation ? "held-back RMSE (cycles)" : "training loss (scaled MSE)",
         series: seeds.map(function (s, i) {
           var h = d.per_seed[s].history;
@@ -1700,7 +2237,7 @@
       var predictions = seeds.length ? d.per_seed[seedChoice].predictions.slice().sort(byUnit
         ? function (a, b) { return a.unit - b.unit; } : function (a, b) { return a.rul - b.rul; }) : [];
       var predPlot = predictions.length ? plot({
-        width: 640, height: 260, ylabel: "remaining life (cycles)", label: "predictions against truth", xlabel: "test engine",
+        width: W, height: chartHeight(W), ylabel: "remaining life (cycles)", label: "predictions against truth", xlabel: "test engine",
         series: byUnit ? [
           { name: "true remaining life", colour: "var(--fig-burn)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.rul]; }) },
           { name: "predicted", colour: "var(--fig-accent)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.predicted]; }) }
@@ -1720,7 +2257,7 @@
         '<div class="pg-actions"><button type="button" class="button" data-action="again">Set these settings up again</button>' +
         (d.has_weights ? '<button type="button" class="button button--primary" data-action="explain-this">Explain this run</button>' : "") + "</div></div>" +
         '<div class="pg-metrics">' + cards + "</div>" + compared + caveatList(cautions) +
-        '<div class="pg-charts"><figure class="pg-figure">' + perSeedPlot + "</figure>" +
+        '<div class="pg-charts"><figure class="pg-figure pg-figure--wide">' + perSeedPlot + "</figure>" +
         (curves ? '<figure class="pg-figure pg-figure--wide">' +
           (hasValidation ? "<figcaption><strong>Not in the paper.</strong> A ring marks the reported pass.</figcaption>" : "") +
           curvePlot + "</figure>"
@@ -1806,34 +2343,39 @@
       .filter(Boolean).join(" · ");
     var seedChoices = seeds.map(function (s) { return { value: s, label: s }; });
     var forEngine = e.scope === "engine";
-    return '<section class="pg-block">' +
-      row({ key: "pg-e-run", label: "Run",
+    return '<section class="pg-block"><div class="pg-fields">' +
+      cell({ key: "pg-e-run", label: "Run", size: "wide",
         control: '<span class="pg-run-name">' + esc(named) + "</span>" +
           '<button type="button" class="pg-link" data-action="choose-run">Choose another run</button>' }) +
-      row({ id: "pg-e-seed", label: "Seed whose weights are explained",
-        control: seeds.length <= 6 ? segmented("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"') : selectField("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"') }) +
-      row({ key: "pg-e-method", label: "Method", stacked: true,
+      // Six seeds or fewer sit side by side, named by the cell's name; more
+      // go in a list, which the name's label points at.
+      (seeds.length <= 6
+        ? cell({ key: "pg-e-seed", label: "Seed whose weights are explained", size: "wide",
+          control: segmented("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"', nameIds("pg-e-seed")) })
+        : cell({ id: "pg-e-seed", label: "Seed whose weights are explained", size: "wide",
+          control: selectField("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"') })) +
+      cell({ key: "pg-e-method", label: "Method", size: "wide",
         control: optionList("pg-e-method", [
           { value: "shap", label: METHODS.shap, note: sourceTag({ kind: "paper", ref: "Eq. 14–15" }) +
             " every one of the " + count(16384) + " subsets of sensors, for every window. An absent sensor is replaced by its average training window (" + refLink("A-20") + ")." },
           { value: "occlusion", label: "Occlusion, one sensor at a time", note: sourceTag({ kind: "extension" }) +
             " 15 evaluations per window. The Shapley term in which the sensor arrives last; the two agree only when sensors do not interact." }
-        ], e.method, 'data-explain="method"', function (c) { return c.note; }, "pg-e-method-label") }) +
-      row({ key: "pg-e-scope", label: "What is explained", stacked: true,
+        ], e.method, 'data-explain="method"', function (c) { return c.note; }, nameIds("pg-e-method")) }) +
+      cell({ key: "pg-e-scope", label: "What is explained", size: "wide",
         control: optionList("pg-e-scope", [
           { value: "engine", label: "One engine, at every cycle", note: sourceTag({ kind: "paper", ref: "Section 4.4" }) +
             " the dynamic explanation of Table 12 and Fig. 10. The test set keeps only each engine's last window, so the engine comes from the held-back engines, or the training engines when none were held back." },
           { value: "test", label: "The last window of every test engine", note: sourceTag({ kind: "extension" }) +
             " one explanation per test engine, for a ranking across engines." }
-        ], e.scope, 'data-explain="scope"', function (c) { return c.note; }, "pg-e-scope-label") }) +
-      row({ id: "pg-e-engine", key: "pg-e-engine-row", label: "Engine number", hidden: !forEngine,
+        ], e.scope, 'data-explain="scope"', function (c) { return c.note; }, nameIds("pg-e-scope")) }) +
+      cell({ id: "pg-e-engine", key: "pg-e-engine-row", label: "Engine number", hidden: !forEngine,
         hint: "Blank: the engine with the longest history.",
         control: '<input class="field" type="number" id="pg-e-engine" min="1" value="' + esc(e.engine) + '" data-explain="engine">' }) +
-      row({ id: "pg-e-every", key: "pg-e-every-row", label: "Explain every n-th window", hidden: !forEngine,
+      cell({ id: "pg-e-every", key: "pg-e-every-row", label: "Explain every n-th window", hidden: !forEngine,
         hint: "Larger is quicker and coarser.",
         control: '<input class="field" type="number" id="pg-e-every" min="1" max="100" value="' + e.every + '" data-explain="every">' }) +
-      '<div class="pg-row"><div class="pg-row-name"></div><div class="pg-row-control"><button type="button" class="button button--primary" data-action="explain">Explain</button></div></div>' +
-      "</section>";
+      cell({ control: '<button type="button" class="button button--primary" data-action="explain">Explain</button>' }) +
+      "</div></section>";
   }
 
   // What one stored explanation covers, in the page's words: "held-back engine 5, one window in 20".
@@ -1890,10 +2432,11 @@
   function drawExplanation() {
     var e = S.explain, box = $("#pg-e-view");
     if (!box) { return; }
-    var load = e.values && e.values.name === e.shown ? Promise.resolve(e.values)
+    var held = e.values && e.values.name === e.shown;
+    var load = held ? Promise.resolve(e.values)
       : T.get("/api/playground/explanation?run=" + encodeURIComponent(e.run) + "&name=" + encodeURIComponent(e.shown))
         .then(function (data) { data.name = e.shown; return data; });
-    box.innerHTML = '<div class="loading">Reading the explanation…</div>';
+    if (!held) { box.innerHTML = '<div class="loading">Reading the explanation…</div>'; }
     load.then(function (data) {
       e.values = data;
       var sum = data.summary, rows = data.values;
@@ -1924,21 +2467,22 @@
 
       var mean = {};
       sensorOrder.forEach(function (s) { mean[s] = sum.mean_abs[s]; });
+      var W = S.chartsDrawnAt = chartWidth();
 
       // The paper's figures, in the order its Section 4.4 introduces them, each
       // drawn from this explanation. Every caption opens by saying which of the
       // paper's figures it follows, or that the paper has none like it.
       var swarm = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, left.</strong> Every value of every sensor, one dot per ' +
-        (forEngine ? "window" : "engine") + ", the sensors ranked by the average size of their values.</figcaption>" + beeswarm(rows, symbols) + "</figure>";
+        (forEngine ? "window" : "engine") + ", the sensors ranked by the average size of their values.</figcaption>" + beeswarm(rows, symbols, W) + "</figure>";
       var strip = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, the two boxes above its graph.</strong> ' +
-        "Deeper for larger, lighter for smaller.</figcaption>" + rankedStrip(mean, symbols) + "</figure>";
+        "Deeper for larger, lighter for smaller.</figcaption>" + rankedStrip(mean, symbols, Math.min(W, 640)) + "</figure>";
 
       var body;
       if (forEngine) {
         var current = rows[e.index];
         var subset = e.detail ? e.detail.subset : "";
         var lifePlot = plot({
-          width: 640, height: 250, xlabel: "cycle at the end of the window", ylabel: "remaining life, and error (cycles)",
+          width: W, height: chartHeight(W), xlabel: "cycle at the end of the window", ylabel: "remaining life, and error (cycles)",
           label: "the prediction along the engine's life",
           areas: [{ name: "predicted minus true: the paper's \"new error area\"", colour: "var(--fig-lpc)", opacity: 0.35,
             points: rows.map(function (r) { return [r.end_cycle, r.predicted - r.rul]; }) }],
@@ -2139,7 +2683,11 @@
 
   function sensorGraph(values, sensors) {
     var g = S.options.graph, st = fig10Style(values, sensors);
-    var scale = 0.62;
+    // At 0.8 of the layout's own size no circle meets a neighbour's name;
+    // the names are drawn after every circle, so none is ever covered, and
+    // each carries its circle's words, shown when the pointer rests on it.
+    // The graph scrolls sideways rather than shrink past reading on a phone.
+    var scale = 0.8, names = "";
     var out = '<svg class="pg-graph" viewBox="0 0 ' + g.width * scale + " " + (g.height - 30) * scale + '">';
     g.edges.forEach(function (edge) {
       var a = g.positions[edge[0]], b = g.positions[edge[1]];
@@ -2147,11 +2695,12 @@
     });
     st.ranked.forEach(function (s, rank) {
       var p = g.positions[s], k = st.style[s];
-      out += '<g><title>' + esc(s + ": rank " + (rank + 1) + ", " + signedValue(Number(values[s])) + " cycles") + "</title>" +
-        '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale + '" r="17" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/>' +
-        '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
+      var title = "<title>" + esc(s + ": rank " + (rank + 1) + ", " + signedValue(Number(values[s])) + " cycles") + "</title>";
+      out += "<g>" + title +
+        '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale + '" r="17" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/></g>';
+      names += "<g>" + title + '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
     });
-    return out + "</svg>";
+    return '<div class="pg-graph-stage">' + out + names + "</svg></div>";
   }
 
   // How many times a sensor joins the red four, going from each graph in the
@@ -2199,26 +2748,28 @@
       return out + '<text x="50" y="52" text-anchor="middle" class="pg-ring-missing">not explained</text></svg><figcaption>' + esc(label) + "</figcaption></figure>";
     }
     out += ringEdges(at);
-    var st = fig10Style(values, sensors);
+    var st = fig10Style(values, sensors), names = "";
+    // The names after every circle, so a later circle never covers one.
     ring.forEach(function (s) {
       var p = at[s], k = st.style[s], v = Number(values[s]);
       out += "<g><title>" + esc(label + " · " + s + ": rank " + (k.rank + 1) + " of " + n + ", " + (unit ? signedValue(v) + " " + unit : fixed(v, 2))) + "</title>" +
-        '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-ink)" stroke-width="0.35"/>' +
-        (k.rank < 4 ? ringLabel(p, s) : "") + "</g>";
+        '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-ink)" stroke-width="0.35"/></g>';
+      if (k.rank < 4) { names += ringLabel(p, s); }
     });
-    return out + "</svg><figcaption>" + esc(label) + "</figcaption></figure>";
+    return out + names + "</svg><figcaption>" + esc(label) + "</figcaption></figure>";
   }
 
   // The ring once more with every sensor named and nothing coloured: the key to where each one sits.
   function keyRing() {
     var at = ringPositions();
     var out = '<figure class="pg-ring pg-ring--key"><svg viewBox="0 0 100 100" role="img" aria-label="Where each sensor sits">' + ringEdges(at);
+    var names = "";
     S.options.table12.ring.forEach(function (s) {
       var p = at[s];
-      out += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="var(--fig-bg)" stroke="var(--fig-axis)" stroke-width="0.5"/>' +
-        ringLabel(p, s);
+      out += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="var(--fig-bg)" stroke="var(--fig-axis)" stroke-width="0.5"/>';
+      names += ringLabel(p, s);
     });
-    return out + "</svg><figcaption>key</figcaption></figure>";
+    return out + names + "</svg><figcaption>key</figcaption></figure>";
   }
 
   // The paper's Fig. 10, redrawn from Table 12, above this engine at the same
