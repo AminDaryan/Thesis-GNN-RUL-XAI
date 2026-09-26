@@ -263,6 +263,8 @@ class DocsHandler(BaseHTTPRequestHandler):
                 self._json(playground.options())
             elif route == "/api/playground/runs":
                 self._json({"runs": playground.list_runs(self.root)})
+            elif route == "/api/playground/explanations":
+                self._json({"explanations": playground.list_explanations(self.root)})
             elif route == "/api/playground/run":
                 self._json(playground.run_detail(self.root, one("name")))
             elif route == "/api/playground/explanation":

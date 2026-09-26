@@ -25,6 +25,25 @@
   var STATUS = { queued: "Queued", running: "Running", cancelling: "Stopping", done: "Done",
     failed: "Failed", cancelled: "Stopped", interrupted: "Interrupted" };
   var METHODS = { shap: "Exact Shapley values", occlusion: "Occlusion" };
+  // What the Explain tab's options do, in plain words, above the line of each one's i.
+  var EXPLAIN_ABOUT = {
+    shap: "Compares the prediction from the recorded readings with the prediction when every sensor is swapped " +
+      "for its training average, and divides that change among the 14 sensors, in cycles. A sensor's share " +
+      "is how far swapping it back to its recorded readings moves the prediction, averaged over every mix " +
+      "of the others recorded or swapped, each size of mix counting equally.",
+    occlusion: "A quick first look. Each sensor in turn has its readings swapped for their training average while " +
+      "the other 13 stay as recorded; its value is the prediction with every sensor recorded minus the " +
+      "prediction with it swapped. Far quicker than trying every mix of sensors, but the values need not " +
+      "add up the way the exact ones do.",
+    engine: "Follows one engine through its recorded life, which ends in failure, explaining its windows one " +
+      "after another. It shows how much each sensor raises or lowers the predicted remaining life, and how " +
+      "that changes as the engine wears out. With no engines held back, the network learned from that " +
+      "engine.",
+    test: "Explains the predictions the run is scored on: one per test engine, at the last cycle it recorded, " +
+      "for engines the network never learned from. An engine too short to fill a window has no prediction " +
+      "and is skipped. With one window per engine, it cannot show how a sensor's effect changes as an " +
+      "engine wears out."
+  };
   var ENGINE_SOURCE = { validation: "held-back", training: "training", test: "test" };
   var MEASURES = [["rmse", "RMSE", 3], ["score", "Score", 1], ["r2", "R²", 3], ["asue", "ASUE", 3]];
   // The paper's own precision for each measure, read from Tables 7 to 10: RMSE
@@ -38,9 +57,12 @@
   var SOURCE_NAMES = { paper: "Paper", assumption: "Our choice", project: "Project rule", extension: "Not in the paper" };
   var SOURCE_TITLES = { paper: "The paper prints this value", assumption: "The paper is silent, so this project chose",
     project: "A rule of this repository", extension: "An option offered for comparison" };
-  // Choices short enough to sit side by side in one control. Every other
-  // choice is a grid of options, each with the source of its value.
+  // Choices short enough to sit side by side in one control, and a choice of
+  // five that shares one source and sits beside the two rates it connects,
+  // in a menu. Every other choice is a grid of options, each with the source
+  // of its value.
   var SEGMENTED = { subset: true, device: true };
+  var MENU = { lr_schedule: true };
   var SUBSETS = ["FD001", "FD002", "FD003", "FD004"];
   // The value that takes a part out of the pipeline. Each is the setting of a
   // variant of Table 11: "w/o LSTM" and "w/o Physics prior".
@@ -52,11 +74,120 @@
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   var BACK = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 L4 6 L7.5 9.5" fill="none" ' +
     'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var NEXT = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 L8 6 L4.5 9.5" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 V9.5 M2.5 6 H9.5" ' +
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   var INFO = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" ' +
     'stroke-width="1.3"/><path d="M8 7.2 V11.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
     '<circle cx="8" cy="4.9" r=".95" fill="currentColor"/></svg>';
+  // One picture for each box of the pipeline and for what goes in and comes
+  // out of it: the files (a store of records), preprocessing (sliders: the
+  // readings are adjusted), the temporal stage (a clock: it reads the cycles
+  // in time), the graph layers (sensors joined in a graph) and the remaining
+  // life (an hourglass). The same picture stands on a box, on its
+  // flowchart's title and beside the words that lead into or out of it.
+  function icon(paths) {
+    return '<svg class="pg-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + paths + "</svg>";
+  }
+  var ICONS = {
+    data: icon('<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6"/>' +
+      '<path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>'),
+    preprocessing: icon('<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/>' +
+      '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>'),
+    temporal: icon('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'),
+    graph: icon('<circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="17.5" r="2.2"/>' +
+      '<path d="M8.2 7h7.6M7.1 9l3.8 6.6M16.9 9l-3.8 6.6"/>'),
+    output: icon('<path d="M7 3.5h10M7 20.5h10M8 3.5v2.2c0 2.3 4 3.8 4 6.3s-4 4-4 6.3v2.2M16 3.5v2.2c0 2.3-4 3.8-4 6.3s4 ' +
+      '4 4 6.3v2.2"/>')
+  };
+
+  // A small drawing of what one step of a box's flowchart does, so the step
+  // is recognised and remembered by its shape as well as its name. The server
+  // names the drawing for each step (its "picture"); the steps of the form
+  // that decide a step carry the same drawing.
+  function picture(paths) {
+    return '<svg class="pg-picture" viewBox="0 0 48 32" aria-hidden="true" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + paths + "</svg>";
+  }
+  var DOT = function (x, y, r) { return '<circle cx="' + x + '" cy="' + y + '" r="' + (r || 2.5) + '"/>'; };
+  var FILLED = function (x, y, r) { return '<circle cx="' + x + '" cy="' + y + '" r="' + (r || 2.5) + '" fill="currentColor"/>'; };
+  var PICTURES = {
+    // a text file of rows
+    file: picture('<path d="M15 3h13l6 6v20H15z M28 3v6h6 M19 14h11 M19 19h11 M19 24h7"/>'),
+    // remaining life falling to zero at failure
+    life: picture('<path d="M6 4v24h36"/><path d="M9 7 L39 26"/>' + FILLED(39, 26, 2)),
+    // 14 of the 21 sensors kept
+    select: picture('<path d="M7 9l3 3 5-6M7 21l3 3 5-6M21 9h20M21 21h20"/>'),
+    // life flat at the ceiling, then falling
+    cap: picture('<path d="M6 4v24h36"/><path d="M9 9h14l16 17"/><path d="M9 5 L23 9" stroke-dasharray="2 3"/>'),
+    // jagged readings made smooth
+    smooth: picture('<path d="M5 22l4-9 4 11 4-10 4 8 4-9 4 10 4-7 4 8 4-6" opacity=".45"/>' +
+      '<path d="M5 18c8-4 14 3 21-1s12-3 17-4"/>'),
+    // one engine of five set aside
+    hold: picture('<rect x="4" y="10" width="6" height="14" rx="1.5"/><rect x="12" y="10" width="6" height="14" rx="1.5"/>' +
+      '<rect x="20" y="10" width="6" height="14" rx="1.5"/><rect x="28" y="10" width="6" height="14" rx="1.5"/>' +
+      '<rect x="38" y="10" width="6" height="14" rx="1.5" stroke-dasharray="2 2"/>'),
+    // rows grouped by operating condition
+    conditions: picture(DOT(10, 10) + DOT(14, 14) + DOT(9, 17) + DOT(30, 8) + DOT(35, 11) + DOT(32, 14) +
+      DOT(22, 24) + DOT(27, 27) + DOT(19, 28)),
+    // readings of different sizes brought to one range
+    rescale: picture('<path d="M7 28V5M13 28V18M19 28V24"/><path d="M24 16h5m-2-2 2 2-2 2"/><path d="M34 28V14M39 28V14M44 28V14"/>'),
+    // a window of cycles cut from an engine's history
+    window: picture('<path d="M4 22h40"/><path d="M8 20v4M12 20v4M16 20v4M20 20v4M24 20v4M28 20v4M32 20v4M36 20v4M40 20v4"/>' +
+      '<rect x="14" y="8" width="16" height="20" rx="2"/>'),
+    // training, held-back and test windows
+    sets: picture('<rect x="4" y="8" width="20" height="16" rx="2"/><rect x="27" y="8" width="8" height="16" rx="2"/>' +
+      '<rect x="38" y="8" width="6" height="16" rx="2"/>'),
+    // one window split into one sequence per sensor
+    split: picture('<path d="M5 16h10M15 16 27 6h16M15 16h28M15 16 27 26h16"/>'),
+    // a recurrent network: a cell whose output comes back into it
+    recurrent: picture('<rect x="15" y="10" width="18" height="14" rx="3"/><path d="M5 17h10M33 17h10"/>' +
+      '<path d="M38 17v-12H24v5"/><path d="M22 8l2 2 2-2"/>'),
+    // only the last of the sequence kept
+    last: picture('<rect x="5" y="12" width="6" height="8" rx="1"/><rect x="13" y="12" width="6" height="8" rx="1"/>' +
+      '<rect x="21" y="12" width="6" height="8" rx="1"/><rect x="29" y="12" width="6" height="8" rx="1"/>' +
+      '<rect x="37" y="12" width="6" height="8" rx="1" fill="currentColor"/>'),
+    // many numbers made into few, each a weighted sum
+    project: picture('<path d="M6 6 30 16M6 12 30 16M6 20 30 16M6 26 30 16M30 16h12"/>' + FILLED(30, 16, 2.5)),
+    // readings replaced by their average
+    average: picture('<path d="M5 22l5-8 5 6 5-10 5 9 5-5 5 7 5-9" opacity=".45"/><path d="M5 16h38" stroke-dasharray="3 2"/>'),
+    // the change over the window, a fitted line's slope
+    slope: picture(DOT(8, 24, 1.8) + DOT(15, 20, 1.8) + DOT(22, 21, 1.8) + DOT(29, 14, 1.8) + DOT(36, 12, 1.8) +
+      '<path d="M5 26 41 9"/>'),
+    // three numbers stacked per sensor
+    stack: picture('<rect x="16" y="4" width="16" height="7" rx="1.5"/><rect x="16" y="13" width="16" height="7" rx="1.5"/>' +
+      '<rect x="16" y="22" width="16" height="7" rx="1.5"/>'),
+    // sensors joined in a graph
+    graph: picture(DOT(9, 9) + DOT(24, 6) + DOT(39, 11) + DOT(14, 25) + DOT(33, 26) +
+      '<path d="M11 10l11-3M26 7l11 3M10 11l3 12M16 25h15M38 13l-4 11M23 8l-8 15"/>'),
+    // the graph as a table of rescaled numbers
+    table: picture('<rect x="10" y="3" width="28" height="26" rx="2"/><path d="M10 12h28M10 20h28M19 3v26M28 3v26"/>'),
+    // a graph layer: each sensor gathers from its neighbours
+    gcn: picture(FILLED(24, 16, 3.5) + DOT(7, 7) + DOT(7, 25) + DOT(41, 7) + DOT(41, 25) +
+      '<path d="M9.5 8.5 20 14M9.5 23.5 20 18M38.5 8.5 28 14M38.5 23.5 28 18"/>'),
+    // each sensor's numbers laid end to end
+    flatten: picture('<rect x="4" y="4" width="10" height="10" rx="1"/><rect x="4" y="18" width="10" height="10" rx="1"/>' +
+      '<path d="M17 16h5m-2-2 2 2-2 2"/><rect x="25" y="12" width="20" height="8" rx="1"/>'),
+    // every number joined to every output
+    dense: picture(DOT(8, 7) + DOT(8, 16) + DOT(8, 25) + DOT(40, 10) + DOT(40, 22) +
+      '<path d="M10.5 7.5 37.5 10M10.5 16 37.5 10.5M10.5 24.5 37.5 11M10.5 7.5 37.5 21.5M10.5 16 37.5 22M10.5 24.5 37.5 22.5"/>'),
+    // the sigmoid: any number squeezed between 0 and 1
+    sigmoid: picture('<path d="M5 26h38M5 6h38" stroke-dasharray="2 3" opacity=".6"/><path d="M5 25c14 0 14-18 19-18s5 0 19 0"/>'),
+    // passes over the training data, one after another
+    passes: picture('<path d="M34 10a11 11 0 1 0 2 11"/><path d="M36 3v7h-7"/>'),
+    // the learning rate, falling in steps
+    rate: picture('<path d="M6 4v24h36"/><path d="M9 8h10v8h10v6h11"/>'),
+    // a die: the seed decides the random draws
+    seeds: picture('<rect x="12" y="4" width="24" height="24" rx="4"/>' + FILLED(18, 10, 2) + FILLED(24, 16, 2) +
+      FILLED(30, 22, 2)),
+    // a chip: which one does the arithmetic
+    device: picture('<rect x="15" y="7" width="18" height="18" rx="2"/><rect x="20" y="12" width="8" height="8" rx="1"/>' +
+      '<path d="M19 3v4M24 3v4M29 3v4M19 25v4M24 25v4M29 25v4M11 11h4M11 16h4M11 21h4M33 11h4M33 16h4M33 21h4"/>'),
+    // the fraction times the ceiling: a scale in cycles
+    scale: picture('<rect x="4" y="12" width="40" height="10" rx="1.5"/><path d="M10 12v4M16 12v6M22 12v4M28 12v6M34 12v4M40 12v6"/>')
+  };
 
   var T;          // the helpers app.js hands over
   var root;       // the element the page is drawn into
@@ -150,6 +281,23 @@
   function sourceNote(source) {
     if (!source) { return ""; }
     return [sourceTag(source), source.text ? esc(source.text) : ""].filter(Boolean).join(" ");
+  }
+
+  // The words behind an i: first what the thing is for, one line of plain
+  // text per paragraph, then, under a thin line, where its value comes from
+  // (HTML from sourceNote), and last a "Read more" that opens the part of the
+  // documentation that explains it in a new tab. Any part may be missing. A
+  // line after the first that opens "Option words: ..." explains one option,
+  // and its option's words are set in the heavier weight, so the eye finds them.
+  function infoCard(about, source, more) {
+    var lines = about ? String(about).split("\n").filter(Boolean).map(function (line, i) {
+      var m = i > 0 && /^([^:]{1,48}): (.+)$/.exec(line);
+      return '<span class="pg-info-line">' + (m ? "<strong>" + esc(m[1]) + ":</strong> " + esc(m[2]) : esc(line)) +
+        "</span>";
+    }).join("") : "";
+    return lines + (source ? '<span class="pg-info-source">' + source + "</span>" : "") +
+      (more ? '<span class="pg-info-more"><a href="' + esc(more) + '" target="_blank" rel="noopener">Read more' +
+        NEXT + "</a></span>" : "");
   }
 
   function temporalName(value) {
@@ -481,7 +629,7 @@
   // Each returns the HTML of one control. `data` is the attribute string that
   // tells the page's one change listener what the control sets.
 
-  // A unit drawn beside the field, "cycles", is read out with it too.
+  // A unit drawn inside the field's box, "cycles", is read out with it too.
   function numberField(id, spec, value, data, unit) {
     var input = '<input class="field" type="number" id="' + id + '" min="' + spec.min + '" max="' + spec.max +
       '" step="' + (spec.step || 1) + '" value="' + esc(value) + '" ' + data +
@@ -566,27 +714,31 @@
     }).join("") + "</select>";
   }
 
-  // One setting: its name, with the i that says where it comes from, directly
-  // above its control, so the eye goes straight down from one to the other.
+  // One setting: its name, with the i that says what it is for, directly
+  // above its control, so the eye goes straight down from one to the other;
+  // a switch (spec.inline) has its name beside it instead, on the controls'
+  // line, as a switch has everywhere else.
   // Settings stand side by side in a grid of cells (.pg-fields); spec.size
-  // "wide" takes the grid's whole width, for a list of options, and "double"
-  // two cells.
+  // "wide" takes the grid's whole width, for a list of options.
   // Reset sits where it can appear without moving what the pointer is on:
   // beside a narrow cell's control, on a wide cell's first line beside its
   // name, or under a list its step's tab names, which has no name of its own.
   function cell(spec) {
-    var about = info(spec.hint, spec.label || "this setting");
+    var about = info(spec.hint, spec.label || spec.infoName || "this setting");
     var name = !spec.label ? "" : withInfo(spec.label, about, spec.id
       ? function (words, n) {
         return '<label for="' + spec.id + '"' + (n ? "" : ' id="' + spec.id + '-label"') + ">" + esc(words) + "</label>";
       }
       : function (words, n) { return '<span id="' + spec.key + (n ? "-label-end" : "-label") + '">' + esc(words) + "</span>"; });
+    var named = name || about ? '<span class="pg-field-name">' + (name || about) + "</span>" : "";
+    var inline = spec.inline && !!name;
     var top = spec.size === "wide" && !!name;
     var size = spec.size === "wide" && !name && !about ? "wide pg-field--bare" : spec.size;
     return '<div class="pg-field' + (size ? " pg-field--" + size : "") + '"' +
       (spec.key ? ' data-row="' + spec.key + '"' : "") + (spec.hidden ? " hidden" : "") + ">" +
-      '<div class="pg-field-label">' + (name || about) + (top ? spec.reset || "" : "") + "</div>" +
-      '<div class="pg-field-control">' + spec.control + (top ? "" : spec.reset || "") + "</div></div>";
+      '<div class="pg-field-label">' + (inline ? "" : named + (top ? spec.reset || "" : "")) + "</div>" +
+      '<div class="pg-field-control">' + spec.control + (inline ? named : "") + (top ? "" : spec.reset || "") +
+      "</div></div>";
   }
 
   function chip(kind, label) { return T.chip(kind, label); }
@@ -602,8 +754,10 @@
     // restore: what each part taken out of the pipeline was, so + puts that back.
     S = { tab: S.tab || "design", jobs: [], seen: {}, mine: {}, runs: null, selected: null, detail: null,
       restore: S.restore || {}, infos: 0, step: S.step || recall(STEP) || "data", zoom: S.zoom || null, zoomed: null,
-      compare: [], filter: { subset: "all", results: false, weights: false },
-      jobFilter: { kind: "all", status: "all" },
+      inside: null,
+      compare: [], resultsTab: S.resultsTab || "runs", page: { runs: 0, explanations: 0 }, explanations: null,
+      filter: { subset: "all", temporal: "all", graph: "all", pass: "all", state: "any", results: false, files: false },
+      xfilter: { method: "all", scope: "all", subset: "all", state: "any" },
       explain: { run: null, detail: null, seed: null, method: "shap", scope: "engine", engine: "",
         every: 1, shown: null, values: null, index: 0 } };
 
@@ -629,11 +783,9 @@
   function frame() {
     root.innerHTML = '<div class="pg"><h1 class="visually-hidden">Playground</h1>' +
       '<div id="pg-current" class="pg-current" aria-live="polite" hidden></div>' +
-      '<div class="pg-steps" role="tablist" aria-label="The three steps, and the jobs">' +
-      tabButton("design", 1, "Design a run") + tabButton("results", 2, "Results") + tabButton("explain", 3, "Explain") +
-      '<button type="button" role="tab" class="pg-step-tab pg-step-tab--aside" id="pg-step-tab-jobs" data-tab="jobs" ' +
-      'aria-controls="pg-panel">Jobs <span class="pg-jobs-badge" id="pg-jobs-badge"></span></button>' +
-      "</div>" +
+      '<div class="pg-steps" role="tablist" aria-label="The three steps">' +
+      tabButton("design", 1, "Design a run") + tabButton("results", 2, "Results", '<span class="pg-jobs-badge" ' +
+      'id="pg-jobs-badge"></span>') + tabButton("explain", 3, "Explain") + "</div>" +
       '<div id="pg-panel" class="pg-panel" role="tabpanel"></div></div>';
     // The same functions every time, so coming back to the page, which
     // draws into the same element, never adds a listener twice.
@@ -661,14 +813,15 @@
     if (event.target.closest(".pg-info")) { placeInfo(event.target); } else { unquiet(); }
   }
 
-  function tabButton(key, step, label) {
+  function tabButton(key, step, label, after) {
     return '<button type="button" role="tab" class="pg-step-tab" id="pg-step-tab-' + key + '" data-tab="' + key +
-      '" aria-controls="pg-panel"><span class="pg-step-n">' + step + "</span>" + label + "</button>";
+      '" aria-controls="pg-panel"><span class="pg-step-n">' + step + "</span>" + label + (after || "") + "</button>";
   }
 
   // One tab of the row is a stop for the Tab key, the chosen one; the arrow
   // keys move along the row, and the panel is named by its tab.
   function showTab(tab) {
+    if (tab === "jobs") { tab = "results"; }  // the old Jobs tab's jobs are rows of Results
     S.tab = tab;
     $all(".pg-step-tab").forEach(function (button) {
       var on = button.getAttribute("data-tab") === tab;
@@ -681,7 +834,6 @@
     paintBanner();
     if (tab === "design") { drawDesign(); }
     else if (tab === "results") { drawResults(); }
-    else if (tab === "jobs") { drawJobsTab(); }
     else { drawExplain(); }
   }
 
@@ -697,8 +849,11 @@
     // A procedure the settings only half follow is shown chosen, and choosing
     // it again, which fires no change, sets both of its settings.
     if (event.target.matches("input[data-procedure]")) { chooseProcedure(event.target.value); return; }
-    var target = event.target.closest("[data-tab], [data-action], [data-goto], [data-zoom], " +
-      "[data-step-tab], [data-reset], tr[data-run], tr[data-explanation]");
+    // A unit is drawn inside its field's box, and a click on it types in the field.
+    var unit = event.target.closest(".field-unit");
+    if (unit && !event.target.matches("input")) { unit.querySelector("input").focus(); return; }
+    var target = event.target.closest("[data-tab], [data-action], [data-goto], [data-zoom], [data-inside], " +
+      "[data-step-tab], [data-reset], [data-page], [data-results-tab], tr[data-run], tr[data-explanation]");
     if (!target || !root.contains(target)) { return; }
     if (target.hasAttribute("data-tab")) { showTab(target.getAttribute("data-tab")); return; }
     if (target.hasAttribute("data-goto")) {
@@ -706,6 +861,9 @@
       return;
     }
     if (target.hasAttribute("data-zoom")) { zoomTo(target.getAttribute("data-zoom")); return; }
+    if (target.hasAttribute("data-inside")) { openInside(target.getAttribute("data-inside")); return; }
+    if (target.hasAttribute("data-page")) { turnPage(target.getAttribute("data-page")); return; }
+    if (target.hasAttribute("data-results-tab")) { setResultsTab(target.getAttribute("data-results-tab")); return; }
     if (target.hasAttribute("data-step-tab")) { setStep(target.getAttribute("data-step-tab")); return; }
     if (target.hasAttribute("data-reset")) { resetField(target.getAttribute("data-reset")); return; }
     // The named action is looked for first. A button in the job list carries
@@ -775,7 +933,7 @@
     // The Explain tab has no run picker: another run is chosen in Results,
     // among the runs that kept their weights.
     "choose-run": function () {
-      S.selected = null; S.filter.weights = true; showTab("results");
+      S.selected = null; S.resultsTab = "runs"; S.filter.files = true; S.page.runs = 0; showTab("results");
     },
     "explain": function () { submitExplanation(); }
   };
@@ -792,19 +950,19 @@
       window.scrollTo({ top: y, behavior: "instant" });
       return;
     }
-    if (input.hasAttribute("data-filter")) {
-      var f = S.filter, which = input.getAttribute("data-filter");
-      f[which] = which === "subset" ? input.value : input.checked;
-      drawResults();
+    // A filter changed: the list goes back to its first page, and the
+    // focus stays on the filter.
+    if (input.hasAttribute("data-filter") || input.hasAttribute("data-xfilter")) {
+      var runs = input.hasAttribute("data-filter");
+      var f = runs ? S.filter : S.xfilter, which = input.getAttribute(runs ? "data-filter" : "data-xfilter");
+      f[which] = input.type === "checkbox" ? input.checked : input.value;
+      S.page[S.resultsTab] = 0;
+      drawResultsBody();
+      var again = $("#" + input.id);
+      if (again) { again.focus({ preventScroll: true }); }
       return;
     }
     if (input.hasAttribute("data-compare")) { compareTicked(input); return; }
-    if (input.hasAttribute("data-job-filter")) {
-      S.jobFilter[input.getAttribute("data-job-filter")] = input.value;
-      drawJobsTab();
-      paintBanner();
-      return;
-    }
     // Fig. 8 is drawn again with its controls, so the focus is put back on
     // the control that was changed.
     if (input.hasAttribute("data-pred-seed") || input.hasAttribute("data-pred-order")) {
@@ -839,6 +997,8 @@
       next.click();
       return;
     }
+    var row = event.target && event.target.matches && event.target.matches("tr[data-action]") ? event.target : null;
+    if (row && plain && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); row.click(); return; }
     if (event.key !== "Escape") { return; }
     // Words placed against the window have no offsetParent even while shown,
     // so what is drawn is asked instead.
@@ -869,10 +1029,10 @@
     var i = holder && (holder.classList.contains("pg-info") ? holder : holder.querySelector(".pg-info"));
     if (!i) { return; }
     var at = i.getBoundingClientRect();
-    var width = Math.min(320, window.innerWidth - 32);
+    var width = Math.min(360, window.innerWidth - 32);
     var left = Math.max(16, Math.min(at.left - 8, window.innerWidth - 16 - width));
     var body = i.querySelector(".pg-info-body");
-    var side = i.closest("#pg-pipeline");
+    var side = i.closest(".pg-pipeline-body");
     var loose = side && getComputedStyle(side).overflowY !== "visible";
     i.classList.toggle("is-loose", !!loose);
     if (!loose) {
@@ -904,15 +1064,19 @@
     }
   }
 
-  // The pipeline's i's that are showing follow their i when the pipeline or
-  // the page scrolls, and close once their i has scrolled out of the
-  // pipeline's view, rather than point at nothing.
+  // The pipeline's i's that are showing follow their i when the pipeline's
+  // body or the page scrolls, and close once their i has scrolled out of the
+  // body's view, rather than point at nothing. The body is drawn anew with
+  // every change of view, so its scrolling is caught on the way down, from
+  // the pipeline, which stays.
   function watchPipeline() {
     var box = $("#pg-pipeline");
     if (!box || box.__scrolls) { return; }
     box.__scrolls = true;
     var follow = function () {
-      var view = box.getBoundingClientRect();
+      var scroller = box.querySelector(".pg-pipeline-body");
+      if (!scroller) { return; }
+      var view = scroller.getBoundingClientRect();
       Array.prototype.forEach.call(box.querySelectorAll(".pg-info.is-loose"), function (i) {
         if (!i.querySelector(".pg-info-body").getClientRects().length) { return; }
         var at = i.getBoundingClientRect();
@@ -924,7 +1088,7 @@
         }
       });
     };
-    box.addEventListener("scroll", follow, { passive: true });
+    box.addEventListener("scroll", follow, { passive: true, capture: true });
     if (!window.__thesisPlaygroundScroll) {
       window.__thesisPlaygroundScroll = true;
       window.addEventListener("scroll", function () {
@@ -990,9 +1154,10 @@
   }
 
   function announceEnd(job) {
-    if (S.tab !== "jobs") { T.toast(statusWord(job.status) + ": " + job.label); }
+    if (!$('tr[data-job="' + job.id + '"]')) { T.toast(statusWord(job.status) + ": " + job.label); }
     if (job.status !== "done") { return; }
     S.runs = null;
+    S.explanations = null;
     if (S.tab === "results") { drawResults(); }
     if (S.tab === "explain" && job.kind === "explain") { S.explain.detail = null; drawExplain(); }
   }
@@ -1055,33 +1220,26 @@
     });
   }
 
-  function jobShown(job) {
-    var f = S.jobFilter;
-    var stateGroup = isLive(job) ? "live" : job.status === "done" ? "done" : job.status === "failed" ? "failed" : "stopped";
-    return (f.kind === "all" || job.kind === f.kind) && (f.status === "all" || stateGroup === f.status);
-  }
-
-  // The banner above the tabs shows the one job running now, and the Jobs
-  // tab's badge counts the jobs queued behind it. The Jobs tab holds
-  // everything, and is redrawn if it is open.
+  // The banner above the tabs shows the one job running now, and the
+  // Results tab's badge counts the jobs running or waiting, whose rows it
+  // lists; its rows follow the jobs while it is open.
   function drawJobs() {
+    paintResultJobs();
     paintBanner();
     var badge = $("#pg-jobs-badge");
     if (badge) {
-      var current = orderedJobs().filter(isLive)[0];
-      var waiting = S.jobs.filter(function (job) { return job.status === "queued" && job !== current; }).length;
-      badge.textContent = waiting ? count(waiting) : "";
-      badge.title = waiting ? plural(waiting, "job") + " waiting" : "";
+      var live = S.jobs.filter(isLive).length;
+      badge.textContent = live ? count(live) : "";
+      badge.title = live ? plural(live, "job") + " running or waiting" : "";
     }
-    if (S.tab === "jobs") { drawJobsTab(); }
   }
 
-  // Hidden while the Jobs tab is open with filters that list the same job.
+  // Hidden while the job's own row is on screen in Results.
   function paintBanner() {
     var box = $("#pg-current");
     if (!box) { return; }
     var current = orderedJobs().filter(isLive)[0];
-    var listed = current && S.tab === "jobs" && jobShown(current);
+    var listed = current && !!$('tr[data-job="' + current.id + '"]');
     box.hidden = !current || listed;
     box.className = "pg-current" + (current ? " pg-job--" + current.status : "");
     if (!current || listed) { box.innerHTML = ""; return; }
@@ -1103,51 +1261,6 @@
     return r.bottom > top && r.top < window.innerHeight;
   }
 
-  // The Jobs tab: every job this server ran and every one an earlier server
-  // left on disk, filtered by kind and by state, each removable once it has ended.
-  function drawJobsTab() {
-    var panel = $("#pg-panel");
-    if (!panel) { return; }
-    var f = S.jobFilter;
-    var all = orderedJobs();
-    var shown = all.filter(jobShown);
-    var ended = all.filter(function (job) { return !isLive(job); }).length;
-    panel.innerHTML =
-      '<div class="pg-toolbar">' +
-      segmented("pg-jf-kind", [{ value: "all", label: "Any kind" }, { value: "train", label: "Training runs" }, { value: "explain", label: "Explanations" }],
-        f.kind, 'data-job-filter="kind"') +
-      segmented("pg-jf-status", [{ value: "all", label: "Any state" }, { value: "live", label: "Running or queued" }, { value: "done", label: "Done" },
-        { value: "failed", label: "Failed" }, { value: "stopped", label: "Stopped or interrupted" }], f.status, 'data-job-filter="status"') +
-      (shown.length && shown.length < all.length ? '<span class="pg-faint">' + count(shown.length) + " of " + plural(all.length, "job") + "</span>" : "") +
-      (ended ? '<button type="button" class="button button--small" data-action="forget-finished">Remove ended jobs</button>' : "") +
-      "</div>" +
-      (shown.length ? '<div class="pg-jobs">' + shown.map(jobHtml).join("") + "</div>"
-        : '<div class="pg-empty">' + (all.length ? "No job matches these filters." : "No jobs yet.") + "</div>");
-  }
-
-  function jobHtml(job) {
-    var p = job.progress || {};
-    var open = "";
-    if (job.status === "done" && p.result) {
-      open = job.kind === "train"
-        ? '<button type="button" class="button button--small" data-action="open-run" data-run="' + esc(p.result.directory) + '">Open result</button>'
-        : '<button type="button" class="button button--small" data-action="open-explanation" data-run="' + esc(p.result.run) +
-          '" data-name="' + esc(p.result.directory) + '">Open explanation</button>';
-    }
-    var forget = !isLive(job)
-      ? '<button type="button" class="button button--small button--quiet" data-action="forget" data-id="' + esc(job.id) + '">Remove</button>' : "";
-    var line = jobLine(job);
-    return '<div class="pg-job pg-job--' + job.status + '">' +
-      '<div class="pg-job-main"><div class="pg-job-head">' + statusPill(job) +
-      "<strong>" + esc(job.label) + "</strong>" +
-      (job.created ? '<span class="pg-faint">' + whenSeconds(job.created) + "</span>" : "") +
-      (job.elapsed ? '<span class="pg-faint">' + duration(job.elapsed) + "</span>" : "") + "</div>" +
-      jobBar(job) + (line ? '<div class="pg-job-line">' + esc(line) + "</div>" : "") +
-      (job.log ? '<pre class="pg-log">' + esc(job.log) + "</pre>" : "") +
-      (job.command ? '<details class="pg-details"><summary>Command</summary><code class="pg-code">' + esc(job.command) + "</code></details>" : "") +
-      '</div><div class="pg-job-actions">' + open + stopButton(job) + forget + "</div></div>";
-  }
-
   // ---------------------------------------------------------------- design
 
   function fieldsOf(group) {
@@ -1160,16 +1273,23 @@
     return found ? found.label : "";
   }
 
-  // A group's step number: its place in the form, the sub-dataset being 1.
+  // The data are what goes into the pipeline, not one of its steps: they are
+  // drawn the way the remaining life that comes out is, and their tab carries
+  // their picture in place of a number. The steps are numbered from 1 after them.
+  var INPUT = "data";
+
   function stepOf(group) {
-    return S.options.groups.map(function (g) { return g.key; }).indexOf(group) + 1;
+    return S.options.groups.map(function (g) { return g.key; }).filter(function (k) { return k !== INPUT; })
+      .indexOf(group) + 1;
   }
 
   // A step's number, filled in while that step is the one being worked on.
   // The same step's number in the pipeline follows it.
   function stepNumber(group) {
-    return '<span class="pg-step-n pg-step-n--form' + (S.step === group ? " is-current" : "") + '" data-step="' + group +
-      '">' + stepOf(group) + "</span>";
+    var input = group === INPUT;
+    return '<span class="pg-step-n pg-step-n--form' + (input ? " pg-step-n--input" : "") +
+      (S.step === group ? " is-current" : "") + '" data-step="' + group + '">' + (input ? ICONS.data : stepOf(group)) +
+      "</span>";
   }
 
   // The step being worked on: its tab is chosen and its settings shown, its
@@ -1328,10 +1448,92 @@
 
   function panelHtml(g) {
     var on = g.key === S.step;
+    var body = '<div class="pg-sections">' + SECTIONS[g.key].map(function (section, i) {
+      return sectionHtml(section, i, g.key);
+    }).join("") + "</div>";
     return '<div class="pg-tabpanel' + (on ? " is-active" : "") + '" role="tabpanel" id="pg-tabpanel-' + g.key +
-      '" data-group="' + g.key + '" aria-labelledby="pg-tab-' + g.key + '"' + (on ? "" : " inert") +
-      '><div class="pg-fields">' + (g.key === "training" ? procedureHtml() : "") +
-      fieldsOf(g.key).map(fieldRow).join("") + "</div></div>";
+      '" data-group="' + g.key + '" aria-labelledby="pg-tab-' + g.key + '"' + (on ? "" : " inert") + ">" + body + "</div>";
+  }
+
+  // The settings of a box of the pipeline stand in groups named after the
+  // steps of the box's own flowchart that they decide, in the order those
+  // steps run, each with the step's picture: "Cap the labels" with the label
+  // ceiling and whether the test labels are capped, then "Smooth each
+  // sensor" with its weight, and so on. A group's name replaces the name of
+  // a list of options it holds alone, whose i then stands beside the group's
+  // name, and a switch that turns the whole step on or off stands before it.
+  // So no i ever stands without a name beside it. Training and Repeats have
+  // no box, and are grouped by subject in the same way.
+  var SECTIONS = {
+    data: [
+      { name: "Sub-dataset", picture: "file", fields: ["subset"] }
+    ],
+    preprocessing: [
+      { name: "Cap the labels", picture: "cap", fields: ["rul_max", "clip_test_labels"] },
+      { name: "Smooth each sensor", picture: "smooth", toggle: "smoothing", fields: ["smoothing_alpha"] },
+      { name: "Rescale each sensor", picture: "rescale", fields: ["normalization"] },
+      { name: "Cut into windows", picture: "window", fields: ["window_size", "window_stride"] }
+    ],
+    temporal: [
+      { name: "Temporal stage", picture: "window", fields: ["temporal"] },
+      { name: function () { return "One " + networkWord() + (S.settings.shared_across_sensors ? " for all sensors" : " per sensor"); },
+        picture: "recurrent", fields: ["temporal_hidden", "shared_across_sensors"] },
+      { name: function () { return "Turn into " + plural(Number(S.settings.temporal_out_features) || 1, "number") + " per sensor"; },
+        picture: "project", fields: ["temporal_out_features"] }
+    ],
+    graph: [
+      { name: "Sensor graph", picture: "graph", fields: ["graph"] },
+      { name: "Rescale the graph", picture: "table", fields: ["adjacency_normalization"] },
+      { name: "Graph layers", picture: "gcn", fields: ["gcn_hidden", "gcn_bias"] },
+      { name: "Fully connected", picture: "dense", fields: ["fc_hidden"] }
+    ],
+    training: [
+      { name: "Procedure", picture: "hold", procedure: true },
+      { name: "Passes", picture: "passes", fields: ["epochs", "batch_size"] },
+      { name: "Learning rate", picture: "rate", fields: ["learning_rate", "final_learning_rate", "lr_schedule"] }
+    ],
+    repeats: [
+      { name: "Seeds", picture: "seeds", fields: ["seed", "seeds", "fixed_split"] },
+      { name: "Device", picture: "device", fields: ["device"] }
+    ]
+  };
+
+  function sectionName(section) { return typeof section.name === "function" ? section.name() : section.name || ""; }
+
+  // One group: its picture, its switch if it has one, its name and i, then its settings.
+  function sectionHtml(section, index, group) {
+    var fields = (section.fields || []).map(function (key) { return S.fields[key]; });
+    var cells = function (named) {
+      return '<div class="pg-fields">' + (section.procedure ? procedureHtml(named) : "") +
+        fields.map(function (f) { return fieldRow(f, named); }).join("") + "</div>";
+    };
+    var name = sectionName(section);
+    if (!name) { return cells(null); }
+    var lone = section.procedure || (fields.length === 1 && fields[0].kind === "choice" && !MENU[fields[0].key]);
+    var toggle = section.toggle ? S.fields[section.toggle] : null;
+    var id = "pg-section-" + group + "-" + index;
+    var hidden = !toggle && fields.every(function (f) { return !visible(f.key); });
+    return '<section class="pg-section" data-section="' + group + "-" + index + '" aria-labelledby="' + id + '"' +
+      (hidden ? " hidden" : "") + '><div class="pg-section-head"' + (toggle ? ' data-row="' + toggle.key + '"' : "") + ">" +
+      '<span class="pg-section-picture">' + PICTURES[section.picture] + "</span>" +
+      (toggle ? switchControl("pg-" + toggle.key, !!S.settings[toggle.key],
+        'data-field="' + toggle.key + '" aria-labelledby="' + id + '"') : "") +
+      '<h3 class="pg-section-name pg-field-name"><span class="pg-section-label" id="' + id + '">' + esc(name) + "</span>" +
+      info(section.procedure ? infoCard(S.options.procedure_about, "", S.options.procedure_more)
+        : lone ? hintFor(fields[0]) : toggle ? hintFor(toggle) : "", name) + "</h3>" +
+      (toggle ? resetHtml(toggle) : "") + "</div>" + cells(lone ? id : null) + "</section>";
+  }
+
+  // A group is hidden while every setting in it is, and a group's name that
+  // follows the settings, "One GRU per sensor", follows them.
+  function paintSections() {
+    $all(".pg-section").forEach(function (box) {
+      var at = box.getAttribute("data-section").split("-"), section = SECTIONS[at[0]][Number(at[1])];
+      var cells = Array.prototype.slice.call(box.querySelectorAll(".pg-fields > .pg-field"));
+      box.hidden = !section.toggle && cells.length > 0 && cells.every(function (c) { return c.hidden; });
+      var label = box.querySelector(".pg-section-label"), name = sectionName(section);
+      if (label && label.textContent !== name) { label.textContent = name; }
+    });
   }
 
   // Every changed-setting dot, after settings moved.
@@ -1390,20 +1592,43 @@
       pipelineInner() + "</section>";
   }
 
+  // A heading, then a body that scrolls on its own beside the form, so the
+  // heading, and the way back from a step's flowchart, stay in view. Inside
+  // the temporal stage's flowchart one of its networks can be opened in turn
+  // (S.inside, a sensor's name, or "shared"); the way back then leads to the
+  // stage's flowchart.
   function pipelineInner() {
     if (!S.zoom) {
-      return '<h2 class="pg-block-title" id="pg-pipeline-title">Pipeline</h2>' +
-        '<div class="pg-flow" id="pg-flow" role="list">' + flowHtml() + "</div>";
+      return '<div class="pg-pipeline-head"><h2 class="pg-block-title" id="pg-pipeline-title">Pipeline</h2></div>' +
+        '<div class="pg-pipeline-body"><div class="pg-flow" id="pg-flow" role="list">' + flowHtml() + "</div></div>";
     }
-    return '<div class="pg-zoom-head">' +
+    var inside = insideOpen();
+    return '<div class="pg-pipeline-head pg-zoom-head">' +
       '<button type="button" class="button button--quiet button--small pg-zoom-back" data-action="unzoom" ' +
-      'aria-label="Back to the pipeline">' + BACK +
-      "Pipeline</button>" +
-      '<h2 class="pg-zoom-title" id="pg-pipeline-title" data-name="' + esc(boxName(S.zoom)) + '">' + stepNumber(S.zoom) +
-      esc(boxName(S.zoom)) + "</h2>" +
+      'aria-label="Back to the ' + (inside ? "temporal stage" : "pipeline") + '">' + BACK +
+      esc(inside ? boxName("temporal") : "Pipeline") + "</button>" +
+      '<h2 class="pg-zoom-title" id="pg-pipeline-title" data-name="' + esc(titleKey()) + '">' + zoomTitle() + "</h2>" +
       '<span class="pg-zoom-updating" id="pg-zoom-updating" role="status"></span></div>' +
-      '<div id="pg-zoom-body">' + zoomBody() + "</div>";
+      '<div class="pg-pipeline-body" id="pg-zoom-body">' + zoomBody() + "</div>";
   }
+
+  // Whether one of the temporal stage's networks is open.
+  function insideOpen() { return S.zoom === "temporal" && !!S.inside; }
+
+  // What the title shows, to tell when it must be written again.
+  function titleKey() { return boxName(S.zoom) + (insideOpen() ? " " + S.inside : ""); }
+
+  // The open box's picture, number and name, as its box shows them; the
+  // data, the pipeline's input, have no number. An open network is named by
+  // its sensor.
+  function zoomTitle() {
+    var name = boxName(S.zoom);
+    if (insideOpen()) { name = networkWord() + (S.inside === "shared" ? ", shared by all sensors" : " of " + S.inside); }
+    return '<span class="pg-zoom-icon">' + ICONS[S.zoom] + "</span>" + (S.zoom === INPUT ? "" : stepNumber(S.zoom)) +
+      esc(name);
+  }
+
+  function networkWord() { return S.settings.temporal === "gru" ? "GRU" : "LSTM"; }
 
   // What a box says the step is now: the sub-dataset, the stage, the layers.
   function boxName(group) {
@@ -1417,10 +1642,11 @@
     return groupLabel(group);
   }
 
-  // The data, preprocessing, the temporal stage when there is one, the graph
-  // layers, and what comes out. The graph layers cannot be taken out, and
-  // their cross says why instead of doing nothing silently; the sensor graph
-  // they run on is a step of their own flowchart, taken out there.
+  // The data that go in, drawn as words with their picture as the remaining
+  // life that comes out is, then preprocessing, the temporal stage when there
+  // is one, the graph layers, and what comes out. The graph layers cannot be
+  // taken out, and their cross says why instead of doing nothing silently;
+  // the sensor graph they run on is a step of their own flowchart, taken out there.
   function flowHtml() {
     var s = S.settings;
     var temporal = s.temporal === REMOVED.temporal
@@ -1428,26 +1654,32 @@
       : flowLink("") + stageBox("temporal", removeButton("temporal", "pg-stage-x")) + flowLink("");
     var fixedCross = '<button type="button" class="pg-stage-x" aria-disabled="true" title="' + GCN_FIXED + '" aria-label="' +
       GCN_FIXED + '">' + CROSS + "</button>";
-    return stageBox("data", "") + flowLink("") + stageBox("preprocessing", "") + temporal +
-      stageBox("graph", fixedCross) + '<div class="pg-flow-link pg-flow-out" aria-hidden="true"></div>' +
-      '<div class="pg-flow-end pg-flow-out" role="listitem">Remaining life</div>';
+    return '<div class="pg-flow-end pg-flow-in" role="listitem"><button type="button" class="pg-flow-input" data-zoom="' +
+      INPUT + '" aria-label="' + esc("Data: " + s.subset + ", its flowchart") + '"><span class="pg-flow-input-icon' +
+      (S.step === INPUT ? " is-current" : "") + '" data-step="' + INPUT + '">' + ICONS.data + "</span>" + esc(s.subset) +
+      "</button></div>" + flowLink("") + stageBox("preprocessing", "") + temporal + stageBox("graph", fixedCross) +
+      '<div class="pg-flow-link pg-flow-out" aria-hidden="true"></div>' +
+      '<div class="pg-flow-end pg-flow-out" role="listitem">' + ICONS.output + "Remaining life</div>";
   }
 
-  // One box: the number of its step and what the step is now, "3 LSTM"; its
-  // step's name is on the step's tab, and the box is read out with it.
-  // The whole box opens the step's flowchart; x is its cross.
+  // One box: its step's number in the top left corner, its picture, and
+  // under it what the step is now, "LSTM"; its step's name is on the step's
+  // tab, and the box is read out with both. The whole box opens the step's
+  // flowchart; x is its cross, in the top right corner.
   function stageBox(group, x) {
     var name = boxName(group);
-    return '<div class="pg-stage" role="listitem"><div class="pg-stage-top">' +
+    return '<div class="pg-stage" role="listitem">' +
       '<button type="button" class="pg-stage-main" data-zoom="' + group + '" aria-label="' +
-      esc((groupLabel(group) === name ? name : groupLabel(group) + ": " + name) + ", its flowchart") + '">' + stepNumber(group) +
-      '<span class="pg-stage-name">' + esc(name) + "</span></button>" + x + "</div></div>";
+      esc(stepOf(group) + ". " + (groupLabel(group) === name ? name : groupLabel(group) + ": " + name) + ", its flowchart") +
+      '">' + stepNumber(group) + '<span class="pg-stage-icon">' + ICONS[group] + "</span>" +
+      '<span class="pg-stage-name">' + esc(name) + "</span></button>" + x + "</div>";
   }
 
   // One step's own flowchart, as the server describes it from the code and
-  // the data: top to bottom, each step with its values, the shape of what it
-  // hands on and how many numbers it learns. The last answer stays on screen
-  // while a newer one is asked for.
+  // the data: top to bottom, each step with its picture, its values and how
+  // many numbers it learns, and on the arrows the shape of what passes. Or,
+  // with one of the temporal stage's networks open, that network from
+  // inside. The last answer stays on screen while a newer one is asked for.
   function zoomBody() {
     var d = S.zoomed;
     if (!d || d.stage !== S.zoom) { return '<div class="loading">Reading the step…</div>'; }
@@ -1455,38 +1687,185 @@
     // until the new one arrives: FD004's preprocessing takes several seconds.
     var stale = d.asked !== zoomKey();
     var note = d.note ? '<p class="pg-zoom-note">' + esc(d.note) + "</p>" : "";
-    var body = d.error ? errorBox(d.error) : '<ol class="pg-vflow">' + d.steps.map(vstepHtml).join("") + "</ol>";
+    var networks = d.steps && networksOf(d.steps);
+    var body = d.error ? errorBox(d.error) : insideOpen() && networks ? insideHtml(networks) : vflowHtml(d.steps);
     return '<div class="pg-zoom-steps' + (stale ? " is-stale" : "") + '">' + note + body + "</div>";
   }
 
   // The request an answer belongs to: the open step and every setting.
   function zoomKey() { return S.zoom + JSON.stringify(S.settings); }
 
-  // One step: its name, the values that decide it (each a link to its
-  // setting), the shape of what it hands on and how many numbers it learns.
-  // Steps that work side by side on the same input share one row.
-  function vstepHtml(step) {
-    if (step.kind === "edge") {
-      return '<li class="pg-vstep pg-vstep--edge"><span class="pg-vstep-name">' + esc(step.name) + "</span>" +
-        (step.shape ? '<code class="pg-vstep-shape">' + esc(step.shape) + "</code>" : "") + "</li>";
-    }
-    if (step.kind === "group") {
-      return '<li class="pg-vgroup">' + step.steps.map(function (s) {
-        return '<div class="pg-vstep pg-vstep--small">' + vstepInner(s) + "</div>";
-      }).join("") + "</li>";
-    }
-    return '<li class="pg-vstep">' + vstepInner(step) + "</li>";
+  // The temporal stage's networks, as the step that runs them describes them.
+  function networksOf(steps) {
+    return steps.filter(function (step) { return step.networks; }).map(function (step) { return step.networks; })[0] || null;
   }
 
-  function vstepInner(step) {
-    var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
-      '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
-    var words = [step.source ? sourceTag(step.source) : "", step.does ? esc(step.does) : ""].filter(Boolean).join(" ");
-    return '<span class="pg-vstep-name">' + esc(step.name) + info(words, step.name) + partControl(step) + "</span>" +
-      '<span class="pg-vstep-values">' + values + "</span>" +
-      '<code class="pg-vstep-shape">' + esc(step.shape || "") + "</code>" +
-      '<span class="pg-vstep-learned">' + (step.learned ? count(step.learned) + " learned" : "") + "</span>";
+  // The shape of what an item of a flowchart hands to the next one; a row
+  // of steps side by side names what the row hands on, and a branch ends in
+  // its own arrow, so names none.
+  function handedOn(item) { return item && item.kind !== "branch" ? item.shape || "" : ""; }
+
+  // Every item of a box's flowchart, each followed by the arrow to the next
+  // with the shape of what passes along it written on it: so each step reads
+  // from top to bottom as what comes in, what is done to it and what goes
+  // out, and every shape is written once. A branch, the sensor graph, is
+  // drawn beside the arrow before it, as a second input of the step after it.
+  function vflowHtml(steps) {
+    var items = [];
+    steps.forEach(function (item, i) {
+      if (item.kind === "branch") { return; }
+      var next = steps[i + 1], last = i === steps.length - 1;
+      var after = last ? "" : next && next.kind === "branch" ? joinHtml(handedOn(item), next) : arrowHtml(handedOn(item));
+      items.push('<li class="pg-vitem' + (item.kind === "edge" ? " pg-vitem--edge" : "") + '">' +
+        vbodyHtml(item, steps[i - 1], i === 0, last) + after + "</li>");
+    });
+    return '<ol class="pg-vflow">' + items.join("") + "</ol>";
   }
+
+  // An item itself. The words that open or close a flowchart stand with the
+  // picture of the box they come from or go to, as the overview draws its
+  // input and output; the opening words' shape goes on the arrow under them,
+  // and the closing words show their own only when it differs from the one
+  // on the arrow above them.
+  function vbodyHtml(item, before, first, last) {
+    if (item.kind === "edge") {
+      var own = item.shape && !(first && !last) && !(last && item.shape === handedOn(before));
+      return '<span class="pg-vedge">' + (ICONS[item.icon] || "") + "<span>" + esc(item.name) + "</span></span>" +
+        (own ? '<code class="pg-vshape">' + esc(item.shape) + "</code>" : "");
+    }
+    if (item.kind === "group") {
+      return '<div class="pg-vgroup">' + item.steps.map(function (s) { return vstepHtml(s, true); }).join("") + "</div>";
+    }
+    return vstepHtml(item, false);
+  }
+
+  // The arrow under an item, carrying the shape it hands on, if any.
+  function arrowHtml(shape, long) {
+    return '<div class="pg-varrow' + (long ? " pg-varrow--long" : "") + '">' + (shape ? '<span class="visually-hidden">' +
+      "hands on </span>" + '<code class="pg-vshape">' + esc(shape) + "</code>" : "") + "</div>";
+  }
+
+  // The main line runs straight down to the step after the branch, and the
+  // branch's steps stand beside it and end in an arrow into the same step.
+  function joinHtml(shape, branch) {
+    return '<div class="pg-vjoin"><div class="pg-vjoin-main">' + arrowHtml(shape, true) + "</div>" +
+      '<ol class="pg-vjoin-side">' + branch.steps.map(function (s) {
+        return '<li class="pg-vitem">' + vstepHtml(s, true) + arrowHtml(handedOn(s)) + "</li>";
+      }).join("") + "</ol></div>";
+  }
+
+  // One step: its picture, its name, the values that decide it (each a link
+  // to its setting) and how many numbers it learns, centred; what it does and
+  // where it comes from are behind its i. Steps side by side on one row
+  // (small) carry what they hand on inside, since no single arrow can. The
+  // step that runs the temporal stage's networks shows each of them.
+  function vstepHtml(step, small) {
+    var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
+      '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
+    var words = infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
+    var part = partControl(step);
+    return '<div class="pg-vstep' + (small ? " pg-vstep--small" : "") + (part ? " has-part" : "") + '">' +
+      (PICTURES[step.picture] ? '<span class="pg-vstep-picture">' + PICTURES[step.picture] + "</span>" : "") +
+      '<span class="pg-vstep-name">' + withInfo(step.name, info(words, step.name), function (w) { return esc(w); }) +
+      "</span>" + (values ? '<span class="pg-vstep-values">' + values + "</span>" : "") +
+      (step.networks ? networksHtml(step.networks) : "") +
+      (step.learned ? '<span class="pg-vstep-learned">' + count(step.learned) + " learned numbers</span>" : "") +
+      (small && step.shape ? '<code class="pg-vshape">' + esc(step.shape) + "</code>" : "") + part + "</div>";
+  }
+
+  // The recurrent networks, one per sensor, each a button that opens it; or
+  // the one network every sensor shares.
+  function networksHtml(n) {
+    var word = n.kind === "gru" ? "GRU" : "LSTM";
+    var names = n.shared ? ["shared"] : n.sensors;
+    return '<span class="pg-nets' + (n.shared ? " is-shared" : "") + '">' + names.map(function (sensor) {
+      var shown = sensor === "shared" ? "all sensors" : sensor;
+      return '<button type="button" class="pg-net" data-inside="' + esc(sensor) + '" aria-label="' +
+        esc(word + (sensor === "shared" ? " shared by all sensors" : " of " + sensor) + ", from inside") + '">' +
+        '<span class="pg-net-kind">' + word + "</span>" + esc(shown) + "</button>";
+    }).join("") + "</span>";
+  }
+
+  // One recurrent network from inside: what it takes in at every cycle, the
+  // gates that decide what it keeps, and what it gives out, drawn and then
+  // said in words, with the learned numbers of each gate from the built network.
+  function insideHtml(n) {
+    var lstm = n.kind !== "gru";
+    var who = S.inside === "shared" ? "each sensor in turn" : S.inside;
+    var carried = lstm ? "the two lists of " + count(n.hidden) + " numbers it carried from the cycle before, the " +
+      "hidden state and the memory," : "the list of " + count(n.hidden) + " numbers it carried from the cycle before, " +
+      "the hidden state,";
+    var gates = lstm ? [
+      ["Forget gate", "how much of the memory carried from the cycle before is kept"],
+      ["Input gate", "how much of the candidate is added to the memory"],
+      ["Candidate", "the new values that could be added, made from this cycle's reading and the hidden state"],
+      ["Output gate", "how much of the updated memory, squeezed between −1 and 1, is handed on as the new hidden state"]
+    ] : [
+      ["Reset gate", "how much of the hidden state is used in making the candidate"],
+      ["Update gate", "how much of the old hidden state is kept rather than replaced by the candidate"],
+      ["Candidate", "the new hidden state that could replace the old one, made from this cycle's reading and the hidden state"]
+    ];
+    return '<div class="pg-inside">' +
+      '<p class="pg-inside-lead">The same network runs ' + plural(n.window, "time") + ", once for each cycle of the " +
+      "window, oldest first. Each time it takes " + esc(who) + "'s reading at that cycle and " + carried +
+      " and gives out new ones.</p>" +
+      '<div class="pg-inside-drawing">' + (lstm ? LSTM_DRAWING : GRU_DRAWING) + "</div>" +
+      '<ul class="pg-inside-gates">' + gates.map(function (g) {
+        return "<li><strong>" + esc(g[0]) + ":</strong> " + esc(g[1]) + '. <span class="pg-faint">' +
+          count(n.per_gate) + " learned numbers</span></li>";
+      }).join("") + "</ul>" +
+      '<p class="pg-inside-foot">After the last cycle only the hidden state, ' + plural(n.hidden, "number") +
+      ", leaves the network. " + (n.shared ? "Every sensor's window runs through this one network, with the same " +
+        "learned numbers, and nothing in it says which sensor a window came from."
+        : "Each of the other " + count(n.sensors.length - 1) + " sensors has a network with the same parts and " +
+          "learned numbers of its own.") + " " + count(n.learned_each) + " learned numbers in all.</p></div>";
+  }
+
+  // The inside of an LSTM, the way it is usually drawn: the memory runs
+  // along the top from one cycle to the next; this cycle's reading and the
+  // hidden state feed four gates from below; the forget gate scales the
+  // memory, the input gate and the candidate add to it, and the output gate
+  // decides how much of it, squeezed, becomes the new hidden state.
+  var LSTM_DRAWING = '<svg viewBox="0 0 620 272" role="img" aria-label="The inside of an LSTM: the memory along the top, ' +
+    'four gates fed by the reading and the hidden state, and the new hidden state on the right">' +
+    '<g class="pg-draw-line"><path d="M16 48H604"/><path d="M16 214H500"/><path d="M60 262V214"/>' +
+    '<path d="M230 214V170M320 214V170M410 214V170M500 214V170"/><path d="M230 140V60"/>' +
+    '<path d="M320 140 L356 108M410 140 L374 108"/><path d="M365 88V60"/>' +
+    '<path d="M560 48V88M560 112V178"/><path d="M540 158 L552 181"/><path d="M560 202V216"/></g>' +
+    '<g class="pg-draw-box"><rect x="190" y="140" width="80" height="30" rx="6"/><rect x="280" y="140" width="80" ' +
+    'height="30" rx="6"/><rect x="370" y="140" width="80" height="30" rx="6"/><rect x="460" y="140" width="80" height="30" ' +
+    'rx="6"/><rect x="524" y="88" width="72" height="24" rx="6"/></g>' +
+    '<g class="pg-draw-op"><circle cx="230" cy="48" r="12"/><circle cx="365" cy="48" r="12"/><circle cx="365" cy="100" ' +
+    'r="12"/><circle cx="560" cy="190" r="12"/></g>' +
+    '<g class="pg-draw-sign"><text x="230" y="53">×</text><text x="365" y="53">+</text><text x="365" y="105">×</text>' +
+    '<text x="560" y="195">×</text></g>' +
+    '<g class="pg-draw-name"><text x="230" y="160">forget</text><text x="320" y="160">input</text>' +
+    '<text x="410" y="160">candidate</text><text x="500" y="160">output</text><text x="560" y="105">squeeze</text></g>' +
+    '<g class="pg-draw-note"><text x="16" y="34">memory, from the cycle before</text>' +
+    '<text x="604" y="34" text-anchor="end">memory, to the next cycle</text>' +
+    '<text x="100" y="234">hidden state, from the cycle before</text>' +
+    '<text x="68" y="266">the reading at this cycle</text>' +
+    '<text x="560" y="234" text-anchor="middle">new hidden state,</text>' +
+    '<text x="560" y="252" text-anchor="middle">to the next cycle</text></g></svg>';
+
+  // The inside of a GRU: one list, the hidden state, runs along the top; the
+  // reset gate decides how much of it the candidate is made from, and the
+  // update gate mixes the old hidden state with the candidate.
+  var GRU_DRAWING = '<svg viewBox="0 0 620 272" role="img" aria-label="The inside of a GRU: the hidden state along the top, ' +
+    'three gates fed by the reading and the hidden state, and the mix that makes the new hidden state">' +
+    '<g class="pg-draw-line"><path d="M16 48H604"/><path d="M16 214H450"/><path d="M60 262V214"/>' +
+    '<path d="M230 214V170M340 214V170M450 214V170"/><path d="M230 140V120H430V140"/><path d="M340 140 L465 58"/>' +
+    '<path d="M450 140V92L468 62"/></g>' +
+    '<g class="pg-draw-box"><rect x="190" y="140" width="80" height="30" rx="6"/><rect x="300" y="140" width="80" ' +
+    'height="30" rx="6"/><rect x="410" y="140" width="80" height="30" rx="6"/></g>' +
+    '<g class="pg-draw-op"><circle cx="480" cy="48" r="18"/></g>' +
+    '<g class="pg-draw-sign"><text x="480" y="53">mix</text></g>' +
+    '<g class="pg-draw-name"><text x="230" y="160">reset</text><text x="340" y="160">update</text>' +
+    '<text x="450" y="160">candidate</text></g>' +
+    '<g class="pg-draw-note"><text x="16" y="34">hidden state, from the cycle before</text>' +
+    '<text x="604" y="34" text-anchor="end">hidden state, to the next cycle</text>' +
+    '<text x="100" y="234">hidden state, from the cycle before</text>' +
+    '<text x="68" y="266">the reading at this cycle</text></g></svg>';
 
   // A value a setting decides leads to that setting, as the boxes of the
   // overview lead to their steps. A setting the form hides for these
@@ -1508,6 +1887,7 @@
   // so the step's settings are beside the drawing of what they decide.
   function zoomTo(group) {
     S.zoom = group;
+    S.inside = null;
     setStep(group);
     paintPipeline();
     requestZoom(true);
@@ -1515,9 +1895,31 @@
     if (back) { back.focus(); }
   }
 
-  // Back to the overview, with the focus on the box that was open, or, when
-  // that box has since been taken out, on the + that would put it back.
+  // One of the temporal stage's networks opened from inside, in the
+  // pipeline's place; the way back leads to the stage's flowchart.
+  function openInside(sensor) {
+    S.inside = sensor;
+    $("#pg-pipeline").__zoom = null;
+    paintPipeline();
+    var back = $(".pg-zoom-back");
+    if (back) { back.focus(); }
+  }
+
+  // Back one level: from a network to the stage's flowchart, with the focus
+  // on that network's button; from a flowchart to the overview, with the
+  // focus on the box that was open, or, when that box has since been taken
+  // out, on the + that would put it back.
   function unzoom() {
+    if (insideOpen()) {
+      var sensor = S.inside;
+      S.inside = null;
+      $("#pg-pipeline").__zoom = null;
+      paintPipeline();
+      var button = $('[data-inside="' + sensor + '"]');
+      if (button) { button.focus(); }
+      return;
+    }
+    S.inside = null;
     var was = S.zoom;
     clearTimeout(S.zoomTimer);
     S.zoom = null;
@@ -1640,9 +2042,9 @@
     var body = $("#pg-zoom-body");
     if (S.zoom && body && box.__zoom === S.zoom) {
       var title = $("#pg-pipeline-title");
-      if (title && title.getAttribute("data-name") !== boxName(S.zoom)) {
-        title.innerHTML = stepNumber(S.zoom) + esc(boxName(S.zoom));
-        title.setAttribute("data-name", boxName(S.zoom));
+      if (title && title.getAttribute("data-name") !== titleKey()) {
+        title.innerHTML = zoomTitle();
+        title.setAttribute("data-name", titleKey());
       }
       var steps = body.querySelector(".pg-zoom-steps");
       if (steps) { steps.classList.toggle("is-stale", !!S.zoomed && S.zoomed.asked !== zoomKey()); }
@@ -1662,14 +2064,17 @@
     paintStatus();
   }
 
-  // The overview stands in a row when its boxes fit, however long their
-  // names; else it first drops the output's words, then stands in a column.
-  // Measured, not guessed from the width, and again whenever the width moves.
+  // Beside the form the overview always stands in a column, top to bottom.
+  // Above it, the overview stands in a row when its boxes fit, however long
+  // their names; else it first drops the output's words, then stands in a
+  // column. Measured, not guessed from the width, and again whenever the
+  // width moves. Only the column beside the form is pinned (sticky).
   function fitFlow() {
     var box = $("#pg-pipeline"), flow = $("#pg-flow");
     if (!box) { return; }
     box.classList.remove("is-tight", "is-stacked");
     if (!flow) { return; }
+    if (getComputedStyle(box).position === "sticky") { box.classList.add("is-stacked"); }
     if (flow.scrollWidth > flow.clientWidth + 1) { box.classList.add("is-tight"); }
     if (flow.scrollWidth > flow.clientWidth + 1) { box.classList.add("is-stacked"); }
     if (!box.__watched && window.ResizeObserver) {
@@ -1690,7 +2095,7 @@
     if (!target) { return; }
     target.scrollIntoView({ block: "nearest" });
     var focus = (index !== null && index !== undefined && target.querySelector('input[data-index="' + index + '"]')) ||
-      target.querySelector("input:checked") || target.querySelector("input");
+      target.querySelector("input:checked") || target.querySelector("input, select");
     if (focus) { focus.focus({ preventScroll: true }); }
     // Taking the class off and reading the layout restarts the mark when the
     // same box is chosen again while it still shows.
@@ -1726,14 +2131,19 @@
   // it sets two, with the inputs only it controls set in under its options.
   // It is the only control for holding engines back, and moves what the LSTM
   // is worth (F-16).
-  function procedureHtml() {
-    var choices = S.options.procedures.map(function (p) { return { value: p.key, label: p.label, text: p.text }; });
+  // named: the id of the group's name that names the procedure in its place.
+  function procedureHtml(named) {
+    var choices = S.options.procedures.map(function (p) {
+      return { value: p.key, label: p.label, about: p.about, source: p.source, more: p.more };
+    });
     return cell({
-      key: "procedure", label: "Procedure", size: "wide",
-      control: optionList("pg-procedure", choices, chosenProcedure().key, "data-procedure",
-        function (c) { return esc(c.text); }, nameIds("procedure")) +
+      key: "procedure", label: named ? "" : "Procedure", size: "wide",
+      hint: named ? "" : infoCard(S.options.procedure_about, "", S.options.procedure_more),
+      control: optionList("pg-procedure", choices, chosenProcedure().key, "data-procedure", optionNote,
+        named || nameIds("procedure")) +
         '<div class="pg-fields pg-fields--sub">' +
-        fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; }).map(fieldRow).join("") + "</div>",
+        fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; })
+          .map(function (f) { return fieldRow(f); }).join("") + "</div>",
       reset: procedureReset()
     });
   }
@@ -1746,40 +2156,47 @@
       : "") + "</span>";
   }
 
-  // The words under a setting's name: where its default comes from and, for
-  // the sub-dataset, what Table 5 says the chosen one holds.
+  // The words behind a setting's i: what it is for and, for the sub-dataset,
+  // what Table 5 says the chosen one holds; then where its default comes from.
   function hintFor(f) {
-    var parts = [sourceNote(f.source)];
+    var about = [f.about];
     if (f.key === "subset") {
       var t5 = (S.options.dataset || {})[S.settings.subset];
       if (t5) {
-        parts.push(count(t5.train_engines) + " training and " + count(t5.test_engines) + " test engines, " +
-          plural(t5.conditions, "operating condition") + ", " + plural(t5.fault_modes, "fault mode"));
+        about.push(S.settings.subset + ": " + count(t5.train_engines) + " training and " + count(t5.test_engines) +
+          " test engines, " + plural(t5.conditions, "operating condition") + ", " + plural(t5.fault_modes, "fault mode") + ".");
       }
     }
-    return parts.filter(Boolean).join(" ");
+    return infoCard(about.filter(Boolean).join("\n"), sourceNote(f.source), f.more);
   }
 
-  function fieldRow(f) {
+  // The words behind one option's i, when the option has any of its own.
+  function optionNote(c) { return c.about || c.source ? infoCard(c.about, sourceNote(c.source), c.more) : ""; }
+
+  // named: the id of the group's name that names this setting in its place.
+  function fieldRow(f, named) {
     var value = S.settings[f.key];
     var id = "pg-" + f.key;
     var data = 'data-field="' + f.key + '"';
     var parts = splitUnit(f.label);
-    // A list of options whose name is its step's name is labelled by the step's tab.
-    var bare = f.kind === "choice" && !SEGMENTED[f.key] && f.label === groupLabel(f.group);
+    // A list of options whose name is its step's name is labelled by the
+    // step's tab, and one alone in a group by the group's name.
+    var byTab = f.kind === "choice" && !SEGMENTED[f.key] && f.label === groupLabel(f.group);
+    var bare = byTab || !!named;
     var size = "", control;
     if (f.kind === "bool") {
       control = switchControl(id, !!value, data);
     } else if (f.kind === "choice" && SEGMENTED[f.key]) {
-      control = segmented(id, f.choices, value, data, nameIds(f.key));
+      control = segmented(id, f.choices, value, data, named || nameIds(f.key));
       id = null;
+    } else if (f.kind === "choice" && MENU[f.key]) {
+      control = selectField(id, f.choices, value, data);
     } else if (f.kind === "choice") {
       size = "wide";
-      control = optionList(id, f.choices, value, data, function (c) { return sourceNote(c.source); },
-        bare ? "pg-tab-name-" + f.group : nameIds(f.key));
+      control = optionList(id, f.choices, value, data, optionNote,
+        named || (byTab ? "pg-tab-name-" + f.group : nameIds(f.key)));
       id = null;
     } else if (f.kind === "widths") {
-      size = "double";
       control = '<div class="pg-widths">' + value.map(function (w, i) {
         return "<label><span>GCN-" + (i + 1) + '</span><input class="field" type="number" min="' + f.min + '" max="' + f.max +
           '" step="1" value="' + w + '" ' + data + ' data-index="' + i + '"></label>';
@@ -1788,10 +2205,13 @@
     } else {
       control = numberField(id, f, value, data, parts.unit);
     }
+    // A list its step's tab names has no name of its own, so its i, saying
+    // what the step is for, stands alone above its options; a list a group
+    // names has its i beside the group's name.
     return cell({
-      key: f.key, id: id, label: bare ? "" : parts.label, hidden: !visible(f.key),
-      size: f.group === "data" ? "wide" : size,
-      hint: hintFor(f),
+      key: f.key, id: id, label: bare ? "" : parts.label, infoName: f.label, hidden: !visible(f.key),
+      size: f.group === "data" ? "wide" : size, inline: f.kind === "bool",
+      hint: named ? "" : hintFor(f),
       control: control,
       reset: resetHtml(f)
     });
@@ -1878,6 +2298,7 @@
       if (box) { box.hidden = !visible(other.key); }
     });
     paintProcedure();
+    paintSections();
     paintPipeline();
     requestZoom(false);
     paintTabs();
@@ -1892,7 +2313,7 @@
     Array.prototype.forEach.call(box.querySelectorAll(".opt"), function (option) {
       option.classList.toggle("is-active", option.querySelector("input").checked);
     });
-    var words = box.querySelector(".pg-field-label .pg-info-card");
+    var words = box.querySelector(".pg-field-name .pg-info-card");
     var hint = hintFor(f);
     if (words && words.getAttribute("data-hint") !== hint) {
       words.innerHTML = hint.replace(/<a /g, '<a tabindex="-1" ');
@@ -2025,41 +2446,218 @@
   }
 
   // --------------------------------------------------------------- results
+  // One tab for everything that has been run, with a tab inside it for the
+  // training runs and one for the explanations. A job that has not finished,
+  // or that failed or was stopped, is a row of its own table with its state,
+  // at the top; a finished one is its stored run or explanation. Ten rows a
+  // page, as wide as the page, filtered by what the runs are.
 
   var DIRTY = "-dirty: uncommitted changes, so no committed state reproduces this run";
+  var PAGE_ROWS = 10;
+  var RESULTS_TABS = [["runs", "Training runs", "train"], ["explanations", "Explanations", "explain"]];
 
   function loadRuns() {
     if (S.runs) { return Promise.resolve(S.runs); }
     return T.get("/api/playground/runs").then(function (data) { S.runs = data.runs; return S.runs; });
   }
 
-  // The list of stored runs, or, once one is chosen, that run on its own with
-  // a way back to the list.
+  function loadExplanations() {
+    if (S.explanations) { return Promise.resolve(S.explanations); }
+    return T.get("/api/playground/explanations").then(function (data) {
+      S.explanations = data.explanations;
+      return S.explanations;
+    });
+  }
+
+  function setResultsTab(which) {
+    S.resultsTab = which;
+    S.selected = null;
+    drawResults();
+    var tab = $('[data-results-tab="' + which + '"]');
+    if (tab) { tab.focus(); }
+  }
+
+  // The kind of job a tab of Results lists.
+  function tabKind(which) { return RESULTS_TABS.filter(function (t) { return t[0] === which; })[0][2]; }
+
+  // The list, or, once a run is chosen, that run on its own with a way back.
   function drawResults() {
     var panel = $("#pg-panel");
-    panel.innerHTML = '<div class="loading">Reading reports/…</div>';
-    loadRuns().then(function (runs) {
-      if (S.tab !== "results") { return; }
-      if (S.selected) { drawDetail(); return; }
-      var f = S.filter;
-      var shown = runs.filter(function (r) {
-        return (f.subset === "all" || r.subset === f.subset) && (!f.results || !r.exploratory) && (!f.weights || r.has_weights);
-      });
-      // The count is said only when a filter hides some runs and shows some.
-      var counted = shown.length && shown.length < runs.length ? count(shown.length) + " of " + plural(runs.length, "run") + " · " : "";
-      panel.innerHTML =
-        // The four sub-datasets need no name on screen, but a screen reader needs one.
-        '<div class="pg-toolbar"><span class="visually-hidden" id="pg-f-subset-label">Sub-dataset</span>' +
-        segmented("pg-f-subset", [{ value: "all", label: "All" }].concat(SUBSETS.map(function (s) { return { value: s, label: s }; })),
-          f.subset, 'data-filter="subset"', "pg-f-subset-label") +
-        "<label>" + switchControl("pg-f-results", f.results, 'data-filter="results"') + "Five seeds or more</label>" +
-        "<label>" + switchControl("pg-f-weights", f.weights, 'data-filter="weights"') + "Kept their weights</label>" +
-        (shown.length ? '<span class="pg-faint">' + counted + "click a row to open it</span>" : "") + "</div>" +
-        '<div id="pg-compare"></div>' +
-        (shown.length ? runsTable(shown) : '<div class="pg-empty">No stored run matches these filters.</div>');
-      drawComparison();
+    if (S.selected) {
+      panel.innerHTML = '<div class="loading">Reading reports/…</div>';
+      loadRuns().then(function () { if (S.tab === "results") { drawDetail(); } })
+        .catch(function (error) { panel.innerHTML = errorBox(error.message); });
+      return;
+    }
+    panel.innerHTML = '<div class="pg-results">' + resultsTabsHtml() +
+      '<div class="pg-tabpanel-results" role="tabpanel" aria-labelledby="pg-results-tab-' + S.resultsTab + '" ' +
+      'id="pg-results-body"><div class="loading">Reading reports/…</div></div></div>';
+    (S.resultsTab === "explanations" ? loadExplanations() : loadRuns()).then(function () {
+      if (S.tab === "results" && !S.selected) { drawResultsBody(); }
     }).catch(function (error) {
-      panel.innerHTML = errorBox(error.message);
+      var body = $("#pg-results-body");
+      if (body) { body.innerHTML = errorBox(error.message); }
+    });
+  }
+
+  // The two tabs, each with the number of its jobs running or waiting.
+  function resultsTabsHtml() {
+    return '<div class="pg-subtabs" role="tablist" aria-label="What was run">' + RESULTS_TABS.map(function (t) {
+      var on = S.resultsTab === t[0];
+      var live = S.jobs.filter(function (job) { return job.kind === t[2] && isLive(job); }).length;
+      return '<button type="button" role="tab" class="pg-subtab" id="pg-results-tab-' + t[0] + '" data-results-tab="' +
+        t[0] + '" aria-selected="' + on + '" tabindex="' + (on ? 0 : -1) + '">' + t[1] +
+        (live ? ' <span class="pg-jobs-badge" title="' + esc(plural(live, "job") + " running or waiting") + '">' +
+          count(live) + "</span>" : "") + "</button>";
+    }).join("") + "</div>";
+  }
+
+  // The rows of the open tab after its filters: its jobs that are not done,
+  // what is running first, then its stored runs or explanations.
+  function resultRows() {
+    var which = S.resultsTab, kind = tabKind(which);
+    var f = which === "runs" ? S.filter : S.xfilter;
+    var jobs = orderedJobs().filter(function (job) {
+      if (job.kind !== kind || job.status === "done") { return false; }
+      var state = isLive(job) ? "live" : "ended";
+      return f.state === "any" || f.state === state;
+    }).map(function (job) { return { job: job }; });
+    var stored = f.state === "any" || f.state === "done" ? (which === "runs" ? S.runs : S.explanations) || [] : [];
+    stored = stored.filter(which === "runs" ? runShown : explanationShown).map(function (item) { return { item: item }; });
+    return jobs.concat(stored);
+  }
+
+  function runShown(r) {
+    var f = S.filter;
+    return (f.subset === "all" || r.subset === f.subset) && (f.temporal === "all" || r.temporal === f.temporal) &&
+      (f.graph === "all" || r.graph === f.graph) &&
+      (f.pass === "all" || (f.pass === "final") === (r.reported_weights === "final_epoch")) &&
+      (!f.results || !r.exploratory) && (!f.files || r.has_weights);
+  }
+
+  function explanationShown(x) {
+    var f = S.xfilter;
+    return (f.method === "all" || x.method === f.method) && (f.scope === "all" || x.scope === f.scope) &&
+      (f.subset === "all" || x.run_subset === f.subset);
+  }
+
+  // The filters, the comparison of two ticked runs, one page of rows and the
+  // way to the next.
+  function drawResultsBody() {
+    var body = $("#pg-results-body");
+    if (!body) { return; }
+    var which = S.resultsTab;
+    var rows = resultRows();
+    var pages = Math.max(1, Math.ceil(rows.length / PAGE_ROWS));
+    S.page[which] = Math.min(S.page[which] || 0, pages - 1);
+    var first = S.page[which] * PAGE_ROWS;
+    var shown = rows.slice(first, first + PAGE_ROWS);
+    var none = which === "runs" ? "No run matches these filters." : "No explanation matches these filters.";
+    body.innerHTML = '<div class="pg-filters">' + (which === "runs" ? runFilters() : explanationFilters()) + "</div>" +
+      (which === "runs" ? '<div id="pg-compare"></div>' : "") +
+      (shown.length ? (which === "runs" ? runsTable(shown) : explanationsList(shown)) +
+        pagerHtml(first, shown.length, rows.length) : '<div class="pg-empty">' + none + "</div>");
+    S.jobRows = jobSignature();
+    if (which === "runs") { drawComparison(); }
+    paintBanner();
+  }
+
+  // A filter: a name above a menu of choices, "All" first.
+  function filterSelect(name, key, attr, choices, current) {
+    var id = "pg-" + attr + "-" + key;
+    return '<label class="pg-filter" for="' + id + '"><span>' + name + "</span>" +
+      selectField(id, [{ value: "all", label: "All" }].concat(choices), current, attr + '="' + key + '"') + "</label>";
+  }
+
+  // The values a list holds for one key, in the words of the form.
+  function present(list, key, words) {
+    var seen = {};
+    list.forEach(function (item) { if (item[key] !== null && item[key] !== undefined) { seen[item[key]] = true; } });
+    return Object.keys(seen).sort().map(function (v) { return { value: v, label: words(v) }; });
+  }
+
+  function stateFilter(attr, current) {
+    return filterSelect("State", "state", attr, [{ value: "done", label: "Finished" },
+      { value: "live", label: "Running or waiting" }, { value: "ended", label: "Failed or stopped" }], current);
+  }
+
+  function runFilters() {
+    var f = S.filter, runs = S.runs || [];
+    var graphWords = function (v) { return (S.fields.graph.choices.filter(function (c) { return c.value === v; })[0] || { label: v }).label; };
+    return filterSelect("Sub-dataset", "subset", "data-filter", SUBSETS.map(function (s) { return { value: s, label: s }; }), f.subset) +
+      filterSelect("Temporal stage", "temporal", "data-filter", present(runs, "temporal", temporalName), f.temporal) +
+      filterSelect("Sensor graph", "graph", "data-filter", present(runs, "graph", graphWords), f.graph) +
+      filterSelect("Weights from", "pass", "data-filter", [{ value: "best", label: "The best pass" },
+        { value: "final", label: "The final pass" }], f.pass) +
+      stateFilter("data-filter", f.state) +
+      '<label class="pg-filter pg-filter--switch">' + switchControl("pg-f-results", f.results, 'data-filter="results"') +
+      "Five seeds or more</label>" +
+      '<label class="pg-filter pg-filter--switch">' + switchControl("pg-f-files", f.files, 'data-filter="files"') +
+      "Kept their weights</label>";
+  }
+
+  function explanationFilters() {
+    var f = S.xfilter;
+    return filterSelect("Method", "method", "data-xfilter", [{ value: "shap", label: METHODS.shap },
+      { value: "occlusion", label: METHODS.occlusion }], f.method) +
+      filterSelect("What", "scope", "data-xfilter", [{ value: "engine", label: "One engine, at every cycle" },
+        { value: "test", label: "The last window of every test engine" }], f.scope) +
+      filterSelect("Sub-dataset", "subset", "data-xfilter", SUBSETS.map(function (s) { return { value: s, label: s }; }), f.subset) +
+      stateFilter("data-xfilter", f.state);
+  }
+
+  // "11–20 of 34", between the ways to the page before and the page after.
+  function pagerHtml(first, shown, total) {
+    if (total <= PAGE_ROWS) { return ""; }
+    var which = S.resultsTab;
+    return '<nav class="pg-pager" aria-label="Pages">' +
+      '<button type="button" class="button button--small" data-page="prev"' + (first === 0 ? " disabled" : "") + ">" +
+      BACK + "Previous</button><span>" + count(first + 1) + "–" + count(first + shown) + " of " + count(total) + "</span>" +
+      '<button type="button" class="button button--small" data-page="next"' + (first + shown >= total ? " disabled" : "") +
+      ">Next" + NEXT + "</button></nav>";
+  }
+
+  function turnPage(way) {
+    S.page[S.resultsTab] = (S.page[S.resultsTab] || 0) + (way === "next" ? 1 : -1);
+    drawResultsBody();
+    var list = $("#pg-results-body");
+    if (list && list.getBoundingClientRect().top < 0) { list.scrollIntoView({ block: "start" }); }
+  }
+
+  // A job's row: its state, its name, its bar and what is happening now, or
+  // its last lines when it failed, and what can be done with it.
+  function jobRow(job, columns) {
+    var line = jobLine(job);
+    var forget = !isLive(job)
+      ? '<button type="button" class="button button--small button--quiet" data-action="forget" data-id="' + esc(job.id) + '">Remove</button>' : "";
+    return '<tr class="pg-jobrow pg-job--' + job.status + '" data-job="' + esc(job.id) + '"><td>' + statusPill(job) + "</td>" +
+      '<td colspan="' + (columns - 2) + '"><div class="pg-job-head"><strong>' + esc(job.label) + "</strong>" +
+      (job.elapsed ? '<span class="pg-faint">' + duration(job.elapsed) + "</span>" : "") + "</div>" +
+      '<div class="pg-job-live">' + jobBar(job) + (line ? '<div class="pg-job-line">' + esc(line) + "</div>" : "") + "</div>" +
+      (job.log ? '<details class="pg-details"><summary>Last lines it printed</summary><pre class="pg-log">' + esc(job.log) +
+        "</pre></details>" : "") +
+      '</td><td class="pg-jobrow-actions">' + stopButton(job) + forget + "</td></tr>";
+  }
+
+  // What the job rows show, to tell a poll that changes only a bar from one
+  // that adds, removes or ends a job.
+  function jobSignature() {
+    return S.jobs.map(function (job) { return job.id + ":" + job.status + ":" + (job.log ? 1 : 0); }).join(",");
+  }
+
+  // After a poll, with Results open: the rows are drawn again when a job
+  // came, went or changed state; otherwise only their bars and lines move.
+  function paintResultJobs() {
+    if (S.tab !== "results" || S.selected || !$("#pg-results-body")) { return; }
+    var tabs = $(".pg-subtabs");
+    if (tabs) { tabs.outerHTML = resultsTabsHtml(); }
+    if (S.jobRows !== jobSignature()) { drawResultsBody(); return; }
+    S.jobs.forEach(function (job) {
+      var live = $('tr[data-job="' + job.id + '"] .pg-job-live');
+      if (live) {
+        var line = jobLine(job);
+        live.innerHTML = jobBar(job) + (line ? '<div class="pg-job-line">' + esc(line) + "</div>" : "");
+      }
     });
   }
 
@@ -2071,10 +2669,11 @@
   // One row per run. The sub-dataset has a column only while the list holds
   // more than one; ticked rows are marked, and a commit with uncommitted
   // changes is coloured, its meaning given once on the column's head.
-  function runsTable(runs) {
+  function runsTable(rows) {
     var subsets = {};
-    runs.forEach(function (r) { subsets[r.subset] = true; });
+    rows.forEach(function (row) { if (row.item) { subsets[row.item.subset] = true; } });
     var showData = S.filter.subset === "all" && Object.keys(subsets).length > 1;
+    var columns = 9 + (showData ? 1 : 0);
     // The result comes straight after when the run finished, so a phone
     // shows it without scrolling the table; the settings that produced it
     // follow, and the commit, which a narrow panel leaves out, comes last.
@@ -2083,8 +2682,9 @@
       '<th>Finished, UTC</th><th class="num">RMSE</th><th class="num">Paper</th>' + (showData ? "<th>Data</th>" : "") +
       '<th>Temporal stage</th><th>Graph</th><th>Seeds</th><th>Weights</th>' +
       '<th class="col-commit" title="' + esc(DIRTY) + '">Commit</th></tr></thead><tbody>' +
-      runs.map(function (r) {
-        var m = r.mean || {}, sd = r.std || {};
+      rows.map(function (row) {
+        if (row.job) { return jobRow(row.job, columns); }
+        var r = row.item, m = r.mean || {}, sd = r.std || {};
         var ticked = S.compare.indexOf(r.name) >= 0;
         return '<tr data-run="' + esc(r.name) + '"' + (ticked ? ' class="is-selected"' : "") + '><td class="pg-tick-cell"><label>' +
           '<input type="checkbox" data-compare="' + esc(r.name) + '"' + (ticked ? " checked" : "") +
@@ -2098,6 +2698,24 @@
           "<td>" + (r.reported_weights === "final_epoch" ? "final pass" : "best pass") +
           (r.has_weights ? ' <span class="chip chip--good">files</span>' : "") + "</td>" +
           '<td class="col-commit"><code class="pg-commit' + (r.dirty ? " pg-commit--dirty" : "") + '">' + esc(r.commit) + "</code></td></tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+
+  // One row per explanation, newest first, with the run it explains; a row
+  // opens the explanation in the Explain tab.
+  function explanationsList(rows) {
+    var columns = 7;
+    return '<div class="pg-runs"><table class="data-table"><thead><tr><th>Finished, UTC</th><th>Method</th><th>What</th>' +
+      '<th>Seed</th><th class="num">Windows</th><th>Data</th><th>Run</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        if (row.job) { return jobRow(row.job, columns); }
+        var x = row.item;
+        return '<tr data-action="open-explanation" data-run="' + esc(x.run) + '" data-name="' + esc(x.name) + '" tabindex="0">' +
+          '<td title="' + esc(when(x.finished_utc)) + '">' + whenShort(x.finished_utc) + "</td><td>" +
+          esc(METHODS[x.method] || x.method) + "</td><td>" + esc(explainedWhat(x)) + "</td><td>" + esc(x.seed) + "</td>" +
+          '<td class="num">' + count(x.windows) + "</td><td>" + esc(x.run_subset || "") + "</td><td>" +
+          esc([stageName(x.run_temporal, x.run_temporal_hidden), graphName(x.run_graph)].filter(Boolean).join(" · ")) +
+          ' <span class="pg-faint">' + esc(whenShort(x.run_finished)) + "</span></td></tr>";
       }).join("") + "</tbody></table></div>";
   }
 
@@ -2356,27 +2974,31 @@
           control: selectField("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"') })) +
       cell({ key: "pg-e-method", label: "Method", size: "wide",
         control: optionList("pg-e-method", [
-          { value: "shap", label: METHODS.shap, note: sourceTag({ kind: "paper", ref: "Eq. 14–15" }) +
+          { value: "shap", label: METHODS.shap, about: EXPLAIN_ABOUT.shap, note: sourceTag({ kind: "paper", ref: "Eq. 14–15" }) +
             " every one of the " + count(16384) + " subsets of sensors, for every window. An absent sensor is replaced by its average training window (" + refLink("A-20") + ")." },
-          { value: "occlusion", label: "Occlusion, one sensor at a time", note: sourceTag({ kind: "extension" }) +
+          { value: "occlusion", label: "Occlusion, one sensor at a time", about: EXPLAIN_ABOUT.occlusion, note: sourceTag({ kind: "extension" }) +
             " 15 evaluations per window. The Shapley term in which the sensor arrives last; the two agree only when sensors do not interact." }
-        ], e.method, 'data-explain="method"', function (c) { return c.note; }, nameIds("pg-e-method")) }) +
+        ], e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) }) +
       cell({ key: "pg-e-scope", label: "What is explained", size: "wide",
         control: optionList("pg-e-scope", [
-          { value: "engine", label: "One engine, at every cycle", note: sourceTag({ kind: "paper", ref: "Section 4.4" }) +
+          { value: "engine", label: "One engine, at every cycle", about: EXPLAIN_ABOUT.engine, note: sourceTag({ kind: "paper", ref: "Section 4.4" }) +
             " the dynamic explanation of Table 12 and Fig. 10. The test set keeps only each engine's last window, so the engine comes from the held-back engines, or the training engines when none were held back." },
-          { value: "test", label: "The last window of every test engine", note: sourceTag({ kind: "extension" }) +
+          { value: "test", label: "The last window of every test engine", about: EXPLAIN_ABOUT.test, note: sourceTag({ kind: "extension" }) +
             " one explanation per test engine, for a ranking across engines." }
-        ], e.scope, 'data-explain="scope"', function (c) { return c.note; }, nameIds("pg-e-scope")) }) +
+        ], e.scope, 'data-explain="scope"', explainNote, nameIds("pg-e-scope")) }) +
       cell({ id: "pg-e-engine", key: "pg-e-engine-row", label: "Engine number", hidden: !forEngine,
-        hint: "Blank: the engine with the longest history.",
+        hint: infoCard("Blank: the engine with the longest history.", "", S.options.explain_more.engine),
         control: '<input class="field" type="number" id="pg-e-engine" min="1" value="' + esc(e.engine) + '" data-explain="engine">' }) +
       cell({ id: "pg-e-every", key: "pg-e-every-row", label: "Explain every n-th window", hidden: !forEngine,
-        hint: "Larger is quicker and coarser.",
+        hint: infoCard("Larger is quicker and coarser.", "", S.options.explain_more.every),
         control: '<input class="field" type="number" id="pg-e-every" min="1" max="100" value="' + e.every + '" data-explain="every">' }) +
       cell({ control: '<button type="button" class="button button--primary" data-action="explain">Explain</button>' }) +
       "</div></section>";
   }
+
+  // An Explain option's i: what it does in plain words, then its source and
+  // the technical detail under the line.
+  function explainNote(c) { return infoCard(c.about, c.note, S.options.explain_more[c.value]); }
 
   // What one stored explanation covers, in the page's words: "held-back engine 5, one window in 20".
   function explainedWhat(x) {

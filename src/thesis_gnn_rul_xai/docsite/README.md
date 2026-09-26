@@ -315,11 +315,10 @@ where to look.
 
 ---
 
-## The playground: design, results, explain, jobs
+## The playground: design, results, explain
 
 The page at `#/explore/playground` is where the parts of the method can be
-swapped and the effect seen. It has three tabs, in the order the work happens,
-and a fourth for the jobs:
+swapped and the effect seen. It has three tabs, in the order the work happens:
 
 1. **Design a run.** Choose the sub-dataset (one of the four parts of NASA's
    simulated turbofan engine data, FD001 to FD004), the preprocessing, the
@@ -330,8 +329,11 @@ and a fourth for the jobs:
    the layers in which each sensor's numbers are mixed with its neighbours'
    in the graph), and the training settings. The graph layers themselves stay
    the three of the paper's Table 4; only their sizes change.
-2. **Results.** Every stored run, its four measures beside the paper's, every
-   seed's curve and predictions, and any two runs paired seed by seed.
+2. **Results.** Everything that has been run, under two tabs of its own:
+   the training runs and the explanations, each with the jobs that have not
+   finished among them. A run opens with its four measures beside the
+   paper's, every seed's curve and predictions, and any two runs can be
+   paired seed by seed.
 3. **Explain.** Explain one stored run's predictions, with the paper's method
    or a cheaper one, and read back how much each sensor moved them.
 
@@ -340,19 +342,39 @@ screens. So the form is laid out as six numbered steps, with a map of them. The
 **pipeline** draws the whole run as a flowchart, in the order the data passes
 through it: the sub-dataset, the preprocessing, the temporal stage, the graph
 layers, and the remaining life that comes out. The form shows one step at a
-time, under six tabs numbered 1 to 6 — Data, Preprocessing, Temporal stage,
-Graph layers, Training and Repeats. Each box of the pipeline shows its step's
-number and what that step is now, "1 FD001", "3 GRU" or "4 GCN", so a step's
-name is said once, on its tab, and the number ties the two together. The
-preprocessing box is the exception: its step has no one value to show, so it
-carries its step's name, and a screen reader hears that name once.
+time, under six tabs: Data, then five numbered 1 to 5 — Preprocessing,
+Temporal stage, Graph layers, Training and Repeats.
+
+The data are what goes into the pipeline, not one of its steps, so the
+pipeline draws them the way it draws the remaining life that comes out: a
+picture and words, "FD001", above the first arrow, rather than a numbered box.
+They still open their own flowchart, and their tab carries their picture where
+the others carry a number. The steps are then numbered from 1, Preprocessing.
+The author asked for this on 2026-09-26.
+
+Each box of the pipeline shows its step's number in its top left corner, a
+small picture of its step, and what the step is now, "LSTM" or "GCN", so a
+step's name is said once, on its tab, and the number ties the two together.
+The preprocessing box is the exception: its step has no one value to show, so
+it carries its step's name, and a screen reader hears that name once. The
+pictures are a store of records for the data, sliders for the preprocessing,
+whose steps adjust the readings, a clock for the temporal stage, which reads
+the cycles in the order they happened, and three joined circles for the graph
+layers; an hourglass stands above "Remaining life". A funnel stood for the
+preprocessing at first, and was changed because it reads as "filter", while
+the preprocessing removes nothing. The step being worked on is marked by its
+filled number alone. The same picture heads the step's own flowchart. The
+pictures are drawn in the page itself, not fetched, and say nothing a screen
+reader needs, so it skips them.
 
 The six steps' settings are all drawn, one over another in the same place, and
 only the chosen tab's are shown. The box that holds them is therefore as tall
 as the tallest step at the window's width, and choosing another tab never moves
 anything on the page: at a window 1440 pixels wide with the menu open it is
-593 pixels tall whichever tab is chosen, the height of Training, and 517 with
-the menu closed, where the wider form fits more settings in a row. The first
+489 pixels tall whichever tab is chosen, and 451 with the menu closed, where
+the wider form fits three settings in a row rather than two (measured on
+2026-09-26; before the settings were redrawn that day, as the next section
+describes, it was 593 and 517). The first
 version had the six groups fold open one under another, which moved everything
 below each time one opened. On a phone, where the settings stand one across,
 the tallest step would leave the others a screen of empty box, so there each
@@ -381,11 +403,23 @@ with the pipeline's card beside it.
 Where the Design tab's own area, the page to the right of the menu less its
 margins, is at least 880 pixels wide, the pipeline stands top to bottom in a
 column to the right of the form, and stays where it is while the page scrolls,
-so the map is always in view. The column is 400 pixels wide, and on a wide
-screen grows with the Design tab's area, as 30% of it, up to 480; the form
-takes the rest, up to 960. A step's flowchart taller than the column scrolls
-inside it on its own. The column is never taller than the form beside it, nor
-than the window less the top bar and the page's bottom margin, so it never
+so the map is always in view. The form takes up to 960 pixels and the column
+everything to its right, never less than 400: at a window 1920 pixels wide with
+the menu closed, and no scroll bar taking room, the column is 841 pixels wide. The author asked for the column
+to fill the page's width, where it had stopped at 480 and left a band of
+nothing at the right. Inside it, the boxes keep the widths they have in a
+narrow column, 320 pixels for a box of the overview and 480 for a step of a
+flowchart, and stand in its middle.
+
+The column is exactly as tall as the form beside it, or as the window less
+the top bar and the page's bottom margin where that is less, whichever box is
+open: measured at 1440 by 900 with the menu open, it is 669 pixels tall with
+the overview showing and with each of the four flowcharts open, the form's
+own height. It used to be as tall as what it showed, up to that limit, so
+opening a box made it grow and going back made it shrink, which the author
+asked to stop. Its heading, and with a flowchart open the way back, stay at
+the top, and what is under them scrolls on its own when it is taller; the
+overview's boxes stand in the middle of the height. The column never
 lengthens the page and never slides under the top bar at the page's end. At
 880 the form beside the column keeps 456 pixels, room for two cells of its
 grid (next section): the card needs 418 for them, 384 for the two cells and
@@ -419,10 +453,16 @@ done, and so each caution sits directly above the button it is about.
 ### How a setting is drawn
 
 Each setting's name stands directly above its control, followed by its i
-where it has one (the small circled i beside a name, which opens a card saying
-where the default comes from; the section "Where each default comes from",
-further down this part, describes it), and the settings of a step stand side
-by side in a grid of cells, as many across as fit at 184 pixels or more each. The first version put the name at the left of a row and
+(the small circled i beside a name, which opens a card saying what the setting
+is for and where its default comes from; the section "Where each default comes
+from", further down this part, describes it), and the settings of a step stand
+side by side in a grid of cells: one across in a card less than 416 pixels
+wide inside its border, two across from there, and three from 834, where each
+cell is at least 256 pixels. Measured on 2026-09-26, in windows 1440 and 1920 pixels wide with
+the menu open or closed, one name takes two lines, "Same held-back engines for
+every seed", which wraps beside its switch; in a window 1024 wide with the menu
+closed or 1280 with it open, where two cells of 228 and 220 pixels stand
+across, five do. The first version put the name at the left of a row and
 the control in the row's right half, so the eye crossed the page from one to
 the other. Measured at a window 1440 pixels wide, from the end of each
 setting's name to the start of its control, that crossing was 252 pixels for
@@ -443,29 +483,69 @@ the i; both parts name the control, and Chrome's accessibility tree reads
 "Passes over the training data" as the name of that field, not the first part
 alone.
 
-A list of options, such as the sensor scaling, takes a whole row and stands two
-options across, or one where a step's grid of settings is narrower than 400
-pixels. Three
-across would break most options' words onto a second line, and one across, as
-before, gave the temporal stage's six options six long rows. The words of an
+A switch is the one control whose name stands beside it, to its right, on the
+line of the other controls, as a switch's name does in every other program;
+a click on the name turns it, and a name too long for the room beside the
+switch wraps there. Above the switch, its name stood alone on the names' line
+over a control two thirds of a field's height. A number with a unit shows the
+unit inside the field's box, "30 cycles", and every number field but the three
+graph layer widths is the same width, 128 pixels, so the fields of a step line
+up; before, the unit floated beside a field 96 pixels wide.
+
+**The settings of a pipeline box follow its flowchart.** In the tabs of the
+preprocessing, the temporal stage and the graph layers, the settings stand in
+groups named after the steps of the box's own flowchart that they decide, in
+the order those steps run, each group under the same small picture the step
+has in the flowchart: Preprocessing reads "Cap the labels", with the label
+ceiling and whether the test labels are capped, then "Smooth each sensor",
+with its weight, then "Rescale each sensor" and "Cut into windows". A group
+that holds a single list of options names it, so the list has no name of its
+own and its i stands beside the group's name; a step that can be switched off,
+the smoothing, has its switch beside its group's name. A group whose settings
+are all hidden, the recurrent network's size when the stage is not recurrent,
+is hidden with them, and a group's name that depends on the settings, "One GRU
+per sensor", follows them. `SECTIONS` in `playground.js` holds the groups; the
+author asked for them on 2026-09-26. The Data, Training and Repeats tabs have
+no flowchart to follow and are grouped by subject the same way: the
+sub-dataset; the procedure, the passes and the learning rate; the seeds and
+the device. Each group stands on a panel of its own, in the panel grey, so it
+is seen as one thing and told from the next, as the author asked; the panels
+stand 12 pixels apart.
+
+A list of options, such as the sensor scaling, takes a whole row and stands as
+many options across as the settings above it stand, one, two or three, so the
+radio buttons fall on the settings' columns: each option is as wide as a
+column and the 16 pixels between two, 8 of them on either side. The words of an
 option are its value, so they are set in the regular weight, and the setting's
-name above them in the heavier one. The graph layer widths take two cells, for
-their three number fields. The sub-dataset takes a row of its own, its four
+name above them in the heavier one. The radio button is the control, so an
+option has no frame of its own: the chosen one is filled with a tint of the
+accent colour and the one under the pointer with a pale grey. With a frame
+round every option, the Training step alone drew seven frames. The list reaches
+8 pixels past its cell on each side, so its radio buttons stand in line with
+the names and fields above them.
+
+The one list of more than four options that shares a single source, how the
+learning rate moves from its first value to its last, is a menu instead, in
+the row of the two rates it joins; it took three rows of options on a row of
+its own, and made Training the tallest step and every step that tall. A list
+whose options come from different places keeps its options in view, each with
+its own i. The graph layer widths share one cell, each of their three fields a
+third of it up to 72 pixels. The sub-dataset takes a row of its own, its four
 choices under its name like every other setting's control. Inside a step, the
 lists about what the step is for come first: the temporal stage, the sensor graph and its rescaling. The
-small settings are kept together so that they fill their rows, and a list about
-something else, the sensor scaling or the learning rate's course, follows them
-on a row of its own; `FIELDS` in `playground.py` holds that order.
+small settings follow, and a list about something else, the sensor scaling,
+follows them on a row of its own; `FIELDS` in `playground.py` holds that order.
 
 Reset, which appears once a setting differs from its default, is put where it
 can appear without moving what the pointer is on: beside a small setting's
-control, beside a list's name, and under a list that has no name of its own
-because its step's tab names it, as the temporal stage's does. Choosing
+control, beside a list's name or its group's switch, and under a list that its
+group names. Choosing
 it leaves the keyboard's focus on the setting's control, and Reset all leaves
 it on Reset all; neither draws the form again, so the page does not move. The
-inputs
-only the chosen procedure shows are indented under its options, with a thin
-line down their left edge, so they read as belonging to it.
+inputs only the chosen procedure shows stand directly under its options, on
+the same columns as every other setting. They were once indented, with a line
+down their left edge, which set them under the first option, the one they do
+not belong to.
 
 The Explain tab's form is drawn the same way, by the same function.
 
@@ -484,6 +564,12 @@ so their arrow keys could never land on the paper's values again. Their lowest
 allowed values were moved onto the steps: a first learning rate of at least
 0.0001, a last one of at least 0.00001, and a smoothing weight of at least 0.05.
 
+A switch turns wherever it is clicked. Its drawn track lies over the
+checkbox, which is invisible, and lets the click through to it; before, only a
+switch inside a label turned, since the label passed the click on, and the
+switches of the Design tab, which sit beside their names rather than inside
+them, could not be turned by a click at all.
+
 The page tells the browser which of its two colour schemes is showing, so the
 browser's own parts of a control, a radio button's circle and a number field's
 arrows, are drawn to match. Before, the dark page left them light, and an
@@ -495,14 +581,71 @@ page.
 ### A box's own flowchart
 
 A box of the pipeline stands for several steps of the code, and its flowchart
-shows them, top to bottom, in the order the code runs them. Steps that work
-side by side on the same input, such as the three files of a sub-dataset, share
-one row. Each step gives its name, the values that decide it, the shape of what
-it hands on and how many numbers it learns; what it does, in a sentence, and
-where it comes from are behind its i. Each value a setting decides is a link to
-that setting, so a step decided by two settings, such as the window's length and
-its spacing, carries two links. In a shape, `B` is the number of windows the
-network is handed at a time.
+shows them, top to bottom, in the order the code runs them. Each step is a box
+of centred words: its name, the values that decide it and how many numbers it
+learns; what it does, in a sentence or two, and, under a thin line, where it
+comes from are behind its i. Each value a setting decides is a link to that
+setting, so a step decided by two settings, such as the window's length and its
+spacing, carries two links.
+
+Each step shows a small drawing of what it does above its name, so it can be
+recognised and remembered by its shape as well as its words: a jagged line
+made smooth for the smoothing, a window over a line of cycles for the cutting
+into windows, a few sensors joined by lines for the sensor graph, a table for
+its rescaling, one sensor gathering from four for a graph layer, an S-shaped
+curve for the output. The server names each step's drawing (its `picture`),
+and the groups of the form that decide a step carry the same drawing. The
+words that open and close a flowchart, what comes in and what goes out, stand
+with the picture of the box they come from or go to, as the overview draws
+its input and output.
+
+The sensor graph is not a step the windows pass through: it is a second input
+of the first graph layer. So the graph layers' flowchart draws it as a branch
+beside the main line: the arrow from the temporal stage carries `(B, 14, 1)`
+straight down to graph layer 1, and beside it the sensor graph and its
+rescaling end in their own arrow, `(14, 14)`, into the same layer. Drawn in a
+single line, as it first was, the arrow into "Sensor graph" said the windows
+went into the graph.
+
+With the LSTM or GRU stage, the step that runs the networks shows one button
+per sensor, fourteen in all, as the paper's Section 2.2 gives each sensor a
+network of its own; one button when a single network is shared. A button
+opens that network from inside in the pipeline's place, and the way back leads
+to the stage's flowchart: a drawing of the network as it is usually drawn,
+with the memory along the top for an LSTM, the gates fed by the cycle's
+reading and the hidden state, and the new hidden state it hands on, then each
+gate in words with its learned numbers, read from the built network, and how
+many times the network runs, once per cycle of the window. The fourteen
+networks have the same parts and learned numbers of their own. The author
+asked for the drill-down on 2026-09-26.
+
+Every arrow carries what passes along it. Before the windows are cut, what
+passes from one preprocessing step to the next is the training file's table,
+`(20 631, 27)` for FD001: one row per engine and cycle, 27 columns, and 28
+once the operating condition has been added; the test file's table goes the
+same way beside it, and each step's i says what happens to it. At first these
+arrows carried nothing, since the steps do not change the table's shape, and
+the author asked why some arrows had an output and some did not. A row of
+steps side by side names what the row hands on, the Data flowchart's three
+files "3 tables". The arrows are 48 pixels long, and 80 where they carry a
+shape, so each step stands clear of the next.
+
+The shape of what a step hands on, the size of the table of numbers passed to
+the next step, is written on the arrow under the step, and so reads as the next
+step's input: each step is seen as what comes in above it, what is done to it
+and what goes out below it. In the graph layers' flowchart, for one, the
+arrow into "Rescale the graph" carries `(14, 14)`, the table of which sensors
+are joined, and the arrow out of it carries the same shape rescaled. Each shape
+is written once: the words that open a flowchart put theirs on the arrow under
+them, and the words that close it show their own only when it differs from the
+one on the arrow above them, as "To the temporal stage, B windows at a time",
+`(B, 14, 30)`, does under the arrow carrying all the training windows at once.
+Steps that work side by side on the same input, such as the three files of a
+sub-dataset, share one row, and each shows its own shape inside its box, since
+no one arrow could carry three. In a shape, `B` is the number of windows the
+network is handed at a time. Before, the shape stood at the right edge of each
+step's box, in a column of its own, beside the step's name, where it read as a
+property of the step rather than as the thing passed from one step to the next.
 
 | Box | Its steps |
 |---|---|
@@ -558,9 +701,9 @@ Above the form, on a narrower area, the overview stands in a row when its boxes
 fit, and that is measured, not guessed from the width: when they do not fit,
 the words "Remaining life" are dropped first, and then the boxes stand in a
 column, where the words come back. The names differ in length, "LSTM" against
-"Window summary", so no one width could decide it. Beside the form the column
-is never wide enough for the row, and the same measurement stands the boxes in
-a column there.
+"Window summary", so no one width could decide it. Beside the form the boxes
+always stand in a column, however wide the column has grown, since there they
+share the form's height.
 
 Inside the pipeline, while it scrolls on its own beside the form, an i's card
 is positioned relative to the browser window rather than to the i: the
@@ -700,14 +843,26 @@ beside settings that are still being chosen.
 
 ### Where each default comes from
 
-Every setting whose default something decides has an i beside its name; the
-first seed and the device have none, since no source decides either. Pointing
-at the i or reaching it with the keyboard shows a small card with a tag saying
-which of four things set the default, because that is the distinction the
-thesis depends on, and a few words on why. Choosing the i keeps the card open,
-and only then can the keyboard reach a link in it; the card closes once the
-focus moves on, or with Escape. The form itself shows only names, so it reads
-as a list of choices rather than a list of citations.
+Every setting has an i beside its name. Pointing at the i or reaching it with
+the keyboard shows a small card in two parts. First, in plain words, what the
+setting is for: the problem it answers and what changing it does to the run,
+written for a reader who has never met the method, so that they can tell
+whether to touch it. Then, under a thin line, a tag saying which of four
+things set the default, because that is the distinction the thesis depends
+on, and a few words on why. The first seed and the device have only the first
+part, since no source decides either. The author asked for the order on
+2026-09-26: the card beside "Sensor scaling" had said only where the default
+came from, and never what sensor scaling is for. Choosing the i keeps the card
+open, and only then can the keyboard reach a link in it; the card closes once
+the focus moves on, or with Escape. The form itself shows only names, so it
+reads as a list of choices rather than a list of citations.
+
+The plain words are held in `FIELDS` in `playground.py`, as each setting's
+`about`, and for the options that have an i of their own, as the option's.
+Each was checked against the code it describes, never against the paper,
+which is the tag's business, so none of them carries a table, an equation or
+an assumption's number. A flowchart step's i has the same two parts: what the
+step does, then the tag.
 
 | Tag | Meaning | Example |
 |---|---|---|
@@ -715,6 +870,20 @@ as a list of choices rather than a list of citations.
 | Our choice | the paper is silent, so a numbered assumption chose | the label ceiling of 125 (assumption A-01) |
 | Project rule | neither: a rule of this repository | five seeds |
 | Not in the paper | an option offered for comparison | the GRU stage |
+
+Every card ends with **Read more**, a link that opens, in a new tab, the part
+of the documentation that explains the setting, the option or the step: the
+section of a Learn page, of a folder's README or an entry of the assumptions
+log. `_READ_MORE` in `playground.py` holds where each one leads, as a document
+and a heading written as the document has it, and a test checks that every
+one of those headings exists, so a heading renamed later fails the suite
+rather than leaving a link that leads nowhere. The author asked for it after
+meeting "Find operating conditions" in a flowchart with nothing to say where
+it came from. A card is drawn over everything around it: each grid of settings is
+drawn by the browser in a layer of its own, since the layout's width rules
+measure it, so while a card shows, the setting, the grid and the group that
+hold it are lifted above their neighbours; before, a switch and an i of the
+next group showed through it.
 
 Each fact is said once: when every option of a setting shares one source, the
 tag is behind the setting's i; when the options differ, as for the sensor graph
@@ -757,9 +926,19 @@ disk, so one job never appears under two names. A folder read back that asked
 for no particular engine takes the engine from the explanation it stored.
 
 The job running now is shown in one line above whichever tab is open, with a
-Stop button, and nothing at all when nothing is live, so the tabs never move.
-On the Jobs tab that line is hidden while the list below shows the same job.
-The Jobs tab's badge counts the jobs waiting behind it. The tab itself holds
+Stop button, and nothing at all when nothing is live, so the tabs never move;
+the line is hidden while the job's own row is on screen in Results. Results has
+no separate list of jobs. A job is a run or an explanation that has not
+finished, so every job that is waiting, running, failed or stopped is a row of
+its own at the top of the Results tab it belongs to, training runs or
+explanations, with its state, its bar and what is happening now, its last
+printed lines when it failed, and Stop or Remove; a finished job is its stored
+run or explanation, listed below. The Results tab's badge counts the jobs
+running or waiting. While Results is open its job rows follow each poll: they
+are drawn again only when a job comes, goes or changes state, and otherwise
+only their bars and lines move, so a filter being used keeps its focus. The
+author asked for the two lists to become one on 2026-09-26, having found no
+difference to tell them apart by. Results holds
 every job this server ran and every one an earlier server left on disk, read
 back from its folder. A job whose server stopped before it finished is listed
 as interrupted, since a run writes nothing until its last seed is done. One
@@ -768,8 +947,8 @@ refused for removal: every job writes down the number of the process running
 it, and a server that finds that process still alive knows the command is
 writing into that folder at this moment. Without that check the job would read
 as ended, and removing all the ended ones would delete the folder from under a
-running command. The tab filters by kind and by state, and a job that has ended
-can be removed, singly or all at once; removing one deletes its folder under
+running command. A job that has ended
+can be removed; removing one deletes its folder under
 `reports/.playground/` and nothing else, so the run or explanation it wrote
 stays where it is.
 
@@ -784,13 +963,26 @@ scrolled out of sight:
 that line does not stay on screen, while the column holding the Train button
 does, so a reader who has scrolled down to it would otherwise see nothing
 happen. A job that ends is
-announced by name unless the Jobs tab is open, where its card changes in front
-of the reader. One trap here: a job is announced when a poll finds it ended
+announced by name unless its row is on screen, where it changes in front of
+the reader. One trap here: a job is announced when a poll finds it ended
 after an earlier poll saw it live, and a short explanation can finish between
 the request that starts it and the next poll. So a job this page started is
 also announced when the very first poll already finds it ended.
 
 ### A run, and two runs
+
+Each list shows ten rows a page, with the way to the page before and the page
+after and which rows are on show, "11–20 of 34". Its filters stand above it,
+each a name over a menu that starts at "All": for the training runs, the
+sub-dataset, the temporal stage and the sensor graph, from the values the
+stored runs hold, where the weights were taken from, the best pass or the
+final one, and the state, finished, running or waiting, or failed or stopped,
+with two switches for five seeds or more and for runs that kept their weights;
+for the explanations, the method, what was explained, the sub-dataset and the
+state. A job's own settings are not kept with it, so a job row answers only
+to the state. Changing a filter goes back to the first page and leaves the
+focus on the filter. A row of the explanations opens that explanation in the
+Explain tab.
 
 The list of runs gives, after when each finished, its RMSE and the paper's,
 then the settings that produced it, and last the commit; a narrow panel leaves
@@ -815,8 +1007,8 @@ and stretched to the column, as they first were, they fell to 4 pixels on a
 phone and grew to 36 at 2560. A chart drawn again replaces the old one where
 it stands, with no loading line between, so a change of width, the menu
 closing or a different seed chosen for Fig. 8 leaves the reader where they
-were, and the focus on the control they used. The Results, Explain and Jobs tabs stop at 1280 pixels on a wide screen,
-and the words beside a chart keep a readable line length however wide the tab. A commit ending in `-dirty` had
+were, and the focus on the control they used. Every tab's boxes take the page's whole width, as the author asked on
+2026-09-26, and the words beside a chart keep a readable line length however wide the tab. A commit ending in `-dirty` had
 uncommitted changes, so no committed state of the code reproduces that run;
 the list colours such a commit, and its column heading says so when pointed at.
 

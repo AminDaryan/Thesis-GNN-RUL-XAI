@@ -97,6 +97,50 @@ def test_every_number_default_lies_on_its_fields_steps():
             assert math.isclose(k, round(k), abs_tol=1e-9), (spec["key"], value, spec["min"], step)
 
 
+def test_every_setting_says_what_it_is_for_in_plain_words():
+    """An i says first what its setting is for, then, under a line, where the
+    default comes from. The plain part never cites the paper or the log, since
+    the part under the line does that, and it stays short enough to read in a
+    card. An option with an i of its own says what that option does."""
+    import re
+
+    cited = re.compile(r"\b[ADFP]-\d+\b|\bTable \d|\bEq\. ?\d|\bSection \d|\bFig\. ?\d")
+    texts = [(f["key"], f["about"]) for f in playground.FIELDS]
+    texts += [(f"{f['key']}={c['value']}", c["about"]) for f in playground.FIELDS
+              for c in f.get("choices", []) if c["source"] is not None]
+    texts += [(f"procedure={p['key']}", p["about"]) for p in playground.PROCEDURES]
+    texts += [("procedure", playground.PROCEDURE_ABOUT)]
+    for name, about in texts:
+        assert about and about == about.strip(), name
+        assert not cited.search(about), (name, cited.search(about).group(0))
+        assert len(about.split()) <= 100, (name, len(about.split()))
+    assert playground.options()["procedure_about"] == playground.PROCEDURE_ABOUT
+
+
+def test_every_read_more_leads_to_a_heading_that_exists():
+    """The Read more at the foot of an i opens a part of the documentation in a
+    new tab; a heading renamed in a document would leave it pointing nowhere."""
+    import re
+
+    from thesis_gnn_rul_xai.docsite import results
+    from thesis_gnn_rul_xai.docsite.markup import slugify
+
+    known = {entry.identifier for entry in results.load_entries(ROOT)}
+    for key in playground._READ_MORE:
+        address = playground.read_more(key)
+        if address.startswith("#/entry/"):
+            assert address.removeprefix("#/entry/") in known, key
+            continue
+        path, anchor = address.removeprefix("#/doc/").split("#")
+        text = (ROOT / path).read_text(encoding="utf-8")
+        seen: dict[str, int] = {}
+        slugs = {slugify(m.group(1), seen) for m in re.finditer(r"^#{1,6}\s+(.+?)\s*$", text, re.MULTILINE)}
+        assert anchor in slugs, (key, path, anchor)
+    # Every setting and every option with an i of its own has one.
+    for field in playground.FIELDS:
+        assert field["key"] in playground._READ_MORE, field["key"]
+
+
 def test_where_a_default_comes_from_is_said_once_per_setting():
     """A source sits on the row or on its options, never both, so the page draws one tag per fact."""
     kinds = {"paper", "assumption", "project", "extension"}
@@ -190,7 +234,7 @@ def _steps(answer: dict) -> list[dict]:
     """Every step of a flowchart, the ones drawn side by side included, without what enters or leaves."""
     flat = []
     for step in answer["steps"]:
-        flat += step["steps"] if step.get("kind") == "group" else [step]
+        flat += step["steps"] if step.get("kind") in ("group", "branch") else [step]
     return [step for step in flat if step.get("kind") != "edge"]
 
 

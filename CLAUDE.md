@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 369 tests; must all pass
+pytest                # 371 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -857,8 +857,12 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — all 369
-pass (measured 2026-09-24, after tests that every number field's default lies
+With everything present — the data, PyTorch and the stored runs — all 370
+pass (measured 2026-09-26, after a test that every playground setting says in
+plain words what it is for; the 371st, that every Read more in the playground
+leads to a heading that exists, was added the same day and has passed on its
+own, not yet in a full run; 369 had passed on 2026-09-24, after tests that
+every number field's default lies
 on its step, that a figure placeholder inside code stays text, that the menu
 turns into a drawer at one width everywhere and that the page scripts hold
 nothing older Safari cannot read; 365 had passed on
@@ -881,7 +885,7 @@ and 87 skipped; without PyTorch as well, 137 passing and 57 skipped.
 The failing test was stopping a playground job that had just been marked
 running, which did nothing because its process did not exist yet. It is fixed,
 and it needs neither the data, nor PyTorch, nor a stored run. The suite has
-grown from 260 tests to 369 since those counts (this sentence said "eight" until
+grown from 260 tests to 370 since those counts (this sentence said "eight" until
 2026-09-21, long after that stopped being true), so each of them is now low by
 an amount nobody has measured: re-measure them before quoting one.
 
