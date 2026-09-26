@@ -110,155 +110,160 @@ FIELDS: tuple[dict[str, Any], ...] = (
     {"key": "subset", "group": "data", "label": "Sub-dataset", "kind": "choice",
      "default": "FD001",
      "choices": [{"value": s, "label": s, "source": None} for s in SUBSETS],
-     "about": ("Chooses which of NASA's four sets of simulated engines to train and test on. The sets differ in "
-               "how many ways the engines are flown (height, speed, throttle) and how many kinds of fault wear "
-               "them out. Pick another to see whether the same settings still work when engines are flown or "
-               "fail in more than one way."),
+     "about": ("Selects one of NASA's four datasets of simulated engine wear. Each contains separate engines "
+               "for training, where the model learns from examples, and testing, where its predictions are "
+               "scored. The datasets differ in operating conditions, such as altitude and speed, and in the "
+               "types of component deterioration included."),
      "source": _paper("Table 5", "")},
     # -- procedure: set by the choice of procedure at the top of Training ---
     {"key": "validation_fraction", "group": "procedure",
      "label": "Training engines held back",
      "kind": "float", "default": 0.2, "min": 0.0, "max": 0.5, "step": 0.05,
-     "about": ("To measure the network's error after every pass on engines it never learns from, this share of "
-               "the training engines is held back: 0.2 is one in five. Each seed picks its own group at random "
-               "unless 'Same held-back engines for every seed' is on. More held back means more engines checked "
-               "and fewer to learn from."),
+     "about": ("The share of training-file engines reserved for checking progress: 0.2 means 20%. Their "
+               "readings do not enter the updates that adjust the model's learned numbers. Their prediction "
+               "error selects which training pass to keep. These validation engines are separate from the "
+               "test engines used for the final score."),
      "source": _choice("A-06", "")},
     {"key": "early_stopping", "group": "procedure", "label": "Stop when held-back error stalls",
      "kind": "bool", "default": True,
-     "about": ("Ends training before the last pass once the network's error on the held-back engines has gone a "
-               "set number of passes in a row without beating its best, saving the time the remaining passes "
-               "would take. It only acts when engines are held back; the choice of training procedure switches "
-               "it on or off."),
+     "about": ("Stops training after the allowed number of passes without a sufficient reduction in "
+               "prediction error on the held-back engines. The model from the best recorded pass is restored. "
+               "This requires held-back engines; the training procedure turns it on or off."),
      "source": _choice("A-18", "")},
     {"key": "early_stopping_patience", "group": "procedure",
      "label": "Passes allowed without improvement", "kind": "int",
      "default": 20, "min": 1, "max": 1000,
-     "about": ("How many passes in a row the network's error on the held-back engines may go without beating its "
-               "best before training stops. Larger gives a slowly improving run more time; smaller stops it "
-               "sooner. With 'Drop when held-back error stalls' chosen, the learning rate, the size of each "
-               "correction, is lowered after more than half this many."),
+     "about": ("How many consecutive passes without a sufficient improvement on the held-back engines are "
+               "allowed before stopping. A larger value waits longer for improvement. Very small reductions "
+               "in error do not reset the count. This setting also controls the waiting period for the "
+               "'Drop when held-back error stalls' learning-rate option."),
      "source": _choice("A-18", "")},
     # -- preprocessing -----------------------------------------------------
     {"key": "window_size", "group": "preprocessing", "label": "Window length (cycles)",
      "kind": "int", "default": 30, "min": 1, "max": 100,
-     "about": ("Engines run for different numbers of flight cycles, but the network needs every example the same "
-               "size. So each engine's history is cut into windows of this many consecutive cycles, each "
-               "labelled with the remaining life at its last cycle. A longer window gives each example more "
-               "history, but engines shorter than it are left out."),
+     "about": ("A window is one model input: a sensor history spanning this many consecutive flight cycles. "
+               "Its target is the remaining life at the last cycle, after applying the label ceiling. Longer "
+               "windows contain more history, but the temporal stage decides how much is used. Engines with "
+               "fewer recorded cycles than this are excluded."),
      "source": _paper("Table 6", "")},
     {"key": "window_stride", "group": "preprocessing", "label": "Cycles between windows",
      "kind": "int", "default": 1, "min": 1, "max": 30,
-     "about": ("Each new window starts this many cycles after the previous one from the same engine. At 1, "
-               "neighbouring windows share all but one cycle and each training engine gives every window it can; "
-               "a larger step gives fewer, less overlapping windows and quicker passes. Test engines each give "
-               "only their last window."),
+     "about": ("The gap between the start cycles of consecutive windows from the same training or held-back "
+               "engine. At 1, a window moves forward by one cycle at a time. Larger gaps generally produce "
+               "fewer examples and less overlap. Test engines use only their final complete window, regardless "
+               "of this setting."),
      "source": _choice("A-05", "")},
     {"key": "rul_max", "group": "preprocessing", "label": "Label ceiling (cycles)",
      "kind": "int", "default": 125, "min": 10, "max": 400,
-     "about": ("An engine early in its life is treated as simply healthy: in training, any remaining life above "
-               "this ceiling is counted as the ceiling, so the network is never asked to tell a long remaining "
-               "life from a longer one. Its prediction can never go above the ceiling either. Lowering it treats "
-               "more of each engine's early cycles this way."),
-     "source": _choice("A-01", "read off Fig. 7 by calibrating its plateau against its own axis")},
+     "about": ("The largest remaining-life target used for training. Any longer remaining life is replaced "
+               "by this ceiling, so the model is not asked to distinguish among those longer lifetimes. The "
+               "model's output is also limited to this ceiling. This is a labeling choice, not a measurement "
+               "of when an engine starts to deteriorate."),
+     "source": _choice("A-01", "the chosen value and its evidence are documented in the assumptions log")},
     {"key": "clip_test_labels", "group": "preprocessing", "label": "Cap the test labels too",
      "kind": "bool", "default": True,
-     "about": ("Before the network is scored on the test engines, any true remaining life above the label "
-               "ceiling is cut down to the ceiling. The network can never predict above the ceiling, so with "
-               "this off, life beyond it counts as error the network could never avoid; with it on, that part is "
-               "ignored."),
-     "source": _choice("A-02", "can only move reported numbers favourably")},
+     "about": ("Replaces test targets above the label ceiling with the ceiling before scoring. Predictions "
+               "are unchanged. With this off, the model is scored against the full remaining life, including "
+               "values its output cannot reach. The two choices answer different evaluation questions, so "
+               "every reported result must identify which was used."),
+     "source": _choice("A-02", "changes the test targets used for scoring")},
     {"key": "smoothing", "group": "preprocessing", "label": "Smooth each sensor",
      "kind": "bool", "default": True,
-     "about": ("Each sensor's readings jump up and down from one cycle to the next. With this on, every reading "
-               "is replaced by part of itself plus part of the smoothed value from the cycle before, one engine "
-               "at a time and using only earlier cycles, which evens out the jumps. With it off, the readings go "
-               "on unchanged."),
+     "about": ("Replaces each sensor reading with a weighted average of itself and the previous smoothed "
+               "reading. The first reading is kept unchanged. Each engine is processed separately, using "
+               "the current and earlier cycles only. This reduces rapid fluctuations but can also delay "
+               "genuine changes. Turning it off leaves readings unchanged at this step."),
      "source": _paper("Section 3.2.3", "exponential smoothing before windowing")},
     {"key": "smoothing_alpha", "group": "preprocessing", "label": "Smoothing weight on the newest reading",
      "kind": "float", "default": 0.5, "min": 0.05, "max": 1.0, "step": 0.05,
-     "about": ("Each smoothed value is this share of the newest reading plus the remaining share of the smoothed "
-               "value before it: at 0.5, half and half. At 1 the readings go on unchanged; a smaller weight "
-               "evens out more of the jumps, but a real change in a sensor then shows up more slowly."),
+     "about": ("After the first cycle, this fraction of the current reading is combined with the remaining "
+               "fraction of the previous smoothed value. At 0.5 they contribute equally. At 1, smoothing "
+               "changes nothing. Smaller values give older readings more influence and respond more slowly "
+               "to a sustained change. Used only when smoothing is on."),
      "source": _choice("A-04", "")},
     {"key": "normalization", "group": "preprocessing", "label": "Sensor scaling",
      "kind": "choice", "default": "zscore",
      "choices": [
          {"value": "zscore", "label": "Mean and spread of the training engines", "source": None},
-         {"value": "minmax_per_condition", "label": "Range 0 to 1, per operating condition",
+         {"value": "minmax_per_condition", "label": "Training range 0 to 1, per operating condition",
           "source": None},
-         {"value": "minmax_global", "label": "Range 0 to 1, over all rows", "source": None},
+         {"value": "minmax_global", "label": "Training range 0 to 1, all training rows", "source": None},
      ],
-     "about": ("Sensors use different units, so some read far bigger than others. Rescaling brings them to a "
-               "similar size: the network multiplies readings by learned numbers and adds up the results, so "
-               "without it the biggest would make up most of each sum they enter."
-               "\nMean and spread: take away the average, then divide by how far readings usually stray from it."
-               "\nPer operating condition: the lowest training reading becomes 0 and the highest 1, separately for "
-               "each mix of height, speed and throttle."
-               "\nOver all rows: the same, one range for all cycles."),
-     "source": _choice("A-03", "the paper does not describe its scaling (F-10)")},
+     "about": ("Rescales each sensor using training engines only; the same rule then handles held-back and "
+               "test engines."
+               "\nMean and spread: subtract the training mean and divide by the standard deviation, a measure "
+               "of spread around that mean."
+               "\nTraining range: map the training minimum to 0 and maximum to 1, either separately for groups "
+               "of similar operating settings or across all training rows. New readings can fall outside 0 "
+               "to 1. Sensors with effectively no training variation become 0."),
+     "source": _choice("A-03", "the scaling method is a documented project choice")},
     # -- temporal stage ----------------------------------------------------
     {"key": "temporal", "group": "temporal", "label": "Temporal stage", "kind": "choice",
      "default": "lstm",
      "choices": [
          {"value": "lstm", "label": "LSTM, one per sensor",
-          "about": ("Each sensor's window goes through an LSTM, a network that takes the readings one cycle at a "
-                    "time, oldest first. It combines each new reading with numbers carried over from the cycle "
-                    "before, in a way learned in training. What it gives out after the last cycle is turned into the "
-                    "numbers the graph layers receive."),
+          "about": ("A long short-term memory network (LSTM) reads each sensor's window from oldest to newest. "
+                    "It combines each reading with a numerical memory of earlier readings, using rules adjusted "
+                    "during training. Its final output is converted into the numbers passed to the graph. "
+                    "Memory starts afresh for each window."),
           "source": _paper("Section 2.2", "")},
          {"value": "last_cycle", "label": "w/o LSTM: keep only the last cycle",
-          "about": ("Each sensor keeps only its most recent reading in the window; the earlier readings are not used, "
-                    "and nothing is learned in this step. 'w/o' is short for without: this is the network without "
-                    "its LSTM, the part that takes each sensor's window one cycle at a time."),
+          "about": ("Passes each sensor's final preprocessed reading to the graph, with no learned operation "
+                    "in this step. Earlier entries in the window are discarded here, although smoothing may "
+                    "already have mixed earlier readings into the final value. 'w/o LSTM' means without the "
+                    "network that processes the readings in time order."),
           "source": _choice("A-07", "")},
          {"value": "gru", "label": "GRU, one per sensor",
-          "about": ("A simpler network of the same kind as the LSTM: it also takes each sensor's window one cycle at "
-                    "a time, oldest first, but carries one list of numbers from cycle to cycle where the LSTM carries "
-                    "two. With the same 'Hidden size' it has fewer learned numbers."),
-          "source": _extension("a smaller recurrent cell")},
+          "about": ("A gated recurrent unit (GRU) reads each sensor's window from oldest to newest, combining "
+                    "each reading with a numerical memory of earlier readings. It carries one memory vector, "
+                    "a list of numbers, between cycles; the LSTM carries two. Memory starts afresh for each "
+                    "window. This is an alternative model added by this project."),
+          "source": _extension("an alternative to the paper's LSTM")},
          {"value": "mean_window", "label": "Average over the window",
-          "about": ("Each sensor's readings across the window are replaced by their plain average, so each sensor "
-                    "hands on one number that describes the whole window rather than its last cycle. If a sensor has "
-                    "been rising steadily, its average sits below its latest reading."),
+          "about": ("Passes the ordinary average of each sensor's preprocessed readings in the window to the "
+                    "graph: add them and divide by the window length. Each sensor contributes one number. "
+                    "This step has no learned numbers and does not preserve the order of readings within "
+                    "the window."),
           "source": _extension("no learned parameters")},
          {"value": "window_summary", "label": "Last reading, average and change over the window",
-          "about": ("Each sensor hands on three numbers: its latest reading, its average over the window, and how far "
-                    "it rose or fell across the window, read off the straight line that best fits its readings. The "
-                    "first graph layer learns how to combine the three. It needs a window of at least 2 cycles."),
-          "source": _extension("three numbers per sensor, no learned parameters (A-28)")},
+          "about": ("Passes three numbers per sensor: the final preprocessed reading, the window average, and "
+                    "the change from start to end of a fitted straight line. The line minimizes the sum of "
+                    "squared differences from the readings. This step has no learned numbers and requires "
+                    "at least two cycles; the graph layers learn how to combine its outputs."),
+          "source": _extension("three summaries per sensor (assumption A-28)")},
          {"value": "raw_window", "label": "The whole window straight into the graph layer",
-          "about": ("Every reading in the window goes on unchanged, so each sensor hands the graph layers as many "
-                    "numbers as the window has cycles. Nothing is learned in this step; instead the first graph layer "
-                    "learns how much each cycle counts, the same for every sensor."),
+          "about": ("Passes every preprocessed reading in the window to the graph, in time order. Each sensor "
+                    "therefore contributes as many numbers as there are cycles in the window. This step has "
+                    "no learned numbers; the first graph layer then learns weighted sums across those cycle "
+                    "positions, using the same multipliers for every sensor."),
           "source": _extension("the arrangement the last-cycle stage replaced")},
      ],
-     "about": ("Each sensor reaches this step as a window: its readings over a run of consecutive flight cycles. "
-               "This step turns those readings into one or more numbers per sensor, and only those numbers go "
-               "on to the graph layers. The options below differ in what those numbers are, and in whether "
-               "anything is learned here."),
+     "about": ("Decides how to represent each sensor's history before sensors exchange information. It takes "
+               "that sensor's window of preprocessed readings and produces one or more numbers for the graph "
+               "layers. The options either compute fixed summaries, pass all readings through, or learn how "
+               "to combine readings in time order."),
      "source": None},
     {"key": "temporal_hidden", "group": "temporal", "label": "Hidden size", "kind": "int",
      "default": 32, "min": 1, "max": 512,
-     "about": ("Sets how many numbers the LSTM or GRU, the network that takes each sensor's window one cycle at "
-               "a time, carries from one cycle to the next; the LSTM carries two lists this long. The list it "
-               "gives out after the last cycle is turned into what the graph layers receive. A larger size means "
-               "more learned numbers to train."),
+     "about": ("The length of each memory vector, a list of numbers carried between cycles by the selected "
+               "temporal network. A GRU carries one such list; an LSTM carries two. A larger value adds learned "
+               "numbers to the model. It does not change the window length or directly set how many numbers "
+               "reach the graph."),
      "source": _choice("A-26", "")},
     {"key": "temporal_out_features", "group": "temporal",
      "label": "Numbers handed to the graph per sensor", "kind": "int",
      "default": 1, "min": 1, "max": 64,
-     "about": ("What the LSTM or GRU, the network that takes each sensor's window one cycle at a time, gives out "
-               "after the last cycle is turned into this many numbers per sensor. Each is made by multiplying "
-               "those outputs by learned numbers and adding up the results plus a learned offset, the same for "
-               "every sensor. More gives the first graph layer more to combine."),
-     "source": _choice("A-26", "1 is the node width Table 4 prints")},
+     "about": ("How many numbers each sensor passes from its LSTM or GRU to the graph layers. Each is a "
+               "weighted sum of that sensor's final temporal output, plus an added constant. The multipliers "
+               "and constants are learned during training and shared across sensors. This setting does not "
+               "change the number of sensors."),
+     "source": _choice("A-26", "Table 4 gives one number per sensor; the conversion to it is our choice")},
     {"key": "shared_across_sensors", "group": "temporal",
      "label": "One network shared by all sensors", "kind": "bool", "default": False,
-     "about": ("With this off, each sensor has its own LSTM or GRU, the network that takes its window one cycle "
-               "at a time, with its own learned numbers. With it on, one network takes every sensor's window, "
-               "and nothing in its input says which sensor a window came from. This leaves far fewer learned "
-               "numbers, but every sensor's readings are handled exactly alike."),
+     "about": ("Off: each sensor has its own temporal network with its own learned numbers. On: the same "
+               "network processes every sensor's window separately, without a sensor identifier. Sharing "
+               "reduces the number of learned numbers; it does not mix readings from different sensors. "
+               "Each window still starts with a fresh memory."),
      "source": _extension("")},
     # -- graph layers: the graph they run on, then their sizes -------------
     # The sensor graph is built while the data is prepared, but it is drawn
@@ -267,27 +272,29 @@ FIELDS: tuple[dict[str, Any], ...] = (
      "default": "physics",
      "choices": [
          {"value": "physics", "label": "The paper's physics graph",
-          "about": ("Joins 41 fixed pairs of sensors, listed in a table typed into the code by hand. For example, the "
-                    "two pressures measured at the same spot, where air leaves the high-pressure compressor, are "
-                    "joined. Neither the data nor training ever changes which pairs are joined."),
+          "about": ("Connects the sensor pairs that the paper lists as related. The authors motivate "
+                    "these connections using sensor locations and engine relationships. The connections "
+                    "control which sensors exchange numbers in this model and remain fixed during training. "
+                    "A connection does not by itself establish a causal relationship."),
           "source": _paper("Table 3", "")},
          {"value": "complete", "label": "Every sensor joined to every other",
-          "about": ("Joins every sensor to every other, so the graph says nothing about which readings belong "
-                    "together. Every sensor then receives the same average of all 14, so after the first graph layer "
-                    "all 14 carry identical numbers, and 'Graph rescaling' makes no difference."),
-          "source": _choice("A-19", "averages every sensor equally, so it measures the cost "
-                                    "of averaging as much as the value of the physics (audit item D-2)")},
+          "about": ("Connects every sensor to every other. With either graph-rescaling option, each sensor "
+                    "then receives the same average of all sensors' incoming numbers. The first graph layer "
+                    "therefore produces identical representations for every sensor. This changes both the "
+                    "connections and the averaging, so it cannot isolate the value of physical knowledge."),
+          "source": _choice("A-19", "our interpretation of the paper's variant without a physics prior")},
          {"value": "correlation", "label": "The 41 most correlated sensor pairs",
-          "about": ("Joins the 41 sensor pairs whose readings on the training engines move most closely in step, "
-                    "whether rising together or one rising as the other falls, instead of a table typed in by hand. "
-                    "It has as many pairs as the physics graph, so the two differ only in which sensors are joined."),
+          "about": ("Connects the 41 pairs with the strongest positive or negative linear association, "
+                    "measured on preprocessed training readings using Pearson correlation. A strong association "
+                    "means paired readings tend to lie near a straight line; it does not prove causation. "
+                    "The graph has the same pair count as the paper's graph and stays fixed during training."),
           "source": _choice("A-27", "built from each seed's own training engines, so seeds "
                                     "can get slightly different graphs")},
      ],
-     "about": ("Decides which sensors pass numbers to which. In each graph layer, every sensor first takes its "
-               "own numbers and those of the sensors it is joined to, added up in fixed proportions, so "
-               "information travels one join per layer. The joins are fixed before training, so which readings "
-               "belong together is set in advance rather than learned."),
+     "about": ("A graph is a set of sensors and connections between them. Each graph layer combines a "
+               "sensor's current numbers with those of its connected neighbours. The connections and mixing "
+               "weights are fixed before model training; the later multipliers are learned. Each layer can "
+               "carry information across one further connection."),
      "source": None},
     {"key": "adjacency_normalization", "group": "graph",
      "label": "Graph rescaling", "kind": "choice", "default": "row",
@@ -688,7 +695,8 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         add("warn", "A-17", "The plateau schedule needs held-back engines; with none the "
             "rate never leaves its first value.", ("design", "run"))
     if settings.get("clip_test_labels", True):
-        add("info", "A-02", "Test labels are capped too, which can only flatter the numbers.")
+        add("info", "A-02", "Test answers are capped at the prediction ceiling. This cannot increase "
+            "RMSE or the NASA score for these bounded predictions, but R² and ASUE need not improve.")
     if settings.get("graph") == "complete":
         # Every sensor of the complete graph has the same number of neighbours,
         # so both rescalings give the same matrix, 1/14 everywhere.
@@ -709,7 +717,8 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
                 f"{'was' if one else 'were'} left out, so the score cannot be set beside "
                 "Table 7.")
     if settings.get("fixed_split"):
-        add("info", "", "The same held-back engines for every seed understates the spread.")
+        add("info", "", "Keeping the same held-back engines across seeds leaves out variation "
+            "due to choosing a different group of engines.")
     return notes
 
 
@@ -1016,8 +1025,6 @@ def _prepared_for(settings: Mapping[str, Any]) -> dict[str, Any] | None:
 
 def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Box 1: the three files of a sub-dataset, their labels, and the sensors kept from them."""
-    from ..data.sensors import PAPER_SENSOR_SYMBOLS
-
     subset = settings["subset"]
     table5 = DATASET_DESCRIPTION[subset]
     facts = _file_facts(subset)
@@ -1030,40 +1037,41 @@ def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     flat = facts["flat"] if facts else []
     check = ""
     if flat:
-        check = (f" A check the code runs every time finds that {' and '.join(flat)} barely "
-                 f"var{'ies' if len(flat) == 1 else 'y'} in {subset}; it changes nothing, so "
-                 f"{'it is' if len(flat) == 1 else 'they are'} kept"
-                 + (" (finding F-01)." if "P15" in flat else "."))
+        check = (f" {' and '.join(flat)} barely var{'ies' if len(flat) == 1 else 'y'} in this dataset, "
+                 "but the selection stays fixed to match the paper's graph.")
     return [
         _together(
             _step("Training engines",
-                  f"train_{subset}.txt holds one row per engine per flight cycle, 26 columns: the engine's number, "
-                  "the cycle, 3 operating settings and 21 sensor readings, recorded until the engine fails.",
+                  f"train_{subset}.txt contains simulated engine histories ending at failure. Each row is one "
+                  "engine at one flight cycle: its number, the cycle, 3 operating settings describing how it is "
+                  "run, and 21 sensor readings.",
                   parts=[(f"{_plural(table5['train_engines'], 'engine')} · {_plural(table5['conditions'], 'condition')}"
                           f" · {_plural(table5['fault_modes'], 'fault mode')}", "subset")],
                   shape=rows("train_rows", 26), source=tag, picture="file"),
             _step("Test engines",
-                  f"test_{subset}.txt has the same columns, but each record stops some cycles before the engine "
-                  "fails. How many cycles were left is what the network has to predict.",
+                  f"test_{subset}.txt contains different simulated engines with the same columns. Each history "
+                  "stops before failure. The model predicts how many flight cycles remain at that stopping point; "
+                  "these engines do not teach the model during training.",
                   parts=[(_plural(table5["test_engines"], "engine"), "subset")],
                   shape=rows("test_rows", 26), source=tag, picture="file"),
             _step("Their remaining life",
-                  f"RUL_{subset}.txt holds one number per line: the remaining life of test engine i at its last "
-                  "recorded cycle. The file names no engines, so line i belongs to engine i by its position.",
+                  f"RUL_{subset}.txt gives the correct remaining life, in flight cycles, at each test engine's "
+                  "last recorded cycle. Line 1 belongs to engine 1, line 2 to engine 2, and so on. These answers "
+                  "are used for scoring, never as model inputs.",
                   parts=[("one per test engine", None)],
                   shape=f"({_count(facts['labels'])},)" if facts else "", picture="file"),
             shape="3 tables",
         ),
         _step("Label every row",
-              "Each row's remaining life is its engine's last recorded cycle minus this cycle, plus, for a test "
-              "engine, its number from the label file. Nothing is capped yet: the ceiling comes in preprocessing.",
+              "A label is the answer paired with an input. For a training row, subtract its cycle from the "
+              "engine's final cycle. For a test row, also add the life remaining after its last recorded cycle, "
+              "given in the answer file. The ceiling is applied in the next stage.",
               parts=[("cycles left until failure", None)], shape=rows("train_rows", 27),
               source=_cite("Section 3.2.1"), picture="life"),
         _step("Keep 14 of the 21 sensors",
-              "The paper's Table 3 keeps " + ", ".join(PAPER_SENSOR_SYMBOLS) + ", in that order, and the sensor "
-              "graph depends on that order. The paper removes seven sensors and names six; the seventh, NRc, is "
-              "this project's reading (assumption A-10). The other seven sensor columns stay in the table and are "
-              "never read." + check,
+              "Only the sensor columns named in Table 3 become model inputs, in the order used by its graph. "
+              "The paper says seven sensors were removed but names six; this project identifies NRc as the "
+              "seventh from the retained set (assumption A-10)." + check,
               parts=[("Table 3's sensors, in its order", None)],
               shape="14 of 27 columns" if facts else "", source=_cite("Table 3"), picture="select"),
         _edge("To preprocessing", icon="preprocessing"),
@@ -1090,87 +1098,83 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     _, test_note = _decided("clip_test_labels", capped)
     steps.append(_step(
         "Cap the labels",
-        "The paper takes remaining life to stay level while an engine is healthy and to fall in a straight line "
-        f"after that, so every label above the ceiling becomes the ceiling: min(life, {ceiling}). "
-        + (ceiling_note or "The paper gives the ceiling no number; 125 was read off its Fig. 7 (assumption A-01).")
-        + " The network's output is scaled to the same ceiling, so it can never predict more (assumption A-13). "
-        + "The paper's Fig. 1 caps after smoothing; the two touch different columns, so the order changes nothing. "
-        + ("The test labels are capped too, which can only flatter the scores (assumption A-02)." if capped else
-           "The test labels keep their true values.") + (f" {test_note}" if test_note else ""),
+        f"Labels above {ceiling} cycles are replaced by {ceiling}; smaller labels stay unchanged. This makes "
+        "the learning target constant early in life, although the actual time until failure keeps decreasing. "
+        + ("Test answers are capped too, so scores assess this capped target (assumption A-02)." if capped else
+           "Test answers retain their uncapped values.")
+        + (f" {ceiling_note}" if ceiling_note else " The default ceiling is a figure-based interpretation "
+           "recorded in assumption A-01, not a printed value.") + (f" {test_note}" if test_note else ""),
         parts=[(f"at {_plural(ceiling, 'cycle')}", "rul_max"),
                ("test labels too" if capped else "not the test labels", "clip_test_labels")],
         shape=table, source=_cite("Eq. 19"), picture="cap"))
 
+    # Switched off, smoothing is no step at all, and the flowchart leaves it out.
     if settings["smoothing"]:
         alpha = float(settings["smoothing_alpha"])
         _, alpha_note = _decided("smoothing_alpha", alpha)
         blends = alpha < 1
         steps.append(_step(
             "Smooth each sensor",
-            (f"Runs down each engine's history: smoothed = {alpha:g} x reading + {1 - alpha:g} x the smoothed "
-             "value before it, on the 14 kept sensors in their own units. It uses only the same engine's earlier "
-             "readings, so nothing from a later cycle reaches an earlier one." if blends else
+            (f"For each sensor and engine, combine {alpha:g} times the current reading with {1 - alpha:g} times "
+             "the previous smoothed value. The first reading starts the sequence. This softens rapid "
+             "fluctuations using only the present and past, before rescaling." if blends else
              "With all the weight on the newest reading, each reading passes through unchanged.")
-            + " It comes before the rescaling, the order the paper's Fig. 1 prints. "
-            + (alpha_note or "The weight 0.5 is this project's reading of a sentence that attaches it to the "
-                             "wrong symbol (assumption A-04).")
-            + (f" On {subset} the operating condition changes from one cycle to the next, so smoothing in raw "
-               "units blends readings taken under different conditions; the log measures what that costs "
-               "(entry A-08)." if several and blends else ""),
+            + " " + (alpha_note or "The default weight is this project's interpretation of the paper's "
+                                    "ambiguous wording (assumption A-04).")
+            + (f" In {subset}, successive readings can come from different operating conditions, and this "
+               "step blends across them." if several and blends else ""),
             parts=[(f"weight {alpha:g} on the newest reading", "smoothing_alpha")], shape=table,
             source=_cite("Eq. 18"), picture="smooth"))
-    else:
-        _, off_note = _decided("smoothing", False)
-        steps.append(_step(
-            "Smooth each sensor", "Switched off: the readings go on as recorded. " + off_note,
-            parts=[("off", "smoothing")], shape=table, picture="smooth"))
 
     if fraction > 0:
         tag, note = _decided("validation_fraction", fraction)
         count = f"{run['held']} of {run['held'] + run['kept']} engines" if run else f"{fraction:.0%} of the engines"
         steps.append(_step(
             "Hold engines back",
-            f"Before anything is measured from the data, {fraction:.0%} of the training engines are set aside, "
-            f"here drawn with seed {seed}; each seed of a run draws its own unless the same held-back engines are "
-            "kept for every seed. After every pass the network is scored on them, and the pass that scores best is "
-            "the one whose weights are kept" + (", and training stops once they stop improving"
-                                                if settings["early_stopping"] else "")
-            + ". Whole engines go, never single windows, because neighbouring windows share most of their cycles. "
-            "Setting them aside before the rescaling is measured reverses the order the paper's Fig. 1 prints, "
-            "where the rescaling comes before the sets are formed (assumption A-25). " + note,
+            f"Set aside {fraction:.0%} of the training-file engines before calculating rescaling statistics "
+            f"(random seed {seed}). These validation engines check predictions after each full pass through the "
+            "training windows and select which learned weights to keep. Whole engines are separated so "
+            "overlapping windows of one engine cannot appear in both groups. This selection is our procedure, "
+            "not one the paper describes. " + note,
             parts=[(count, "validation_fraction")], shape=table, source=tag, picture="hold"))
     else:
         _, note = _decided("validation_fraction", fraction)
         steps.append(_step(
             "Hold engines back",
-            "Nothing is held back, as in the paper's procedure, which describes no held-out set: every training "
-            "engine teaches the network, every pass is run and the final weights are kept. " + note,
+            "Every training-file engine is used to learn the model's weights. Training runs for the chosen "
+            "number of passes and keeps the final weights, without a separate group for selecting an earlier "
+            "version. The paper specifies a fixed training length and does not describe validation. " + note,
             parts=[("none", "validation_fraction")], shape=table, picture="hold"))
 
     method = settings["normalization"]
     conditions = run["conditions"] if run else None
     steps.append(_step(
         "Find operating conditions",
-        "Rounds the three operating settings of the training engines' rows to whole numbers and counts the "
-        "combinations, at most 6. With more than one, a clustering method (k-means) puts each row with the "
-        f"nearest of that many centres, found from the unrounded settings and started from seed {seed}. " + ("The rescaling below uses the groups." if method == "minmax_per_condition"
-                                          else "The rescaling chosen below does not use them."),
+        "The three operating settings describe how an engine is run. Their rounded combinations determine "
+        "how many groups to use, up to six. When there is more than one, k-means finds representative centres "
+        "from training engines and assigns each row to its nearest centre. "
+        + ("Rescaling below uses these groups." if method == "minmax_per_condition" else
+           "The chosen rescaling does not use these groups."),
         parts=[(f"{_plural(conditions, 'condition')} found" if conditions else "", None)], shape=table_more,
         picture="conditions"))
 
     tag, note = _decided("normalization", method)
-    formula = "(reading - mean) / spread" if method == "zscore" else "(reading - smallest) / (largest - smallest)"
+    formula = ("Subtract each sensor's training mean and divide by its standard deviation, a measure of spread"
+               if method == "zscore" else
+               "Subtract each sensor's training minimum and divide by its training range (maximum minus minimum)")
     where = {"zscore": "one mean and one spread per sensor",
              "minmax_per_condition": "one range per sensor within each operating condition",
              "minmax_global": "one range per sensor over all rows"}[method]
     applied = "every engine, the held-back and test engines included" if fraction > 0 else "every engine"
-    pooled = (f" Here the {DATASET_DESCRIPTION[subset]['conditions']} operating conditions share one scale; the "
-              "range per condition is the choice the log recommends for this sub-dataset (assumption A-03)."
+    pooled = (" The operating conditions share one scale; differences in operating conditions can therefore "
+              "remain in the inputs."
               if several and method != "minmax_per_condition" else "")
     steps.append(_step(
         "Rescale each sensor",
-        f"{formula}, with {where}, measured on the training engines only and then applied to {applied}. "
-        + note + pooled,
+        f"{formula}, using {where}. Apply those same numbers to {applied}. "
+        + ("Values are not limited to a fixed interval." if method == "zscore" else
+           "Training minima become 0 and maxima become 1; later values can lie outside that range.")
+        + " A sensor with negligible training variation is set to 0. " + note + pooled,
         parts=[(_label_of("normalization", method).lower(), "normalization")], shape=table_more, source=tag,
         picture="rescale"))
 
@@ -1180,12 +1184,10 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     left_out = (dataset_facts(subset, window)["counted"] or {}).get("left_out", 0)
     steps.append(_step(
         "Cut into windows",
-        f"A run of {_plural(window, 'consecutive cycle')} of a training-file engine, starting {every}, becomes one "
-        f"example, labelled with the remaining life at its last cycle and laid out as 14 sensors by "
-        f"{_plural(window, 'cycle')}. " + note + " "
-        + (stride_note or "One cycle apart is this project's choice (assumption A-05).")
-        + " A test engine gives only the window that ends at its last recorded cycle; the spacing does not apply "
-        "to it." + (f" {_plural(left_out, 'test engine')} shorter than {_plural(window, 'cycle')} "
+        f"A window is {_plural(window, 'consecutive cycle')} from one engine, arranged as 14 sensor histories. "
+        f"Training-file windows start {every}; each is paired with the remaining life at its final cycle. "
+        "A test engine supplies only its last complete window. " + note + " " + stride_note
+        + (f" {_plural(left_out, 'test engine')} shorter than {_plural(window, 'cycle')} "
                     f"{'is' if left_out == 1 else 'are'} left out (assumption A-23)." if left_out else ""),
         parts=[(_plural(window, "cycle"), "window_size"), (f"a new one {every}", "window_stride")],
         shape=f"({_count(run['train'] + run['validation'])}, 14, {window})" if run else f"(windows, 14, {window})",
@@ -1236,77 +1238,73 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         hidden, shared = int(settings["temporal_hidden"]), bool(settings["shared_across_sensors"])
         _, hidden_note = _decided("temporal_hidden", hidden)
         cells = sum(p.numel() for p in stage.cells.parameters())
-        each = cells // len(stage.cells)
         name = "LSTM" if kind == "lstm" else "GRU"
         rows = f"B x {nodes}" if shared else "B"
-        inside = ("its input, forget and output gates decide what to keep in a cell state and what to pass on"
+        inside = ("learned gates, values between 0 and 1, control what its memory keeps, adds and passes on"
                   if kind == "lstm" else
-                  "its reset and update gates decide how much of what it carries to renew; there is no separate "
-                  "cell state")
+                  "learned gates, values between 0 and 1, control how old information and a new candidate "
+                  "are combined")
         steps.append(_step(
             "Split by sensor",
-            (f"Each window's {nodes} sensors become {nodes} sequences of one number per cycle, all read by the same "
-             "network." if shared else
+            (f"Each window becomes {nodes} separate sensor histories, one reading per cycle. The same learned "
+             "rule processes every sensor, but their histories and memories remain separate." if shared else
              f"Each sensor's {readings} {'becomes' if window == 1 else 'become'} a sequence of its own, one "
-             "number per cycle. Inside this stage no "
-             "sensor sees another sensor's readings."),
+             "number per cycle. A separate learned rule processes each sensor. Sensors do not exchange "
+             "readings within this stage."),
             parts=[("one sequence per window and sensor" if shared else f"{nodes} sequences of {readings}", None)],
             shape=f"({rows}, {window}, 1)" if shared else f"{nodes} x (B, {window}, 1)",
-            source=_decided("shared_across_sensors", True)[0] if shared else _cite("Section 2.2"),
+            source=_decided("shared_across_sensors", True)[0] if shared else chosen,
             picture="split"))
         steps.append(_step(
             f"One {name} for all sensors" if shared else f"One {name} per sensor",
-            ("A single network reads every sensor's window in turn, with nothing telling it which sensor it is "
-             "reading; the paper gives each sensor its own (Section 2.2)." if shared else
-             "Each sensor's own network reads its readings oldest first.")
-            + f" At every cycle {inside}. It carries {_plural(hidden, 'number')} from one cycle to the next, its "
-            f"hidden state, which {'starts' if hidden == 1 else 'start'} at zero for every window. "
-            + (hidden_note or "That width is this project's choice (assumption A-26).")
-            + f" {_count(each)} learned numbers per network.",
+            f"Reads each sensor's history oldest first. At each cycle, {inside}. "
+            + f"Its hidden state is a summary of {_plural(hidden, 'number')} passed to the next cycle. "
+            + ("LSTM also carries a separate memory called the cell state. " if kind == "lstm" else
+               "GRU carries no separate cell state. ")
+            + "Every window starts with zero memory. "
+            + (hidden_note or "The memory width is our choice (assumption A-26)."),
             parts=[(f"hidden {hidden}", "temporal_hidden"),
                    ("shared" if shared else f"{len(stage.cells)} networks", "shared_across_sensors")],
             shape=f"({rows}, {window}, {hidden})" + ("" if shared else " each"), learned=cells,
             source=_decided("shared_across_sensors", True)[0] if shared else chosen, picture="recurrent"))
         steps[-1]["networks"] = _networks(stage, kind, window, shared)
-        dropped = ([f"the {_plural(window - 1, 'earlier one')}"] if window > 1 else []) + (
-            ["the cell state"] if kind == "lstm" else [])
-        one = len(dropped) == 1 and (kind == "lstm" or window == 2)
         steps.append(_step(
             "Keep the last hidden state",
-            "Only the hidden state after the most recent cycle leaves the network"
-            + (f"; {' and '.join(dropped)} {'is' if one else 'are'} dropped." if dropped else "."),
+            "Pass on only the summary after the most recent cycle. Earlier readings can influence it through "
+            "the repeated memory updates; their earlier summaries are not sent separately. "
+            + ("The separate cell-state memory is also not sent on." if kind == "lstm" else
+               "This GRU option is an extension of the paper's architecture."),
             parts=[(f"{_plural(hidden, 'number')} per sensor", None)],
             shape=f"(B x {nodes}, {hidden})" if shared else f"(B, {nodes}, {hidden})",
-            source=_cite("Eq. 7"), picture="last"))
+            source=_cite("Eq. 7") if kind == "lstm" else chosen, picture="last"))
         projection = sum(p.numel() for p in stage.project.parameters())
         _, out_note = _decided("temporal_out_features", k)
         steps.append(_step(
             f"Turn into {_plural(k, 'number')} per sensor",
-            (f"A weighted sum of each sensor's {_plural(hidden, 'number')} plus an offset, with the same weights "
-             f"for all {nodes} sensors, gives 1" if k == 1 else
-             f"{k} weighted sums of each sensor's {_plural(hidden, 'number')}, each plus an offset and each with "
-             f"the same weights for all {nodes} sensors, give {k}")
-            + "; nothing sets their negative results to zero. The paper prints no such layer; "
-            "its Table 4 hands the graph layers one number per sensor (assumption A-26)."
-            + (f" The {nodes} sensors' rows are then put back in place, one per window." if shared else "")
+            f"Multiply the summary's {_plural(hidden, 'number')} by learned weights, add them, and add a "
+            f"learned offset to produce each of {_plural(k, 'output number')}. All sensors use the same weights "
+            "and offsets. This conversion is our choice; the paper specifies one number entering the graph "
+            "per sensor but not how to produce it (assumption A-26)."
             + (f" {out_note}" if out_note else ""),
             parts=[(f"{k} per sensor", "temporal_out_features")], shape=f"(B, {nodes}, {k})",
             learned=projection, source=_decided("temporal_out_features", 1)[0], picture="project"))
     elif kind == "last_cycle":
         steps.append(_step(
             "Keep the last reading",
-            "Each sensor keeps only its most recent reading of the window"
+            "Each sensor keeps only its most recent preprocessed reading"
             + (f"; the other {_plural(window - 1, 'reading')} {'is' if window == 2 else 'are'} dropped"
                if window > 1 else "")
-            + ". Nothing is learned here. This stage stands for the paper's model without its LSTM (assumption A-07).",
+            + ". This step learns no weights. Earlier cycles can still contribute through smoothing, if "
+            "enabled. Using the last reading in place of the paper's LSTM memory stage is our choice "
+            "(assumption A-07).",
             parts=[(f"cycle {window} of {window}", "temporal")], shape=f"(B, {nodes}, 1)", source=chosen,
             picture="last"))
     elif kind == "mean_window":
         steps.append(_step(
             "Average the window",
             (f"Each sensor's {readings} are replaced by their plain average." if window > 1 else
-             "Each sensor's single reading is its own average.") + " Nothing is learned here; the paper has "
-            "no such stage.",
+             "Each sensor's single reading is its own average.") + " This step learns no weights and loses "
+            "the order of readings within the window. It is an extension, not a stage described in the paper.",
             parts=[(f"{readings} to 1", "temporal")], shape=f"(B, {nodes}, 1)", source=chosen,
             picture="average"))
     elif kind == "window_summary":
@@ -1317,13 +1315,17 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
                 _step("Average", f"The plain average of the {readings}.", parts=[("1 number", None)],
                       shape=f"(B, {nodes})", picture="average"),
                 _step("Change over the window",
-                      f"The slope of the straight line that best fits the {readings}, times {window - 1}, so the "
-                      "change is in the readings' own units.", parts=[("1 number", None)], shape=f"(B, {nodes})",
+                      f"Fit a straight line to the {readings} by minimising the squared differences between "
+                      "each reading and the line's value at that cycle. Keep its final value minus its first: positive "
+                      "means rising, negative means falling. This measures the overall trend, not just "
+                      "the difference between the first and last readings.",
+                      parts=[("1 number", None)], shape=f"(B, {nodes})",
                       picture="slope"),
             ),
             _step("Three numbers per sensor",
-                  "The three are stacked for each sensor. Nothing is learned here, so the first graph layer's "
-                  "weights mix the three, which lets time into the graph layer (assumption A-28).",
+                  "Put each sensor's last reading, average and fitted change side by side. These fixed "
+                  "calculations give the graph layers information about both level and trend; the graph "
+                  "layers learn how to combine them. This is our extension (assumption A-28).",
                   parts=[("last · average · change", "temporal")], shape=f"(B, {nodes}, 3)", source=chosen,
                   picture="stack"),
         ]
@@ -1332,9 +1334,9 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         steps.append(_step(
             "Pass every cycle",
             (f"All {readings} go on unchanged" if window > 1 else "The single reading goes on unchanged")
-            + f", so the first graph layer's {window} x {first} weights become {_plural(first, 'learned pattern')} "
-            "over the cycles, the same for every sensor; the fixed graph still does the mixing "
-            "between sensors. This is the arrangement the last-cycle stage replaced (assumption A-07).",
+            + f". The first graph layer learns {_plural(first, 'weighted sum')} across these cycle positions "
+            "while also combining connected sensors. The weights are shared across sensors. This is an "
+            "extension of the paper's architecture, which processes time separately before the graph layers.",
             parts=[(f"all {readings}", "temporal")], shape=f"(B, {nodes}, {window})", source=chosen,
             picture="window"))
     steps.append(_edge("To the graph layers", f"(B, {nodes}, {k})", icon="graph"))
@@ -1367,10 +1369,10 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     nodes, k = model.n_nodes, int(model.in_features)
 
     graph_words = {
-        "physics": "the pairs the paper's Table 3 joins, built by hand from how the engine works",
-        "complete": "every sensor joined to every other, which averages every sensor equally, so it measures the "
-                    "cost of averaging as much as the value of the physics (audit item D-2)",
-        "correlation": "the sensor pairs whose readings are most strongly correlated on the training engines",
+        "physics": "the pairs in the paper's Table 3, proposed from engine structure and physical relationships",
+        "complete": "every sensor joined to every other",
+        "correlation": "pairs with the strongest linear association in training readings, whether they rise "
+                       "together or in opposite directions",
     }[graph]
     extra, pairs, sums, beyond, apart = "", "", "", [], 0
     if matrix is not None:
@@ -1386,21 +1388,22 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         groups = [group for group in twins.values() if len(group) > 1]
         if graph == "correlation":
             if float(settings["validation_fraction"]) == 0:
-                extra += " With nothing held back, every seed builds this same graph."
+                extra += " It uses all training-file engines; none are held back."
             elif settings["fixed_split"]:
-                extra += " With the same held-back engines for every seed, every seed uses this graph."
+                extra += " Each repeat uses the same selection of training engines."
             else:
-                extra += (f" This is seed {seed}'s graph, the first of the run; each seed builds its own from its "
-                          "own training engines.")
+                extra += (f" This is random seed {seed}'s graph; each repeat rebuilds it using its own "
+                          "training engines.")
         if alone:
-            extra += (f" {' and '.join(alone)} {'is' if len(alone) == 1 else 'are'} joined to nothing, so "
-                      f"{'it only ever sees itself' if len(alone) == 1 else 'each only ever sees itself'}.")
+            extra += (f" {' and '.join(alone)} {'has' if len(alone) == 1 else 'have'} no neighbours, so "
+                      "the graph layers receive only their own information at those positions.")
         if graph == "complete":
-            extra += " All 14 sensors then carry identical numbers from the first graph layer on."
+            extra += (" Rescaling then gives every sensor the same average, so all sensor positions have "
+                      "identical numbers after the first graph layer.")
         elif groups:
             named = "; ".join(", ".join(g[:-1]) + " and " + g[-1] for g in groups)
-            extra += (f" {_plural(len(groups), 'group')} of sensors get identical rows here ({named}), so the "
-                      "layers after this can read each group only as the sum of its sensors (audit item D-1).")
+            extra += (f" Identical rescaled rows ({named}) make these sensor positions produce identical "
+                      "outputs in the first graph layer.")
         totals = rescaled.sum(axis=1)
         sums = (" Every row sums to 1." if np.allclose(totals, 1, atol=1e-5) else
                 f" Its rows sum to between {totals.min():.4f} and {totals.max():.4f}, not to 1.")
@@ -1420,21 +1423,21 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     graph_tag, graph_note = _decided("graph", graph)
     graph_steps = [
         _step("Sensor graph",
-              f"Which sensors exchange numbers: {graph_words}. It is a fixed table of 1s where two sensors are "
-              f"joined and 0s elsewhere, the diagonal included; training never changes it.{extra} {graph_note}",
+              f"Each node is a sensor; a connection allows two sensors to exchange information. Here we connect "
+              f"{graph_words}. The table uses 1 for a connection and 0 otherwise, including 0 on its diagonal. "
+              f"Training does not change the connections.{extra} {graph_note}",
               parts=[(_label_of("graph", graph) + pairs, "graph")], shape=f"({nodes}, {nodes})", source=graph_tag,
               picture="graph"),
     ]
     tag, note = _decided("adjacency_normalization", rescaling)
     graph_steps.append(_step(
         "Rescale the graph",
-        ("Each sensor is first joined to itself, a 1 on the diagonal. Then each entry is divided by its sensor's "
-         "count of connections, itself included, so every sensor takes the plain average of itself and its "
-         "neighbours: D^-1 (A + I), where A is the table, I the 1s added on the diagonal and D the counts."
+        ("Include each sensor itself among its neighbours. Divide each row by its number of included sensors. "
+         "That row then gives equal weights to itself and its neighbours, so the next layer takes their average."
          if rescaling == "row" else
-         "Each sensor is first joined to itself, a 1 on the diagonal. Then each entry is divided by the square "
-         "root of both sensors' counts of connections, itself included: D^-1/2 (A + I) D^-1/2, where A is the "
-         "table, I the 1s added on the diagonal and D the counts. The table is symmetric.")
+         "Include each sensor itself among its neighbours. Divide each connection's 1 by the square root "
+         "of the product of the two sensors' neighbour counts, each counting itself. Both directions receive "
+         "the same weight, so the table is symmetric. This need not produce an average.")
         + sums + (f" {note}" if note else ""),
         parts=[(_label_of("adjacency_normalization", rescaling).lower(), "adjacency_normalization")],
         shape=f"({nodes}, {nodes})", source=tag, picture="table"))
@@ -1450,25 +1453,25 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         row = layers[f"GCN-{index}"]
         width_in = row["in"].split(",")[-1].strip(" )")
         width_out = row["out"].split(",")[-1].strip(" )")
-        reach = {1: " Each sensor now carries what its neighbours held.",
-                 2: " Each sensor now carries what its neighbours' neighbours held.",
-                 3: " Each sensor now carries what sensors up to three steps away held."}.get(index, "")
+        reach = {1: " An output can depend on the sensor itself and its immediate neighbours.",
+                 2: " Through the preceding layer, an output can depend on sensors up to two connections away.",
+                 3: " Through the preceding layers, an output can depend on sensors up to three connections away."}.get(index, "")
         if index == 3 and (beyond or apart):
             far = [f"{_plural(len(beyond), 'pair')} {'is' if len(beyond) == 1 else 'are'} further apart than that ("
                    + ", ".join(f"{a}-{b}" for a, b in beyond) + ")"] if beyond else []
             far += [f"{_plural(apart, 'pair')} {'is' if apart == 1 else 'are'} joined by no path at all"] if apart else []
-            reach += (" On this graph " + " and ".join(far) + ": they exchange nothing inside the graph layers, and "
-                      "only the fully connected layer combines them.")
+            reach += (" On this graph " + " and ".join(far) + "; one sensor's input cannot reach the other's "
+                      "position in these three layers.")
         width_note = (f' "Graph layer widths" was changed from its default for this layer, {defaults[index - 1]} '
                       "(the paper's Table 4)." if index <= len(defaults) and int(width_out) != defaults[index - 1]
                       else "")
         steps.append(_step(
             f"Graph layer {index}",
-            f"Mixes each sensor's {_plural(int(width_in), 'number')} with its neighbours' through "
-            f"the rescaled graph, multiplies by a learned {width_in} x {width_out} table of weights, "
-            + ("adds an offset the paper's equation does not print (assumption A-12), " if bias else
-               "adds no offset, as the paper's equation prints none (assumption A-12), ")
-            + "then sets every negative result to zero (ReLU)." + reach
+            f"First combine connected sensors' {_plural(int(width_in), 'number')} using the graph's fixed "
+            f"weights. Learned multipliers then make {_plural(int(width_out), 'weighted sum')} per sensor"
+            + (", with learned offsets (our extension, assumption A-12)" if bias else ", with no added offset")
+            + ". Negative results become zero, an operation called ReLU. All sensors share the learned "
+            "multipliers." + reach
             + width_note,
             parts=[(f"{_plural(int(width_out), 'number')} per sensor", "gcn_hidden", index - 1),
                    ("offset" if bias else "no offset", "gcn_bias")],
@@ -1482,20 +1485,22 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     _, ceiling_note = _decided("rul_max", int(settings["rul_max"]))
     steps += [
         _step("Flatten",
-              f"Lays the {nodes} sensors' numbers end to end in Table 3's order. Nothing is averaged, so each sensor "
-              "keeps its own weights in the next layer.",
+              f"Place the {nodes} sensor positions' computed numbers end to end in a single list for each "
+              "window. No values are averaged or changed. The next layer can assign a separate learned "
+              "weight to every position in this list.",
               parts=[(f"{nodes} x {width_out} = {flat_width}", None)], shape=flat["out"], source=_cite("Eq. 11"),
               picture="flatten"),
         _step("Fully connected",
               (f"Each of the {fc} outputs is" if fc > 1 else "Its one output is")
-              + f" a weighted sum of all {flat_width} numbers plus an offset, then every negative result is set to "
-              "zero (ReLU)." + (f" {fc_note}" if fc_note else ""),
+              + f" a sum of all {flat_width} input numbers multiplied by learned weights, plus a learned "
+              "offset. Negative results become zero (ReLU). This combines information across all sensor "
+              "positions." + (f" {fc_note}" if fc_note else ""),
               parts=[(_plural(fc, "number"), "fc_hidden")], shape=fc1["out"], learned=int(fc1["parameters"]),
               source=_cite("Eq. 12"), picture="dense"),
         _step("Output",
-              f"One weighted sum of the {_plural(fc, 'number')} plus an offset, squeezed by the sigmoid into a "
-              "fraction between "
-              "0 and 1.",
+              f"Combine the {_plural(fc, 'number')} using learned multipliers and an added offset. "
+              "The sigmoid, a smooth S-shaped function, maps this result to a fraction between 0 and 1. "
+              "It is a fraction of the life ceiling, not a probability of failure.",
               parts=[("a fraction from 0 to 1", None)], shape="(B,)", learned=int(fc2["parameters"]),
               source=_cite("Eq. 13"), picture="sigmoid"),
         _step("Scale to cycles",

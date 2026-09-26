@@ -1053,8 +1053,8 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-varrow--long { flex: 1 1 auto; }
 .pg-vjoin-side { grid-column: 3; list-style: none; margin: 0; padding: 0 0 0 8px; }
 .pg-vjoin-side .pg-vstep { width: 100%; }
-.pg-vjoin-side .pg-vstep-part { position: static; margin-top: 4px; }
-.pg-vjoin-side .pg-vstep.has-part { padding-inline: 16px; }
+/* Beside the main line the cross stays in its corner, by the picture, and the words keep the box's width. */
+.pg-vjoin-side .pg-vstep.has-part:has(.pg-vstep-part) { padding-inline: 16px; }
 /* The temporal stage's networks, one button per sensor. */
 .pg-nets { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 4px; width: 100%; margin: 4px 0; }
 .pg-nets.is-shared { grid-template-columns: minmax(0, 1fr); }
@@ -1204,6 +1204,10 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-sections { display: grid; gap: 12px; }
 .pg-section { display: grid; gap: 12px; padding: 12px 16px 16px; border-radius: var(--radius); background: var(--panel); }
 .pg-section .opt:hover { background: var(--panel-2); }
+/* A group's switch stands in its top right corner. Switched off, the group's
+   settings fade and cannot be used; the switch and the name stay clear. */
+.pg-section-switch { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.pg-section.is-off > .pg-fields { opacity: .45; }
 .pg-section-head { display: flex; align-items: center; gap: 12px; min-height: 32px; }
 .pg-section-picture { flex: 0 0 auto; color: var(--ink-soft); line-height: 0; }
 .pg-section-picture .pg-picture { width: 36px; height: 24px; }

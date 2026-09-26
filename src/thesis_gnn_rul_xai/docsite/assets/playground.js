@@ -27,22 +27,22 @@
   var METHODS = { shap: "Exact Shapley values", occlusion: "Occlusion" };
   // What the Explain tab's options do, in plain words, above the line of each one's i.
   var EXPLAIN_ABOUT = {
-    shap: "Compares the prediction from the recorded readings with the prediction when every sensor is swapped " +
-      "for its training average, and divides that change among the 14 sensors, in cycles. A sensor's share " +
-      "is how far swapping it back to its recorded readings moves the prediction, averaged over every mix " +
-      "of the others recorded or swapped, each size of mix counting equally.",
-    occlusion: "A quick first look. Each sensor in turn has its readings swapped for their training average while " +
-      "the other 13 stay as recorded; its value is the prediction with every sensor recorded minus the " +
-      "prediction with it swapped. Far quicker than trying every mix of sensors, but the values need not " +
-      "add up the way the exact ones do.",
-    engine: "Follows one engine through its recorded life, which ends in failure, explaining its windows one " +
-      "after another. It shows how much each sensor raises or lowers the predicted remaining life, and how " +
-      "that changes as the engine wears out. With no engines held back, the network learned from that " +
-      "engine.",
-    test: "Explains the predictions the run is scored on: one per test engine, at the last cycle it recorded, " +
-      "for engines the network never learned from. An engine too short to fill a window has no prediction " +
-      "and is skipped. With one window per engine, it cannot show how a sensor's effect changes as an " +
-      "engine wears out."
+    shap: "Explains how the recorded input changes a prediction relative to an average training window. Start with that window and restore " +
+      "each sensor's recorded window in turn. Its Shapley value is the average change in predicted remaining " +
+      "life over every possible restoration order, in cycles. Together, the values equal the original " +
+      "prediction minus the starting prediction, apart from numerical rounding. They explain the model, " +
+      "not the causes of engine failure.",
+    occlusion: "Measures what changes when one sensor's window is replaced by its average training window, " +
+      "with every other sensor unchanged. The value is the original prediction minus the replacement " +
+      "prediction, in cycles: positive means this sensor's recorded readings raise the prediction. " +
+      "The values need not add to the prediction's difference from the input where every sensor is replaced. They describe " +
+      "the model, not the causes of engine failure.",
+    engine: "Explains successive windows of one engine's history to show how sensor contributions change " +
+      "over time. The engine comes from those held back from training; if none were held back, it comes " +
+      "from the training engines. The window spacing and the setting below determine which windows are explained.",
+    test: "Explains one prediction per test engine, using its last available window. These engines were " +
+      "not used to fit the model. Engines too short to fill a window are excluded. This supports comparison " +
+      "across engines, but one window per engine cannot show changes over that engine's life."
   };
   var ENGINE_SOURCE = { validation: "held-back", training: "training", test: "test" };
   var MEASURES = [["rmse", "RMSE", 3], ["score", "Score", 1], ["r2", "R²", 3], ["asue", "ASUE", 3]];
@@ -55,7 +55,7 @@
   var FIG7_UNIT = { FD001: 38, FD002: 48, FD003: 30, FD004: 58 };
   // What each source tag means, shown when the pointer rests on the tag.
   var SOURCE_NAMES = { paper: "Paper", assumption: "Our choice", project: "Project rule", extension: "Not in the paper" };
-  var SOURCE_TITLES = { paper: "The paper prints this value", assumption: "The paper is silent, so this project chose",
+  var SOURCE_TITLES = { paper: "Supported by the cited part of the paper", assumption: "A project choice where the paper is incomplete or ambiguous",
     project: "A rule of this repository", extension: "An option offered for comparison" };
   // Choices short enough to sit side by side in one control, and a choice of
   // five that shares one source and sits beside the two rates it connects,
@@ -1324,7 +1324,6 @@
     if (key === "temporal_hidden" || key === "temporal_out_features" || key === "shared_across_sensors") {
       return s.temporal === "lstm" || s.temporal === "gru";
     }
-    if (key === "smoothing_alpha") { return !!s.smoothing; }
     if (key === "validation_fraction") { return chosenProcedure().settings.validation_fraction > 0; }
     if (key === "early_stopping_patience") { return !!s.early_stopping; }
     return true;
@@ -1513,24 +1512,35 @@
     var toggle = section.toggle ? S.fields[section.toggle] : null;
     var id = "pg-section-" + group + "-" + index;
     var hidden = !toggle && fields.every(function (f) { return !visible(f.key); });
-    return '<section class="pg-section" data-section="' + group + "-" + index + '" aria-labelledby="' + id + '"' +
-      (hidden ? " hidden" : "") + '><div class="pg-section-head"' + (toggle ? ' data-row="' + toggle.key + '"' : "") + ">" +
+    var off = !!toggle && !S.settings[toggle.key];
+    var body = cells(lone ? id : null);
+    if (off) { body = body.replace(/<(input|select)\b/g, "<$1 disabled"); }
+    return '<section class="pg-section' + (off ? " is-off" : "") + '" data-section="' + group + "-" + index +
+      '" aria-labelledby="' + id + '"' + (hidden ? " hidden" : "") + '><div class="pg-section-head"' +
+      (toggle ? ' data-row="' + toggle.key + '"' : "") + ">" +
       '<span class="pg-section-picture">' + PICTURES[section.picture] + "</span>" +
-      (toggle ? switchControl("pg-" + toggle.key, !!S.settings[toggle.key],
-        'data-field="' + toggle.key + '" aria-labelledby="' + id + '"') : "") +
       '<h3 class="pg-section-name pg-field-name"><span class="pg-section-label" id="' + id + '">' + esc(name) + "</span>" +
       info(section.procedure ? infoCard(S.options.procedure_about, "", S.options.procedure_more)
         : lone ? hintFor(fields[0]) : toggle ? hintFor(toggle) : "", name) + "</h3>" +
-      (toggle ? resetHtml(toggle) : "") + "</div>" + cells(lone ? id : null) + "</section>";
+      (toggle ? '<span class="pg-section-switch">' + resetHtml(toggle) + switchControl("pg-" + toggle.key,
+        !!S.settings[toggle.key], 'data-field="' + toggle.key + '" aria-labelledby="' + id + '"') + "</span>" : "") +
+      "</div>" + body + "</section>";
   }
 
   // A group is hidden while every setting in it is, and a group's name that
-  // follows the settings, "One GRU per sensor", follows them.
+  // follows the settings, "One GRU per sensor", follows them. A group whose
+  // step is switched off stays in view, faded, with its settings out of use,
+  // so the reader sees what switching it back on would bring.
   function paintSections() {
     $all(".pg-section").forEach(function (box) {
       var at = box.getAttribute("data-section").split("-"), section = SECTIONS[at[0]][Number(at[1])];
       var cells = Array.prototype.slice.call(box.querySelectorAll(".pg-fields > .pg-field"));
       box.hidden = !section.toggle && cells.length > 0 && cells.every(function (c) { return c.hidden; });
+      var off = !!section.toggle && !S.settings[section.toggle];
+      box.classList.toggle("is-off", off);
+      Array.prototype.forEach.call(box.querySelectorAll(".pg-fields input, .pg-fields select"), function (control) {
+        control.disabled = off;
+      });
       var label = box.querySelector(".pg-section-label"), name = sectionName(section);
       if (label && label.textContent !== name) { label.textContent = name; }
     });
@@ -1750,7 +1760,7 @@
   function joinHtml(shape, branch) {
     return '<div class="pg-vjoin"><div class="pg-vjoin-main">' + arrowHtml(shape, true) + "</div>" +
       '<ol class="pg-vjoin-side">' + branch.steps.map(function (s) {
-        return '<li class="pg-vitem">' + vstepHtml(s, true) + arrowHtml(handedOn(s)) + "</li>";
+        return '<li class="pg-vitem">' + vstepHtml(s, false) + arrowHtml(handedOn(s)) + "</li>";
       }).join("") + "</ol></div>";
   }
 
@@ -2600,7 +2610,7 @@
     var f = S.xfilter;
     return filterSelect("Method", "method", "data-xfilter", [{ value: "shap", label: METHODS.shap },
       { value: "occlusion", label: METHODS.occlusion }], f.method) +
-      filterSelect("What", "scope", "data-xfilter", [{ value: "engine", label: "One engine, at every cycle" },
+      filterSelect("What", "scope", "data-xfilter", [{ value: "engine", label: "One engine over time" },
         { value: "test", label: "The last window of every test engine" }], f.scope) +
       filterSelect("Sub-dataset", "subset", "data-xfilter", SUBSETS.map(function (s) { return { value: s, label: s }; }), f.subset) +
       stateFilter("data-xfilter", f.state);
@@ -2974,23 +2984,26 @@
           control: selectField("pg-e-seed", seedChoices, e.seed, 'data-explain="seed"') })) +
       cell({ key: "pg-e-method", label: "Method", size: "wide",
         control: optionList("pg-e-method", [
-          { value: "shap", label: METHODS.shap, about: EXPLAIN_ABOUT.shap, note: sourceTag({ kind: "paper", ref: "Eq. 14–15" }) +
-            " every one of the " + count(16384) + " subsets of sensors, for every window. An absent sensor is replaced by its average training window (" + refLink("A-20") + ")." },
+          { value: "shap", label: METHODS.shap, about: EXPLAIN_ABOUT.shap, note: sourceTag({ kind: "paper", ref: "Eq. 15" }) +
+            " All " + count(16384) + " sensor combinations are evaluated. Replacement readings are averaged across training windows at each position (" + refLink("A-20") + "); their prediction is our starting point (" + refLink("A-24") + ")." },
           { value: "occlusion", label: "Occlusion, one sensor at a time", about: EXPLAIN_ABOUT.occlusion, note: sourceTag({ kind: "extension" }) +
-            " 15 evaluations per window. The Shapley term in which the sensor arrives last; the two agree only when sensors do not interact." }
+            " Evaluates the original input and one replacement per sensor. Replacement readings are averaged across training windows separately at each window position (" + refLink("A-20") + ")." }
         ], e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) }) +
       cell({ key: "pg-e-scope", label: "What is explained", size: "wide",
         control: optionList("pg-e-scope", [
-          { value: "engine", label: "One engine, at every cycle", about: EXPLAIN_ABOUT.engine, note: sourceTag({ kind: "paper", ref: "Section 4.4" }) +
-            " the dynamic explanation of Table 12 and Fig. 10. The test set keeps only each engine's last window, so the engine comes from the held-back engines, or the training engines when none were held back." },
+          { value: "engine", label: "One engine over time", about: EXPLAIN_ABOUT.engine, note: sourceTag({ kind: "paper", ref: "Section 4.4" }) +
+            " Follows the paper's idea of explaining successive windows; the engine selection described above is this project's procedure." },
           { value: "test", label: "The last window of every test engine", about: EXPLAIN_ABOUT.test, note: sourceTag({ kind: "extension" }) +
-            " one explanation per test engine, for a ranking across engines." }
+            " Ranks sensors by their average contribution size across the included engines; the sign is ignored for this ranking." }
         ], e.scope, 'data-explain="scope"', explainNote, nameIds("pg-e-scope")) }) +
       cell({ id: "pg-e-engine", key: "pg-e-engine-row", label: "Engine number", hidden: !forEngine,
-        hint: infoCard("Blank: the engine with the longest history.", "", S.options.explain_more.engine),
+        hint: infoCard("Choose an engine from this seed's held-back set, or its training set if none were held back. " +
+          "Leave blank to choose the engine with the most available windows. Engine numbers refer to the NASA data files.", "", S.options.explain_more.engine),
         control: '<input class="field" type="number" id="pg-e-engine" min="1" value="' + esc(e.engine) + '" data-explain="engine">' }) +
       cell({ id: "pg-e-every", key: "pg-e-every-row", label: "Explain every n-th window", hidden: !forEngine,
-        hint: infoCard("Larger is quicker and coarser.", "", S.options.explain_more.every),
+        hint: infoCard("Enter 1 to explain every available window. Larger values keep the first window, then " +
+          "every n-th window after it, reducing computation but hiding changes between those windows. " +
+          "This counts windows, not cycles; their spacing was set when the run was prepared.", "", S.options.explain_more.every),
         control: '<input class="field" type="number" id="pg-e-every" min="1" max="100" value="' + e.every + '" data-explain="every">' }) +
       cell({ control: '<button type="button" class="button button--primary" data-action="explain">Explain</button>' }) +
       "</div></section>";
@@ -3080,11 +3093,16 @@
             "Checked here: the largest gap is " + Number(sum.sum_gap_max).toExponential(1) + " cycles." },
           { level: "info", ref: "F-08", text: "The paper's Table 12 cannot hold the signed values its own Equation 14 defines, " +
             "so only its ranking by size, not its numbers, can be set beside these." }]
-        : [{ level: "warn", text: "Occlusion values miss the prediction's distance from the baseline by up to " +
-            fixed(sum.sum_gap_max, 2) + " cycles." }];
+        : [{ level: "info", text: "Occlusion values are separate replacement comparisons, so their sum need not equal " +
+            "the prediction minus the prediction with every sensor replaced. The largest difference here is " +
+            fixed(sum.sum_gap_max, 2) + " cycles; a nonzero difference alone does not indicate an error." }];
       cautions.push({ level: "info", text: "A large value is not evidence that the sensor causes the engine's wear." });
-      var head = '<section class="pg-detail"><p class="pg-lead">Each value is how many cycles a sensor moved the prediction away from the baseline of ' +
-        fixed(sum.baseline_prediction, 2) + " cycles: positive raised the predicted remaining life, negative lowered it. Computed in " +
+      var meaning = exact
+        ? "Each value is a sensor's share of the prediction's difference from the baseline of " +
+          fixed(sum.baseline_prediction, 2) + " cycles, where every sensor is replaced by its average training window. "
+        : "Each value is the original prediction minus the prediction with just that sensor replaced by its average training window, in cycles. ";
+      var head = '<section class="pg-detail"><p class="pg-lead">' + meaning +
+        "Positive values raise the predicted remaining life in this comparison; negative values lower it. Computed in " +
         duration(sum.seconds) + ".</p>" + caveatList(cautions);
 
       var mean = {};

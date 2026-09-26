@@ -466,3 +466,39 @@ F-04 gained the row for the current default. What remains is in A-21:
 **How to check:** `grep -rn "0.35 cycles\|0.047" config src docs/learn README.md`.
 **What finishing looks like:** every quotation names the schedule it was
 measured under, and the 20 %-held-back rows of A-21 re-run at one commit.
+
+---
+
+## P-22 — Some longer explanations still make guarantees the definitions do not support
+
+The playground information-card review on 2026-09-26 corrected these claims
+in the cards and their directly associated cautions. Related prose elsewhere
+still needs a separate review:
+
+- `docs/ASSUMPTIONS.md`, A-02, says capping test answers can only make the
+  metrics look better. With predictions bounded by the same ceiling,
+  squared error and the NASA score cannot increase. R-squared also changes
+  its denominator, and ASUE averages over only underpredicted examples,
+  whose membership can change. Neither has the same general guarantee.
+- `scripts/explain.py` says occlusion and Shapley values agree *only* when
+  sensors do not interact. No interactions is sufficient for agreement,
+  but not necessary: contributions from interactions can cancel. Describe
+  the methods' different calculations without this equivalence claim.
+- `docs/ASSUMPTIONS.md`, A-24, describes changing the explanatory constant as
+  a uniform offset that preserves magnitude rankings. Changing only that
+  constant breaks the adding-up identity; changing the replacement input
+  changes the calculation itself and need not preserve rankings.
+- `docs/ASSUMPTIONS.md`, A-25, says fitting scaling on test engines can only
+  improve reported figures. It violates the intended separation of training
+  and test data, but that violation does not mathematically guarantee the
+  direction of the score change.
+
+**How to check:** read the formulas in `evaluation/metrics.py`, the replacement
+and averaging operations in `explain/shap.py` and `explain/occlusion.py`, and
+the fitting boundary in `data/pipeline/`. Search the corresponding READMEs
+and taught pages for the same claims.
+
+**What finishing looks like:** correct each statement with a dated note,
+retain legitimate methodological cautions, and add any numerical examples
+using real FD001 inputs to the existing example tests. Do not present a
+mathematical guarantee where only a possible outcome is established.

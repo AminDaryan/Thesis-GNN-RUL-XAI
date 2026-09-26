@@ -501,7 +501,10 @@ ceiling and whether the test labels are capped, then "Smooth each sensor",
 with its weight, then "Rescale each sensor" and "Cut into windows". A group
 that holds a single list of options names it, so the list has no name of its
 own and its i stands beside the group's name; a step that can be switched off,
-the smoothing, has its switch beside its group's name. A group whose settings
+the smoothing, has its switch in its group's top right corner. Switched off,
+the group stays in view, faded, with its settings out of use, so the reader
+sees what switching it back on would bring, and the step leaves the box's
+flowchart, since it no longer happens. A group whose settings
 are all hidden, the recurrent network's size when the stage is not recurrent,
 is hidden with them, and a group's name that depends on the settings, "One GRU
 per sensor", follows them. `SECTIONS` in `playground.js` holds the groups; the
@@ -603,7 +606,8 @@ The sensor graph is not a step the windows pass through: it is a second input
 of the first graph layer. So the graph layers' flowchart draws it as a branch
 beside the main line: the arrow from the temporal stage carries `(B, 14, 1)`
 straight down to graph layer 1, and beside it the sensor graph and its
-rescaling end in their own arrow, `(14, 14)`, into the same layer. Drawn in a
+rescaling end in their own arrow, `(14, 14)`, into the same layer; each of
+the two writes its shape once, on the arrow under it. Drawn in a
 single line, as it first was, the arrow into "Sensor graph" said the windows
 went into the graph.
 
@@ -863,6 +867,26 @@ Each was checked against the code it describes, never against the paper,
 which is the tag's business, so none of them carries a table, an equation or
 an assumption's number. A flowchart step's i has the same two parts: what the
 step does, then the tag.
+
+**Accuracy review, 2026-09-26.** The cards were checked again against the
+functions that prepare the data, build the network, train it and explain its
+predictions. Source labels were checked against the original paper. The
+review corrected several claims: capping answers cannot increase squared
+prediction errors, but it does not guarantee that every reported measure
+improves; a constant training target does not mean an engine stops wearing
+out; and replacing one sensor at a time does not generally divide the
+prediction into shares that add up. Keeping the same engines held back across
+runs also excludes one source of variation, without guaranteeing a smaller
+observed spread in every experiment.
+
+The short explanation states what goes in, what the operation does and what
+its output means. The source line separates published instructions from
+project choices. Details and worked examples remain behind **Read more**.
+For sensor explanations, the implementation in `explain/shap.py` and
+`explain/occlusion.py` determines the precise meaning of a contribution.
+The general distinction between explaining a prediction and establishing a
+physical cause also follows the
+[SHAP authors' explanation](https://shap.readthedocs.io/en/latest/example_notebooks/overviews/Be%20careful%20when%20interpreting%20predictive%20models%20in%20search%20of%20causal%20insights.html).
 
 | Tag | Meaning | Example |
 |---|---|---|
