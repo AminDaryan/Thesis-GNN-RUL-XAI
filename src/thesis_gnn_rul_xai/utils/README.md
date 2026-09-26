@@ -257,6 +257,14 @@ of changed files; `uncommitted.patch`; and `untracked/` for new files — and
 returns the list, which also goes into `summary.json` as `uncommitted_code`.
 When nothing under those paths differs, it writes nothing.
 
+**`write_code_state_archive(directory, state)`** writes the same three things
+into one file, `code_state.zip`, instead of a folder. Results written inside a
+run's own folder — an explanation, a walk measurement — sit several folders
+deeper than the run itself, and under the longest run names a path such as
+`…/code_state/untracked/src/thesis_gnn_rul_xai/explain/connections.py` passes
+the 260-character limit Windows puts on a path, so the folder cannot be made.
+Inside a zip file the names are not paths on disk and have no such limit.
+
 **A trap that hid until 2026-09-16.** Git prints the patch as the bytes of the
 files themselves, which in this repository are UTF-8. The call that reads it
 used to let Python pick the decoding, and on Windows that is the old

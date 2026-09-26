@@ -309,3 +309,122 @@ def test_example_window_summary_on_one_real_sensor_window(raw_dir):
 
     stage = WindowSummary(30)(torch.from_numpy(prepared.train.features[first:first + 1]))
     np.testing.assert_allclose(stage[0, sensor].numpy(), by_hand, atol=1e-5)
+
+
+# --- explain/walks.py ---------------------------------------------------
+
+
+def test_example_walks_on_three_real_sensors_worked_by_hand(raw_dir):
+    """Test engine 5's last readings of T24, T30 and T50, split into walks by hand.
+
+    The three sensors form a path in Table 3: T24 - T30 - T50, with no T24 - T50
+    edge. Row rescaling with each sensor joined to itself gives the rows
+    T24 [1/2, 1/2, 0], T30 [1/3, 1/3, 1/3], T50 [0, 1/2, 1/2]. One graph layer
+    of width 1 with weight 1, then fc1 with weights [2, 1, -1] and constant 0.5,
+    then fc2 with weight 1 and constant 0.
+
+    The graph layer: T24 gets (-0.3734 + 0.1146) / 2 = -0.1294, below zero, so
+    its ReLU passes nothing on. T30 gets (-0.3734 + 0.1146 + 0.8176) / 3 =
+    0.1863 and T50 gets (0.1146 + 0.8176) / 2 = 0.4661. fc1 then gives
+    2 x 0 + 1 x 0.1863 - 1 x 0.4661 + 0.5 = 0.2202, above zero, and that is the
+    score. 125 / (1 + e^-0.2202) = 69.35 cycles; the true remaining life is 91.
+
+    A walk here is one step, from a sensor to a sensor, and its share is the
+    reading it starts from, times the graph's entry for the step, times what one
+    unit at the arrival sensor is worth to the score (0 at T24, 1 at T30, -1 at
+    T50). The five walks along an edge that exists, and the constant:
+
+        T24 -> T30   -0.3734 x 1/3 x  1 = -0.1245
+        T30 -> T30    0.1146 x 1/3 x  1 =  0.0382
+        T50 -> T30    0.8176 x 1/3 x  1 =  0.2725
+        T30 -> T50    0.1146 x 1/2 x -1 = -0.0573
+        T50 -> T50    0.8176 x 1/2 x -1 = -0.4088
+        constant      0.5 x 1           =  0.5
+                                    total  0.2202
+
+    T24 -> T24 carries 0 because T24's ReLU was off, and T24 -> T50 and
+    T50 -> T24 carry 0 because the graph has no such edge. T24 still has a share,
+    -0.1245, through the walk that leaves it.
+    """
+    from dataclasses import replace
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.explain import node_relevance, walk_relevance
+
+    prepared = run_preprocessing(replace(PreprocessingConfig(), seed=42), data_dir=raw_dir)
+    row = int(np.where(prepared.test.units == 5)[0][0])
+    chosen = [list(prepared.sensor_symbols).index(s) for s in ("T24", "T30", "T50")]
+    window = prepared.test.features[row, chosen]
+    assert [round(float(v), 4) for v in window[:, -1]] == [-0.3734, 0.1146, 0.8176]
+
+    path = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float32)
+    model = ESTGNN(
+        normalize_adjacency(path, method="row"), window_size=30, gcn_hidden=(1,), fc_hidden=1
+    )
+    with torch.no_grad():
+        model.graph_layers[0].weight.fill_(1.0)
+        model.fc1.weight.copy_(torch.tensor([[2.0, 1.0, -1.0]]))
+        model.fc1.bias.fill_(0.5)
+        model.fc2.weight.fill_(1.0)
+        model.fc2.bias.fill_(0.0)
+
+    result = walk_relevance(model, window)
+    from_to = result.relevance[0]
+    by_hand = [
+        [0.0, -0.3734 / 3, 0.0],
+        [0.0, 0.1146 / 3, -0.1146 / 2],
+        [0.0, 0.8176 / 3, -0.8176 / 2],
+    ]
+    np.testing.assert_allclose(from_to, by_hand, atol=1e-4)
+    assert float(result.constant[0]) == pytest.approx(0.5)
+    assert round(float(result.score[0]), 4) == 0.2202
+    assert round(float(result.predicted[0]), 2) == 69.35
+    assert [round(float(v), 4) for v in node_relevance(result)[0]] == [-0.1245, -0.0191, -0.1363]
+
+
+def test_example_removing_a_connection_by_hand_on_the_same_three_sensors(raw_dir):
+    """The network of the walk example, with each of its two connections removed.
+
+    Removing T24 - T30 deletes it from the raw graph and rescales: T24's row
+    becomes [1, 0, 0] and T30's [0, 1/2, 1/2], so T30 now weighs T50 by 1/2
+    instead of 1/3 -- a change to entries nobody removed. T24 gets -0.3734, still
+    below zero; T30 and T50 both get (0.1146 + 0.8176) / 2 = 0.4661; fc1 gives
+    2 x 0 + 0.4661 - 0.4661 + 0.5 = 0.5, a prediction of 125 / (1 + e^-0.5) =
+    77.81 cycles. With the connection the prediction was 69.35, so the connection
+    is worth 69.35 - 77.81 = -8.45 cycles.
+
+    Removing T30 - T50 instead: T30 gets (-0.3734 + 0.1146) / 2 = -0.1294 and
+    switches off, T50 keeps only its own 0.8176, fc1 gives -0.8176 + 0.5 = -0.3176
+    and switches off, the score is fc2's constant 0, a prediction of 62.5 cycles.
+    That connection is worth 69.35 - 62.5 = +6.85 cycles.
+    """
+    from dataclasses import replace
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.explain import connection_removal
+
+    prepared = run_preprocessing(replace(PreprocessingConfig(), seed=42), data_dir=raw_dir)
+    row = int(np.where(prepared.test.units == 5)[0][0])
+    chosen = [list(prepared.sensor_symbols).index(s) for s in ("T24", "T30", "T50")]
+    window = prepared.test.features[row, chosen]
+
+    path = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float32)
+    model = ESTGNN(
+        normalize_adjacency(path, method="row"), window_size=30, gcn_hidden=(1,), fc_hidden=1
+    )
+    with torch.no_grad():
+        model.graph_layers[0].weight.fill_(1.0)
+        model.fc1.weight.copy_(torch.tensor([[2.0, 1.0, -1.0]]))
+        model.fc1.bias.fill_(0.5)
+        model.fc2.weight.fill_(1.0)
+        model.fc2.bias.fill_(0.0)
+
+    assert normalize_adjacency(np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0]]), method="row")[
+        1
+    ].tolist() == [0.0, 0.5, 0.5]
+    table = connection_removal(model, window, path, ["T24", "T30", "T50"], method="row")
+    assert list(table.columns) == ["T24-T30", "T30-T50"]
+    assert round(125 / (1 + np.exp(-0.5)), 2) == 77.81
+    assert [round(float(v), 2) for v in table.iloc[0]] == [-8.45, 6.85]

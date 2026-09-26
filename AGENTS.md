@@ -853,7 +853,7 @@ re-training that run first:
 
 ```bash
 python -m nbconvert --to notebook --execute --inplace notebooks/02_model_fd001.ipynb
-python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd001.ipynb notebooks/xai/02_occlusion_fd001.ipynb
+python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd001.ipynb notebooks/xai/02_occlusion_fd001.ipynb notebooks/xai/03_walks_fd001.ipynb
 ```
 
 ---

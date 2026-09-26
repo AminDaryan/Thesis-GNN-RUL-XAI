@@ -585,6 +585,34 @@ def test_the_server_names_a_job_the_page_asks_for_whatever_name_the_request_carr
         manager.stop()
 
 
+def test_walks_are_a_method_the_server_accepts_and_names(site: str, tmp_path: Path):
+    run = tmp_path / "reports" / "somerun"
+    (run / "seed_42").mkdir(parents=True)
+    (run / "summary.json").write_text("{}", encoding="utf-8")
+    (run / "seed_42" / "model.pt").write_bytes(b"")
+    request = {"run": "somerun", "seed": 42, "method": "walks", "scope": "engine",
+               "engine": 7, "every": 1}
+    status, job = _post(site + "/api/playground/explain", request, origin=site)
+    try:
+        assert status == 200, job
+        assert job["label"] == "Walks through the sensor graph · engine 7 · seed 42"
+    finally:
+        manager = server.job_manager(tmp_path)
+        _wait(manager, job["id"])
+        manager.stop()
+    with pytest.raises(playground.SettingsError, match="'shap', 'occlusion' or 'walks'"):
+        playground.validate_explain({**request, "method": "lrp"}, tmp_path)
+
+
+def test_the_page_and_the_server_name_the_same_explanation_methods():
+    """The page's METHODS and the server's names are one vocabulary."""
+    script = (ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets" / "playground.js").read_text(
+        encoding="utf-8")
+    line = next(x for x in script.splitlines() if x.strip().startswith("var METHODS = {"))
+    for key, name in playground._METHOD_NAMES.items():
+        assert f'{key}: "{name}"' in line, (key, name)
+
+
 # -- jobs ----------------------------------------------------------------------
 
 
@@ -823,3 +851,34 @@ def test_a_playground_run_stores_everything_the_page_reads_back(raw_dir, tmp_pat
     # The paper's Fig. 9 colours each value by the sensor's own reading, so
     # every window stores the reading beside the value.
     assert all(f"reading_{symbol}" in values["values"][0] for symbol in values["summary"]["mean_abs"])
+    assert values["top_walks"] == []
+
+    walked = subprocess.run(
+        [sys.executable, "scripts/explain.py", "--run", str(first), "--method", "walks",
+         "--scope", "engine", "--every", "60", "--quiet"],
+        cwd=ROOT, capture_output=True, text=True, timeout=600,
+    )
+    assert walked.returncode == 0, walked.stdout[-2000:] + walked.stderr[-2000:]
+    stored = playground.run_detail(tmp_path, "first")["explanations"]
+    assert sorted(x["method"] for x in stored) == ["shap", "walks"]
+    name = next(x["name"] for x in stored if x["method"] == "walks")
+    walks = playground.explanation_detail(tmp_path, "first", name)
+    summary = walks["summary"]
+    # Nothing a page drawing sensor values in cycles reads is written, so an
+    # older page fails loudly instead of drawing score shares as cycles.
+    assert not {"mean_abs", "sum_gap_max", "baseline", "baseline_prediction"} & set(summary)
+    assert summary["value_unit"] == "score before the sigmoid"
+    assert summary["conservation_error_max"] < 1e-9
+    assert len(walks["values"]) == summary["windows"]
+    row = walks["values"][0]
+    symbols = list(summary["mean_abs_start"])
+    assert not set(symbols) & set(row) and "baseline" not in row
+    for window in walks["values"]:
+        starts = sum(window[f"start_{s}"] for s in symbols)
+        links = sum(v for k, v in window.items() if k.startswith("link_"))
+        assert starts + window["constant"] == pytest.approx(window["score"], abs=1e-9)
+        assert window["stays"] + window["moves"] == pytest.approx(starts, abs=1e-9)
+        assert links == pytest.approx(summary["steps"] * starts, abs=1e-9)
+    assert all(f"reading_{s}" in row for s in symbols)
+    assert 1 <= len(walks["top_walks"]) <= 10
+    assert (first / "explanations" / name / "top_walks.csv").is_file()

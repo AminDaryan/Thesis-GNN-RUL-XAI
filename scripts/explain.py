@@ -8,7 +8,7 @@ trained on from the settings stored beside it, and works out how much each of
 the 14 sensors moved its predictions. The answer is written into the run's own
 folder, under ``explanations/``, stamped with the commit that computed it.
 
-Two methods are available, and only the first is the paper's:
+Three methods are available, and only the first is the paper's:
 
 ``shap``
     Exact Shapley values, Equations 14 and 15 of Wen et al. Every one of the
@@ -20,6 +20,13 @@ Two methods are available, and only the first is the paper's:
     15 evaluations per window instead of 16,384. It is the one term of the
     Shapley average in which the sensor arrives last, so the two agree only
     when the sensors do not interact.
+``walks``
+    Not in the paper. GNN-LRP (A-29): the network's weights are read and each
+    window's score before the sigmoid -- the number the network's last step
+    turns into a prediction -- is split exactly into one share per walk
+    through the sensor graph, plus a part that belongs to no sensor. Nothing is
+    replaced and the network runs once. The shares are parts of that score,
+    not cycles.
 
 and two things can be explained:
 
@@ -33,6 +40,10 @@ and two things can be explained:
 
 What is written
 ---------------
+Every method first reads the commit and, when the code has uncommitted
+changes, keeps a copy of them in ``code_state.zip``, so the result names the
+code that computed it.
+
 ``values.csv`` holds one row per window: the engine, the cycle the window ends
 at, the true and the predicted remaining life, the prediction at the baseline,
 one column per sensor with its value in cycles, and one column
@@ -43,6 +54,21 @@ the model was given: after the noise filter and the rescaling, not the raw
 number. ``summary.json`` holds the settings, the
 time taken, the largest gap in Equation 14's sum, and every sensor's average
 size.
+
+A ``walks`` explanation writes different columns, on purpose, so that nothing
+written for sensor values in cycles can misread it: the engine, the cycle, the
+true and predicted remaining life, then ``score`` (the score before the
+sigmoid), ``constant`` (the part no sensor owns), ``stays`` and ``moves`` (the
+walks that stay within their starting sensor's group and the rest, sensors the
+graph cannot tell apart counting as one group), ``absolute_total`` (every
+walk's share added up ignoring its sign), one ``start_<sensor>`` per sensor (the
+walks starting there, added up), one ``link_<from>_<to>`` per connection the
+graph has, in each direction and including each sensor's connection to itself
+(what passed along it, over every graph layer), and the ``reading_<sensor>``
+columns. ``top_walks.csv`` holds the ten walks with the largest average share.
+Its ``summary.json`` holds no ``mean_abs`` and no ``baseline``; it holds
+``mean_abs_start`` instead, and the largest miss of walks plus constant against
+the score.
 
 Examples
 --------
@@ -70,9 +96,14 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
-from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
+from thesis_gnn_rul_xai.utils.provenance import (
+    capture_code_state,
+    current_commit,
+    utc_stamp,
+    write_code_state_archive,
+)
 
-METHODS = ("shap", "occlusion")
+METHODS = ("shap", "occlusion", "walks")
 SCOPES = ("engine", "test")
 
 
@@ -103,6 +134,11 @@ def main() -> int:
         raise SystemExit("--every must be at least 1.")
 
     configure_logging(logging.WARNING if arguments.quiet else logging.INFO)
+
+    # Read before anything runs, so the stamp names the code that computes the
+    # result rather than whatever is on disk when it finishes.
+    code_state = capture_code_state()
+    commit = current_commit()
 
     import torch
 
@@ -154,8 +190,15 @@ def main() -> int:
         order = chosen[np.argsort(source.end_cycles[chosen])][:: arguments.every]
 
     features = source.features[order]
+    symbols = list(prepared.sensor_symbols)
     progress("start", windows=len(order), method=arguments.method, scope=arguments.scope)
     started = time.perf_counter()
+
+    if arguments.method == "walks":
+        return _explain_walks(
+            arguments, model, source, source_name, order, unit, seed, run,
+            features, symbols, started, progress, code_state, commit,
+        )
 
     if arguments.method == "shap":
         values = np.empty((len(order), features.shape[1]))
@@ -163,7 +206,7 @@ def main() -> int:
             values[index] = shap_values(model, features[index], baseline, device=device)
             progress("window", done=index + 1, total=len(order),
                      seconds=time.perf_counter() - started)
-    else:
+    elif arguments.method == "occlusion":
         values = occlusion_values(model, features, baseline, device=device)
         progress("window", done=len(order), total=len(order),
                  seconds=time.perf_counter() - started)
@@ -179,7 +222,6 @@ def main() -> int:
         )
     seconds = time.perf_counter() - started
 
-    symbols = list(prepared.sensor_symbols)
     table = pd.DataFrame(values, columns=symbols)
     table.insert(0, "baseline", base)
     table.insert(0, "predicted", predicted)
@@ -198,23 +240,15 @@ def main() -> int:
     # no such promise, and the gap says by how much it misses.
     gap = np.abs(values.sum(axis=1) - (predicted - base))
 
-    commit = current_commit()
-    stamp = utc_stamp()
-    name = (
-        f"{arguments.method}_{arguments.scope}"
-        + (f"_unit{unit}" if unit is not None else "")
-        + (f"_every{arguments.every}" if arguments.every > 1 else "")
-        + f"_seed{seed}_{commit}_{stamp}"
-    )
-    output = run / "explanations" / name
-    output.mkdir(parents=True, exist_ok=True)
+    output = _output_folder(arguments, run, unit, seed, commit)
+    write_code_state_archive(output, code_state)
     table.to_csv(output / "values.csv", index=False)
     ranking = table[symbols].abs().mean().sort_values(ascending=False)
     (output / "summary.json").write_text(
         json.dumps(
             {
                 "commit": commit,
-                "finished_utc": stamp,
+                "finished_utc": output.name.rsplit("_", 1)[1],
                 "run": run.name,
                 "seed": seed,
                 "method": arguments.method,
@@ -234,10 +268,120 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
-    progress("done", directory=name, run=run.name)
+    progress("done", directory=output.name, run=run.name)
     print(f"{arguments.method} over {len(order)} window(s) in {seconds:.1f}s; "
           f"largest gap between the values' sum and the prediction's distance "
           f"from the baseline: {gap.max():.2e} cycles.")
+    print(f"Saved to {output}")
+    return 0
+
+
+def _output_folder(arguments, run: Path, unit, seed: int, commit: str) -> Path:
+    """Make the explanation's own folder inside the run, named by what and when."""
+    name = (
+        f"{arguments.method}_{arguments.scope}"
+        + (f"_unit{unit}" if unit is not None else "")
+        + (f"_every{arguments.every}" if arguments.every > 1 else "")
+        + f"_seed{seed}_{commit}_{utc_stamp()}"
+    )
+    output = run / "explanations" / name
+    output.mkdir(parents=True, exist_ok=True)
+    return output
+
+
+def _explain_walks(
+    arguments, model, source, source_name, order, unit, seed, run,
+    features, symbols, started, progress, code_state, commit,
+) -> int:
+    """Split every window's score into walks and write what the playground draws."""
+    from thesis_gnn_rul_xai.explain import (
+        connection_relevance,
+        conservation_error,
+        crossing_relevance,
+        indistinguishable_sensors,
+        node_relevance,
+        top_walks,
+        walk_relevance,
+    )
+
+    try:
+        result = walk_relevance(model, features)
+    except (ValueError, RuntimeError, TypeError) as refused:
+        raise SystemExit(str(refused)) from refused
+    progress("window", done=len(order), total=len(order),
+             seconds=time.perf_counter() - started)
+    groups = indistinguishable_sensors(model, symbols)
+    starts = node_relevance(result)
+    links = connection_relevance(result, symbols, pool=groups)
+    parts = crossing_relevance(result, symbols, pool=groups)
+    top = top_walks(result, symbols, count=10, pool=groups)
+    seconds = time.perf_counter() - started
+
+    columns = {
+        "unit": source.units[order],
+        "end_cycle": source.end_cycles[order],
+        "rul": source.targets[order],
+        "predicted": result.predicted,
+        "score": result.score,
+        "constant": result.constant,
+        "stays": parts["stays"].to_numpy(),
+        "moves": parts["moves"].to_numpy(),
+        "absolute_total": parts["absolute_total"].to_numpy(),
+    }
+    for index, symbol in enumerate(symbols):
+        columns[f"start_{symbol}"] = starts[:, index]
+    # One column per connection the graph has, in each direction: axis 1 of
+    # links sends and axis 2 receives, the transpose of the graph's own rows.
+    allowed = model.adjacency.detach().cpu().numpy().T != 0
+    for sender, receiver in zip(*np.nonzero(allowed), strict=True):
+        columns[f"link_{symbols[sender]}_{symbols[receiver]}"] = links[:, sender, receiver]
+    for index, symbol in enumerate(symbols):
+        columns[f"reading_{symbol}"] = features[:, index, -1]
+    table = pd.DataFrame(columns)
+
+    walks_sum = np.abs(parts["stays"] + parts["moves"]).to_numpy()
+    ranking = pd.Series(np.abs(starts).mean(axis=0), index=symbols).sort_values(ascending=False)
+    output = _output_folder(arguments, run, unit, seed, commit)
+    write_code_state_archive(output, code_state)
+    table.to_csv(output / "values.csv", index=False)
+    top.to_csv(output / "top_walks.csv", index=False)
+    error = conservation_error(result)
+    (output / "summary.json").write_text(
+        json.dumps(
+            {
+                "commit": commit,
+                "finished_utc": output.name.rsplit("_", 1)[1],
+                "run": run.name,
+                "seed": seed,
+                "method": "walks",
+                "scope": arguments.scope,
+                "source": source_name,
+                "unit": unit,
+                "every": arguments.every,
+                "windows": len(order),
+                "value_unit": "score before the sigmoid",
+                "rul_max": float(model.rul_max),
+                "steps": result.n_steps,
+                "gamma": list(result.gamma),
+                "score_at_zero": result.score_at_zero,
+                "conservation_error_max": error,
+                "groups": [list(group) for group in groups],
+                "walks_start_after_learned_stage": bool(
+                    any(p.numel() for p in model.temporal.parameters())
+                ),
+                "cancellation_median": float(np.median(
+                    parts["absolute_total"].to_numpy() / np.maximum(walks_sum, 1e-300)
+                )),
+                "seconds": round(seconds, 1),
+                "mean_abs_start": {symbol: float(v) for symbol, v in ranking.items()},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    progress("done", directory=output.name, run=run.name)
+    print(f"walks over {len(order)} window(s) in {seconds:.1f}s; largest miss between "
+          f"walks plus constant and the score before the sigmoid: {error:.2e}.")
     print(f"Saved to {output}")
     return 0
 

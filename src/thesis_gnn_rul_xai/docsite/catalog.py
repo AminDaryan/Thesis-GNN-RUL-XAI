@@ -57,6 +57,7 @@ _NOTEBOOKS: tuple[_Entry, ...] = (
     ("notebooks/xai/README.md", "About the explanation notebooks", "reference", 0),
     ("notebooks/xai/01_shap_fd001.ipynb", "Exact Shapley values", "notebook", 0),
     ("notebooks/xai/02_occlusion_fd001.ipynb", "Occlusion: hiding one sensor", "notebook", 0),
+    ("notebooks/xai/03_walks_fd001.ipynb", "Walks through the sensor graph", "notebook", 0),
 )
 
 # The folders under src/thesis_gnn_rul_xai/ in the order the pipeline runs

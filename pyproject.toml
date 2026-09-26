@@ -81,6 +81,7 @@ ignore = [
 "tests/test_models.py" = ["E402"]
 "tests/test_training.py" = ["E402"]
 "tests/test_shap.py" = ["E402"]
+"tests/test_walks.py" = ["E402"]
 "tests/test_examples_torch.py" = ["E402"]
 "tests/test_stored.py" = ["E402"]
 

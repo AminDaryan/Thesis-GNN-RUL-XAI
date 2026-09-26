@@ -6,6 +6,7 @@ import hashlib
 import platform
 import subprocess
 import sys
+import zipfile
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
@@ -18,6 +19,7 @@ __all__ = [
     "file_fingerprints",
     "utc_stamp",
     "write_code_state",
+    "write_code_state_archive",
 ]
 
 # The parts of the repository on the path from the data files to a number.
@@ -115,6 +117,21 @@ def capture_code_state(cwd: Path | None = None) -> dict[str, object]:
         and (root / line[3:].strip().strip('"')).is_file()
     }
     return {"status": status, "patch": patch, "untracked": untracked}
+
+
+def write_code_state_archive(directory: Path, state: dict[str, object]) -> list[str]:
+    """Write what capture_code_state() read into one zip file; return the changed files."""
+    status = list(state["status"])  # type: ignore[call-overload]
+    if not status:
+        return []
+    # One file rather than a folder: under a long run name the folder's paths
+    # pass Windows's limit of 260 characters.
+    with zipfile.ZipFile(Path(directory) / "code_state.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("status.txt", "\n".join(status) + "\n")
+        archive.writestr("uncommitted.patch", str(state["patch"]))
+        for relative, content in dict(state["untracked"]).items():  # type: ignore[call-overload]
+            archive.writestr(f"untracked/{relative}", content)
+    return status
 
 
 def write_code_state(directory: Path, state: dict[str, object]) -> list[str]:

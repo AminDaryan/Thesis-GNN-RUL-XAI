@@ -49,6 +49,8 @@ identifier below.
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
 | A-27 | A sensor graph built from the data | Never builds one; its Conclusions claim its own graph goes "beyond data-driven correlations" | The 41 most strongly correlated pairs on the training engines, as many edges as Table 3; **indistinguishable from Table 3 by test RMSE** (+0.096, p = 0.655), 2.0 cycles better on the held-back engines (p = 0.012), but its test predictions run later |
 | A-28 | Each sensor's last reading, average and change as node features | Never considered; Table 4 prints one number per sensor, from the LSTM stage | A stage outside the paper, not the default; **2.910 cycles below the last cycle** (p = 0.00025, engine interval [−5.19, −0.63]), indistinguishable from the recurrent stage on test error |
+| A-29 | Explaining the sensor graph itself | Explains sensor nodes only (Section 2.4), yet says its rankings set "edge weights" and validate its graph (Section 4.4) | Walk shares from GNN-LRP, of the score before the sigmoid, gamma 0 by default and always at the first graph layer; on the default network about half the score is the dense layers' constant (51 ± 4 %), and how much stays within a sensor's group is mostly set by the graph |
+| A-30 | What removing one connection means | Removes the whole graph once and retrains; never one connection | Delete it from the raw graph both ways, rescale, rerun without retraining; on the default network its effect is unrelated to what flowed along it (rank correlation −0.16 ± 0.20, p = 0.158) |
 
 ---
 
@@ -3118,6 +3120,300 @@ The stored runs are
 and `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`,
 each carrying its command, library versions, data-file fingerprints, the
 uncommitted code as a patch, and each seed's engine split and scaling.
+
+---
+
+## A-29 — Walks through the sensor graph are explained with GNN-LRP, on the score before the sigmoid, with gamma = 0 by default
+
+**Where:** `explain/walks.py` (`walk_relevance`)
+
+**The gap.** Not a gap in a method the paper describes, but a question it raises
+and does not answer. Section 2.4 applies SHAP to the fourteen sensor nodes and
+calls the result *"node-level contribution analysis"* (p. 7). Section 4.4 then
+says the rankings *"determine both the node coloring and edge weights in the
+interpretability graph"* (p. 13) and ends by saying the changing patterns
+validate *"the effectiveness of the physics-informed graph structure"* (p. 14).
+No calculation in the paper attributes anything to a connection between two
+sensors: the edge weights of Fig. 10 are derived from node rankings by a rule
+the paper's text does not state. So the paper has no method for asking how much of a
+prediction travelled through its graph, which is what its claims about the
+graph need.
+
+**What we chose.**
+
+1. **GNN-LRP** (Schnake et al., 2022), which divides a graph network's output
+   into one share per walk — the list of sensors a contribution passes
+   through, one per graph layer — rather than GNNExplainer (Ying et al., 2019)
+   or PGExplainer (Luo et al., 2020), which learn a mask over the connections.
+2. **The score before the sigmoid** is what is divided, not the prediction in
+   cycles.
+3. **gamma = 0** by default. Gamma is GNN-LRP's one setting; a positive value
+   shrinks negative shares while keeping each layer's total. It is always 0 at
+   the first graph layer; from the second layer on a positive value may be
+   passed, one per layer.
+4. **The added constants** of the two dense layers, and of the graph layers
+   when they have them, are reported as one number per window, not spread over
+   the walks.
+5. **Walks start at the temporal stage's output**, the numbers entering the
+   first graph layer, not at the raw readings.
+
+**Why.**
+
+- **GNN-LRP over a mask.** Both mask methods state their objective for
+  classification and neither paper mentions regression; both start from a
+  random mask and depend on penalty weights, a learning rate and a number of
+  steps that no source fixes for this network, and a replication of
+  PGExplainer (Holdijk et al., 2021) could not reproduce its results from the
+  paper and found them sensitive to exactly those settings; both need the
+  network changed to accept a weakened graph per window; and both force a
+  choice between weakening the raw graph and rescaling again, which changes
+  the rest of the row, or weakening the rescaled graph, which the network
+  never saw. GNN-LRP needs none of that, changes nothing in the network, and
+  its shares add up.
+- **Why the shares add up exactly here.** Our own derivation, not the source's
+  theorem. The source's exact decomposition (its Proposition 1) assumes every
+  step, including the layers after the graph, has no added constant; ours has
+  them in `fc1` and `fc2`. What makes the split exact for this network is that
+  every step between the graph input and the score is multiplication, addition
+  or a ReLU, the graph layers add no constant (assumption A-12), and the dense
+  layers keep each sensor's numbers apart rather than averaging them. With each
+  ReLU held on or off as the window set it, the score is a sum of products,
+  one per walk, plus a remainder from the constants. The remainder is computed
+  separately, by carrying the constants forward, so that walks plus remainder
+  equalling the score is a check and not a definition. The remainder changes
+  from window to window with `fc1`'s ReLUs, so the walks add up to the score
+  minus that remainder, not to the score minus the score of some reference
+  engine, which is what Shapley values add up to.
+- **The score, not cycles.** The sigmoid bends, so shares of the score cannot
+  become shares of cycles that still add up. The source explains outputs before
+  the final squashing step in its own examples: the difference of two class
+  scores before the softmax (its Fig. 7), and a non-linear output made linear
+  first (its Section 5.2). It never discusses a sigmoid.
+- **gamma = 0.** It is the one setting at which each share is exactly what the
+  network computes at this window, it needs no value chosen, and no source
+  gives one for this network. At the first graph layer it is also the only
+  setting the source's rule supports: that rule's derivation (its appendix C)
+  assumes the numbers entering a layer are never negative, and this network's
+  first graph layer receives rescaled readings, which are negative below the
+  training average. The cost is stated by the source itself: with gamma = 0
+  GNN-LRP is identical to its own simpler baseline, GNN-GI, which it reports as
+  noisier and less selective than a positive gamma; its experiments use
+  positive values that fall towards the output.
+- **Walks from the temporal stage's output.** Every implementation by the
+  source's authors stops at the input of the first graph layer. Going further
+  back through the recurrent stages would need rules for their gates that this
+  project does not have; for the stages that learn nothing, the starting number
+  is a reading or an average of readings.
+
+**Where the source's section numbers come from.** The arXiv version 3 of the
+paper, since the journal's own text could not be retrieved; the journal version
+may number them differently.
+
+**How much it matters.** The choice of method is an argument, not a
+measurement. What is measured is, first, the arithmetic, in `tests/test_walks.py`:
+walks plus constant give back the score to within 1e-9 for every temporal stage,
+with and without the graph layers' constants; each sensor's total equals
+PyTorch's own differentiation, at both ends of the walks and for each graph
+entry; and for 30 walks at gamma 0 and at gamma (0, 0.5, 0.25) the shares equal
+the source's own procedure, which runs the network backwards once per walk with
+every other route blocked.
+
+Second, what the walks say about the stored networks, measured on 2026-09-26 by
+`scripts/measure_walks.py` at `14c1d64-dirty`, on the last window of each of the
+100 test engines, for all five saved seeds of five stored runs. Beside each
+trained network the script explains an **untrained** one, built exactly as
+`scripts/train.py` builds that seed's network before training it, so it is the
+trained network's own starting point. A number says something about training
+only where the two differ. Each cell is the mean ± spread over the five seeds of
+each seed's median over the 100 windows:
+
+| Stored run | Network | Walks that stay within their starting sensor's group, share of all walk size | Constant, share of score's size | Walk sizes ÷ size of their sum | Connection ranking, gamma 0 against (0, 0.5, 0.25) |
+|---|---|---|---|---|---|
+| Paper's graph, last cycle (the default) | trained | 5.51 ± 3.04 % | 51 ± 4 % | 8.6 ± 3.5 | 0.902 ± 0.040 |
+|  | untrained | 15.43 ± 3.74 % | 82 ± 14 % | 8.2 ± 5.2 | 0.992 ± 0.007 |
+| Paper's graph, window summary | trained | 13.99 ± 3.55 % | 57 ± 4 % | 4.5 ± 1.5 | 0.966 ± 0.011 |
+|  | untrained | 13.55 ± 2.25 % | 74 ± 32 % | 8.1 ± 3.3 | 0.975 ± 0.015 |
+| Paper's graph, recurrent stage | trained | 15.44 ± 3.23 % | 11 ± 5 % | 2.2 ± 0.3 | 0.992 ± 0.005 |
+|  | untrained | 16.46 ± 6.36 % | 97 ± 4 % | 9.2 ± 4.9 | 0.995 ± 0.011 |
+| Correlation graph, last cycle | trained | 9.65 ± 2.68 % | 36 ± 4 % | 9.9 ± 1.7 | 0.928 ± 0.024 |
+|  | untrained | 7.18 ± 2.65 % | 86 ± 13 % | 11.0 ± 3.7 | 0.935 ± 0.070 |
+| Every sensor joined, last cycle | trained | 100 % | 54 ± 3 % | 3.6 ± 0.0 | 1.000 ± 0.000 |
+|  | untrained | 100 % | 90 ± 7 % | 19.4 ± 19.0 | 1.000 ± 0.000 |
+
+The columns: the size, ignoring signs, of the walks that never leave their
+starting sensor's group, as a share of all walks' size, where sensors the graph
+cannot tell apart form one group (finding F-18) and every other sensor is a
+group of its own; the size of the dense layers' constant against the constant
+plus the walks' sum; every walk's size added up and divided by the size of the
+walks' sum, so 8.6 means the shares are large and mostly cancel; and Spearman's
+rank correlation, over the connections, between what flowed along each at
+gamma 0 and at gamma (0, 0.5, 0.25), with what arrives at a group at the last
+graph layer split equally among its members.
+
+**Correction, same day.** The first version of this table counted a walk as
+staying only if it stayed on one sensor, and gave 0.37 ± 0.04 % trained against
+0.46 ± 0.03 % untrained on the default. That split P30 -> P30 -> P30 -> P30
+(staying) from P30 -> P30 -> P30 -> Ps30 (moving), although which of the two a
+share lands on follows `fc1` weights that training never separated (finding
+F-18), so part of that figure was the random start. It was caught by the review
+that planned the playground view, before the figure was used anywhere.
+
+What this shows, and what it does not:
+
+- **How much stays within a group is mostly the graph's doing.** With the window
+  summary, the recurrent stage and the correlation graph, the trained and the
+  untrained networks cannot be told apart (paired p = 0.86, 0.62 and 0.13). On
+  the default, training moved weight away from staying: 5.5 % against 15.4 %,
+  lower on all five seeds (paired p = 0.023). Where everything is joined to
+  everything, every sensor is in one group and every walk stays, by definition.
+  A share of this kind cannot, on its own, show that the network uses its graph.
+- **About half of the default network's score belongs to no sensor**: the dense
+  layers' constant is 51 ± 4 % of the score's size (82 % before training,
+  paired p = 0.0088). With the recurrent stage it is 11 ± 5 %.
+- **The shares cancel heavily and training does not make that worse**: 8.6
+  against 8.2 before training on the default (paired p = 0.85). A list of the
+  largest walks, read without that ratio, shows mostly cancellation.
+- **Rankings of connections move little with gamma**: 0.902 ± 0.040 at
+  (0, 0.5, 0.25) and 0.866 ± 0.054 at (0, 1, 1) on the default, above 0.98 with
+  the recurrent stage. Where everything is joined to everything, gamma changes
+  nothing, because every row is the same.
+- **Seeds agree on which connections carry most, except with the recurrent
+  stage.** Spearman's rank correlation between every pair of seeds, over the
+  connections they share: 0.71 to 0.96 on the default, 0.86 to 0.99 on the
+  correlation graph, 0.30 to 0.79 with the recurrent stage.
+- Nothing here says the paper's graph helps or hurts. That needs networks
+  retrained on another graph (assumption A-27), not a reading of one network.
+
+The five stored runs, each measured in its own folder under `walks/`:
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`
+(`14c1d64-dirty_20260926T160933Z`),
+`fd001_physics_row_cap_5seed_varsplit_window_summary_cfgba82e3_5602773-dirty_20260914T233435Z`
+(`…T161011Z`),
+`fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`
+(`…T160959Z`, the best pass restored, not the paper's 200-pass procedure),
+`fd001_correlation_row_cap_5seed_varsplit_cfg7fdfce_f386291-dirty_20260914T150213Z`
+(`…T160945Z`) and
+`fd001_complete_row_cap_5seed_varsplit_cfgf21547_f386291-dirty_20260914T150527Z`
+(`…T161022Z`). Before the correction above, the stored run of the default
+settings at `f386291-dirty` (`…T150004Z`) gave every figure identical to the
+`5602773-dirty` run, as it should: that run reproduced it exactly.
+
+**Reproduce with:**
+
+```bash
+python scripts/measure_walks.py --run <stored run directory>
+```
+
+**What a walk's share is not.** It is not what removing a connection would do —
+that changes the row rescaling and can switch ReLUs, which is a different
+network — and it is not a statement that one sensor affects another in the
+engine.
+
+---
+
+## A-30 — Removing a connection deletes it from the raw graph and rescales the whole graph again
+
+**Where:** `explain/connections.py` (`connection_removal`), `scripts/measure_walks.py`
+
+**The gap.** The paper removes its whole graph once, in its variant "without
+physics prior" (Table 11), and retrains; it never removes a single connection,
+and never says what removing one would mean. A walk's share (assumption A-29)
+describes a small change to one entry of the rescaled graph, so asking what a
+connection is worth needs a second, separate measurement, and a definition.
+
+**What we chose.** Delete the connection from the raw graph, in both directions,
+rescale the whole graph with the run's own rescaling, and run the same trained
+network again, without retraining. The value is the prediction with the graph as
+trained minus the prediction without the connection, in cycles, so a positive
+value means the connection raised the prediction.
+
+**Why.** It is how the network's graph was made: the raw graph is built first
+and rescaled after, so removing a connection from the raw graph gives a graph of
+the same kind the network was trained on. The alternative, zeroing one entry of
+the rescaled graph, leaves a row that no longer adds up to 1, which the network
+has never seen. The cost is that removal also changes entries nobody removed:
+under row rescaling a sensor with seven neighbours goes from eight entries of
+1/8 to seven of 1/7. `tests/test_examples_torch.py::test_example_removing_a_connection_by_hand_on_the_same_three_sensors`
+works one case through by hand. Not retraining keeps the measurement about one
+trained network, as every explanation here is; retraining would measure a
+different network.
+
+**How much it matters, measured.** The same runs, seeds, windows and commit as
+the table in assumption A-29. Spearman's rank correlation, over the connections,
+between the average size of what flowed along each connection (its walk shares,
+summed over the graph layers and both directions) and the average size of what
+removing it does:
+
+| Stored run | Trained | Untrained | Paired p | Trained against zero, p |
+|---|---|---|---|---|
+| Paper's graph, last cycle (the default) | −0.16 ± 0.20 | 0.42 ± 0.25 | 0.009 | 0.158 |
+| Paper's graph, window summary | 0.34 ± 0.37 | 0.13 ± 0.46 | 0.507 | 0.112 |
+| Paper's graph, recurrent stage | 0.40 ± 0.14 | 0.11 ± 0.29 | 0.159 | 0.003 |
+| Correlation graph, last cycle | 0.63 ± 0.08 | 0.45 ± 0.21 | 0.094 | 0.0001 |
+| Every sensor joined, last cycle | 0.25 ± 0.01 | 0.20 ± 0.12 | 0.344 | < 0.0001 |
+
+What flowed is added up with what arrives at a group of indistinguishable
+sensors at the last graph layer split equally among them (finding F-18).
+
+On the default network, **what flowed along a connection says nothing about what
+removing it does**: the rank correlation cannot be told from zero (p = 0.158),
+and training moved it down from 0.42. On the correlation graph and with the
+recurrent stage the two agree moderately. So "the connections that matter most"
+names two different things, and a claim of that kind has to say which.
+
+**A trap for both measures.** Removing a connection that touches one of the
+sensors the paper's graph cannot tell apart (finding F-18) makes that sensor's
+row differ from its group's, so the prediction starts to depend on weights that
+training never separated. What such a removal does is partly the random start.
+
+---
+
+### F-18 — The paper's graph cannot tell three groups of sensors apart, and training never separates their weights
+
+**Established from.** The rows of the paper's rescaled graph, and the five saved
+seeds of five stored runs.
+
+**The observation.** Under both rescaling formulas, the rows of the rescaled
+graph are identical for P15, Nf, NRf and BPR, for P30 and Ps30, and for Nc and
+W31. Each member of a group is joined to exactly the same sensors as the others,
+itself and the others in its group included. The fourteen rows can all be
+written as sums of multiples of just eight of them (the audit of 2026-09-08, its
+item D-1, recorded the eight; `scripts/verify_claims.py --only same_rows`
+recomputes both).
+
+**What follows, shown with the network.** A graph layer gives each sensor a mix
+of its row of neighbours, so from the first graph layer on every member of a
+group holds exactly the same numbers. The first dense layer, `fc1`, therefore
+receives the same numbers from every member, each member's block of `fc1`
+weights receives the same correction at every training step, and the difference
+between two members' blocks stays what the random start made it.
+
+Measured on 2026-09-26 by `scripts/measure_walks.py` at `14c1d64-dirty`, against
+each network's starting point rebuilt from its seed, over the five seeds of the
+default stored run
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`:
+for every pair of members, the difference between their blocks moved by at most
+**4.65e-06** during training, while every member's block itself moved by at
+least 0.30, and the same difference for T24 and T30, which are in no group,
+moved by 0.32 to 1.31. The window-summary, recurrent-stage and all-joined runs
+gave at most 2.73e-06, 3.06e-06 and 1.46e-06. The correlation graph has groups of
+its own, different in each seed, with at most 2.12e-06.
+`tests/test_walks.py::test_training_never_changes_the_difference_between_their_fc1_weights`
+shows the mechanism in 20 training steps.
+
+**Why it matters.** The prediction depends only on each group's total, which
+training does shape, so the network's accuracy and every explanation made by
+replacing whole sensors, the Shapley values and occlusion among them, are
+unaffected. But anything read off the split *within* a group at the dense layer
+is partly the random start: where a walk ends inside a group (assumption A-29),
+and what removing a connection that touches a group member does (assumption
+A-30). `explain/walks.py` finds the groups for any graph with
+`indistinguishable_sensors` and adds such walks together with
+`top_walks(..., pool=...)`.
+
+**What it does not show.** That the graph is wrong, or that these sensors carry
+the same information in the engine: it is a property of which sensors Table 3
+joins, not of the readings.
 
 ---
 

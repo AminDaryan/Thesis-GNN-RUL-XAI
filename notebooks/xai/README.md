@@ -51,11 +51,16 @@ engine's life. For seed 42 that is engine 5, with 240 windows.
 cannot simply be given thirteen, so every method here "removes" a sensor by
 replacing its 30 readings with that sensor's average window over the training
 engines (assumption A-20). The prediction for a window made entirely of those
-averages is the reference every contribution is measured from.
+averages is the reference every contribution is measured from. The walk
+notebook is the exception: it removes nothing, and reads the network's weights
+instead.
 
 **The same unit.** Every contribution is in flight cycles of predicted
 remaining life. A value of +4 for a sensor means its actual readings moved the
-prediction four cycles higher than a typical reading would have.
+prediction four cycles higher than a typical reading would have. The walk
+notebook is again the exception: its shares are parts of the score the
+network turns into cycles at its last step, because that step bends and its
+parts cannot be turned into cycles that still add up.
 
 **The same picture.** `plot_contributions_over_time`, in
 `src/thesis_gnn_rul_xai/explain/plots.py`, draws one small panel per sensor
@@ -75,8 +80,9 @@ answers, in its own section, these seven:
 3. **What does it change?** Which part of the input it varies, and to what.
 4. **What does it measure?** The change in the prediction, and under which
    circumstances.
-5. **What does the result look like?** Here, fourteen numbers per window, in
-   cycles.
+5. **What does the result look like?** Fourteen numbers per window, in
+   cycles, for Shapley values and occlusion; one share per route through the
+   graph, in parts of the score, for walks.
 6. **What does it assume?**
 7. **What does it not show?**
 
@@ -97,14 +103,15 @@ answers, in its own section, these seven:
 
 ## The methods so far, side by side
 
-| | Shapley values | Occlusion |
-|---|---|---|
-| Notebook | `01_shap_fd001.ipynb` | `02_occlusion_fd001.ipynb` |
-| What it tries | every combination of sensors | one sensor at a time swapped for its stand-in |
-| In the paper | Yes, its Equations 14 to 16 | No |
-| Network evaluations per window, for 14 sensors | 16 384, one per combination | 15, the window and one per sensor |
-| Adds up to the prediction minus the reference prediction | Always, to rounding | No |
-| What "the sensor's effect" is measured against | every combination of the other sensors, averaged | only the one where every other sensor is present |
+| | Shapley values | Occlusion | Walks |
+|---|---|---|---|
+| Notebook | `01_shap_fd001.ipynb` | `02_occlusion_fd001.ipynb` | `03_walks_fd001.ipynb` |
+| What it tries | every combination of sensors | one sensor at a time swapped for its stand-in | nothing: it reads the network's weights |
+| In the paper | Yes, its Equations 14 to 16 | No | No |
+| Network evaluations per window, for 14 sensors | 16 384, one per combination | 15, the window and one per sensor | 1 |
+| What it splits | the prediction, in cycles | nothing; each value stands alone | the score before the sigmoid, into one share per route through the graph |
+| Adds up to | the prediction minus the reference prediction, always, to rounding | nothing | the score minus a constant no sensor owns, always, to rounding |
+| What "the sensor's effect" is measured against | every combination of the other sensors, averaged | only the one where every other sensor is present | zero at the graph layers' input, with every other sensor present |
 
 ## Adding a method
 
@@ -113,7 +120,8 @@ answers, in its own section, these seven:
    `tests/test_examples_torch.py`.
 2. Copy the layout of `02_occlusion_fd001.ipynb`: load the network with
    `load_seed`, explain the same engine, draw it with
-   `plot_contributions_over_time` beside the Shapley values, answer the seven
-   questions, and end with a final verification.
+   `plot_contributions_over_time` beside the Shapley values when the method
+   gives cycles (the walk notebook draws its own figures, since its shares are
+   not cycles), answer the seven questions, and end with a final verification.
 3. Add a column for it to the table above and a line to the documentation
    site's list in `src/thesis_gnn_rul_xai/docsite/catalog.py`.

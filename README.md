@@ -411,6 +411,7 @@ Read `notebooks/README.md` first: it holds what every notebook shares. Then:
 | `02_model_fd001.ipynb` | steps 9 to 11: build the network, train it and score it; then the paper's sensor graph against two others |
 | `xai/01_shap_fd001.ipynb` | the paper's explanation method, exact Shapley values, for one prediction and then at every cycle of one engine's life |
 | `xai/02_occlusion_fd001.ipynb` | a cheaper explanation method that is not in the paper, set beside the Shapley values |
+| `xai/03_walks_fd001.ipynb` | a method not in the paper that splits a prediction into the routes it took through the sensor graph, beside what removing each connection does |
 
 The first two are read in order. The `xai/` notebooks each explain the same
 stored trained network, one method per notebook; `notebooks/xai/README.md` says
@@ -651,12 +652,14 @@ Thesis GNN RUL XAI/
 │   └── xai/                      One notebook per explanation method
 │       ├── README.md
 │       ├── 01_shap_fd001.ipynb
-│       └── 02_occlusion_fd001.ipynb
+│       ├── 02_occlusion_fd001.ipynb
+│       └── 03_walks_fd001.ipynb
 │
 ├── scripts/
 │   ├── prepare_data.py           Check or preprocess the raw data
 │   ├── train.py                  Train, score, and average over seeds
 │   ├── explain.py                Explain a stored run's trained network
+│   ├── measure_walks.py          Measure walk explanations over every seed of a stored run
 │   ├── verify_claims.py          Recompute the figures the assumptions log quotes
 │   ├── check_prose.py            Catch unexplained jargon and codes used as words
 │   └── docs_ui.py                Open all of this in a browser
@@ -721,7 +724,7 @@ is its own folder, holding its code as that folder's `__init__.py` and its own
 | `models/` | What is the network? | `estgnn.py`, the paper's Table 4 |
 | `training/` | How is the network fitted to the data? | `run.py`, the paper's Table 6 |
 | `evaluation/` | How good is the result? | `metrics.py`, the four measures |
-| `explain/` | Which sensor drove this prediction? | `shap.py`, exact Shapley values |
+| `explain/` | Which sensor drove this prediction? | `shap.py`, exact Shapley values; `walks.py`, shares along routes through the sensor graph, and `connections.py`, what removing a connection does (neither in the paper) |
 | `utils/` | Housekeeping the others share | `paths.py`, `seeding.py` |
 
 `config.py` sits at the top level rather than in a folder because every one of
@@ -924,8 +927,8 @@ With the data and the stored runs, all 268 tests are collected and all 268
 pass, measured on 2026-09-15.
 
 The suite covers each preprocessing step, the sensor graph, the network, the
-training loop, the four measures, the Shapley values and occlusion, loading a
-stored run back, and the pipeline end to end. The model, training and
+training loop, the four measures, the Shapley values, occlusion and the walk
+shares, loading a stored run back, and the pipeline end to end. The model, training and
 explanation tests need PyTorch; without it they are not collected at all rather
 than failing. On 2026-09-14, when the suite had 260 tests, that left 195 of
 them collected: 191 passed, three skipped and one, since fixed, failed. That

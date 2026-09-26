@@ -108,6 +108,52 @@ model predictions. *Advances in Neural Information Processing Systems 30
 > et al. apply after training, and the starting point for the explainability
 > half of this thesis.
 
+**Schnake, T., Eberle, O., Lederer, J., Nakajima, S., Schütt, K. T., Müller,
+K.-R., & Montavon, G. (2022).** Higher-order explanations of graph neural
+networks via relevant walks. *IEEE Transactions on Pattern Analysis and
+Machine Intelligence*, *44*(11), 7581-7596.
+https://doi.org/10.1109/TPAMI.2021.3115452 (arXiv version:
+https://arxiv.org/abs/2006.03589)
+
+> Introduced GNN-LRP, which divides a graph network's output into one share
+> per walk: the list of nodes a contribution passes through, one per graph
+> layer. This project uses it in `explain/walks.py` to ask how much of a
+> prediction travelled through the sensor graph (assumption A-29). Section and
+> appendix numbers cited in this project are those of arXiv version 3.
+
+**Ying, R., Bourgeois, D., You, J., Zitnik, M., & Leskovec, J. (2019).**
+GNNExplainer: Generating explanations for graph neural networks. *Advances in
+Neural Information Processing Systems 32 (NeurIPS)*.
+https://arxiv.org/abs/1903.03894
+
+> Learns, for one prediction, a weight between 0 and 1 for every connection of
+> the graph, so that a small set of connections keeps the prediction. Considered
+> for this project and not used; assumption A-29 gives the reasons.
+
+**Luo, D., Cheng, W., Xu, D., Yu, W., Zong, B., Chen, H., & Zhang, X. (2020).**
+Parameterized explainer for graph neural network. *Advances in Neural
+Information Processing Systems 33 (NeurIPS)*. https://arxiv.org/abs/2011.04573
+
+> PGExplainer: trains a second, small network that produces those connection
+> weights for any prediction. Considered and not used (assumption A-29).
+
+**Holdijk, L., Boon, M., Henckels, S., & de Jong, L. (2021).** [Re]
+Parameterized explainer for graph neural network. *ReScience C*, *7*(2), #7.
+https://doi.org/10.5281/zenodo.4834242
+
+> A replication of PGExplainer that could not reproduce its results from the
+> paper alone and found them to depend strongly on its penalty weights and
+> temperature. Part of the reason given in assumption A-29.
+
+**Yuan, H., Yu, H., Gui, S., & Ji, S. (2022).** Explainability in graph neural
+networks: A taxonomic survey. *IEEE Transactions on Pattern Analysis and
+Machine Intelligence*. https://doi.org/10.1109/TPAMI.2022.3204236 (arXiv
+version: https://arxiv.org/abs/2012.15445)
+
+> A survey that also benchmarks graph explanation methods, the only independent
+> comparison found that includes GNN-LRP. Its benchmark covers classification
+> only, like every other comparison found.
+
 ---
 
 ## Research practice

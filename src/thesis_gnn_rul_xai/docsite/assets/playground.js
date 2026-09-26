@@ -24,7 +24,7 @@
     window_summary: "window summary", raw_window: "whole window" };
   var STATUS = { queued: "Queued", running: "Running", cancelling: "Stopping", done: "Done",
     failed: "Failed", cancelled: "Stopped", interrupted: "Interrupted" };
-  var METHODS = { shap: "Exact Shapley values", occlusion: "Occlusion" };
+  var METHODS = { shap: "Exact Shapley values", occlusion: "Occlusion", walks: "Walks through the sensor graph" };
   // What the Explain tab's options do, in plain words, above the line of each one's i.
   var EXPLAIN_ABOUT = {
     shap: "Explains how the recorded input changes a prediction relative to an average training window. Start with that window and restore " +
@@ -37,6 +37,12 @@
       "prediction, in cycles: positive means this sensor's recorded readings raise the prediction. " +
       "The values need not add to the prediction's difference from the input where every sensor is replaced. They describe " +
       "the model, not the causes of engine failure.",
+    walks: "Shows the routes by which the sensors' readings reached a prediction. Just before the model turns its output " +
+      "into cycles of remaining life, that output is one number, the score. This method reads the numbers the model " +
+      "learned and splits the score exactly into shares: one for every walk a reading can take from sensor to sensor " +
+      "along the graph's connections, one step per graph layer, plus a part that belongs to no sensor. Nothing is " +
+      "replaced or run again. The shares are parts of the score, not cycles. They describe the model, not the causes " +
+      "of engine failure.",
     engine: "Explains successive windows of one engine's history to show how sensor contributions change " +
       "over time. The engine comes from those held back from training; if none were held back, it comes " +
       "from the training engines. The window spacing and the setting below determine which windows are explained.",
@@ -539,8 +545,10 @@
   // frame round the four largest and a blue one round the rest, and each dot
   // coloured by the sensor's own reading at that window. An explanation
   // stored before the readings were kept colours by the window's place in
-  // the sequence instead, and the legend says which.
-  function beeswarm(rows, ranked, width) {
+  // the sequence instead, and the legend says which. unit is left out for
+  // values in cycles and "" for shares of the score before the sigmoid.
+  function beeswarm(rows, ranked, width, unit) {
+    var inCycles = unit === undefined;
     var hasReadings = rows.length > 0 && rows[0]["reading_" + ranked[0]] !== undefined;
     var rowH = 20, left = 64, right = 18, top = 10, bottom = 34, W = width || 640, dot = 2.4, step = 5.2;
     var H = top + rowH * ranked.length + bottom;
@@ -561,7 +569,8 @@
     niceTicks(lo, hi, 7).forEach(function (t) {
       out += '<text x="' + X(t).toFixed(1) + '" y="' + (H - bottom + 14) + '" text-anchor="middle" class="pg-tick">' + tickLabel(t) + "</text>";
     });
-    out += '<text x="' + ((left + W - right) / 2) + '" y="' + (H - 4) + '" text-anchor="middle" class="pg-axis">value, in cycles of remaining life</text>';
+    out += '<text x="' + ((left + W - right) / 2) + '" y="' + (H - 4) + '" text-anchor="middle" class="pg-axis">' +
+      (inCycles ? "value, in cycles of remaining life" : "share of the score before the sigmoid") + "</text>";
     ranked.forEach(function (s, j) {
       var cy = top + j * rowH + rowH / 2;
       out += '<text x="' + (left - 10) + '" y="' + (cy + 3.5) + '" text-anchor="end" class="pg-tick">' + esc(s) + "</text>";
@@ -578,7 +587,7 @@
         offset = Math.max(-rowH / 2 + dot, Math.min(rowH / 2 - dot, offset));
         out += '<circle cx="' + X(p.x).toFixed(1) + '" cy="' + (cy + offset).toFixed(1) + '" r="' + dot + '" fill="' +
           mixColour(sHi > sLo ? (p.shade - sLo) / (sHi - sLo) : 0.5) + '" fill-opacity="0.8"><title>' +
-          esc(s + " · " + p.label + ": " + (p.x >= 0 ? "+" : "") + p.x.toFixed(2) + " cycles" +
+          esc(s + " · " + p.label + ": " + (p.x >= 0 ? "+" : "") + p.x.toFixed(2) + (inCycles ? " cycles" : "") +
             (hasReadings ? " · reading, smoothed and rescaled: " + Number(p.shade).toFixed(2) : "")) + "</title></circle>";
       });
     });
@@ -2608,8 +2617,9 @@
 
   function explanationFilters() {
     var f = S.xfilter;
-    return filterSelect("Method", "method", "data-xfilter", [{ value: "shap", label: METHODS.shap },
-      { value: "occlusion", label: METHODS.occlusion }], f.method) +
+    return filterSelect("Method", "method", "data-xfilter", Object.keys(METHODS).map(function (m) {
+      return { value: m, label: METHODS[m] };
+    }), f.method) +
       filterSelect("What", "scope", "data-xfilter", [{ value: "engine", label: "One engine over time" },
         { value: "test", label: "The last window of every test engine" }], f.scope) +
       filterSelect("Sub-dataset", "subset", "data-xfilter", SUBSETS.map(function (s) { return { value: s, label: s }; }), f.subset) +
@@ -2987,7 +2997,10 @@
           { value: "shap", label: METHODS.shap, about: EXPLAIN_ABOUT.shap, note: sourceTag({ kind: "paper", ref: "Eq. 15" }) +
             " All " + count(16384) + " sensor combinations are evaluated. Replacement readings are averaged across training windows at each position (" + refLink("A-20") + "); their prediction is our starting point (" + refLink("A-24") + ")." },
           { value: "occlusion", label: "Occlusion, one sensor at a time", about: EXPLAIN_ABOUT.occlusion, note: sourceTag({ kind: "extension" }) +
-            " Evaluates the original input and one replacement per sensor. Replacement readings are averaged across training windows separately at each window position (" + refLink("A-20") + ")." }
+            " Evaluates the original input and one replacement per sensor. Replacement readings are averaged across training windows separately at each window position (" + refLink("A-20") + ")." },
+          { value: "walks", label: METHODS.walks, about: EXPLAIN_ABOUT.walks, note: sourceTag({ kind: "extension" }) +
+            " GNN-LRP (Schnake et al., 2022), with its setting gamma at 0 (" + refLink("A-29") + "). Sensors the graph cannot " +
+            "tell apart are counted as one where a walk ends (" + refLink("F-18") + ")." }
         ], e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) }) +
       cell({ key: "pg-e-scope", label: "What is explained", size: "wide",
         control: optionList("pg-e-scope", [
@@ -3079,6 +3092,13 @@
         box.innerHTML = '<div class="pg-empty">This explanation stored no windows.</div>';
         return;
       }
+      // The method decides what the stored numbers are, so it is read first:
+      // a walk explanation stores shares of the score, not values in cycles.
+      if (sum.method === "walks") { drawWalks(box, data); return; }
+      if (sum.method !== "shap" && sum.method !== "occlusion") {
+        box.innerHTML = errorBox("This page cannot draw an explanation made with the method \"" + sum.method + "\".");
+        return;
+      }
       var symbols = Object.keys(sum.mean_abs);
       var sensorOrder = Object.keys(rows[0]).filter(function (k) { return symbols.indexOf(k) >= 0; });
       if (e.index >= rows.length) { e.index = 0; }
@@ -3120,22 +3140,7 @@
       var body;
       if (forEngine) {
         var current = rows[e.index];
-        var subset = e.detail ? e.detail.subset : "";
-        var lifePlot = plot({
-          width: W, height: chartHeight(W), xlabel: "cycle at the end of the window", ylabel: "remaining life, and error (cycles)",
-          label: "the prediction along the engine's life",
-          areas: [{ name: "predicted minus true: the paper's \"new error area\"", colour: "var(--fig-lpc)", opacity: 0.35,
-            points: rows.map(function (r) { return [r.end_cycle, r.predicted - r.rul]; }) }],
-          series: [
-            { name: "true remaining life (capped)", colour: "var(--fig-accent)", dash: "7 4", width: 2, points: rows.map(function (r) { return [r.end_cycle, r.rul]; }) },
-            { name: "predicted", colour: "var(--fig-lpt)", width: 1.8, points: rows.map(function (r) { return [r.end_cycle, r.predicted]; }) },
-            { name: "the chosen window", colour: "var(--fig-ink)", line: false, dots: true, radius: 5.5, points: [[current.end_cycle, current.predicted]] }
-          ]
-        });
-        body = head + '<div class="pg-charts">' +
-          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 7.</strong>' +
-          (FIG7_UNIT[subset] ? " The paper's " + esc(subset) + " engine is unit " + FIG7_UNIT[subset] + "." : "") +
-          "</figcaption>" + lifePlot + "</figure>" +
+        body = head + '<div class="pg-charts">' + lifeFigure(rows, current, W) +
           swarm + strip +
           '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, right.</strong> One window on the sensor graph, ' +
           'coloured by the rank of this window\'s values. <label class="pg-slider">Window ' +
@@ -3163,12 +3168,244 @@
     });
   }
 
+  // The paper's Fig. 7 for one engine: the true and the predicted remaining
+  // life at every window, the error between them shaded, the chosen window marked.
+  function lifeFigure(rows, current, W) {
+    var subset = S.explain.detail ? S.explain.detail.subset : "";
+    var lifePlot = plot({
+      width: W, height: chartHeight(W), xlabel: "cycle at the end of the window", ylabel: "remaining life, and error (cycles)",
+      label: "the prediction along the engine's life",
+      areas: [{ name: "predicted minus true: the paper's \"new error area\"", colour: "var(--fig-lpc)", opacity: 0.35,
+        points: rows.map(function (r) { return [r.end_cycle, r.predicted - r.rul]; }) }],
+      series: [
+        { name: "true remaining life (capped)", colour: "var(--fig-accent)", dash: "7 4", width: 2, points: rows.map(function (r) { return [r.end_cycle, r.rul]; }) },
+        { name: "predicted", colour: "var(--fig-lpt)", width: 1.8, points: rows.map(function (r) { return [r.end_cycle, r.predicted]; }) },
+        { name: "the chosen window", colour: "var(--fig-ink)", line: false, dots: true, radius: 5.5, points: [[current.end_cycle, current.predicted]] }
+      ]
+    });
+    return '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 7.</strong>' +
+      (FIG7_UNIT[subset] ? " The paper's " + esc(subset) + " engine is unit " + FIG7_UNIT[subset] + "." : "") +
+      "</figcaption>" + lifePlot + "</figure>";
+  }
+
+  // "a", "a and b", "a, b and c".
+  function andList(list) {
+    return list.length < 2 ? list.join("") : list.slice(0, -1).join(", ") + " and " + list[list.length - 1];
+  }
+
+  // A share of the score before the sigmoid, with its sign: "+0.570", "-0.006".
+  function scoreShare(v) {
+    return (v > 0 ? "+" : "") + fixed(v, 3);
+  }
+
+  // A walk explanation. Its numbers are shares of the score before the
+  // sigmoid, never cycles: the server adds each window's walks up by the
+  // sensor they start at (start_), by the connection they pass along
+  // (link_) and by whether they leave their sensor's group (stays, moves).
+  // Each sensor's share is copied under its own name so the charts drawn for
+  // the other methods can read it. The paper has no walks, so nothing here
+  // is set beside its figures, and the beeswarm already ranks the sensors.
+  function drawWalks(box, data) {
+    var e = S.explain, sum = data.summary, rows = data.values, top = data.top_walks || [];
+    var ranking = sum.mean_abs_start || {};
+    var symbols = Object.keys(ranking);
+    if (!symbols.length) {
+      box.innerHTML = errorBox("This walk explanation stored no share for any sensor.");
+      return;
+    }
+    var sensorOrder = Object.keys(rows[0]).filter(function (k) {
+      return k.indexOf("start_") === 0 && symbols.indexOf(k.slice(6)) >= 0;
+    }).map(function (k) { return k.slice(6); });
+    var shown = rows.map(function (r) {
+      var row = {};
+      Object.keys(r).forEach(function (k) { row[k] = r[k]; });
+      symbols.forEach(function (s) { row[s] = r["start_" + s]; });
+      return row;
+    });
+    if (e.index >= rows.length) { e.index = 0; }
+    var forEngine = sum.scope === "engine";
+    var groups = sum.groups || [];
+    var middle = Math.round(Number(sum.rul_max) / 2 * 10) / 10;
+
+    // The head says once what a share is, its sign and what it is a share
+    // of; the cautions say what the shares can and cannot be read as.
+    var cautions = [{ level: "info", ref: "A-29", text: "The walks and the part that belongs to no sensor, which the model's " +
+        "last two layers add of their own, add up to the score; the largest miss here is " +
+        Number(sum.conservation_error_max).toExponential(1) + "." },
+      { level: "info", text: "These are not Shapley values. The order of the sensors may be set beside a Shapley ranking; " +
+        "the sizes may not, since these are parts of the score and Shapley values are differences in predicted remaining life." }];
+    if (groups.length === 1 && groups[0].length === symbols.length) {
+      cautions.push({ level: "info", ref: "F-18", text: "Every sensor is joined to every other, so the graph cannot tell any two " +
+        "apart and counts them as one where a walk ends: here walks differ only by the sensor they start at." });
+    } else if (groups.length) {
+      cautions.push({ level: "info", ref: "F-18", text: "The graph cannot tell apart the sensors within each of these groups: " +
+        groups.map(andList).join("; ") + ". A group's members are joined to exactly the same sensors, so a group counts as " +
+        "one where a walk ends." });
+    }
+    if (sum.walks_start_after_learned_stage) {
+      cautions.push({ level: "info", ref: "A-29", text: "The walks start where the temporal stage hands its numbers to the " +
+        "graph layers, after that stage has read the whole window, so they say nothing about which part of the window mattered." });
+    }
+    cautions.push({ level: "info", text: "A large value is not evidence that the sensor causes the engine's wear." });
+    cautions.push({ level: "info", ref: "A-30", text: "What passed along a connection is not what removing that connection " +
+      "would do; the two are separate measurements and need not agree." });
+    var head = '<section class="pg-detail"><p class="pg-lead">Each value is a sensor\'s share of the score: the one number ' +
+      "that the model's last step, the sigmoid, turns into a predicted remaining life." +
+      (isFinite(middle) ? " A score of 0 predicts " + middle + " cycles, and a higher score a longer life." : "") +
+      " A sensor's share adds up every walk that starts at it, a walk being the sensors a piece of its reading passes " +
+      "through, one per graph layer. Positive shares raise the prediction; negative shares lower it. Computed in " +
+      (sum.seconds < 1 ? "under a second" : duration(sum.seconds)) + ".</p>" + caveatList(cautions);
+
+    var W = S.chartsDrawnAt = chartWidth();
+    var what = forEngine ? "window" : "engine";
+    var parts = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Each ' +
+      (forEngine ? "window's" : "test engine's") + " score, split. The three coloured parts add up to the score " +
+      (forEngine ? "(dashed)" : "(rings)") + "; a sensor that shares no group is a group of its own.</figcaption>" +
+      walkParts(rows, forEngine, W) + "</figure>";
+    var swarm = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Every sensor\'s ' +
+      "share, one dot per " + what + ", the sensors ranked by the average size of their shares.</figcaption>" +
+      beeswarm(shown, symbols, W, "") + "</figure>";
+    var flow = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> What passed along ' +
+      "each connection of the sensor graph, over every graph layer and both ways together, " +
+      (forEngine ? "at one window; the wider the line, the more. <label class=\"pg-slider\">Window " +
+        '<input type="range" min="0" max="' + (rows.length - 1) + '" value="' + e.index + '" data-window-index> <span data-window-caption>' +
+        esc(windowCaption(rows[e.index])) + "</span></label>"
+        : "averaged over the test engines; the wider the line, the more.") + "</figcaption>" +
+      flowGraph(rows, forEngine ? e.index : null, sensorOrder) + "</figure>";
+    var walks = topWalks(top, sum);
+
+    var body;
+    if (forEngine) {
+      body = head + '<div class="pg-charts">' + lifeFigure(rows, rows[e.index], W) + parts + swarm + flow + walks +
+        '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> ' +
+        "Every sensor's share, across the whole life. Point at any panel to read every sensor at that cycle.</figcaption>" +
+        sensorHistory(shown, symbols, e.index, "") + "</figure></div></section>";
+    } else {
+      body = head + '<div class="pg-charts">' + parts + swarm + flow + walks +
+        '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Every sensor\'s share at every ' +
+        "test engine (columns, by engine number). Blue raised the predicted remaining life, orange lowered it; the stronger " +
+        "the colour, the larger the share.</figcaption>" + heatmap(shown, sensorOrder, "") + "</figure></div></section>";
+    }
+    box.innerHTML = body;
+    wireHistory(box, forEngine ? shown : []);
+  }
+
+  // Each window's score split three ways: the walks that never leave their
+  // starting sensor's group, the walks that do, and the part no sensor owns.
+  // One engine's windows are lines along its life; the test engines, which
+  // are not a sequence, are dots, with the score as a ring.
+  function walkParts(rows, forEngine, W) {
+    var x = function (r) { return forEngine ? r.end_cycle : r.unit; };
+    var series = [["stays", "walks that stay within their sensor's group", "var(--fig-lpt)"],
+      ["moves", "walks that move between groups", "var(--fig-lpc)"],
+      ["constant", "part that belongs to no sensor", "var(--fig-core)"],
+      ["score", "score", "var(--fig-ink)"]].map(function (s) {
+      var points = rows.map(function (r) { return [x(r), r[s[0]]]; });
+      var line = { name: s[1], colour: s[2], points: points, line: forEngine, dots: !forEngine, radius: 2.5 };
+      if (s[0] === "score") {
+        if (forEngine) { line.dash = "5 4"; line.width = 1.5; } else {
+          line.dots = false;
+          line.marks = points.map(function (p) { return [p[0], p[1], "score: engine " + p[0] + ", " + tickLabel(p[1])]; });
+        }
+      }
+      return line;
+    });
+    return plot({ width: W, height: chartHeight(W), xlabel: forEngine ? "cycle at the end of the window" : "test engine",
+      ylabel: "share of the score before the sigmoid", label: "each score split into its parts", series: series });
+  }
+
+  // The sensor graph with what passed along each connection: one line per
+  // connection this explanation's own graph has, read from its link_
+  // columns, so a run on another graph shows that graph on the same places.
+  // A line is as wide as what passed both ways together, blue where that
+  // raised the prediction and orange where it lowered it; the widest line of
+  // any window sets the scale, so widths compare as the slider moves. With
+  // no window chosen (index null) each connection is averaged over the rows.
+  // The sensors are left uncoloured, since the beeswarm already ranks them.
+  function flowGraph(rows, index, sensors) {
+    var g = S.options.graph, scale = 0.8, names = "";
+    var pairs = [];
+    sensors.forEach(function (a, i) {
+      sensors.slice(i + 1).forEach(function (b) {
+        var ab = "link_" + a + "_" + b, ba = "link_" + b + "_" + a;
+        if ((rows[0][ab] !== undefined || rows[0][ba] !== undefined) && g.positions[a] && g.positions[b]) { pairs.push([a, b, ab, ba]); }
+      });
+    });
+    var value = function (r, p) { return (Number(r[p[2]]) || 0) + (Number(r[p[3]]) || 0); };
+    var shown = rows[index];
+    if (index === null) {
+      shown = {};
+      Object.keys(rows[0]).forEach(function (k) {
+        if (k.indexOf("link_") !== 0) { return; }
+        var total = 0;
+        rows.forEach(function (r) { total += Number(r[k]) || 0; });
+        shown[k] = total / rows.length;
+      });
+    }
+    var peak = 0;
+    (index === null ? [shown] : rows).forEach(function (r) {
+      pairs.forEach(function (p) { peak = Math.max(peak, Math.abs(value(r, p))); });
+    });
+    peak = peak || 1;
+    // One direction of a connection in words: "T24 to T30: +0.570".
+    var way = function (label, key) {
+      return label + ": " + (shown[key] === undefined ? "no connection" : scoreShare(Number(shown[key])));
+    };
+    var out = '<svg class="pg-graph" viewBox="0 0 ' + g.width * scale + " " + (g.height - 30) * scale +
+      '" role="img" aria-label="What passed along each connection">';
+    // The narrow lines first, so a wide one is never hidden under them.
+    pairs.map(function (p) { return { p: p, v: value(shown, p) }; })
+      .sort(function (a, b) { return Math.abs(a.v) - Math.abs(b.v); })
+      .forEach(function (l) {
+        var a = g.positions[l.p[0]], b = g.positions[l.p[1]];
+        var ends = 'x1="' + a[0] * scale + '" y1="' + a[1] * scale + '" x2="' + b[0] * scale + '" y2="' + b[1] * scale + '"';
+        out += "<g><title>" + esc(way(l.p[0] + " to " + l.p[1], l.p[2]) + " · " + way(l.p[1] + " to " + l.p[0], l.p[3])) + "</title>" +
+          "<line " + ends + ' stroke="' + (l.v >= 0 ? "var(--fig-accent)" : "var(--fig-warn)") + '" stroke-width="' +
+          (1.2 + 6 * Math.abs(l.v) / peak).toFixed(2) + '" stroke-linecap="round"/>' +
+          "<line " + ends + ' stroke="transparent" stroke-width="10"/></g>';
+      });
+    sensors.forEach(function (s) {
+      var p = g.positions[s];
+      if (!p) { return; }
+      var self = shown["link_" + s + "_" + s];
+      var title = "<title>" + esc(s + (self !== undefined ? " · along its connection to itself: " + scoreShare(Number(self)) : "")) + "</title>";
+      out += "<g>" + title + '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale +
+        '" r="17" fill="var(--fig-bg)" stroke="var(--fig-axis)" stroke-width="1.5"/></g>';
+      names += "<g>" + title + '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
+    });
+    return '<div class="pg-graph-stage">' + out + names + "</svg></div>" +
+      '<div class="pg-legend"><span><i style="background:var(--fig-accent)"></i>raised the prediction</span>' +
+      '<span><i style="background:var(--fig-warn)"></i>lowered it</span></div>' +
+      '<p class="pg-faint">The widest line stands for ' + fixed(peak, 2) + " of the score before the sigmoid. Point at a line " +
+      "to read what passed each way, and at a sensor for what passed along its connection to itself.</p>";
+  }
+
+  // The walks with the largest average size, the size being a share with
+  // its sign ignored, and how far the walks cancel one another.
+  function topWalks(top, sum) {
+    if (!top.length) { return ""; }
+    var groups = sum.groups || [];
+    return '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> The ' + count(top.length) +
+      " walks with the largest average size, the size being a share with its sign ignored." +
+      (groups.length ? " Sensors joined by a slash are one of the groups named above." : "") + "</figcaption>" +
+      '<table class="pg-mini"><thead><tr><th>Walk</th><th class="num">Average share</th><th class="num">Average size</th></tr></thead><tbody>' +
+      top.map(function (w) {
+        return "<tr><td>" + esc(String(w.walk).split(" -> ").join(" → ")) + '</td><td class="num">' + scoreShare(Number(w.mean)) +
+          '</td><td class="num">' + fixed(Number(w.mean_abs), 3) + "</td></tr>";
+      }).join("") + "</tbody></table>" +
+      (isFinite(Number(sum.cancellation_median)) ? '<p class="pg-faint">Added up with their signs ignored, a ' +
+        (sum.scope === "engine" ? "window's" : "test engine's") + " walks come to a median of " +
+        fixed(Number(sum.cancellation_median), 1) + " times their total with signs kept: most of what one walk adds, another takes away.</p>" : "") +
+      "</figure>";
+  }
+
   // One panel per sensor, holding that sensor's value at every window of the
   // engine's life, every panel on ONE vertical scale so that a tall panel
   // means a large value and not a large axis. This is the counterpart of
   // plot_contributions_over_time in explain/plots.py, which draws the same
   // thing for the notebooks. A cursor marks one window in every panel at once
   // and each caption reads that sensor's value there; wireHistory moves it.
+  // As for the beeswarm, unit is left out for cycles and "" for score shares.
   var HISTORY_W = 260, HISTORY_H = 104, HISTORY_PAD = 5;
   var historyCursor = null;   // moves the cursor to a window, while the chart is on screen
 
@@ -3185,7 +3422,7 @@
     return (v > 0 ? "+" : "") + fixed(v, 2);
   }
 
-  function sensorHistory(rows, symbols, current) {
+  function sensorHistory(rows, symbols, current, unit) {
     var scale = historyScale(rows), X = scale.X;
     var limit = 0;
     symbols.forEach(function (s) {
@@ -3234,7 +3471,7 @@
     return '<div class="pg-sm-readout is-idle" aria-live="polite">Values at cycle <b>' + marked.end_cycle + "</b></div>" +
       '<div class="pg-smalls">' + panels + "</div>" +
       '<div class="pg-faint">Blue raised the predicted remaining life, orange lowered it. ' +
-      "Every panel shares one scale; the largest value is " + fixed(largest, 2) + " cycles." +
+      "Every panel shares one scale; the largest value is " + fixed(largest, 2) + (unit === undefined ? " cycles" : "") + "." +
       (knee !== null ? " The dashed line is cycle " + knee + ", where the true remaining life starts falling." : "") +
       "</div>";
   }
@@ -3288,7 +3525,9 @@
     historyCursor = show;
   }
 
-  function heatmap(rows, sensors) {
+  // Every sensor at every test engine, one coloured cell each; unit as for the beeswarm.
+  function heatmap(rows, sensors, unit) {
+    var after = unit === undefined ? " cycles" : "";
     var cell = Math.max(2, Math.min(18, Math.floor(640 / rows.length)));
     var W = 60 + cell * rows.length, H = 14 * 16 + 10;
     var peak = 0;
@@ -3301,10 +3540,10 @@
       rows.forEach(function (r, i) {
         var v = r[s];
         out += '<rect x="' + (60 + i * cell) + '" y="' + (j * 16) + '" width="' + cell + '" height="15" fill="' + (v >= 0 ? "var(--fig-accent)" : "var(--fig-warn)") +
-          '" fill-opacity="' + (Math.abs(v) / peak).toFixed(3) + '"><title>' + esc(s + " · engine " + r.unit + ": " + signedValue(v) + " cycles") + "</title></rect>";
+          '" fill-opacity="' + (Math.abs(v) / peak).toFixed(3) + '"><title>' + esc(s + " · engine " + r.unit + ": " + signedValue(v) + after) + "</title></rect>";
       });
     });
-    return out + '</svg></div><div class="pg-faint">Strongest colour: ' + peak.toFixed(2) + " cycles.</div>";
+    return out + '</svg></div><div class="pg-faint">Strongest colour: ' + peak.toFixed(2) + after + ".</div>";
   }
 
   // Fig. 9 and Fig. 10's scheme: the four sensors with the largest values in

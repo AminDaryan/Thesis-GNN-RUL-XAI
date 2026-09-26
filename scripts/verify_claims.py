@@ -125,6 +125,24 @@ class Check:
 # --- the checks that need nothing but the package ------------------------
 
 
+def check_same_rows() -> list[Claim]:
+    """F-18's groups of sensors whose rows of the rescaled paper graph are identical."""
+    matrix, symbols = build_physics_adjacency()
+    claims = []
+    for method in ("row", "symmetric"):
+        rescaled = normalize_adjacency(matrix, method=method)
+        groups: dict[bytes, list[str]] = {}
+        for index, symbol in enumerate(symbols):
+            groups.setdefault(rescaled[index].tobytes(), []).append(symbol)
+        found = "; ".join(", ".join(g) for g in groups.values() if len(g) > 1)
+        claims.append(Claim("F-18", f"identical rows, {method} rescaling",
+                            "P15, Nf, NRf, BPR; P30, Ps30; Nc, W31", found))
+        claims.append(Claim("F-18", f"independent rows, {method} rescaling", 8,
+                            int(np.linalg.matrix_rank(rescaled))))
+    return claims
+
+
+
 def check_graph() -> list[Claim]:
     """F-07's edge counts and the structural figures quoted beside them."""
     matrix, symbols = build_physics_adjacency()
@@ -496,6 +514,7 @@ def check_p15(config: PreprocessingConfig) -> list[Claim]:
 
 CHECKS = [
     Check("graph", "F-07", False, False, check_graph),
+    Check("same_rows", "F-18", False, False, check_same_rows),
     Check("sensors", "F-01, A-10", True, False, check_sensors),
     Check("labels", "F-02, F-03", True, False, check_labels),
     Check("windows", "A-23", True, False, check_windows),

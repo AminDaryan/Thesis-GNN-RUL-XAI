@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 371 tests; must all pass
+pytest                # 416 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -857,8 +857,11 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — all 370
-pass (measured 2026-09-26, after a test that every playground setting says in
+With everything present — the data, PyTorch and the stored runs — 416 are
+collected since the walk explanation's 45 tests were added on 2026-09-26, and
+415 passed that day; the one failure was a playground text test broken by
+uncommitted playground edits that the walk change did not touch. Before that,
+all 370 passed (measured 2026-09-26, after a test that every playground setting says in
 plain words what it is for; the 371st, that every Read more in the playground
 leads to a heading that exists, was added the same day and has passed on its
 own, not yet in a full run; 369 had passed on 2026-09-24, after tests that
@@ -897,7 +900,7 @@ re-training that run first:
 
 ```bash
 python -m nbconvert --to notebook --execute --inplace notebooks/02_model_fd001.ipynb
-python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd001.ipynb notebooks/xai/02_occlusion_fd001.ipynb
+python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd001.ipynb notebooks/xai/02_occlusion_fd001.ipynb notebooks/xai/03_walks_fd001.ipynb
 ```
 
 ---

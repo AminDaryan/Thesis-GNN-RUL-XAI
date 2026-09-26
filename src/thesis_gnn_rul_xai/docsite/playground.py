@@ -517,6 +517,7 @@ _READ_MORE: dict[str, tuple[str, str]] = {
     "device": (_TRAINING, "What one run does"),
     "explain=shap": ("docs/learn/03_explainability.md", "SHAP: the same idea, applied to a model"),
     "explain=occlusion": ("docs/learn/03_explainability.md", 'What "removing a sensor" has to mean'),
+    "explain=walks": ("docs/learn/03_explainability.md", "Walks: the routes a prediction took through the graph"),
     "explain=engine": ("docs/learn/03_explainability.md", "Dynamic: the same calculation at every cycle"),
     "explain=test": ("docs/learn/03_explainability.md", "Why a number is not enough"),
     "explain=every": ("docs/learn/03_explainability.md", "Dynamic: the same calculation at every cycle"),
@@ -620,8 +621,10 @@ def validate_explain(payload: Mapping[str, Any], root: Path) -> dict[str, Any]:
         raise SettingsError("The request must be a JSON object.")
     run = _run_directory(root, str(payload.get("run", "")))
     method = payload.get("method", "shap")
-    if method not in ("shap", "occlusion"):
-        raise SettingsError(f"method must be 'shap' or 'occlusion', got {method!r}.")
+    if method not in _METHOD_NAMES:
+        raise SettingsError(
+            f"method must be 'shap', 'occlusion' or 'walks', got {method!r}."
+        )
     scope = payload.get("scope", "engine")
     if scope not in ("engine", "test"):
         raise SettingsError(f"scope must be 'engine' or 'test', got {scope!r}.")
@@ -1806,6 +1809,8 @@ def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
     return _clean({
         "summary": json.loads((folder / "summary.json").read_text(encoding="utf-8")),
         "values": _read_csv(folder / "values.csv"),
+        # Only a walk explanation writes this file; the others get an empty list.
+        "top_walks": _read_csv(folder / "top_walks.csv"),
     })
 
 
@@ -1879,7 +1884,8 @@ _ENDED = ("done", "failed", "cancelled", "interrupted")
 _STAGE_NAMES = {"lstm": "LSTM", "gru": "GRU", "last_cycle": "w/o LSTM",
                 "mean_window": "window average", "window_summary": "window summary",
                 "raw_window": "whole window"}
-_METHOD_NAMES = {"shap": "Exact Shapley values", "occlusion": "Occlusion"}
+_METHOD_NAMES = {"shap": "Exact Shapley values", "occlusion": "Occlusion",
+                 "walks": "Walks through the sensor graph"}
 # What a job is called when its folder holds nothing to name it by.
 _UNNAMED = {"train": "Training run", "explain": "Explanation"}
 

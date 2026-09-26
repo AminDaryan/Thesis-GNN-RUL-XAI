@@ -17,7 +17,8 @@ where the code they call actually lives.
         ▼
 xai/                            one notebook per explanation method, each explaining
   ├── 01_shap_fd001.ipynb       the same trained network; read xai/README.md first
-  └── 02_occlusion_fd001.ipynb
+  ├── 02_occlusion_fd001.ipynb
+  └── 03_walks_fd001.ipynb
 ```
 
 Read 01 and 02 in order: 02 starts from exactly what 01 produces. The step

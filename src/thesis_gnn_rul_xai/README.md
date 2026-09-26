@@ -45,7 +45,7 @@ Each subfolder does one job. Each has its own README with the detail.
 | `models/temporal/` | What each sensor node carries: the last cycle, the window's average, or what a per-sensor recurrent network read out of it. |
 | `training/` | The training configuration and the training loop. |
 | `evaluation/` | The scoring measures used to report results. |
-| `explain/` | The Shapley-value explanations of the model's predictions. |
+| `explain/` | The Shapley-value explanations of the model's predictions, and a split of each prediction into shares along routes through the sensor graph, which the paper does not have. |
 | `utils/` | Housekeeping shared by everything else: project paths, reproducible random seeds, logging. |
 
 ---

@@ -141,6 +141,31 @@ question about the graph. Three things keep it from being settled.
 
 ---
 
+## P-23 — Walks through the sensor graph: no gamma in the playground, and measured on uncommitted code
+
+`explain/walks.py` (assumption A-29) and `explain/connections.py` (assumption
+A-30) were added on 2026-09-26, measured the same day over five stored runs by
+`scripts/measure_walks.py`, wired into `scripts/explain.py` and the
+playground's Explain tab, taught in `docs/learn/03_explainability.md`, and given
+a notebook, `notebooks/xai/03_walks_fd001.ipynb`. The sensors the graph cannot
+tell apart are finding F-18. What is left:
+
+1. **Gamma in the playground.** The Explain tab always splits at gamma 0. The
+   measurement shows connection rankings move little with gamma (A-29), so this
+   is low priority; if added, a positive value must never reach the first graph
+   layer.
+2. **A walk-level version measured from the average window**, suggested by a
+   review on 2026-09-26: integrating the walk split along the straight line from
+   the average training window (A-20) to the window would add up to the
+   prediction in cycles minus the average-window prediction, like the Shapley
+   values. It is not a published method and would need its own assumption entry.
+3. **The measurements are at `14c1d64-dirty`.** Rerun `scripts/measure_walks.py`
+   on the five runs once the walk code is committed, replace the folder names
+   in A-29 and A-30 if any figure moves, and re-execute
+   `notebooks/xai/03_walks_fd001.ipynb`, which reads the newest folder.
+
+---
+
 ## P-20 — The Shapley tables of A-20 and F-05 come from one trained network
 
 Both entries, including the tables added to them on 2026-09-14, are computed
@@ -185,9 +210,12 @@ re-measured at today's configuration, and recorded as the next free finding —
 the design's "F-17" was provisional and that number now belongs to Fig. 10),
 step 8 (`GATStage` and
 `NoSpatialStage`, which would make the paper's "w/o GCN" row of 16.42
-addressable for the first time), and step 9 (edge and subgraph attributions).
-The design's assumption numbers from A-27 on were provisional and have been
-overtaken; a note in the design says so.
+addressable for the first time), and step 9 (edge and subgraph attributions;
+walk attributions and removing a connection now exist, A-29 and A-30, but the
+design's `Attribution.target` has no "walk" and its A-32 sampling over edges
+is not built). The design's assumption numbers from A-27 on were provisional and
+have been overtaken; a note in the design says so, and A-29 is now taken by
+the walk explanation rather than the attention stage the design gave it to.
 
 **A defect it turned up, still open:** `PreprocessingConfig.notes` is inside
 the run digest. `to_dict()` is `dataclasses.asdict`, so a prose field is hashed.
@@ -214,7 +242,10 @@ they do to a conclusion. Its opening three are the heaviest:
   fourteen-number input is structurally invisible to any graph convolution
   built on it. It says this applies to the per-sensor LSTM model as well, since
   that stage also hands the graph layers one number per sensor.
-  `scripts/verify_claims.py --only correlation` now checks the 8.
+  **Written up on 2026-09-26 as finding F-18**, with a consequence the audit
+  did not state: the three groups of sensors with identical rows keep the
+  differences between their `fc1` weights that the random start gave them.
+  `scripts/verify_claims.py --only same_rows` checks the groups and the 8.
 - **D-2.** The "without physics prior" control is degenerate: the fully
   connected graph normalises to a rank-1 averaging operator. **Evidence now
   exists:** A-27's correlation graph keeps the edge count and costs 0.096 cycles
