@@ -37,12 +37,11 @@
       "prediction, in cycles: positive means this sensor's recorded readings raise the prediction. " +
       "The values need not add to the prediction's difference from the input where every sensor is replaced. They describe " +
       "the model, not the causes of engine failure.",
-    walks: "Shows the routes by which the sensors' readings reached a prediction. Just before the model turns its output " +
-      "into cycles of remaining life, that output is one number, the score. This method reads the numbers the model " +
-      "learned and splits the score exactly into shares: one for every walk a reading can take from sensor to sensor " +
-      "along the graph's connections, one step per graph layer, plus a part that belongs to no sensor. Nothing is " +
-      "replaced or run again. The shares are parts of the score, not cycles. They describe the model, not the causes " +
-      "of engine failure.",
+    walks: "Splits the model's score, before conversion to remaining-life cycles, into shares along graph routes. " +
+      "A route takes one connection per graph layer, starting from a sensor's temporal output. The calculation " +
+      "uses learned weights and which intermediate values are positive for this input. Route shares and a " +
+      "separate share from added constants sum to the score within rounding error. They do not measure what " +
+      "removing a connection would do or establish physical causes.",
     engine: "Explains successive windows of one engine's history to show how sensor contributions change " +
       "over time. The engine comes from those held back from training; if none were held back, it comes " +
       "from the training engines. The window spacing and the setting below determine which windows are explained.",
@@ -89,8 +88,8 @@
     '<circle cx="8" cy="4.9" r=".95" fill="currentColor"/></svg>';
   // One picture for each box of the pipeline and for what goes in and comes
   // out of it: the files (a store of records), preprocessing (sliders: the
-  // readings are adjusted), the temporal stage (a clock: it reads the cycles
-  // in time), the graph layers (sensors joined in a graph) and the remaining
+  // readings are adjusted), the temporal stage (a memory cell and return
+  // arrow), the graph layers (sensors joined in a graph) and the remaining
   // life (an hourglass). The same picture stands on a box, on its
   // flowchart's title and beside the words that lead into or out of it.
   function icon(paths) {
@@ -98,11 +97,14 @@
       'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + paths + "</svg>";
   }
   var ICONS = {
+    explain: icon('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.2 15.2 5 5"/>'),
+    history: icon('<path d="M4 5v5h5M4.5 10a8 8 0 1 1 .6 6M12 7v5l3 2"/>'),
     data: icon('<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6"/>' +
       '<path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>'),
     preprocessing: icon('<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/>' +
       '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>'),
-    temporal: icon('<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>'),
+    temporal: icon('<rect x="7" y="8" width="10" height="10" rx="2"/><path d="M2 13h5m10 0h5M20 13V3H4v5m-2-2 2 2 2-2"/>' +
+      '<path d="M10 11h4m-4 4h4"/>'),
     graph: icon('<circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="17.5" r="2.2"/>' +
       '<path d="M8.2 7h7.6M7.1 9l3.8 6.6M16.9 9l-3.8 6.6"/>'),
     output: icon('<path d="M7 3.5h10M7 20.5h10M8 3.5v2.2c0 2.3 4 3.8 4 6.3s-4 4-4 6.3v2.2M16 3.5v2.2c0 2.3-4 3.8-4 6.3s4 ' +
@@ -148,9 +150,9 @@
       '<rect x="38" y="8" width="6" height="16" rx="2"/>'),
     // one window split into one sequence per sensor
     split: picture('<path d="M5 16h10M15 16 27 6h16M15 16h28M15 16 27 26h16"/>'),
-    // a recurrent network: a cell whose output comes back into it
-    recurrent: picture('<rect x="15" y="10" width="18" height="14" rx="3"/><path d="M5 17h10M33 17h10"/>' +
-      '<path d="M38 17v-12H24v5"/><path d="M22 8l2 2 2-2"/>'),
+    // A memory cell, with its state carried back to the next cycle.
+    recurrent: picture('<rect x="15" y="11" width="18" height="16" rx="3"/><path d="M4 19h11m18 0h11M39 19V4H9v10m-3-3 3 3 3-3"/>' +
+      '<path d="M21 16h6m-6 6h6"/>'),
     // only the last of the sequence kept
     last: picture('<rect x="5" y="12" width="6" height="8" rx="1"/><rect x="13" y="12" width="6" height="8" rx="1"/>' +
       '<rect x="21" y="12" width="6" height="8" rx="1"/><rect x="29" y="12" width="6" height="8" rx="1"/>' +
@@ -742,7 +744,7 @@
     var named = name || about ? '<span class="pg-field-name">' + (name || about) + "</span>" : "";
     var inline = spec.inline && !!name;
     var top = spec.size === "wide" && !!name;
-    var size = spec.size === "wide" && !name && !about ? "wide pg-field--bare" : spec.size;
+    var size = !name && !about && !inline ? (spec.size ? spec.size + " pg-field--bare" : "bare") : spec.size;
     return '<div class="pg-field' + (size ? " pg-field--" + size : "") + '"' +
       (spec.key ? ' data-row="' + spec.key + '"' : "") + (spec.hidden ? " hidden" : "") + ">" +
       '<div class="pg-field-label">' + (inline ? "" : named + (top ? spec.reset || "" : "")) + "</div>" +
@@ -776,6 +778,7 @@
       S.fields = {};
       options.fields.forEach(function (f) { S.fields[f.key] = f; });
       S.settings = loadSettings(options.defaults);
+      if (S.step === "repeats") { S.step = "training"; remember(STEP, S.step); }
       // A step remembered from an older page that no longer has it opens the first.
       if (!groupLabel(S.step)) { S.step = options.groups[0].key; }
       frame();
@@ -792,9 +795,9 @@
   function frame() {
     root.innerHTML = '<div class="pg"><h1 class="visually-hidden">Playground</h1>' +
       '<div id="pg-current" class="pg-current" aria-live="polite" hidden></div>' +
-      '<div class="pg-steps" role="tablist" aria-label="The three steps">' +
-      tabButton("design", 1, "Design a run") + tabButton("results", 2, "Results", '<span class="pg-jobs-badge" ' +
-      'id="pg-jobs-badge"></span>') + tabButton("explain", 3, "Explain") + "</div>" +
+      '<div class="pg-steps" role="tablist" aria-label="Playground sections">' +
+      tabButton("design", ICONS.preprocessing, "Design a run") + tabButton("explain", ICONS.explain, "Explain predictions") +
+      tabButton("results", ICONS.history, "Run history", '<span class="pg-jobs-badge" id="pg-jobs-badge"></span>') + "</div>" +
       '<div id="pg-panel" class="pg-panel" role="tabpanel"></div></div>';
     // The same functions every time, so coming back to the page, which
     // draws into the same element, never adds a listener twice.
@@ -822,9 +825,10 @@
     if (event.target.closest(".pg-info")) { placeInfo(event.target); } else { unquiet(); }
   }
 
-  function tabButton(key, step, label, after) {
+  function tabButton(key, symbol, label, after) {
     return '<button type="button" role="tab" class="pg-step-tab" id="pg-step-tab-' + key + '" data-tab="' + key +
-      '" aria-controls="pg-panel"><span class="pg-step-n">' + step + "</span>" + label + (after || "") + "</button>";
+      '" aria-controls="pg-panel"><span class="pg-step-icon">' + symbol + '</span><span class="pg-step-label">' +
+      esc(label) + "</span>" + (after || "") + "</button>";
   }
 
   // One tab of the row is a stop for the Tab key, the chosen one; the arrow
@@ -939,11 +943,6 @@
     "explain-this": function () {
       S.explain.run = S.detail.name; S.explain.detail = null; S.explain.shown = null; showTab("explain");
     },
-    // The Explain tab has no run picker: another run is chosen in Results,
-    // among the runs that kept their weights.
-    "choose-run": function () {
-      S.selected = null; S.resultsTab = "runs"; S.filter.files = true; S.page.runs = 0; showTab("results");
-    },
     "explain": function () { submitExplanation(); }
   };
 
@@ -1029,7 +1028,7 @@
   // An i's words open under it, moved left as far as they must to stay
   // inside the window. Placed before they show, for the i the pointer or the
   // focus has reached, or for the option the focus is on.
-  // Inside the pipeline, when it scrolls on its own beside the form, the
+  // Inside the diagram and settings scroll areas, the
   // words are placed against the window instead of against the i, since the
   // pipeline would otherwise cut off whatever passes its edges; they open
   // above the i when there is no room below it.
@@ -1041,7 +1040,7 @@
     var width = Math.min(360, window.innerWidth - 32);
     var left = Math.max(16, Math.min(at.left - 8, window.innerWidth - 16 - width));
     var body = i.querySelector(".pg-info-body");
-    var side = i.closest(".pg-pipeline-body");
+    var side = i.closest(".pg-pipeline-body, .pg-tabpanel");
     var loose = side && getComputedStyle(side).overflowY !== "visible";
     i.classList.toggle("is-loose", !!loose);
     if (!loose) {
@@ -1057,37 +1056,21 @@
     body.style.bottom = above ? Math.round(window.innerHeight - at.top) + "px" : "auto";
   }
 
-  // The pipeline beside the form is never taller than the form, so the form
-  // alone decides how tall their row is: a flowchart taller than the form
-  // would otherwise lengthen the row, and the pipeline would scroll away with
-  // the page instead of staying in view. The stylesheet reads the height.
-  function watchForm() {
-    var form = $(".pg-form"), design = $(".pg-design");
-    if (S.formWatch) { S.formWatch.disconnect(); S.formWatch = null; }
-    if (!form || !design) { return; }
-    var set = function () { design.style.setProperty("--pg-form-h", form.offsetHeight + "px"); };
-    set();
-    if (window.ResizeObserver) {
-      S.formWatch = new ResizeObserver(set);
-      S.formWatch.observe(form);
-    }
-  }
-
-  // The pipeline's i's that are showing follow their i when the pipeline's
-  // body or the page scrolls, and close once their i has scrolled out of the
+  // Open help cards follow their i when either scroll area or the page
+  // scrolls, and close once their i has scrolled out of the
   // body's view, rather than point at nothing. The body is drawn anew with
   // every change of view, so its scrolling is caught on the way down, from
   // the pipeline, which stays.
   function watchPipeline() {
-    var box = $("#pg-pipeline");
+    var box = $(".pg-design");
     if (!box || box.__scrolls) { return; }
     box.__scrolls = true;
     var follow = function () {
-      var scroller = box.querySelector(".pg-pipeline-body");
-      if (!scroller) { return; }
-      var view = scroller.getBoundingClientRect();
       Array.prototype.forEach.call(box.querySelectorAll(".pg-info.is-loose"), function (i) {
         if (!i.querySelector(".pg-info-body").getClientRects().length) { return; }
+        var scroller = i.closest(".pg-pipeline-body, .pg-tabpanel");
+        if (!scroller) { return; }
+        var view = scroller.getBoundingClientRect();
         var at = i.getBoundingClientRect();
         if (at.bottom <= view.top || at.top >= view.bottom) {
           setOpen(i, false);
@@ -1101,7 +1084,7 @@
     if (!window.__thesisPlaygroundScroll) {
       window.__thesisPlaygroundScroll = true;
       window.addEventListener("scroll", function () {
-        var now = document.getElementById("pg-pipeline");
+        var now = document.querySelector(".pg-design");
         if (now && onPage()) { now.dispatchEvent(new Event("scroll")); }
       }, { passive: true });
     }
@@ -1393,9 +1376,8 @@
     return m ? { label: m[1], unit: m[2] } : { label: label, unit: "" };
   }
 
-  // The pipeline, then the form in the order the work is done: the settings,
-  // one step at a time under six tabs with Reset all at the foot of their
-  // card, then the card that runs them. On a wide page the pipeline stands
+  // The pipeline, then the form with the run summary inside Training.
+  // On a wide page the pipeline stands
   // to the right of the form and stays in view while the page scrolls; on a
   // narrow one it stands above it. The two cards beside each other start
   // level, since neither has a heading above it.
@@ -1405,8 +1387,7 @@
       '<section class="pg-block pg-settings" aria-label="Settings">' + tabsHtml() +
       '<div class="pg-tabpanels">' + S.options.groups.map(panelHtml).join("") + "</div>" +
       '<div class="pg-settings-foot"><button type="button" class="pg-reset" data-action="reset-all">Reset all</button></div>' +
-      "</section>" +
-      '<section class="pg-block pg-run" id="pg-run" aria-label="Run"></section></div></div>';
+      "</section></div></div>";
     // What the pipeline was just drawn with, so the first change of settings
     // finds it unchanged instead of drawing it again under the pointer.
     var pipeline = $("#pg-pipeline");
@@ -1414,7 +1395,6 @@
     pipeline.__zoom = S.zoom;
     drawRunCard($("#pg-run"), null, null);
     watchPipeline();
-    watchForm();
     watchTabs();
     fitFlow();
     fitTabs();
@@ -1423,10 +1403,8 @@
   }
 
   // ----------------------------------------------------------------- steps
-  // The six steps of the form as tabs, in the order the work is done. Every
-  // step's settings are drawn, one on top of another, and only the chosen
-  // one is shown, so the box is as tall as the tallest step and does not
-  // change height when another tab is chosen. A tab carries a dot while any
+  // The five tabs of the form share the available height and scroll within
+  // it, so their pipeline stays steady. A tab carries a dot while any
   // setting of its step differs from its default and the step is not the
   // one on show, where each such setting has its own Reset.
   function tabsHtml() {
@@ -1459,6 +1437,9 @@
     var body = '<div class="pg-sections">' + SECTIONS[g.key].map(function (section, i) {
       return sectionHtml(section, i, g.key);
     }).join("") + "</div>";
+    if (g.key === "training") {
+      body += '<section class="pg-run" id="pg-run" aria-label="Run summary"></section>';
+    }
     return '<div class="pg-tabpanel' + (on ? " is-active" : "") + '" role="tabpanel" id="pg-tabpanel-' + g.key +
       '" data-group="' + g.key + '" aria-labelledby="pg-tab-' + g.key + '"' + (on ? "" : " inert") + ">" + body + "</div>";
   }
@@ -1470,7 +1451,7 @@
   // sensor" with its weight, and so on. A group's name replaces the name of
   // a list of options it holds alone, whose i then stands beside the group's
   // name, and a switch that turns the whole step on or off stands before it.
-  // So no i ever stands without a name beside it. Training and Repeats have
+  // So no i ever stands without a name beside it. Training has
   // no box, and are grouped by subject in the same way.
   var SECTIONS = {
     data: [
@@ -1498,10 +1479,8 @@
     training: [
       { name: "Procedure", picture: "hold", procedure: true },
       { name: "Passes", picture: "passes", fields: ["epochs", "batch_size"] },
-      { name: "Learning rate", picture: "rate", fields: ["learning_rate", "final_learning_rate", "lr_schedule"] }
-    ],
-    repeats: [
-      { name: "Seeds", picture: "seeds", fields: ["seed", "seeds", "fixed_split"] },
+      { name: "Learning rate", picture: "rate", fields: ["learning_rate", "final_learning_rate", "lr_schedule"] },
+      { name: "Repeats", picture: "seeds", fields: ["seed", "seeds", "fixed_split"] },
       { name: "Device", picture: "device", fields: ["device"] }
     ]
   };
@@ -1520,7 +1499,7 @@
     var lone = section.procedure || (fields.length === 1 && fields[0].kind === "choice" && !MENU[fields[0].key]);
     var toggle = section.toggle ? S.fields[section.toggle] : null;
     var id = "pg-section-" + group + "-" + index;
-    var hidden = !toggle && fields.every(function (f) { return !visible(f.key); });
+    var hidden = !toggle && fields.length > 0 && fields.every(function (f) { return !visible(f.key); });
     var off = !!toggle && !S.settings[toggle.key];
     var body = cells(lone ? id : null);
     if (off) { body = body.replace(/<(input|select)\b/g, "<$1 disabled"); }
@@ -1734,7 +1713,9 @@
     steps.forEach(function (item, i) {
       if (item.kind === "branch") { return; }
       var next = steps[i + 1], last = i === steps.length - 1;
-      var after = last ? "" : next && next.kind === "branch" ? joinHtml(handedOn(item), next) : arrowHtml(handedOn(item));
+      var after = last ? "" : item.handoff ? '<div class="pg-varrow pg-varrow--named"><span class="pg-transfer">' +
+        esc(item.handoff) + "</span></div>" : next && next.kind === "branch" ?
+        joinHtml(handedOn(item), next) : arrowHtml(handedOn(item));
       items.push('<li class="pg-vitem' + (item.kind === "edge" ? " pg-vitem--edge" : "") + '">' +
         vbodyHtml(item, steps[i - 1], i === 0, last) + after + "</li>");
     });
@@ -1750,9 +1731,16 @@
     if (item.kind === "edge") {
       var own = item.shape && !(first && !last) && !(last && item.shape === handedOn(before));
       return '<span class="pg-vedge">' + (ICONS[item.icon] || "") + "<span>" + esc(item.name) + "</span></span>" +
-        (own ? '<code class="pg-vshape">' + esc(item.shape) + "</code>" : "");
+        (item.handoff ? (last ? '<span class="pg-transfer">' + esc(item.handoff) + "</span>" : "") +
+          storyHtml(item) : own ? '<code class="pg-vshape">' + esc(item.shape) + "</code>" : "");
     }
     if (item.kind === "group") {
+      if (item.lanes) {
+        return '<div class="pg-vlanes">' + item.lanes.map(function (lane) {
+          return '<section class="pg-vlane"><h4>' + esc(lane.name) + '</h4>' +
+            vflowHtml(lane.steps) + '</section>';
+        }).join("") + '</div>';
+      }
       return '<div class="pg-vgroup">' + item.steps.map(function (s) { return vstepHtml(s, true); }).join("") + "</div>";
     }
     return vstepHtml(item, false);
@@ -1787,9 +1775,46 @@
       (PICTURES[step.picture] ? '<span class="pg-vstep-picture">' + PICTURES[step.picture] + "</span>" : "") +
       '<span class="pg-vstep-name">' + withInfo(step.name, info(words, step.name), function (w) { return esc(w); }) +
       "</span>" + (values ? '<span class="pg-vstep-values">' + values + "</span>" : "") +
+      storyHtml(step) +
       (step.networks ? networksHtml(step.networks) : "") +
       (step.learned ? '<span class="pg-vstep-learned">' + count(step.learned) + " learned numbers</span>" : "") +
       (small && step.shape ? '<code class="pg-vshape">' + esc(step.shape) + "</code>" : "") + part + "</div>";
+  }
+
+  // Real file rows and operations, with the quantities named at the point they are used.
+  function storyHtml(step) {
+    var ex = step.example, content = "";
+    if (ex && ex.kind === "rows") {
+      content = '<table class="pg-example-table"><caption>First ' + ex.rows.length +
+        ' rows · 4 columns shown</caption><thead><tr><th scope="col">Engine</th><th scope="col">Cycle</th>' +
+        '<th scope="col">Sensor T24</th><th scope="col">Life left<br>(cycles)</th></tr></thead><tbody>' +
+        ex.rows.map(function (r) { return '<tr><td>' + esc(r.engine) + '</td><td>' + esc(r.cycle) +
+          '</td><td>' + esc(r.reading) + '</td><td>' + esc(r.life) + '</td></tr>'; }).join("") + "</tbody></table>";
+    } else if (ex && ex.kind === "change") {
+      content = '<div class="pg-example-change"><span>' + esc(ex.label) + '</span><span class="pg-example-values">' +
+        esc(ex.before) + '<span aria-label="becomes"> → </span><strong>' + esc(ex.after) + "</strong></span>" +
+        (ex.note ? '<span class="pg-example-note">' + esc(ex.note) + "</span>" : "") + "</div>";
+    } else if (ex && ex.kind === "groups") {
+      content = '<div class="pg-example-groups">' + ex.items.map(function (item) {
+        return '<div><span>' + esc(item.name) + '</span><strong>' + esc(item.value) +
+          '</strong><span>' + esc(item.detail) + "</span></div>";
+      }).join("") + "</div>";
+    } else if (ex && ex.kind === "windows") {
+      var start = ex.windows[0].start, end = ex.windows[ex.windows.length - 1].end, length = end - start + 1;
+      content = '<div class="pg-example-windows"><span>Engine ' + esc(ex.engine) +
+        ' · first ' + ex.windows.length + (ex.windows.length === 1 ? ' window' : ' windows') +
+        '</span><div class="pg-window-axis"><span>Cycle ' +
+        esc(start) + '</span><span>Cycle ' + esc(end) + '</span></div>' + ex.windows.map(function (w) {
+          return '<div class="pg-window-track" aria-hidden="true"><span style="margin-left:' + (100 * (w.start - start) / length) +
+            '%;width:' + (100 * (w.end - w.start + 1) / length) + '%"></span></div>' +
+            '<span class="pg-window-answer">Cycles ' + esc(w.start) + '–' + esc(w.end) +
+            ' → ' + esc(w.life) + " cycles left</span>";
+        }).join("") + "</div>";
+    }
+    return (step.summary ? '<p class="pg-story-summary">' + esc(step.summary) + "</p>" : "") + content +
+      (step.columns ? '<details class="pg-column-key"><summary>What are the 27 columns?</summary><p>' +
+        esc(step.columns) + "</p></details>" : "") +
+      (step.aside ? '<p class="pg-story-aside">' + esc(step.aside) + "</p>" : "");
   }
 
   // The recurrent networks, one per sensor, each a button that opens it; or
@@ -2426,7 +2451,7 @@
     if (!preview && !error) {
       network = '<div class="loading">Building the network…</div>';
     } else if (preview && torch && !preview.network_error && preview.layers) {
-      network = '<div class="pg-network"><h2 class="pg-block-title">Network</h2>' +
+      network = '<div class="pg-network">' +
         '<div class="pg-big">' + count(preview.parameters) + " <span>learned numbers</span></div>" +
         '<details class="pg-details" data-layers' + (S.layersOpen ? " open" : "") + "><summary>Layer by layer</summary>" +
         '<table class="pg-mini"><thead><tr><th>Layer</th><th>Out</th><th class="num">Learned numbers</th></tr></thead><tbody>' +
@@ -2443,7 +2468,12 @@
     // the reader left it, rather than closing at every change.
     var active = box.contains(document.activeElement) ? document.activeElement : null;
     var had = active && (active.matches("summary") ? "summary" : active.matches(".pg-train") ? ".pg-train" : null);
-    box.innerHTML = network + caveatList(notes) + '<div class="pg-run-action">' +
+    var summary = [S.settings.subset, stageName(S.settings.temporal, S.settings.temporal_hidden),
+      graphName(S.settings.graph, S.settings.adjacency_normalization) + " graph",
+      S.settings.window_size + " cycles per window"].join(" · ");
+    box.innerHTML = '<div class="pg-section-head"><span class="pg-section-picture">' + PICTURES.dense +
+      '</span><h3 class="pg-section-name">Run summary</h3></div><p class="pg-run-summary">' + esc(summary) +
+      '</p>' + network + caveatList(notes) + '<div class="pg-run-action">' +
       '<button type="button" class="button button--primary pg-train" data-action="run"' + (canRun ? "" : " disabled") +
       ">Train " + plural(S.settings.seeds, "seed") + "</button></div>";
     var layers = box.querySelector("details[data-layers]");
@@ -2937,18 +2967,18 @@
 
   // --------------------------------------------------------------- explain
 
-  // The Explain tab explains one run: the one chosen in Results with
-  // "Explain this run", or, when none is chosen, the newest run that kept its
-  // weights. It names that run in one line; another is chosen in Results.
+  // Explain the selected trained run, or the newest usable run on first entry.
   function drawExplain() {
     var panel = $("#pg-panel");
     var e = S.explain;
+    var request = S.explainRequest = (S.explainRequest || 0) + 1;
     panel.innerHTML = '<div class="loading">Reading reports/…</div>';
-    loadRuns().then(function (runs) {
-      if (S.tab !== "explain") { return; }
+    return loadRuns().then(function (runs) {
+      if (S.tab !== "explain" || request !== S.explainRequest) { return; }
       var usable = runs.filter(function (r) { return r.has_weights; });
       if (!usable.length) {
-        panel.innerHTML = '<div class="pg-empty">No stored run has kept its weights. Runs made from 2026-09-14 on keep them.</div>';
+        panel.innerHTML = '<div class="pg-empty">No trained run is available to explain. Train a run first, then return here.</div>' +
+          '<button type="button" class="button" data-tab="design">Design a run</button>';
         return;
       }
       if (!e.run || !usable.some(function (r) { return r.name === e.run; })) {
@@ -2958,11 +2988,11 @@
       var load = e.detail && e.detail.name === e.run ? Promise.resolve(e.detail)
         : T.get("/api/playground/run?name=" + encodeURIComponent(e.run));
       return load.then(function (d) {
-        if (S.tab !== "explain") { return; }
+        if (S.tab !== "explain" || request !== S.explainRequest) { return; }
         e.detail = d;
         var seeds = Object.keys(d.per_seed).filter(function (s) { return d.per_seed[s].has_weights; });
         if (seeds.indexOf(String(e.seed)) < 0) { e.seed = seeds[0]; }
-        panel.innerHTML = '<div class="pg-explain">' + explainForm(run, seeds) +
+        panel.innerHTML = '<div class="pg-explain">' + explainForm(run, seeds, usable) +
           '<section class="pg-block"><div class="pg-block-head"><h2 class="pg-block-title">Explanations stored for this run</h2>' +
           (d.explanations.length ? '<span class="pg-faint">click a row to open it</span>' : "") + "</div>" +
           (d.explanations.length ? explanationsTable(d.explanations) : '<div class="pg-empty">None yet.</div>') +
@@ -2970,21 +3000,30 @@
         if (e.shown) { drawExplanation(); }
       });
     }).catch(function (error) {
-      panel.innerHTML = errorBox(error.message);
+      if (S.tab === "explain" && request === S.explainRequest) { panel.innerHTML = errorBox(error.message); }
     });
   }
 
-  function explainForm(run, seeds) {
-    var e = S.explain;
+  function explainRunLabel(run) {
     var graph = graphName(run.graph, run.adjacency_normalization);
-    var named = [when(run.finished), run.subset, stageName(run.temporal, run.temporal_hidden), graph ? graph + " graph" : ""]
+    return [when(run.finished), run.subset, stageName(run.temporal, run.temporal_hidden),
+      graph ? graph + " graph" : "", plural(run.seeds, "seed")]
       .filter(Boolean).join(" · ");
+  }
+
+  function explainForm(run, seeds, runs) {
+    var e = S.explain;
+    var labels = runs.map(explainRunLabel);
+    var choices = runs.map(function (r, i) {
+      var duplicate = labels.indexOf(labels[i]) !== labels.lastIndexOf(labels[i]);
+      return { value: r.name, label: labels[i] + (duplicate ? " · " + r.name : "") };
+    });
     var seedChoices = seeds.map(function (s) { return { value: s, label: s }; });
     var forEngine = e.scope === "engine";
     return '<section class="pg-block"><div class="pg-fields">' +
-      cell({ key: "pg-e-run", label: "Run", size: "wide",
-        control: '<span class="pg-run-name">' + esc(named) + "</span>" +
-          '<button type="button" class="pg-link" data-action="choose-run">Choose another run</button>' }) +
+      cell({ id: "pg-e-run", label: "Trained run", size: "wide",
+        control: selectField("pg-e-run", choices, e.run, 'data-explain="run"') +
+          '<button type="button" class="pg-link" data-action="open-run" data-run="' + esc(run.name) + '">View run details</button>' }) +
       // Six seeds or fewer sit side by side, named by the cell's name; more
       // go in a list, which the name's label points at.
       (seeds.length <= 6
@@ -2999,8 +3038,8 @@
           { value: "occlusion", label: "Occlusion, one sensor at a time", about: EXPLAIN_ABOUT.occlusion, note: sourceTag({ kind: "extension" }) +
             " Evaluates the original input and one replacement per sensor. Replacement readings are averaged across training windows separately at each window position (" + refLink("A-20") + ")." },
           { value: "walks", label: METHODS.walks, about: EXPLAIN_ABOUT.walks, note: sourceTag({ kind: "extension" }) +
-            " GNN-LRP (Schnake et al., 2022), with its setting gamma at 0 (" + refLink("A-29") + "). Sensors the graph cannot " +
-            "tell apart are counted as one where a walk ends (" + refLink("F-18") + ")." }
+            " Adapted from the graph-route explanation method of Schnake et al. (2022), using the model's unmodified " +
+            "weights (" + refLink("A-29") + "). Identical graph outputs are grouped where routes end (" + refLink("F-18") + ")." }
         ], e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) }) +
       cell({ key: "pg-e-scope", label: "What is explained", size: "wide",
         control: optionList("pg-e-scope", [
@@ -3046,6 +3085,15 @@
 
   function explainChanged(input) {
     var e = S.explain, which = input.getAttribute("data-explain");
+    if (which === "run") {
+      e.run = input.value; e.detail = null; e.seed = null; e.engine = "";
+      e.shown = null; e.values = null; e.index = 0;
+      drawExplain().then(function () {
+        var picker = $("#pg-e-run");
+        if (S.tab === "explain" && picker) { picker.focus({ preventScroll: true }); }
+      });
+      return;
+    }
     if (which === "seed") { e.seed = input.value; return; }
     if (which === "engine") { e.engine = input.value; return; }
     if (which === "every") { e.every = Number(input.value) || 1; return; }
@@ -3080,12 +3128,14 @@
   function drawExplanation() {
     var e = S.explain, box = $("#pg-e-view");
     if (!box) { return; }
+    var runName = e.run, shown = e.shown;
     var held = e.values && e.values.name === e.shown;
     var load = held ? Promise.resolve(e.values)
       : T.get("/api/playground/explanation?run=" + encodeURIComponent(e.run) + "&name=" + encodeURIComponent(e.shown))
-        .then(function (data) { data.name = e.shown; return data; });
+        .then(function (data) { data.name = shown; return data; });
     if (!held) { box.innerHTML = '<div class="loading">Reading the explanation…</div>'; }
     load.then(function (data) {
+      if (S.tab !== "explain" || e.run !== runName || e.shown !== shown) { return; }
       e.values = data;
       var sum = data.summary, rows = data.values;
       if (!rows || !rows.length) {
@@ -3229,8 +3279,8 @@
 
     // The head says once what a share is, its sign and what it is a share
     // of; the cautions say what the shares can and cannot be read as.
-    var cautions = [{ level: "info", ref: "A-29", text: "The walks and the part that belongs to no sensor, which the model's " +
-        "last two layers add of their own, add up to the score; the largest miss here is " +
+    var cautions = [{ level: "info", ref: "A-29", text: "The walks and the separate contribution from the layers' added " +
+        "constants add up to the score; the largest miss here is " +
         Number(sum.conservation_error_max).toExponential(1) + "." },
       { level: "info", text: "These are not Shapley values. The order of the sensors may be set beside a Shapley ranking; " +
         "the sizes may not, since these are parts of the score and Shapley values are differences in predicted remaining life." }];

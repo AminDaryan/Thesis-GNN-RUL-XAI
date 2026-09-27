@@ -42,6 +42,59 @@ from thesis_gnn_rul_xai.graph.adjacency import (
 )
 from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
 
+# --- docsite/ ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("changes", [{}, {"smoothing_alpha": 0.25},
+                                    {"smoothing": False, "window_size": 25, "window_stride": 2,
+                                        "validation_fraction": 0.0, "rul_max": 150, "seed": 7}])
+def test_example_preprocessing_story(loaded, changes):
+    """The diagram's rows, changed readings and overlapping windows come from the real FD001 files."""
+    from thesis_gnn_rul_xai.docsite import playground
+
+    settings = playground.validate_settings(changes)
+    answer = playground.stage_detail("preprocessing", settings)
+    opening = answer["steps"][0]
+    assert opening["handoff"] == "20,631 rows · 27 columns"
+    sample = opening["example"]["rows"]
+    assert sample == [{"engine": 1, "cycle": 1, "reading": 641.82, "life": 191},
+                      {"engine": 1, "cycle": 2, "reading": 642.15, "life": 190},
+                      {"engine": 1, "cycle": 3, "reading": 642.35, "life": 189}]
+    assert sample[1]["reading"] == loaded.train.loc[1, "sensor_2"]
+    stages = {step.get("picture"): step for step in answer["steps"]}
+    assert stages["cap"]["example"]["after"] == f"{min(190, settings['rul_max'])} cycles"
+    if settings["smoothing"]:
+        alpha = settings["smoothing_alpha"]
+        expected = alpha * 642.15 + (1 - alpha) * 641.82
+        assert float(stages["smooth"]["example"]["after"]) == pytest.approx(expected)
+        assert stages["smooth"]["example"]["note"] == (
+            f"{alpha:g} x current reading + {1 - alpha:g} x previous smoothed reading")
+        assert stages["rescale"]["example"]["before"] == f"{expected:.3f}"
+        if alpha == 0.5:
+            assert stages["rescale"]["example"]["after"] == "-1.6039"
+    else:
+        assert "smooth" not in stages
+        assert stages["rescale"]["example"]["before"] == "642.15"
+    groups = stages["hold"]["example"]["items"]
+    assert sum(int(group["detail"].split()[0].replace(",", "")) for group in groups) == len(loaded.train)
+    windows = stages["window"]["example"]["windows"]
+    for index, item in enumerate(windows):
+        start = 1 + index * settings["window_stride"]
+        end = start + settings["window_size"] - 1
+        assert item == {"start": start, "end": end, "life": min(192 - end, settings["rul_max"])}
+
+
+def test_example_preprocessing_without_files(monkeypatch):
+    """Missing NASA files produce descriptions without invented readings or counts."""
+    from thesis_gnn_rul_xai.docsite import playground
+
+    monkeypatch.setattr(playground, "_files_present", lambda subset: False)
+    answer = playground.stage_detail("preprocessing", playground.validate_settings({}))
+    assert "not in data/raw/" in answer["note"]
+    assert all("example" not in step for step in answer["steps"])
+    assert answer["steps"][0]["handoff"] == "Rows · 27 columns"
+
+
 # --- data/labeling/ ---------------------------------------------------
 
 

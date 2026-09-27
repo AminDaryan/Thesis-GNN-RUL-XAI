@@ -352,9 +352,8 @@ def test_the_preprocessing_box_counts_the_windows_the_pipeline_makes(raw_dir):
     settings = playground.validate_settings({"window_size": 25})
     prepared = run_preprocessing(PreprocessingConfig(**playground.preprocessing_settings(settings)))
     step = _step(playground.stage_detail("preprocessing", settings), "Three sets of windows")
-    count = playground._count
-    assert step["parts"][0]["text"] == (f"{count(len(prepared.train))} training · "
-                                        f"{count(len(prepared.validation))} held back · {count(len(prepared.test))} test")
+    assert [item["value"] for item in step["example"]["items"]] == [
+        f"{len(data):,} windows" for data in (prepared.train, prepared.validation, prepared.test)]
 
 
 def test_the_defaults_the_paper_states_are_the_ones_it_prints():
@@ -433,8 +432,8 @@ def test_only_the_two_conflicts_a_reader_may_not_see_are_shown_beside_train():
 
 def test_the_cautions_are_worded_as_decided():
     [best] = [note for note in _cautions() if note["ref"] == "F-16"]
-    assert best["text"] == ("The paper never describes restoring the best pass; on FD001 it moved "
-                            "what the LSTM is worth from 0.77 to 3.19 cycles.")
+    assert best["text"] == ("The paper does not describe selecting an earlier pass by validation error. "
+                            "This project's measured LSTM comparison depends on whether that selection is used.")
     # Written with no window length in it, so a 20-cycle window reads true too.
     [last] = [note for note in _cautions(temporal="last_cycle", window_size=20) if note["ref"] == "D-6"]
     assert not any(character.isdigit() for character in last["text"])

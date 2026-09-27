@@ -315,10 +315,13 @@ where to look.
 
 ---
 
-## The playground: design, results, explain
+## The playground: design, explain, history
 
 The page at `#/explore/playground` is where the parts of the method can be
-swapped and the effect seen. It has three tabs, in the order the work happens:
+swapped and the effect seen. Its three main tabs have icons beside their
+names: sliders for Design a run, a magnifying glass for Explain predictions,
+and a clock with a backward arrow for Run history. They are sections that can
+be revisited independently, so they carry no step numbers:
 
 1. **Design a run.** Choose the sub-dataset (one of the four parts of NASA's
    simulated turbofan engine data, FD001 to FD004), the preprocessing, the
@@ -329,21 +332,20 @@ swapped and the effect seen. It has three tabs, in the order the work happens:
    the layers in which each sensor's numbers are mixed with its neighbours'
    in the graph), and the training settings. The graph layers themselves stay
    the three of the paper's Table 4; only their sizes change.
-2. **Results.** Everything that has been run, under two tabs of its own:
+2. **Explain predictions.** Select a stored trained run, apply an explanation
+   method, and explore its output. The run can be changed here directly.
+3. **Run history.** Everything that has been run, under two tabs of its own:
    the training runs and the explanations, each with the jobs that have not
    finished among them. A run opens with its four measures beside the
    paper's, every seed's curve and predictions, and any two runs can be
-   paired seed by seed.
-3. **Explain.** Explain one stored run's predictions, with the paper's method
-   or a cheaper one, and read back how much each sensor moved them.
+   paired seed by seed. The badge counts jobs running or waiting.
 
-The design tab has twenty-nine settings, and shown all at once they ran to five
-screens. So the form is laid out as six numbered steps, with a map of them. The
-**pipeline** draws the whole run as a flowchart, in the order the data passes
-through it: the sub-dataset, the preprocessing, the temporal stage, the graph
-layers, and the remaining life that comes out. The form shows one step at a
-time, under six tabs: Data, then five numbered 1 to 5 — Preprocessing,
-Temporal stage, Graph layers, Training and Repeats.
+The design form shows one of five tabs at a time: Data, Preprocessing,
+Temporal stage, Graph layers, and Training. Training contains the procedure,
+passes, learning rate, repeats, device, and the run summary and Train button.
+The **pipeline** draws the data, preprocessing, temporal stage, graph layers,
+and the remaining life that comes out. Its numbers still match the inner
+design tabs. A browser that remembered the former Repeats tab opens Training.
 
 The data are what goes into the pipeline, not one of its steps, so the
 pipeline draws them the way it draws the remaining life that comes out: a
@@ -358,8 +360,8 @@ step's name is said once, on its tab, and the number ties the two together.
 The preprocessing box is the exception: its step has no one value to show, so
 it carries its step's name, and a screen reader hears that name once. The
 pictures are a store of records for the data, sliders for the preprocessing,
-whose steps adjust the readings, a clock for the temporal stage, which reads
-the cycles in the order they happened, and three joined circles for the graph
+whose steps adjust the readings, a memory cell with a return arrow for the
+temporal stage, and three joined circles for the graph
 layers; an hourglass stands above "Remaining life". A funnel stood for the
 preprocessing at first, and was changed because it reads as "filter", while
 the preprocessing removes nothing. The step being worked on is marked by its
@@ -367,32 +369,20 @@ filled number alone. The same picture heads the step's own flowchart. The
 pictures are drawn in the page itself, not fetched, and say nothing a screen
 reader needs, so it skips them.
 
-The six steps' settings are all drawn, one over another in the same place, and
-only the chosen tab's are shown. The box that holds them is therefore as tall
-as the tallest step at the window's width, and choosing another tab never moves
-anything on the page: at a window 1440 pixels wide with the menu open it is
-489 pixels tall whichever tab is chosen, and 451 with the menu closed, where
-the wider form fits three settings in a row rather than two (measured on
-2026-09-26; before the settings were redrawn that day, as the next section
-describes, it was 593 and 517). The first
-version had the six groups fold open one under another, which moved everything
-below each time one opened. On a phone, where the settings stand one across,
-the tallest step would leave the others a screen of empty box, so there each
-step takes its own height; so it does on a screen less than 640 pixels tall,
-such as a phone on its side, where the box and the top bar could not both show
-at once anyway.
+All five design tabs, including Training, fill the same available height
+between the navigation and the bottom of the page. Their contents scroll
+between the fixed tab strip and Reset all, so opening Training or expanding
+its layer details does not resize the surrounding boxes. Hidden panels take
+no space. On a narrow screen the diagram takes two fifths of the available
+height and the settings take three fifths; both scroll independently. Very
+short screens retain a minimum page height so both areas remain usable.
 
-When the six names do not fit in one row, only the chosen tab keeps its name on
-screen and the others show their numbers, each still named for a screen reader
-and when the pointer rests on its number. On the narrowest phones, where even
-that row does not fit, every tab shows only its number, the chosen one filled
-in and underlined: at 320 pixels wide that happens with Preprocessing, Temporal
-stage or Graph layers chosen, whose names are the longest. All of it is
-measured, not guessed from the width: at a window 1440 pixels wide with the
-menu open all six names fit, at 1280 they do not, and at 375 the chosen tab
-always keeps its name. The arrow keys, Home and End move from tab to tab, as in any row of
-tabs. The chosen step is remembered in the reader's own browser, and the page
-opens on it.
+When the inner design tab names do not fit in one row, only the chosen tab
+keeps its name on screen and the others show their numbers. Each remains
+named for a screen reader and when the pointer rests on it. If that row also
+does not fit, all names are visually hidden. The chosen step is remembered
+in the reader's browser. The main tabs always keep both their icons and text;
+their text wraps on a narrow screen.
 
 A tab carries a small dot on its number while any of its step's settings
 differs from its default. The chosen tab does not, because there every such
@@ -411,16 +401,12 @@ nothing at the right. Inside it, the boxes keep the widths they have in a
 narrow column, 320 pixels for a box of the overview and 480 for a step of a
 flowchart, and stand in its middle.
 
-The column is exactly as tall as the form beside it, or as the window less
-the top bar and the page's bottom margin where that is less, whichever box is
-open: measured at 1440 by 900 with the menu open, it is 669 pixels tall with
-the overview showing and with each of the four flowcharts open, the form's
-own height. It used to be as tall as what it showed, up to that limit, so
-opening a box made it grow and going back made it shrink, which the author
-asked to stop. Its heading, and with a flowchart open the way back, stay at
-the top, and what is under them scrolls on its own when it is taller; the
-overview's boxes stand in the middle of the height. The column never
-lengthens the page and never slides under the top bar at the page's end. At
+The diagram and settings columns share the available page height. Their
+headings stay in place while the content below scrolls. At a 1440 by 900
+viewport with the navigation open, both measured 735.2 pixels tall on
+2026-09-27, ending 16 pixels above the bottom of the viewport. The height
+remained the same across all five design tabs. The overview's boxes stand
+in the middle of the diagram column. At
 880 the form beside the column keeps 456 pixels, room for two cells of its
 grid (next section): the card needs 418 for them, 384 for the two cells and
 the space between them, plus its padding and border. On a narrower
@@ -440,15 +426,22 @@ the Graph layers step, beside the layers that use it, because that is where
 the pipeline draws it: as the first step of the graph layers' own flowchart,
 not as a label on their box.
 
-The chosen step is the current one. Its number is filled in, on its tab and on
-its box in the pipeline, and every other number is an outline, which also keeps
-the form's numbers from reading as the numbers of the Design, Results and
-Explain tabs above them.
+The chosen design step's number is filled in on its tab and on its pipeline
+box. The main navigation uses icons, so its sections are visually distinct
+from these numbered steps.
 
-The form ends, below the settings, with the card that runs it: the network the
-settings build, what stops or qualifies the run, and the button that starts it.
-It stands last so the page reads from top to bottom in the order the work is
-done, and so each caution sits directly above the button it is about.
+Training ends with a Run summary inside the same settings panel. Its card has
+the same background, rounded corners, padding, and icon heading as the settings
+cards above it. It names
+the selected data, temporal stage, graph and window length, followed by the
+built network's size and expandable layer details. These describe the whole
+configuration, including settings from the earlier tabs. Anything that stops
+or qualifies training stands directly above the Train button. Changing the
+number of repeats updates that button and the relevant cautions.
+
+The Procedure section is visible even though its controls are provided by
+the procedure renderer rather than its ordinary field list. An empty field
+list alone must not hide that section.
 
 ### How a setting is drawn
 
@@ -508,10 +501,9 @@ flowchart, since it no longer happens. A group whose settings
 are all hidden, the recurrent network's size when the stage is not recurrent,
 is hidden with them, and a group's name that depends on the settings, "One GRU
 per sensor", follows them. `SECTIONS` in `playground.js` holds the groups; the
-author asked for them on 2026-09-26. The Data, Training and Repeats tabs have
+author asked for them on 2026-09-26. The Data and Training tabs have
 no flowchart to follow and are grouped by subject the same way: the
-sub-dataset; the procedure, the passes and the learning rate; the seeds and
-the device. Each group stands on a panel of its own, in the panel grey, so it
+sub-dataset; and the procedure, passes, learning rate, repeats and device. Each group stands on a panel of its own, in the panel grey, so it
 is seen as one thing and told from the next, as the author asked; the panels
 stand 12 pixels apart.
 
@@ -550,7 +542,7 @@ the same columns as every other setting. They were once indented, with a line
 down their left edge, which set them under the first option, the one they do
 not belong to.
 
-The Explain tab's form is drawn the same way, by the same function.
+The Explain predictions tab's form is drawn the same way, by the same function.
 
 A number field's value is reported when the field loses the focus, which a
 press of the mouse elsewhere causes. What depends on the settings is therefore
@@ -623,16 +615,46 @@ many times the network runs, once per cycle of the window. The fourteen
 networks have the same parts and learned numbers of their own. The author
 asked for the drill-down on 2026-09-26.
 
-Every arrow carries what passes along it. Before the windows are cut, what
-passes from one preprocessing step to the next is the training file's table,
-`(20 631, 27)` for FD001: one row per engine and cycle, 27 columns, and 28
-once the operating condition has been added; the test file's table goes the
-same way beside it, and each step's i says what happens to it. At first these
-arrows carried nothing, since the steps do not change the table's shape, and
-the author asked why some arrows had an output and some did not. A row of
-steps side by side names what the row hands on, the Data flowchart's three
-files "3 tables". The arrows are 48 pixels long, and 80 where they carry a
-shape, so each step stands clear of the next.
+Every arrow carries what passes along it. **Preprocessing names the quantities
+in words:** `20,631 rows · 27 columns`, then "Same rows · sensor readings
+smoothed", for example. A row means one engine at one flight cycle. The table
+at the entrance shows the first three actual records, with engine number,
+cycle, one sensor and remaining life. "What are the 27 columns?" opens their
+breakdown: engine number, cycle, three operating settings, 21 sensor readings
+and one remaining-life label. The selected 14 sensors become model inputs
+when windows are made; the other columns remain in the working table. Adding
+the operating condition gives it one more column. The separate test file is
+named at the entrance and stays separate for scoring.
+
+**Correction, 2026-09-27:** the earlier arrows repeated `(20 631, 27)` with no
+explanation of either number. The author could not tell what the first meant.
+The counts were correct, but the diagram assumed the knowledge it needed to
+teach. The replacement follows a real reading through the changes and draws
+overlapping windows with labelled cycle ranges. The engine split and final
+window groups each show their counts with their purpose; no unexplained
+`B` is needed at the exit, which names the chosen batch size and says that a
+batch is a group of inputs processed together.
+
+For FD001's default settings and seed 42, engine 1 at cycle 2 starts with
+sensor T24 at 642.15 and 190 cycles left. Capping changes the answer to 125;
+smoothing changes the reading to `0.5 × 642.15 + 0.5 × 641.82 = 641.985`,
+using the first cycle's reading, 641.82. Rescaling gives −1.6039, displayed
+rounded to four decimal places. These are different changes to different
+columns. Its first windows span cycles 1–30, 2–31 and 3–32, with the remaining
+life at each final cycle as their answer. The diagrams use actual window
+endpoints and targets returned by the pipeline; changing the length or spacing
+changes the example. The worked example can be checked with:
+
+```bash
+python -m pytest tests/test_examples.py -k preprocessing -v
+```
+
+The file rows, split counts, changed readings and window ranges are read or
+computed afresh for the selected settings, never supplied as invented sample
+data. Missing files leave the examples absent. The window display and the
+groups wrap within the pipeline column. Other flowcharts retain the array
+notation described below. A row of steps side by side names what the row hands
+on, the Data flowchart's three files "3 tables".
 
 The shape of what a step hands on, the size of the table of numbers passed to
 the next step, is written on the arrow under the step, and so reads as the next
@@ -642,8 +664,8 @@ arrow into "Rescale the graph" carries `(14, 14)`, the table of which sensors
 are joined, and the arrow out of it carries the same shape rescaled. Each shape
 is written once: the words that open a flowchart put theirs on the arrow under
 them, and the words that close it show their own only when it differs from the
-one on the arrow above them, as "To the temporal stage, B windows at a time",
-`(B, 14, 30)`, does under the arrow carrying all the training windows at once.
+one on the arrow above them. Preprocessing uses the named quantities and the
+batch explanation above in place of this notation.
 Steps that work side by side on the same input, such as the three files of a
 sub-dataset, share one row, and each shows its own shape inside its box, since
 no one arrow could carry three. In a shape, `B` is the number of windows the
@@ -676,8 +698,9 @@ Nothing in a flowchart is typed in by hand as a number. `stage_detail()` counts
 the rows and engines from the NASA files, runs the real preprocessing for the
 windows and the operating conditions, and builds the real network for the
 shapes and the learned numbers, reading them from `layer_summary()`. Of a
-preprocessing run it keeps only those counts and the sensor graph, never the
-windows, for the last sixteen groups of settings, and it runs one at a time, so
+preprocessing run it keeps only those counts, the sensor graph, three example
+rows with their changed readings, and three window ranges, never the full
+tables or windows, for the last sixteen groups of settings. It runs one at a time, so
 a second request for the same settings finds the first one's answer; the
 sensor graph and its rescaling are not part of what it is kept under, since
 neither changes the preprocessing, unless the graph is built from the data.
@@ -709,23 +732,19 @@ column, where the words come back. The names differ in length, "LSTM" against
 always stand in a column, however wide the column has grown, since there they
 share the form's height.
 
-Inside the pipeline, while it scrolls on its own beside the form, an i's card
+Inside the diagram and settings scroll areas, an i's card
 is positioned relative to the browser window rather than to the i: the
-column's own scrolling would otherwise cut off whatever passed its edges. The
+scroll area's boundary would otherwise cut off whatever passed its edges. The
 card opens under the i, or above it when the window has no room below,
-follows the i when the column or the page scrolls, and closes once the i has
-scrolled out of the column's view rather than point at nothing.
+follows the i when its area or the page scrolls, and closes once the i has
+scrolled out of view.
 
-The pipeline comes first in the page's order, for the keyboard and for screen
-readers, although beside the form it is drawn on the right. It is the short
-map of the form: six stops of the Tab key pass over it, where the form takes
-between six, on the Data tab, and nineteen, on Training, with the default
-settings, PyTorch installed and the NASA files in place, so the map is reached
-at once and left at once. The same order holds when it stands above the form.
-Of the page's own four tabs, and of the six steps' tabs, only the chosen one is
-a stop; the arrow keys, Home and End move along the row, and with Alt or Ctrl
-held they are left to the browser, where Alt with an arrow goes back or
-forward.
+The pipeline comes first in the page's order for keyboard and screen reader
+navigation, although beside the form it is drawn on the right. The same
+order holds when it stands above the form. In each tab strip, only the
+selected tab is a Tab-key stop. Arrow keys, Home and End follow the visible
+order. With Alt or Ctrl held they are left to the browser, where Alt with
+an arrow goes back or forward.
 
 "Pipeline", or Escape pressed inside the pipeline or with nothing focused (no
 control selected for the keyboard), leads back to the overview, with the
@@ -879,6 +898,17 @@ prediction into shares that add up. Keeping the same engines held back across
 runs also excludes one source of variation, without guaranteeing a smaller
 observed spread in every experiment.
 
+The follow-up on 2026-09-27 also corrected the description of learning rate:
+it scales an update, rather than specifying its complete size. The training
+algorithm uses how error changes with each learned number and the history
+of those measurements too, as the [Adam documentation](https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html)
+describes. Repeated seeds measure variation between runs, rather than the
+uncertainty of a particular engine's prediction. The graph-route card now
+states that its shares start at the temporal stage's output; it no longer
+claims the network is never evaluated again. The smoothing example's
+arithmetic uses the weight selected on screen, checked on real FD001 rows
+at both the default weight and a changed one in `tests/test_examples.py`.
+
 The short explanation states what goes in, what the operation does and what
 its output means. The source line separates published instructions from
 project choices. Details and worked examples remain behind **Read more**.
@@ -914,7 +944,7 @@ tag is behind the setting's i; when the options differ, as for the sensor graph
 and the temporal stage, each option has an i of its own. An option's i is not a
 stop for the Tab key. Moving onto the option with the arrow keys opens its card,
 and a screen reader reads the card as the option's description. The cards of
-the Explain tab's options work the same way.
+the Explain predictions tab's options work the same way.
 
 A pass over the whole training set is what PyTorch calls an **epoch**; the page
 says "pass" throughout.
@@ -951,18 +981,18 @@ for no particular engine takes the engine from the explanation it stored.
 
 The job running now is shown in one line above whichever tab is open, with a
 Stop button, and nothing at all when nothing is live, so the tabs never move;
-the line is hidden while the job's own row is on screen in Results. Results has
+the line is hidden while the job's own row is on screen in Run history. Run history has
 no separate list of jobs. A job is a run or an explanation that has not
 finished, so every job that is waiting, running, failed or stopped is a row of
-its own at the top of the Results tab it belongs to, training runs or
+its own at the top of the Run history tab it belongs to, training runs or
 explanations, with its state, its bar and what is happening now, its last
 printed lines when it failed, and Stop or Remove; a finished job is its stored
-run or explanation, listed below. The Results tab's badge counts the jobs
-running or waiting. While Results is open its job rows follow each poll: they
+run or explanation, listed below. The Run history tab's badge counts the jobs
+running or waiting. While Run history is open its job rows follow each poll: they
 are drawn again only when a job comes, goes or changes state, and otherwise
 only their bars and lines move, so a filter being used keeps its focus. The
 author asked for the two lists to become one on 2026-09-26, having found no
-difference to tell them apart by. Results holds
+difference to tell them apart by. Run history holds
 every job this server ran and every one an earlier server left on disk, read
 back from its folder. A job whose server stopped before it finished is listed
 as interrupted, since a run writes nothing until its last seed is done. One
@@ -1006,7 +1036,7 @@ for the explanations, the method, what was explained, the sub-dataset and the
 state. A job's own settings are not kept with it, so a job row answers only
 to the state. Changing a filter goes back to the first page and leaves the
 focus on the filter. A row of the explanations opens that explanation in the
-Explain tab.
+Explain predictions tab.
 
 The list of runs gives, after when each finished, its RMSE and the paper's,
 then the settings that produced it, and last the commit; a narrow panel leaves
@@ -1063,10 +1093,19 @@ the audit of 2026-09-08).
 
 ### Explanations
 
-The Explain tab explains the run chosen in Results with "Explain this run", or,
-when none is chosen, the newest run that kept its weights; another run is
-chosen back in Results. It starts `scripts/explain.py` with one of two methods,
-exact Shapley values or occlusion, which `explain/README.md` explains. Measured
+Explain predictions opens the run selected with "Explain this run" in Run
+history, or the newest run with a saved network on first entry. The Trained
+run selector lists only runs with a saved network. Changing it reloads the
+available seeds and stored explanations, clears the previously displayed
+explanation and engine choice, and keeps keyboard focus on the selector.
+View run details opens that run in Run history. If no usable run exists, the
+page points to Design a run.
+
+The selected method starts `scripts/explain.py`: exact Shapley values,
+occlusion, or walks through the sensor graph. `explain/README.md` explains
+these methods.
+
+Measured
 on this machine's processor with an untrained network, one window of exact
 Shapley values takes 0.07 s for the w/o LSTM network and 0.50 s with the LSTM
 stage, so an engine's whole life is minutes, not hours.

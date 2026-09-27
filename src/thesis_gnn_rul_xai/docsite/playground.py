@@ -135,14 +135,14 @@ FIELDS: tuple[dict[str, Any], ...] = (
      "default": 20, "min": 1, "max": 1000,
      "about": ("How many consecutive passes without a sufficient improvement on the held-back engines are "
                "allowed before stopping. A larger value waits longer for improvement. Very small reductions "
-               "in error do not reset the count. This setting also controls the waiting period for the "
-               "'Drop when held-back error stalls' learning-rate option."),
+               "in error do not reset the count. The 'Drop when held-back error stalls' learning-rate option "
+               "uses half this value, rounded down, as its waiting period, with a minimum of one pass."),
      "source": _choice("A-18", "")},
     # -- preprocessing -----------------------------------------------------
     {"key": "window_size", "group": "preprocessing", "label": "Window length (cycles)",
      "kind": "int", "default": 30, "min": 1, "max": 100,
      "about": ("A window is one model input: a sensor history spanning this many consecutive flight cycles. "
-               "Its target is the remaining life at the last cycle, after applying the label ceiling. Longer "
+               "Its training target is the remaining life at the last cycle, after applying the label ceiling. Longer "
                "windows contain more history, but the temporal stage decides how much is used. Engines with "
                "fewer recorded cycles than this are excluded."),
      "source": _paper("Table 6", "")},
@@ -285,15 +285,17 @@ FIELDS: tuple[dict[str, Any], ...] = (
           "source": _choice("A-19", "our interpretation of the paper's variant without a physics prior")},
          {"value": "correlation", "label": "The 41 most correlated sensor pairs",
           "about": ("Connects the 41 pairs with the strongest positive or negative linear association, "
-                    "measured on preprocessed training readings using Pearson correlation. A strong association "
-                    "means paired readings tend to lie near a straight line; it does not prove causation. "
+                    "measured on preprocessed training readings using Pearson correlation, a score from -1 "
+                    "to 1 for how closely two readings follow a straight line. A strong association "
+                    "does not prove causation. "
                     "The graph has the same pair count as the paper's graph and stays fixed during training."),
           "source": _choice("A-27", "built from each seed's own training engines, so seeds "
                                     "can get slightly different graphs")},
      ],
      "about": ("A graph is a set of sensors and connections between them. Each graph layer combines a "
                "sensor's current numbers with those of its connected neighbours. The connections and mixing "
-               "weights are fixed before model training; the later multipliers are learned. Each layer can "
+               "weights from graph rescaling are fixed before model training; the later multipliers are learned. "
+               "Each layer can "
                "carry information across one further connection."),
      "source": None},
     {"key": "adjacency_normalization", "group": "graph",
@@ -302,20 +304,19 @@ FIELDS: tuple[dict[str, Any], ...] = (
          {"value": "row", "label": "Each row sums to one", "source": None},
          {"value": "symmetric", "label": "Symmetric, by both degrees", "source": None},
      ],
-     "about": ("Each sensor is first joined to itself, so its own numbers are kept. Then each join is divided by "
-               "join counts, so a sensor with many joins does not get bigger numbers just because it adds up "
-               "more of them."
-               "\nEach row sums to one: every sensor takes the plain average of itself and the sensors it is "
-               "joined to."
-               "\nSymmetric, by both degrees: each join is divided by the square root of the two sensors' join "
-               "counts multiplied together, so a join between two well-joined sensors counts for less."),
+     "about": ("First include each sensor's own numbers alongside its neighbours'. Then assign weights to "
+               "these connections using their counts, including the connection to itself."
+               "\nEach row sums to one: take the ordinary average of the sensor and its neighbours."
+               "\nSymmetric, by both degrees: divide each connection's weight by the square root of the two "
+               "sensors' connection counts multiplied together. This reduces weights involving many "
+               "connections; it need not produce an average."),
      "source": _choice("A-21", "the paper describes the step but prints no formula")},
     {"key": "gcn_hidden", "group": "graph", "label": "Graph layer widths", "kind": "widths",
      "default": [32, 64, 32], "min": 1, "max": 512, "length": 3,
      "about": ("How many numbers each sensor has after each of the three graph layers. A layer taking in 32 "
-               "numbers per sensor and giving out 64 learns a table of 32 times 64 numbers, used for every "
-               "sensor, so a wider layer has more to learn. The last width, times the 14 sensors, is how many "
-               "numbers reach the next layer."),
+               "numbers per sensor and giving out 64 learns a table of 32 times 64 multipliers, used for every "
+               "sensor, plus an optional offset for each output. A wider layer has more to learn. The last width, times the 14 "
+               "sensors, is how many numbers reach the first fully connected layer."),
      "source": _paper("Table 4", "")},
     {"key": "fc_hidden", "group": "graph", "label": "First fully connected width",
      "kind": "int", "default": 128, "min": 1, "max": 2048,
@@ -349,18 +350,19 @@ FIELDS: tuple[dict[str, Any], ...] = (
     {"key": "learning_rate", "group": "training", "label": "First learning rate",
      "kind": "float", "default": TRAINING_SETTINGS["learning_rate"],
      "min": 1e-4, "max": 1.0, "step": 1e-4,
-     "about": ("Sets how big a correction the network makes to its learned numbers after each group of windows, "
-               "at the start of training; that size is called the learning rate. Larger means bigger changes "
-               "each time, which can speed learning up or make the error jump about; smaller can give steadier "
-               "but slower progress."),
+     "about": ("Scales the updates to the model's learned numbers at the start of training. Adam, the training "
+               "algorithm, measures how prediction error changes with each learned number and uses the history "
+               "of those measurements to decide each update. "
+               "A larger rate allows larger steps, which can speed learning or make it unstable. A smaller "
+               "rate can slow progress. Neither guarantees a better result."),
      "source": _paper("Table 6", "")},
     {"key": "final_learning_rate", "group": "training", "label": "Last learning rate",
      "kind": "float", "default": TRAINING_SETTINGS["final_learning_rate"],
      "min": 1e-5, "max": 1.0, "step": 1e-5,
-     "about": ("The size of each correction to the learned numbers, called the learning rate, starts at the "
-               "first rate and falls towards this one in the way chosen under 'How the rate gets there', so "
-               "later passes make finer changes. It must not be larger than the first, or the run fails; 'Never "
-               "changes' ignores it."),
+     "about": ("The intended final scale for updates to the model's learned numbers. The schedule determines "
+               "how the rate approaches it; stopping early may prevent it being reached. For the option that "
+               "waits for stalled error, this is a lower limit. 'Never changes' ignores it. It cannot exceed "
+               "the first rate, and a smaller rate does not guarantee smaller actual updates."),
      "source": _paper("Table 6", "")},
     {"key": "lr_schedule", "group": "training", "label": "How the rate gets there",
      "kind": "choice", "default": "step",
@@ -374,38 +376,38 @@ FIELDS: tuple[dict[str, Any], ...] = (
              ("constant", "Never changes"),
          )
      ],
-     "about": ("Chooses how the learning rate, the size of each correction to the learned numbers, changes over "
-               "the passes."
-               "\nOne drop, halfway: the first rate for half the passes, then the last rate."
-               "\nThe same factor every pass: shrinks by the same fraction each pass, ending on the last."
-               "\nA half cosine: falls smoothly, slowest near the start and end, ending on the last."
-               "\nDrop when held-back error stalls: cut to a tenth each time that error stalls, never below the "
-               "last; needs held-back engines, or it never moves."
-               "\nNever changes: stays at the first rate."),
+     "about": ("Controls how the update scale changes between passes."
+               "\nOne drop, halfway: switch from first to last rate halfway through."
+               "\nThe same factor every pass: multiply by a fixed factor, reaching the last rate."
+               "\nA half cosine: decrease smoothly, slowest near both ends."
+               "\nDrop when held-back error stalls: cut to one tenth after error stalls, never below the last "
+               "rate; requires held-back engines."
+               "\nNever changes: retain the first rate."
+               "\nOne-pass runs use the first rate. Early stopping can prevent reaching the last rate."),
      "source": _choice("A-17", "")},
     # -- repeats -----------------------------------------------------------
-    {"key": "seed", "group": "repeats", "label": "First seed", "kind": "int",
+    {"key": "seed", "group": "training", "label": "First seed", "kind": "int",
      "default": 42, "min": 0, "max": 2**31 - 1,
-     "about": ("Fixes the run's random draws: which training engines are held back, the starting values of the "
-               "learned numbers, and the order in which the windows are handed to the network. The same number "
-               "with the same settings makes the same draws again. The number itself means nothing; each further "
-               "repeat uses the next one up."),
+     "about": ("Sets the starting point for random choices: which engines are held back, the model's initial "
+               "learned numbers, and the order of training windows. Reusing it helps repeat a run, but does not "
+               "guarantee identical results across computers or software versions. Each further repeat uses "
+               "the next whole number. The seed is an identifier, not a quality score."),
      "source": None},
-    {"key": "seeds", "group": "repeats", "label": "Seeds", "kind": "int",
+    {"key": "seeds", "group": "training", "label": "Number of repeats", "kind": "int",
      "default": RESULT_SEEDS, "min": 1, "max": 20,
-     "about": ("Repeats the run this many times, each time training a new network with the next seed, and "
-               "reports the average result and how far the repeats usually stray from it. That spread shows how "
-               "much any one result owed to chance. Fewer than 5 is flagged as a first look, not a result to "
-               "quote."),
+     "about": ("Trains a new model with each successive seed, then reports the mean score and standard "
+               "deviation, a measure of the scores' spread. This measures variation across these random "
+               "choices, not uncertainty for an individual engine's prediction. The project requires at "
+               "least five repeats for a reportable result; fewer are exploratory."),
      "source": _project("")},
-    {"key": "fixed_split", "group": "repeats", "label": "Same held-back engines for every seed",
+    {"key": "fixed_split", "group": "training", "label": "Same held-back engines for every seed",
      "kind": "bool", "default": False,
      "about": ("Draws the held-back engines once, with the first seed, and gives every repeat the same ones; "
                "only the learned numbers' starting values and the windows' order still change. The spread "
                "between repeats then leaves out how much the choice of engines moves the result, and the run's "
                "page warns of it. It matters only when engines are held back."),
-     "source": _project("understates the spread; say so wherever the number appears")},
-    {"key": "device", "group": "repeats", "label": "Device", "kind": "choice",
+     "source": _project("excludes variation from changing the held-back engines; report this choice")},
+    {"key": "device", "group": "training", "label": "Device", "kind": "choice",
      "default": "auto",
      "choices": [{"value": v, "label": v, "source": None} for v in ("auto", "cpu", "cuda")],
      "about": ("Decides which chip does the network's arithmetic, the computer's main processor or an NVIDIA "
@@ -418,7 +420,7 @@ FIELDS: tuple[dict[str, Any], ...] = (
 
 _BY_KEY = {spec["key"]: spec for spec in FIELDS}
 
-# The steps of the form, its six tabs, numbered on the page in this order. The "procedure"
+# The steps of the form, its five tabs, numbered on the page in this order. The "procedure"
 # group is left out on purpose: its settings are drawn at the top of Training,
 # under the choice of procedure, which is their only control.
 GROUPS = (
@@ -427,7 +429,6 @@ GROUPS = (
     ("temporal", "Temporal stage"),
     ("graph", "Graph layers"),
     ("training", "Training"),
-    ("repeats", "Repeats"),
 )
 
 # The four model variants of Table 11, as settings: a stored run is set beside
@@ -452,18 +453,19 @@ PROCEDURE_ABOUT = ("Decides whether some training engines are set aside to check
 # the Training group. Neither sets the number of passes, which is the next one.
 PROCEDURES = (
     {"key": "paper", "label": "The paper's procedure",
-     "about": ("Every training engine is learned from, every pass is run, and the learned numbers from the very "
-               "last pass are kept. No engines are held back to measure progress on, so nothing can stop "
-               "training early or pick out a better pass."),
-     "source": _paper("Table 6", ""),
+     "about": ("Uses every training-file engine, runs the selected number of complete passes, and keeps the "
+               "final learned numbers. No engines are reserved for selecting an earlier pass or stopping "
+               "when their prediction error stalls. This follows the paper's stated fixed training length; "
+               "the paper does not describe a separate validation group."),
+     "source": _paper("Table 6", "fixed training length; other unspecified choices remain documented separately"),
      "settings": {"validation_fraction": 0.0, "early_stopping": False}},
     {"key": "project", "label": "Held back, best pass",
-     "about": ("Some training engines are held back and never learned from. After every pass the network's error "
-               "on them is measured; the learned numbers from the pass with the lowest error are kept, and "
-               "training stops early once that error has gone a set number of passes in a row without beating "
-               "its best. The cost is fewer engines to learn from."),
-     "source": _choice("A-06", "a step the paper never describes (A-18). On FD001 it moved what the "
-                               "LSTM is worth from 0.77 to 3.19 cycles (F-16)."),
+     "about": ("Reserves some training-file engines to check progress after every pass. They do not update "
+               "the model's learned numbers. A sufficient reduction in their prediction error saves a new "
+               "best version; training stops after too many passes without one and restores that version. "
+               "This leaves fewer engines for learning and makes validation part of model selection."),
+     "source": _choice("A-06", "validation and early stopping are project choices (assumption A-18); their effect "
+                               "on the LSTM comparison is documented separately (finding F-16)."),
      "settings": {"validation_fraction": 0.2, "early_stopping": True}},
 )
 
@@ -575,8 +577,9 @@ def _number(spec: Mapping[str, Any], value: Any, integer: bool) -> float | int:
     if integer and not isinstance(number, int):
         raise SettingsError(f"{spec['label']} must be a whole number, got {value!r}.")
     if not math.isfinite(number) or not spec["min"] <= number <= spec["max"]:
+        label = f"{spec['label']} (Seeds)" if spec["key"] == "seeds" else spec["label"]
         raise SettingsError(
-            f"{spec['label']} must lie between {spec['min']} and {spec['max']}, got {value!r}."
+            f"{label} must lie between {spec['min']} and {spec['max']}, got {value!r}."
         )
     return number
 
@@ -680,8 +683,8 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
             "nothing from it. A result is a mean over at least five seeds, with its spread.",
             ("design", "run"))
     if settings.get("temporal") in ("lstm", "gru"):
-        add("info", "A-26", "The hidden size and the numbers handed to the graph per "
-            "sensor are chosen here; the paper states neither.")
+        add("info", "A-26", "The memory size and conversion from temporal output to graph input are project "
+            "choices. Table 4 specifies one graph-input number per sensor but not how it is obtained.")
     if settings.get("temporal") == "last_cycle":
         add("info", "D-6", "Only each window's last cycle reaches the graph layers, which "
             "the paper's w/o LSTM model may not have done.")
@@ -692,8 +695,8 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
             int(settings.get("fc_hidden") or 128) != 128:
         add("info", "Table 4", "The layer widths differ from Table 4.")
     if float(settings.get("validation_fraction") or 0.0) > 0:
-        add("warn", "F-16", "The paper never describes restoring the best pass; on FD001 "
-            "it moved what the LSTM is worth from 0.77 to 3.19 cycles.")
+        add("warn", "F-16", "The paper does not describe selecting an earlier pass by validation error. "
+            "This project's measured LSTM comparison depends on whether that selection is used.")
     elif settings.get("lr_schedule") == "plateau":
         add("warn", "A-17", "The plateau schedule needs held-back engines; with none the "
             "rate never leaves its first value.", ("design", "run"))
@@ -862,22 +865,26 @@ def stage_detail(stage: str, settings: Mapping[str, Any]) -> dict[str, Any]:
         answer["steps"] = builders[stage](settings)
     except _Undescribable as reason:
         answer["error"] = str(reason)
-    for item in answer["steps"]:
-        for step in item.get("steps", [item]):
-            key = "graph-step" if step.get("picture") == "graph" else step.get("picture", "")
-            if key in _READ_MORE:
-                step["more"] = read_more(key)
+    pending = list(answer["steps"])
+    while pending:
+        step = pending.pop()
+        pending.extend(step.get("steps", []))
+        pending.extend(step.get("lanes", []))
+        key = "graph-step" if step.get("picture") == "graph" else step.get("picture", "")
+        if key in _READ_MORE:
+            step["more"] = read_more(key)
     return answer
 
 
 def _step(name: str, does: str, *, parts: list[tuple[Any, ...]] | None = None, shape: str = "",
           learned: int | None = None, source: Mapping[str, str] | None = None,
-          picture: str = "") -> dict[str, Any]:
+          picture: str = "", summary: str = "", outputs: list[dict[str, str]] | None = None) -> dict[str, Any]:
     """One step of a box's flowchart: its name, the values that decide it, what it hands on and its picture."""
     return {"name": name, "does": " ".join(does.split()), "shape": shape, "learned": learned,
             "parts": [{"text": part[0], "setting": part[1], "index": part[2] if len(part) > 2 else None}
                       for part in (parts or [])],
-            "source": dict(source) if source else None, "picture": picture}
+            "source": dict(source) if source else None, "picture": picture, "summary": summary,
+            "outputs": outputs or []}
 
 
 def _edge(name: str, shape: str = "", icon: str = "") -> dict[str, Any]:
@@ -1000,16 +1007,36 @@ def _file_facts(subset: str) -> dict[str, Any] | None:
 
 @lru_cache(maxsize=16)
 def _prepared(key: tuple[tuple[str, Any], ...]) -> dict[str, Any]:
-    """What a flowchart reads from a real preprocessing run: its counts and its sensor graph, not its windows."""
+    """A real run's counts, small worked examples and sensor graph, without retaining its full tables or windows."""
     import numpy as np
 
     from ..config import PreprocessingConfig
     from ..data.pipeline import run_preprocessing
+    from ..data.smoothing import apply_ewma
+    from ..data.windowing import split_units_by_id
 
-    run = run_preprocessing(PreprocessingConfig(**dict(key)))
+    config = PreprocessingConfig(**dict(key))
+    run = run_preprocessing(config, keep_frames=True)
+    raw = run.raw.train
+    train_units, held_units = split_units_by_id(raw.unit.unique(), validation_fraction=config.validation_fraction,
+                                               seed=config.seed)
+    sample = raw.head(3)
+    smooth = apply_ewma(sample, ["sensor_2"], alpha=config.smoothing_alpha)
+    examples = [{"engine": int(row.unit), "cycle": int(row.cycle), "reading": float(row.sensor_2),
+                 "life": int(row.rul)} for row in sample.itertuples()]
+    available = [data for data in (run.train, run.validation) if len(data)]
+    first = min(available, key=lambda data: int(data.units.min()))
+    engine = int(first.units.min())
+    positions = np.flatnonzero(first.units == engine)[:3]
+    windows = [{"start": int(first.end_cycles[i]) - config.window_size + 1,
+                "end": int(first.end_cycles[i]), "life": float(first.targets[i])} for i in positions]
     return {"train": len(run.train), "validation": len(run.validation), "test": len(run.test),
-            "kept": len(np.unique(run.train.units)), "held": len(np.unique(run.validation.units)),
-            "conditions": int(run.condition_encoder.n_detected), "adjacency": run.adjacency_raw.copy()}
+            "kept": len(train_units), "held": len(held_units),
+            "train_rows": int(raw.unit.isin(train_units).sum()), "held_rows": int(raw.unit.isin(held_units).sum()),
+            "conditions": int(run.condition_encoder.n_detected), "adjacency": run.adjacency_raw.copy(),
+            "example_rows": examples, "smoothed": smooth.sensor_2.tolist(),
+            "rescaled": run.frames["train"].loc[sample.index, "sensor_2"].tolist(),
+            "window_example": {"engine": engine, "windows": windows}}
 
 
 def _prepared_for(settings: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -1026,58 +1053,82 @@ def _prepared_for(settings: Mapping[str, Any]) -> dict[str, Any] | None:
         return _prepared(tuple(sorted(key.items())))
 
 
+def _table_outputs(facts: dict[str, Any] | None, columns: int) -> list[dict[str, str]]:
+    """Name both working tables and the meaning of their dimensions."""
+    return [{"label": label, "shape": f"({_count(facts[key]) if facts else 'rows'}, {columns})",
+             "axes": "rows, columns"}
+            for label, key in (("Training file", "train_rows"), ("Test file", "test_rows"))]
+
+
+def _window_outputs(run: dict[str, Any] | None, window: int, split: bool) -> list[dict[str, str]]:
+    """Name each collection's sensor-input shape and its separate remaining-life-answer shape."""
+    groups = ([("Training", run["train"]), *([("Validation", run["validation"])] if run["held"] else []),
+               ("Test", run["test"])] if run and split else
+              [("Training file", run["train"] + run["validation"] if run else None),
+               ("Test", run["test"] if run else None)])
+    purposes = {"Training": "Used to update the model during training", "Validation": "Used to check progress during training",
+                "Test": "Used for final evaluation after training"}
+    return [{"label": label, "shape": f"({_count(n) if n is not None else 'windows'}, 14, {window})",
+             "axes": "windows, sensors, cycles", "targets": f"({_count(n) if n is not None else 'windows'},)"}
+            | ({"use": purposes[label]} if split else {})
+            for label, n in groups]
+
+
 def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Box 1: the three files of a sub-dataset, their labels, and the sensors kept from them."""
+    """Separate the training-file path from the test histories and their answer file."""
     subset = settings["subset"]
-    table5 = DATASET_DESCRIPTION[subset]
     facts = _file_facts(subset)
+    raw, labelled = _table_outputs(facts, 26), _table_outputs(facts, 27)
     tag, _ = _decided("subset", subset)
-
-    def rows(key: str, columns: int) -> str:
-        """A table's shape as the files give it, or nothing without them."""
-        return f"({_count(facts[key])}, {columns})" if facts else ""
-
-    flat = facts["flat"] if facts else []
-    check = ""
-    if flat:
-        check = (f" {' and '.join(flat)} barely var{'ies' if len(flat) == 1 else 'y'} in this dataset, "
-                 "but the selection stays fixed to match the paper's graph.")
+    training = _step(
+        "Training engines",
+        "Each history ends at failure. The final recorded cycle therefore lets us calculate the remaining "
+        "life at every earlier cycle. These engines supply learning examples and the engines held back for validation.",
+        parts=[(f"train_{subset}.txt", None)], shape=raw[0]["shape"], picture="file", source=tag,
+        summary="Histories ending at failure. Used for learning and validation.", outputs=[raw[0]])
+    test = _step(
+        "Test engines",
+        "These are different engines. Their histories stop before failure. After training, the model receives "
+        "each engine's last complete sensor window and predicts how many cycles remain.",
+        parts=[(f"test_{subset}.txt", None)], shape=raw[1]["shape"], picture="file", source=tag,
+        summary="Histories stopping before failure. Used for final predictions.", outputs=[raw[1]])
+    answers = _step(
+        "Test answers",
+        "One remaining-life answer for each test engine at its last recorded cycle. The answer on line 1 "
+        "belongs to test engine 1. These values are attached as labels during preparation and used for scoring "
+        "after training; they never become sensor inputs.",
+        parts=[(f"RUL_{subset}.txt", None)], picture="file",
+        summary="Correct remaining life at each test engine's stopping point. Used to score predictions.",
+        outputs=[{"label": "Answers", "shape": f"({_count(facts['labels']) if facts else 'engines'},)",
+                  "axes": "test-engine answers"}])
+    train_labels = _step(
+        "Calculate training labels",
+        "For each row, subtract its cycle from that engine's final cycle. A label is the correct remaining "
+        "life paired with that row. Add it as a new column.", picture="life",
+        summary="Final cycle minus this row's cycle = cycles left.", outputs=[labelled[0]])
+    test_labels = _step(
+        "Attach test labels",
+        "For each test row, take the engine's last recorded cycle minus this row's cycle, then add that "
+        "engine's remaining life from the answer file. The labels are carried separately from model inputs.",
+        picture="life", summary="Match answers by engine. Add remaining life as a new column.", outputs=[labelled[1]])
+    selection = _step(
+        "Select 14 sensor columns for model inputs",
+        "Only the selected sensor columns become inputs when the pipeline makes windows. Engine number, "
+        "cycle, operating settings and remaining-life labels stay in the working table. Selection records "
+        "which columns to use; it does not shrink this table.",
+        picture="select", source=_cite("Table 3"), outputs=labelled,
+        summary="Both tables keep their 27 columns. Only the selected sensor readings enter the model.")
     return [
-        _together(
-            _step("Training engines",
-                  f"train_{subset}.txt contains simulated engine histories ending at failure. Each row is one "
-                  "engine at one flight cycle: its number, the cycle, 3 operating settings describing how it is "
-                  "run, and 21 sensor readings.",
-                  parts=[(f"{_plural(table5['train_engines'], 'engine')} · {_plural(table5['conditions'], 'condition')}"
-                          f" · {_plural(table5['fault_modes'], 'fault mode')}", "subset")],
-                  shape=rows("train_rows", 26), source=tag, picture="file"),
-            _step("Test engines",
-                  f"test_{subset}.txt contains different simulated engines with the same columns. Each history "
-                  "stops before failure. The model predicts how many flight cycles remain at that stopping point; "
-                  "these engines do not teach the model during training.",
-                  parts=[(_plural(table5["test_engines"], "engine"), "subset")],
-                  shape=rows("test_rows", 26), source=tag, picture="file"),
-            _step("Their remaining life",
-                  f"RUL_{subset}.txt gives the correct remaining life, in flight cycles, at each test engine's "
-                  "last recorded cycle. Line 1 belongs to engine 1, line 2 to engine 2, and so on. These answers "
-                  "are used for scoring, never as model inputs.",
-                  parts=[("one per test engine", None)],
-                  shape=f"({_count(facts['labels'])},)" if facts else "", picture="file"),
-            shape="3 tables",
-        ),
-        _step("Label every row",
-              "A label is the answer paired with an input. For a training row, subtract its cycle from the "
-              "engine's final cycle. For a test row, also add the life remaining after its last recorded cycle, "
-              "given in the answer file. The ceiling is applied in the next stage.",
-              parts=[("cycles left until failure", None)], shape=rows("train_rows", 27),
-              source=_cite("Section 3.2.1"), picture="life"),
-        _step("Keep 14 of the 21 sensors",
-              "Only the sensor columns named in Table 3 become model inputs, in the order used by its graph. "
-              "The paper says seven sensors were removed but names six; this project identifies NRc as the "
-              "seventh from the retained set (assumption A-10)." + check,
-              parts=[("Table 3's sensors, in its order", None)],
-              shape="14 of 27 columns" if facts else "", source=_cite("Table 3"), picture="select"),
-        _edge("To preprocessing", icon="preprocessing"),
+        _edge("Read all three files during preparation", icon="data") | {
+            "summary": "Two separate paths. Follow the arrows down to see how each gets its labels."},
+        # Keep the steps flat for consumers that inspect a flowchart, while
+        # retaining the two paths for the browser renderer to show as lanes.
+        {"kind": "group", "steps": [training, train_labels, test, answers, test_labels],
+         "lanes": [
+             {"name": "Training path", "steps": [training, train_labels]},
+             {"name": "Test path", "steps": [test, answers, test_labels]}]},
+        selection,
+        _edge("Both labelled tables go to preprocessing", icon="preprocessing"),
     ]
 
 
@@ -1094,7 +1145,7 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     facts = _file_facts(subset)
     rows = _count(facts["train_rows"]) if facts else "rows"
     table, table_more = f"({rows}, 27)", f"({rows}, 28)"
-    steps = [_edge("Labelled rows from the data", table, icon="data")]
+    steps = [_edge(f"{subset}: recorded engine histories", table, icon="data")]
 
     _, ceiling_note = _decided("rul_max", ceiling)
     capped = bool(settings["clip_test_labels"])
@@ -1154,8 +1205,8 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     steps.append(_step(
         "Find operating conditions",
         "The three operating settings describe how an engine is run. Their rounded combinations determine "
-        "how many groups to use, up to six. When there is more than one, k-means finds representative centres "
-        "from training engines and assigns each row to its nearest centre. "
+        "how many groups to use, up to six. When there is more than one, k-means (a method that groups nearby "
+        "rows) finds representative centres from training engines and assigns each row to its nearest centre. "
         + ("Rescaling below uses these groups." if method == "minmax_per_condition" else
            "The chosen rescaling does not use these groups."),
         parts=[(f"{_plural(conditions, 'condition')} found" if conditions else "", None)], shape=table_more,
@@ -1213,7 +1264,106 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
                 parts=[(f"{_count(run['train'])} training · {_count(run['test'])} test", None)],
                 shape=f"({_count(run['train'])}, 14, {window})", picture="sets"))
     steps.append(_edge("To the temporal stage, B windows at a time", f"(B, 14, {window})", icon="temporal"))
+    _preprocessing_story(steps, settings, run, facts)
     return steps
+
+
+def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any],
+                         run: dict[str, Any] | None, facts: dict[str, Any] | None) -> None:
+    """Restore both tables' labelled shapes and keep the single-row walkthrough separate from the flow."""
+    window = int(settings["window_size"])
+    opening = steps[0]
+    opening["name"] = "Labelled tables from Data"
+    opening["outputs"] = _table_outputs(facts, 27)
+    opening["summary"] = "A shape lists the size of each axis in order. Here: (rows, columns). One row is one engine at one cycle."
+    opening["columns"] = "1 engine number + 1 cycle + 3 operating settings + 21 sensor readings + 1 remaining-life label."
+    opening["handoff"] = (
+        f"{facts['train_rows']:,} rows · 27 columns" if facts else "Rows · 27 columns"
+    )
+    for step in steps[1:-1]:
+        picture = step["picture"]
+        step["outputs"] = _table_outputs(facts, 28 if picture in ("conditions", "rescale") else 27)
+        if picture == "cap":
+            step["summary"] = "Change the remaining-life labels; keep the sensor readings and table sizes."
+        elif picture == "smooth":
+            step["summary"] = "Change sensor values using earlier readings from the same engine. Table sizes stay the same."
+        elif picture == "hold":
+            step["summary"] = "Choose whole engines for learning or validation. Their rows stay in the working table until windows are separated below."
+        elif picture == "conditions":
+            step["summary"] = "Add each row's operating-condition group as a new column."
+        elif picture == "rescale":
+            step["summary"] = "Learn the scale from training engines; apply that same scale to every group."
+        elif picture == "window":
+            step["summary"] = "Turn the selected sensor columns into windows. Keep remaining-life answers in a separate array, one answer per window."
+            step["outputs"] = _window_outputs(run, window, split=False)
+            step["aside"] = "Training-file engines supply overlapping windows. Each test engine supplies only its last complete window."
+        elif picture == "sets":
+            step["parts"] = []
+            step["summary"] = f"Apply the engine groups chosen with seed {settings['seed']}."
+            step["outputs"] = _window_outputs(run, window, split=True)
+            if run:
+                step["example"] = {"kind": "groups", "items": [
+                    {"name": "Training", "value": f"{run['train']:,} windows",
+                     "detail": "Used to update learned numbers"},
+                    *([{"name": "Held back", "value": f"{run['validation']:,} windows",
+                        "detail": "Used to check progress"}] if run["validation"] else []),
+                    {"name": "Test", "value": f"{run['test']:,} windows",
+                     "detail": "Used for final evaluation"},
+                ]}
+    steps[-1]["name"] = "Send a batch of sensor windows to the temporal stage"
+    steps[-1]["outputs"] = [{"label": "Model inputs", "shape": f"(B, 14, {window})", "axes": "windows, sensors, cycles"}]
+    steps[-1]["summary"] = (f"B is the number of windows processed together, up to {int(settings['batch_size']):,}. "
+                             "Remaining-life answers stay separate for training or scoring.")
+    if run:
+        row = run["example_rows"][1]
+        capped = min(row["life"], int(settings["rul_max"]))
+        records = [{"step": "Original row", "reading": row["reading"], "life": row["life"]},
+                   {"step": "Cap the label", "reading": row["reading"], "life": capped}]
+        if settings["smoothing"]:
+            records.append({"step": "Smooth the sensor", "reading": run["smoothed"][1], "life": capped})
+        records.append({"step": "Rescale the sensor", "reading": run["rescaled"][1], "life": capped})
+        opening["walkthrough"] = {"file": f"train_{settings['subset']}.txt", "engine": row["engine"],
+                                  "cycle": row["cycle"], "records": records,
+                                  "windows": run["window_example"]}
+
+        # `example` and `handoff` are the compact fields used by the browser's
+        # worked-example renderer. Keep the longer `walkthrough` record as the
+        # source of the displayed table and arithmetic.
+        opening["example"] = {"kind": "rows", "rows": [
+            {"engine": item["engine"], "cycle": item["cycle"],
+             "reading": item["reading"], "life": item["life"]}
+            for item in run["example_rows"]
+        ]}
+        cap = next(step for step in steps if step.get("picture") == "cap")
+        cap["example"] = {"kind": "change", "label": "Example remaining-life label",
+                           "before": f"{row['life']} cycles",
+                           "after": f"{capped} cycles"}
+        smooth = next((step for step in steps if step.get("picture") == "smooth"), None)
+        if smooth:
+            alpha = float(settings["smoothing_alpha"])
+            smooth["example"] = {"kind": "change", "label": "Sensor T24 after smoothing",
+                                  "before": str(row["reading"]),
+                                  "after": str(run["smoothed"][1]),
+                                  "note": f"{alpha:g} x current reading + {1 - alpha:g} x previous smoothed reading"}
+        rescale = next(step for step in steps if step.get("picture") == "rescale")
+        before_scale = (f"{run['smoothed'][1]:.3f}" if settings["smoothing"]
+                        else str(row["reading"]))
+        rescale["example"] = {"kind": "change", "label": "Sensor T24 after scaling",
+                               "before": before_scale,
+                               "after": f"{run['rescaled'][1]:.4f}",
+                               "note": "The scale is fitted on training engines and then reused."}
+        hold = next(step for step in steps if step.get("picture") == "hold")
+        hold["example"] = {"kind": "groups", "items": [
+            {"name": "Training", "value": f"{run['train_rows']:,} rows",
+             "detail": f"{run['train_rows']:,} rows used to learn"},
+            *([{"name": "Held back", "value": f"{run['held_rows']:,} rows",
+                "detail": f"{run['held_rows']:,} rows used to check progress"}] if run["held_rows"] else []),
+        ]}
+        window_step = next(step for step in steps if step.get("picture") == "window")
+        window_step["example"] = {"kind": "windows", "engine": run["window_example"]["engine"],
+                                   "windows": run["window_example"]["windows"]}
+    else:
+        opening["handoff"] = "Rows · 27 columns"
 
 
 def _built(settings: Mapping[str, Any], matrix: Any = None) -> Any:

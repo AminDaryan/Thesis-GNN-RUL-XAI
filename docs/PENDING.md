@@ -438,6 +438,13 @@ follows one engine's readings as numbers the whole way, from the raw file row to
 the predicted remaining life, and all of them assume the reader already knows
 what a window, a scaling or a graph layer is.
 
+**Preprocessing now has a partial example (2026-09-27):** its playground
+flowchart shows real file rows, follows one reading through smoothing and
+rescaling, and draws the first overlapping windows with their targets. The
+examples update with the settings and are checked in `tests/test_examples.py`.
+This does not yet follow that same window through the temporal stage, graph
+layers and final prediction; the whole-network demonstration below remains open.
+
 **What finishing looks like:** one real engine and one real window of FD001,
 chosen once and named, followed step by step: its raw readings for a few
 sensors, its label before and after the ceiling, the same readings smoothed
