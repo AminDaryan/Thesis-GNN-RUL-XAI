@@ -1245,6 +1245,11 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-section-picture { flex: 0 0 auto; color: var(--ink-soft); line-height: 0; }
 .pg-section-picture .pg-picture { width: 36px; height: 24px; }
 .pg-section-name { margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; }
+.pg-operation-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: inherit; }
+.pg-operation-link:hover { color: var(--accent); text-decoration: underline; }
+.pg-vstep[data-operation] { cursor: pointer; }
+.pg-vstep.is-target { outline: 2px solid var(--accent); outline-offset: 3px; }
+.pg-step-n .pg-picture { width: 20px; height: 20px; }
 .pg-section > .pg-fields > .pg-field:last-child, .pg-section > .pg-fields > .pg-field { margin-bottom: 0; }
 .pg-section > .pg-fields { row-gap: 16px; }
 

@@ -910,6 +910,11 @@
       settingsMoved(keys);
     },
     "unzoom": function () { unzoom(); },
+    "locate-operation": function (button) {
+      S.locate = button.getAttribute("data-operation");
+      zoomTo(button.getAttribute("data-group"));
+      locateOperation();
+    },
     "info": function (button) { placeInfo(button); setOpen(button.parentNode, !button.parentNode.classList.contains("is-open")); },
     // The pipeline's × and +: a part taken out, or put back as it was.
     "remove-part": function (button) { removePart(button.getAttribute("data-part")); },
@@ -1278,9 +1283,8 @@
   // A step's number, filled in while that step is the one being worked on.
   // The same step's number in the pipeline follows it.
   function stepNumber(group) {
-    var input = group === INPUT;
-    return '<span class="pg-step-n pg-step-n--form' + (input ? " pg-step-n--input" : "") +
-      (S.step === group ? " is-current" : "") + '" data-step="' + group + '">' + (input ? ICONS.data : stepOf(group)) +
+    return '<span class="pg-step-n pg-step-n--form pg-step-n--input' +
+      (S.step === group ? " is-current" : "") + '" data-step="' + group + '">' + (ICONS[group] || PICTURES.passes) +
       "</span>";
   }
 
@@ -1580,6 +1584,36 @@
 
   function sectionName(section) { return typeof section.name === "function" ? section.name() : section.name || ""; }
 
+  function sectionHelp(section) {
+    if (section.procedure) { return infoCard(S.options.procedure_about, "", S.options.procedure_more); }
+    var keys = section.toggle ? [section.toggle] : section.fields || [];
+    return keys.map(function (key) { return hintFor(S.fields[key]); }).join("");
+  }
+
+  function sectionForStep(step) {
+    var sections = SECTIONS[S.zoom] || [];
+    return sections.filter(function (section) { return sectionName(section) === step.name; })[0] ||
+      sections.filter(function (section) {
+        return (step.parts || []).some(function (part) {
+          return part.setting && (section.fields || []).indexOf(part.setting) >= 0;
+        });
+      })[0];
+  }
+
+  function locateOperation() {
+    if (!S.locate || !S.zoomed || S.zoomed.stage !== S.zoom) { return; }
+    var target = $all(".pg-vstep[data-operation]").filter(function (box) {
+      return box.getAttribute("data-operation") === S.locate;
+    })[0];
+    if (target) {
+      target.scrollIntoView({ block: "nearest" });
+      target.classList.add("is-target");
+      var button = target.querySelector(".pg-operation-link");
+      if (button) { button.focus({ preventScroll: true }); }
+      S.locate = null;
+    }
+  }
+
   // One group: its picture, its switch if it has one, its name and i, then its settings.
   function sectionHtml(section, index, group) {
     var fields = (section.fields || []).map(function (key) { return S.fields[key]; });
@@ -1600,9 +1634,10 @@
       '" aria-labelledby="' + id + '"' + (hidden ? " hidden" : "") + '><div class="pg-section-head"' +
       (toggle ? ' data-row="' + toggle.key + '"' : "") + ">" +
       '<span class="pg-section-picture">' + PICTURES[section.picture] + "</span>" +
-      '<h3 class="pg-section-name pg-field-name"><span class="pg-section-label" id="' + id + '">' + esc(name) + "</span>" +
-      info(section.procedure ? infoCard(S.options.procedure_about, "", S.options.procedure_more)
-        : lone ? hintFor(fields[0]) : toggle ? hintFor(toggle) : "", name) + "</h3>" +
+      '<h3 class="pg-section-name pg-field-name">' + (group !== "training" && group !== "data"
+        ? '<button type="button" class="pg-section-label pg-operation-link" id="' + id + '" data-action="locate-operation" data-group="' + group + '" data-operation="' + esc(name) + '">' + esc(name) + '</button>'
+        : '<span class="pg-section-label" id="' + id + '">' + esc(name) + '</span>') +
+      info(sectionHelp(section), name) + "</h3>" +
       (toggle ? '<span class="pg-section-switch">' + resetHtml(toggle) + switchControl("pg-" + toggle.key,
         !!S.settings[toggle.key], 'data-field="' + toggle.key + '" aria-labelledby="' + id + '"') + "</span>" : "") +
       "</div>" + body + "</section>";
@@ -1624,6 +1659,7 @@
       });
       var label = box.querySelector(".pg-section-label"), name = sectionName(section);
       if (label && label.textContent !== name) { label.textContent = name; }
+      if (label && label.hasAttribute("data-operation")) { label.setAttribute("data-operation", name); }
     });
   }
 
@@ -1715,7 +1751,7 @@
   function zoomTitle() {
     var name = boxName(S.zoom);
     if (insideOpen()) { name = networkWord() + (S.inside === "shared" ? ", shared by all sensors" : " of " + S.inside); }
-    return '<span class="pg-zoom-icon">' + ICONS[S.zoom] + "</span>" + (S.zoom === INPUT ? "" : stepNumber(S.zoom)) +
+    return '<span class="pg-zoom-icon">' + ICONS[S.zoom] + "</span>" +
       esc(name);
   }
 
@@ -1761,8 +1797,8 @@
     var name = boxName(group);
     return '<div class="pg-stage" role="listitem">' +
       '<button type="button" class="pg-stage-main" data-zoom="' + group + '" aria-label="' +
-      esc(stepOf(group) + ". " + (groupLabel(group) === name ? name : groupLabel(group) + ": " + name) + ", its flowchart") +
-      '">' + stepNumber(group) + '<span class="pg-stage-icon">' + ICONS[group] + "</span>" +
+      esc((groupLabel(group) === name ? name : groupLabel(group) + ": " + name) + ", its flowchart") +
+      '"><span class="pg-stage-icon">' + ICONS[group] + "</span>" +
       '<span class="pg-stage-name">' + esc(name) + "</span></button>" + x + "</div>";
   }
 
@@ -1862,11 +1898,16 @@
   function vstepHtml(step, small) {
     var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
       '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
-    var words = infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
+    var section = sectionForStep(step), operation = section && sectionName(section);
+    var words = section ? sectionHelp(section) : infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
+    var row = section && (section.toggle || section.fields[0]);
+    var destination = row ? ' data-goto="' + S.fields[row].group + '" data-goto-row="' + row + '"' : '';
     var part = partControl(step);
-    return '<div class="pg-vstep' + (small ? " pg-vstep--small" : "") + (part ? " has-part" : "") + '">' +
+    return '<div class="pg-vstep' + (small ? " pg-vstep--small" : "") + (part ? " has-part" : "") + '"' +
+      (operation ? ' data-operation="' + esc(operation) + '"' + destination : '') + '>' +
       (PICTURES[step.picture] ? '<span class="pg-vstep-picture">' + PICTURES[step.picture] + "</span>" : "") +
-      '<span class="pg-vstep-name">' + withInfo(step.name, info(words, step.name), function (w) { return esc(w); }) +
+      '<span class="pg-vstep-name">' + (destination ? '<button type="button" class="pg-operation-link"' + destination + '>' + esc(step.name) + '</button>' + info(words, step.name)
+        : withInfo(step.name, info(words, step.name), function (w) { return esc(w); })) +
       "</span>" + (values ? '<span class="pg-vstep-values">' + values + "</span>" : "") +
       storyHtml(step) +
       (step.networks ? networksHtml(step.networks) : "") +
@@ -2077,6 +2118,7 @@
         answer.asked = asked;
         S.zoomed = answer;
         paintZoom();
+        locateOperation();
       }).catch(function (error) {
         if (asked !== zoomKey()) { return; }
         S.zoomed = { stage: stage, asked: asked, error: error.message };
@@ -2355,6 +2397,7 @@
   }
 
   function resetHtml(f) {
+    if (f.key === "subset") { return ""; }
     return '<span class="pg-reset-slot">' + (isChanged(f)
       ? '<button type="button" class="pg-reset" data-reset="' + f.key + '" title="Back to ' + esc(defaultText(f)) +
         '" aria-label="' + esc("Reset " + splitUnit(f.label).label) + '">Reset</button>'
