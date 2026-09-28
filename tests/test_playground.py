@@ -234,7 +234,7 @@ def _steps(answer: dict) -> list[dict]:
     """Every step of a flowchart, the ones drawn side by side included, without what enters or leaves."""
     flat = []
     for step in answer["steps"]:
-        flat += step["steps"] if step.get("kind") in ("group", "branch") else [step]
+        flat += step["steps"] if step.get("kind") in ("group", "branch", "evaluation") else [step]
     return [step for step in flat if step.get("kind") != "edge"]
 
 
@@ -343,6 +343,11 @@ def test_the_data_box_counts_the_rows_the_loader_reads(loaded):
     answer = _flowchart("data")
     assert _step(answer, "Training engines")["shape"] == f"({playground._count(len(loaded.train))}, 26)"
     assert _step(answer, "Test engines")["shape"] == f"({playground._count(len(loaded.test))}, 26)"
+    evaluation = next(step for step in answer["steps"] if step.get("kind") == "evaluation")
+    assert evaluation["detached"]
+    assert [step["name"] for step in evaluation["steps"][:2]] == ["Test answers", "Attach test labels"]
+    main = next(step for step in answer["steps"] if step.get("kind") == "group")
+    assert not {"Test answers", "Attach test labels"}.intersection(step["name"] for step in main["steps"])
 
 
 def test_the_preprocessing_box_counts_the_windows_the_pipeline_makes(raw_dir):

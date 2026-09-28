@@ -3,7 +3,8 @@
 This folder holds a small website for this repository. It opens on the
 playground, where a run of the network is designed, trained, set beside the
 paper and explained. Its menu holds everything written here that a reader
-needs: eight taught pages that build the method from nothing, the notebooks,
+needs: taught pages ordered as Data, Preprocessing, Temporal algorithm, GNN and
+XAI (with Dynamic SHAP and GNN-LRP beneath it), the notebooks,
 one page per folder of the code, the assumptions log, the audits and reviews.
 It runs on your own machine, reads the files from disk as you ask for them,
 and publishes nothing.
@@ -34,6 +35,7 @@ and `scripts/explain.py`, but what they compute is theirs, stored by them in
 | `catalog.py` | Finds every document in the repository and arranges them into the groups the menu shows. |
 | `markup.py` | Turns one Markdown file into the HTML the browser displays. |
 | `figures.py` | Draws the diagrams the taught pages and the notebooks show, each from this repository's own data. |
+| `worked_example.py` | Follows one real FD001 window through a named saved network and exposes its additions for inspection. |
 | `results.py` | Reads the entries of `docs/ASSUMPTIONS.md`, and the last re-check of the numbers the log quotes. |
 | `notebooks.py` | Turns a notebook into HTML for reading, and starts JupyterLab for running. |
 | `playground.py` | Checks the playground's settings, describes each box of its pipeline as a flowchart of its own, builds the command that runs them, queues the jobs, and reads stored runs and explanations back. |

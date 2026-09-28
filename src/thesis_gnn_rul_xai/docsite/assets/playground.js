@@ -1868,7 +1868,7 @@
     steps.forEach(function (item, i) {
       if (item.kind === "branch") { return; }
       var next = steps[i + 1], last = i === steps.length - 1;
-      var after = last ? "" : item.handoff ? '<div class="pg-varrow pg-varrow--named"><span class="pg-transfer">' +
+      var after = last || next.detached ? "" : item.handoff ? '<div class="pg-varrow pg-varrow--named"><span class="pg-transfer">' +
         esc(item.handoff) + "</span></div>" : next && next.kind === "branch" ?
         joinHtml(handedOn(item), next) : arrowHtml(handedOn(item));
       items.push('<li class="pg-vitem' + (item.kind === "edge" ? " pg-vitem--edge" : "") + '">' +
@@ -1883,6 +1883,9 @@
   // and the closing words show their own only when it differs from the one
   // on the arrow above them.
   function vbodyHtml(item, before, first, last) {
+    if (item.kind === "evaluation") {
+      return '<section class="pg-evaluation-path"><h3>' + esc(item.name) + '</h3><p>' + esc(item.summary) + '</p>' + vflowHtml(item.steps) + '</section>';
+    }
     if (item.kind === "edge") {
       var own = item.shape && !(first && !last) && !(last && item.shape === handedOn(before));
       return '<span class="pg-vedge">' + (ICONS[item.icon] || "") + "<span>" + esc(item.name) + "</span></span>" +

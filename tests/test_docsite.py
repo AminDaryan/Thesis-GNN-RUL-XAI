@@ -166,7 +166,13 @@ def test_every_document_in_the_repository_renders():
 def test_the_catalog_finds_the_taught_pages(site_catalog: catalog.Catalog):
     learn = next(s for s in site_catalog.sections if s.key == "learn")
     taught = [doc for doc in learn.documents if doc.kind == "learn"]
-    assert len(taught) == 8
+    assert [(doc.title, doc.depth) for doc in taught] == [
+        ("Start here", 0), ("Data", 0), ("Preprocessing", 0),
+        ("Temporal algorithm", 0), ("GNN", 0), ("Architecture and training", 1),
+        ("XAI", 0), ("Dynamic SHAP", 1), ("GNN-LRP", 1),
+        ("Follow one real example", 0), ("Reading a result", 0),
+        ("Paper, choice or measurement", 0),
+    ]
     assert all(doc.words > 200 for doc in taught)
 
 
@@ -592,6 +598,32 @@ def test_every_figure_a_taught_page_asks_for_exists(root: Path):
             assert name in known, f"{page.name} asks for unknown figure {name!r}"
 
 
+def test_sensor_selection_uses_real_column_names_without_invented_readings():
+    import xml.etree.ElementTree as ET
+
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS, SENSORS
+
+    svg = ET.fromstring(figures.draw_sensor_selection())
+    groups = list(svg.iter("{http://www.w3.org/2000/svg}g"))
+    source = [g for g in groups if "select-source" in g.attrib.get("class", "")]
+    picked = [g for g in groups if g.attrib.get("class") == "select-picked"]
+    ns = "{http://www.w3.org/2000/svg}text"
+    assert [g.find(ns).text for g in source] == [s.symbol for s in SENSORS]
+    assert [g.find(ns).text for g in picked] == list(PAPER_SENSOR_SYMBOLS)
+    assert all(len(list(g.iter(ns))) == 1 for g in source + picked)
+
+
+def test_old_xai_section_links_redirect_to_existing_subpage_headings(root: Path):
+    import re
+
+    script = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.js").read_text(encoding="utf-8")
+    mapping = script.split("var XAI_MOVED_SECTIONS = {", 1)[1].split("};", 1)[0]
+    for anchor, name in re.findall(r'"([^"]+)": "([^"]+)"', mapping):
+        page = root / "docs/learn" / name
+        rendered = markup.render_markdown(page.read_text(encoding="utf-8"), source_path=page.as_posix())
+        assert anchor in {heading.anchor for heading in rendered.headings}
+
+
 def test_a_figure_placeholder_inside_code_stays_text(root: Path):
     """The page turns {{figure:name}} into a figure only where it stands as a
     paragraph of its own; one written inside code, to show the syntax, once
@@ -691,9 +723,9 @@ def _get(url: str) -> tuple[int, dict]:
 def test_a_menu_page_goes_by_its_menu_name_in_its_heading_and_its_tab(live_site: str):
     status, doc = _get(f"{live_site}/api/doc?path=docs/learn/01_the_problem.md")
     assert status == 200
-    assert doc["title"] == "How long has this engine got?"
+    assert doc["title"] == "Data"
     first = doc["html"].split("</h1>")[0]
-    assert first.startswith("<h1 ") and ">How long has this engine got?<a" in first
+    assert first.startswith("<h1 ") and ">Data<a" in first
     assert "words" not in doc  # the reading time is kept, its word count is not
 
 

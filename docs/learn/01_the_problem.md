@@ -67,6 +67,14 @@ read out of the sensors.
 
 ## Only 14 of the 21 sensors
 
+{{figure:sensor-selection}}
+
+Choose **Show column selection** to see the kept columns form the model-input
+table. The empty cells stand for rows: this schematic invents no sensor
+readings. The real values and complete column list are in the playground's
+Data tab. Engine number, cycle and operating settings remain available to
+organise preprocessing but are not extra sensor inputs.
+
 Running this project's own diagnostic over the 100 training engines finds that
 **six sensors never change at all**: `T2`, `P2`, `epr`, `farB`, `Nf_dmd` and
 `PCNfR_dmd` hold a single value for all 20 631 rows. A sensor that never moves

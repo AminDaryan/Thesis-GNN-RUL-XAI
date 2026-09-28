@@ -1,4 +1,4 @@
-# Explainability: which sensor drove this prediction?
+# XAI
 
 ## Why a number is not enough
 
@@ -14,202 +14,32 @@ and does not know what to inspect.
 that answer the "why" question, typically by saying which inputs mattered most
 for a particular prediction.
 
----
 
-## Dividing credit fairly
+## Choose the question you want to answer
 
-The paper's explanation method comes from **cooperative game theory**, the
-branch of mathematics that studies how a group of players who achieve something
-together should divide the credit for it.
+Both methods start with a trained model and one sensor window. Neither trains
+the model again or identifies a physical cause of engine damage.
 
-The problem is hard. Imagine three people building something. You cannot just
-measure what each contributes alone, because contributions interact: two of
-them may be useless separately and excellent together. You cannot measure what
-is lost when each leaves, either: each of those two would be credited with
-everything they achieve together, so their joint result would be counted twice.
+| Question | Method | What you read |
+|---|---|---|
+| Which sensors moved this prediction away from a typical-input prediction? | [Dynamic SHAP](10_dynamic_shap.md) | One contribution per sensor, in remaining-life cycles, repeated along the engine's life |
+| Through which sensor connections did the model's score form? | [GNN-LRP](11_gnn_lrp.md) | Contributions assigned to routes through the calculation layers, in internal-score units |
 
-In 1953 Lloyd Shapley proposed the answer now called the **Shapley value**. It
-asks: for each player, **how much does the result change when that player
-joins, averaged over every possible order in which the group could have been
-assembled?**
+SHAP replaces selected sensor inputs with training-derived reference readings
+and runs the model on those combinations. GNN-LRP instead reads the model's
+internal calculations and divides its score among the routes that produced it.
+Their output units differ: a share of an internal score is not a number of
+remaining cycles, so do not compare their contribution sizes directly.
 
-{{figure:shapley}}
+## Read an explanation in context
 
-The order matters because B adds a different amount depending on who is already
-there when it joins.
+First identify the saved run, engine and window being explained. Then inspect
+the prediction and what it is being compared with. On a SHAP chart, that
+comparison is the prediction for the reference input. On a route chart, the
+categories add to the model's score before its conversion to cycles.
 
-The Shapley value is the only way of dividing credit that meets a small set of
-fairness conditions at once, among them that the shares add up to the total,
-and that two players who always contribute identically get identical shares.
-
----
-
-## SHAP: the same idea, applied to a model
-
-**SHAP**, *SHapley Additive exPlanations*, applies the Shapley value to machine
-learning:
-
-| Game theory | Machine learning |
-|---|---|
-| Players | The model's input features |
-| The result the group achieves | The model's prediction |
-| A player's fair share | How much that feature pushed the prediction up or down |
-
-In this project **the players are the 14 sensors**. Each receives an
-**attribution**: a number of flight cycles saying how far that sensor moved the
-prediction away from the one the model makes when every sensor is replaced by
-its average training reading.
-
-The shares-add-up condition makes this checkable: the 14 attributions plus that
-average-reading prediction must equal the prediction itself, and
-`test_efficiency_holds_to_machine_precision` checks that they do to within
-0.0001 cycles. Numbers that failed it could not be Shapley values, however
-plausible their ranking looked.
-
----
-
-## Exact, not sampled
-
-With 14 sensors there are 14 factorial (14 × 13 × … × 1), or
-87 178 291 200, orders to average over. That is not a computation anyone runs.
-
-One way out is to sample: average over a random selection of orders, which
-gives an estimate rather than the exact value.
-
-This project does not need to. What a sensor adds depends only on which sensors
-are already **present**, not on the order they arrived in, and since each
-sensor is either in or out, there are only $2^{14} = 16\,384$ distinct groups
-that can be drawn from 14 sensors, counting the empty group and the full one.
-Every one can be evaluated. The formula weights each group by how many orders
-have exactly that group present when the sensor joins. In the three-player
-figure, B comes first in two of the six orders, after A alone in one, after C
-alone in one, and after both in two, so B's value is (2 × what B adds on its
-own + 1 × what it adds to A + 1 × what it adds to C + 2 × what it adds to A and
-C) ÷ 6. Counting orders this way for 14 sensors is where the factorials in the
-paper's Equation 15 come from, and the result is the exact Shapley value, with
-no sampling error at all.
-
-The cost is 16 384 runs of the network per prediction explained. Each extra
-sensor doubles that, to 1 048 576 runs at 20 sensors, and the code refuses more
-than 20 rather than silently switching to sampling.
-
----
-
-## What "removing a sensor" has to mean
-
-The Shapley value needs to know what the model predicts from a *group* of
-sensors — say, 13 of the 14. But the network takes exactly 14 inputs. It cannot
-be handed 13. Something has to occupy the fourteenth slot.
-
-The paper's Equation 15 requires this quantity and never says what it puts
-there. **This project replaces an absent sensor with its average reading across
-the training data**, so the model is shown "this sensor is at its typical value"
-(assumption A-20).
-
-It is not the only defensible option; substituting zero is another common
-choice, and the two have been compared by explaining the same predictions with
-each.
-
-Under the project's **current** input scaling, which subtracts each sensor's
-training mean so that its typical reading becomes zero, "substitute zero" and
-"substitute the mean" are very nearly the same instruction: on one network
-trained on all 100 training engines, the sensor rankings they produce agree with
-a rank correlation of 0.965, where 1 would mean the same order. Under the
-**previous** min-max scaling, which put each sensor's smallest reading at zero
-instead, the two rankings were unrelated, at −0.16.
-
-So how much the stand-in matters depends on the scaling. The mean is kept
-because it stands for a typical reading under any scaling, where zero does so
-only under some, and because it is computed from the training engines alone, so
-nothing from the test engines enters it. An attribution is only as meaningful
-as the value it is measured against.
-
----
-
-## Dynamic: the same calculation at every cycle
-
-A single explanation tells you which sensors drove one prediction. **Dynamic
-SHAP** repeats the calculation cycle after cycle along one engine's life,
-producing a trace of how the attributions change as the engine wears.
-
-That shows when in an engine's life the model relies on each sensor: one may
-dominate only in the last twenty cycles, another throughout. It describes the
-model, not the engine: a sensor the model leans on near failure is not thereby
-shown to be where the failure is.
-
-The playground's Explain tab draws these attributions for a stored run in the
-layouts the paper uses, and sets one engine's beside the paper's own (its
-Fig. 10). It also offers a third method that is not in the paper, described in
-the last section of this page.
-
----
-
-## What SHAP says about the two-value sensor
-
-`P15` takes only two distinct values across the whole training set, yet the
-paper keeps it in the graph. On the network behind the 0.965 above, exact
-Shapley values over every prediction along the lives of three of its training
-engines rank it last of the fourteen sensors on each engine, and the paper's
-Fig. 9 also puts it last. Its attribution is not always near zero, though. On engine 5, whose
-reading switches between the two values 34 times, one prediction gives it an
-attribution 6.8 cycles in size; on engine 25, whose reading never switches, none
-is larger than 1.7 (finding F-05).
-
-Because attributions can vary this much from one prediction to the next, a
-claim about them has to be computed over every prediction. The first version of
-this result used 14 of engine 5's 240 predictions, and got both the size of the
-effect and its cause wrong.
-
----
-
-## Walks: the routes a prediction took through the graph
-
-Shapley values say *which sensors'* readings mattered. They cannot say *how*
-the readings reached the prediction: whether a sensor mattered at its own place
-in the graph, or because the graph layers mixed its reading into its neighbours
-and it was used there. The paper says its graph matters, so that second
-question matters too.
-
-**What a graph layer does.** Each of the network's three graph layers gives
-every sensor a new number made from its neighbours' numbers: a weighted average
-over the sensors it is joined to, itself included, multiplied by a learned
-weight, with anything negative set to zero. After three layers, a sensor's
-number carries readings from up to three steps away.
-
-**What a walk is.** The route one piece of a reading takes, one sensor per
-layer. `T50 → T30 → T30 → Ps30` is T50's reading, carried into T30 by the first
-layer, kept at T30 by the second, and carried into Ps30 by the third.
-
-**Why a prediction splits into walks.** Just before the network turns its output
-into cycles of remaining life, that output is one number, the **score**. For
-one window, every step between the readings and the score is a multiplication,
-an addition, or a switch that is either on or off. Multiplied out, the score
-becomes a sum of pieces, each travelling one walk, plus a part that belongs to
-no sensor, which the network's last layers add. This split is a method called
-GNN-LRP (Schnake et al., 2022), used here with its simplest setting (assumption
-A-29).
-
-A small real case: test engine 5's last readings of T24, T30 and T50 are
-−0.3734, 0.1146 and 0.8176 (each counted in standard deviations from its
-training average). In a toy network with one graph layer, the walk T50 → T30
-carries 0.8176 × 1/3 = 0.2725 of the score: T50's reading, times T30's weight
-for T50 in the graph, times what one unit arriving at T30 is worth. Adding the
-five walks the graph allows and the network's constant of 0.5 gives exactly the
-score, 0.2202 (the code's worked example).
-
-**What it does not show.**
-
-- The shares are parts of the score, **not cycles**: the last step bends the
-  score into cycles, so its parts cannot be turned into cycles that still add
-  up. Their ranking may be set beside a Shapley ranking; their sizes may not.
-- What flowed along a connection is **not what removing it would do**. On the
-  default network's five stored seeds, the order in which the two rank the
-  connections is unrelated (assumption A-30).
-- It describes one trained network, not the engine, and it cannot say whether
-  the paper's graph is better than another; only networks trained on other
-  graphs can (assumption A-27).
-- Three groups of sensors are joined to exactly the same neighbours in the
-  paper's graph, so the network cannot tell them apart; where a walk ends among
-  them is set by the network's random starting weights, and the playground adds
-  such walks together (finding F-18).
+A contribution can be positive or negative, and contributions can cancel.
+A large contribution describes this model's calculation; it does not prove
+that the corresponding engine component is damaged. To see where that
+calculation starts, [follow one real example](08_worked_examples.md).
 

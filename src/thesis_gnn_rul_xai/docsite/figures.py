@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from ..data.labeling import piecewise_rul_curve
-from ..data.sensors import PAPER_SENSOR_SYMBOLS, symbol_to_column
+from ..data.sensors import PAPER_SENSOR_SYMBOLS, SENSORS, symbol_to_column
 from ..graph.adjacency import (
     adjacency_report,
     build_physics_adjacency,
@@ -1342,10 +1342,40 @@ def draw_lstm_cell() -> str:
     return out + "</svg>"
 
 
+def draw_sensor_selection() -> str:
+    """Move the real selected column names into a second schematic table."""
+    width, step, left = 940, 42, 26
+    out = (_open(width, 360).replace('class="figure-svg"', 'class="figure-svg sensor-selection"', 1)
+           + '<title>Selecting sensor columns</title><desc>Twenty-one raw sensor columns above; '
+           'the fourteen model input columns appear below when selection is played. '
+           'Cells are empty schematic rows, not generated readings.</desc>'
+           + _text(left, 25, "Raw sensor table: all 21 sensor columns", anchor="start", size=15)
+           + _text(left, 237, "Model input table: selected columns, same row order", anchor="start", size=15))
+    kept = set(PAPER_SENSOR_SYMBOLS)
+    for index, sensor in enumerate(SENSORS):
+        x = left + index * step
+        colour = 'var(--fig-accent)' if sensor.symbol in kept else 'var(--fig-axis)'
+        out += f'<g class="select-source {"is-kept" if sensor.symbol in kept else "is-excluded"}">'
+        out += f'<rect x="{x}" y="44" width="{step - 2}" height="124" rx="3" fill="{colour}" fill-opacity=".08" stroke="{colour}"/>'
+        out += f'<text transform="translate({x + 24},106) rotate(-90)" fill="{colour}" font-size="11">{sensor.symbol}</text>'
+        for y in (116, 133, 150):
+            out += f'<path d="M{x} {y}h{step - 2}" stroke="{colour}" stroke-opacity=".3"/>'
+        out += '</g>'
+        if sensor.symbol not in kept:
+            continue
+        target = left + PAPER_SENSOR_SYMBOLS.index(sensor.symbol) * 63
+        out += f'<g class="select-picked" style="--from-x:{x}px;--to-x:{target}px">'
+        out += '<rect width="40" height="82" rx="3" fill="var(--fig-bg)" stroke="var(--fig-accent)"/>'
+        out += f'<text transform="translate(24,60) rotate(-90)" fill="var(--fig-accent)" font-size="11">{sensor.symbol}</text>'
+        out += '<path d="M0 65h40M0 74h40" stroke="var(--fig-accent)" stroke-opacity=".3"/></g>'
+    return out + _text(left, 354, "Selection changes which columns enter the model, not their values. Cells are schematic.", anchor="start", size=12) + '</svg>'
+
+
 FIGURES: tuple[Figure, ...] = (
     Figure("engine", draw_engine),
     Figure("rul-curve", draw_rul_curve, needs_data=True),
     Figure("worked-example", draw_worked_example, needs_data=True, needs_torch=True),
+    Figure("sensor-selection", draw_sensor_selection),
     Figure("correlation", draw_correlation, needs_data=True),
     Figure("smoothing", draw_smoothing, needs_data=True),
     Figure("windowing", draw_windowing, needs_data=True),

@@ -517,12 +517,12 @@ _READ_MORE: dict[str, tuple[str, str]] = {
     "seeds": ("docs/learn/06_reading_results.md", "One seed is not a result"),
     "fixed_split": ("docs/learn/06_reading_results.md", "One seed is not a result"),
     "device": (_TRAINING, "What one run does"),
-    "explain=shap": ("docs/learn/03_explainability.md", "SHAP: the same idea, applied to a model"),
-    "explain=occlusion": ("docs/learn/03_explainability.md", 'What "removing a sensor" has to mean'),
-    "explain=walks": ("docs/learn/03_explainability.md", "Walks: the routes a prediction took through the graph"),
-    "explain=engine": ("docs/learn/03_explainability.md", "Dynamic: the same calculation at every cycle"),
+    "explain=shap": ("docs/learn/10_dynamic_shap.md", "SHAP: the same idea, applied to a model"),
+    "explain=occlusion": ("docs/learn/10_dynamic_shap.md", 'What "removing a sensor" has to mean'),
+    "explain=walks": ("docs/learn/11_gnn_lrp.md", "Walks: the routes a prediction took through the graph"),
+    "explain=engine": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
     "explain=test": ("docs/learn/03_explainability.md", "Why a number is not enough"),
-    "explain=every": ("docs/learn/03_explainability.md", "Dynamic: the same calculation at every cycle"),
+    "explain=every": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
     "file": ("docs/learn/01_the_problem.md", "NASA's benchmark data: C-MAPSS"),
     "life": ("docs/learn/01_the_problem.md", "What the model is asked to predict"),
     "select": ("docs/learn/01_the_problem.md", "Only 14 of the 21 sensors"),
@@ -1181,15 +1181,19 @@ def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
                                 "after": "T24, T30, T50, P15, P30, Nf, Nc, Ps30, phi, NRf, BPR, htBleed, W31, W32"}
     return [
         _edge("Read all three files during preparation", icon="data") | {
-            "summary": "Two separate paths. Follow the arrows down to see how each gets its labels."},
+            "summary": "Sensor readings become model inputs. Answers are prepared separately and never become sensor readings."},
         # Keep the steps flat for consumers that inspect a flowchart, while
         # retaining the two paths for the browser renderer to show as lanes.
-        {"kind": "group", "steps": [training, train_labels, test, answers, test_labels],
+        {"kind": "group", "steps": [training, train_labels, test],
          "lanes": [
              {"name": "Training path", "steps": [training, train_labels]},
-             {"name": "Test path", "steps": [test, answers, test_labels]}]},
+             {"name": "Test sensor-input path", "steps": [test, _edge("Recorded readings only", raw[1]["shape"])]}]},
         selection,
-        _edge("Both labelled tables go to preprocessing", icon="preprocessing"),
+        _edge("Selected readings go to preprocessing and the model; labels stay separate", icon="preprocessing"),
+        {"kind": "evaluation", "detached": True, "name": "Test answers: separate evaluation path",
+         "steps": [answers, test_labels,
+                   _edge("Compare predictions with these targets after training", icon="output")],
+         "summary": "Prepared alongside the readings, but used to check predictions, not to make them."},
     ]
 
 

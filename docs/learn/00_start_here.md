@@ -25,6 +25,18 @@ network can learn from; the network is built; it is trained on those examples;
 it is scored on engines it never saw during training; and each of its
 predictions is explained by how far every sensor moved it.
 
+Follow the pages in the order the information moves:
+
+1. [Data](01_the_problem.md): what the files, rows and sensor columns mean.
+2. [Preprocessing](04_the_pipeline.md): turn readings into windows, with separate answers.
+3. [Temporal algorithm](09_temporal.md): choose what each sensor keeps from its window.
+4. [GNN](02_graphs.md): combine information from connected sensors to make a prediction.
+5. [XAI](03_explainability.md): explain that prediction using
+   [Dynamic SHAP](10_dynamic_shap.md) or [GNN-LRP](11_gnn_lrp.md).
+
+[Follow one real example](08_worked_examples.md) traces the same window through
+these calculations with values loaded from the dataset and a saved network.
+
 ---
 
 ## Paper, choice or measurement

@@ -18,7 +18,7 @@ window of 30 cycles  ->  temporal stage  ->  graph layers  ->  fully connected
 
 By default the temporal stage is `LastCycle`: keep the most recent reading,
 drop the other 29, learn nothing (assumption A-07). The paper's own stage is
-built too, and the last section of this page describes it. The layers below
+built too; [Temporal algorithm](09_temporal.md) explains that choice. The layers below
 are the part Table 4 does print, and they are the same either way.
 
 ---
@@ -131,38 +131,6 @@ with five seeds, every run stopped by epoch 75, so none reached the drop to
 
 ## The stage left out by default
 
-The per-sensor stage of the paper's Section 2.2 is a **long short-term memory**
-network, or **LSTM**: a network built for sequences, which reads a window one
-cycle at a time and keeps an internal memory of what it has already seen.
-
-{{figure:lstm-cell}}
-
-Three **gates** — each made of numbers between 0 and 1, produced by passing a
-weighted sum of the new reading and the last output through a sigmoid — decide
-how much of the old memory to keep, how much of a freshly proposed value to add
-to it, and how much of the result to pass on as this cycle's output. The memory
-line along the top is what lets the cell carry a slow trend across thirty
-cycles without it being overwritten at every step.
-
-The stage is built (`--temporal lstm`) but is not the default (assumption
-A-11), because the paper never states its size, its depth, or how its memory
-becomes the single number Table 4 requires. The version here fills those in
-(assumption A-26), so a result from it says what those choices do, not what the
-paper's stage did.
-
-The paper's Table 11 scores its method with one part removed at a time. On
-FD001, removing the LSTM raises its error from 11.78 to 14.93 cycles, a
-difference of 3.15 that the table prints.
-
-What the stage is worth here depends on how the model is trained (finding
-F-16). With this project's procedure — a fifth of the engines held back, the
-weights that scored best on them kept — it lowers the FD001 test error by 3.19
-cycles, close to that 3.15. With the procedure the paper describes — nothing
-held back and a fixed 200 epochs, so the weights from the last one — it lowers
-it by 0.77, which five seeds cannot tell apart from nothing.
-
-The procedure matters far more to the LSTM version. Its error on the held-back
-engines was lowest between epochs 9 and 21, and its weights after 200 epochs
-score much worse on the test engines, so holding engines back and keeping the
-best weights is worth 2.75 cycles to it, against 0.32 to `LastCycle`. The paper
-never mentions keeping the best weights.
+The [Temporal algorithm page](09_temporal.md#the-stage-left-out-by-default)
+now explains the memory-based stage, its settings and the distinction between
+this project's default and its recurrent alternative.

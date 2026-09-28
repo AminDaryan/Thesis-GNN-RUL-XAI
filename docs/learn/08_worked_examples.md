@@ -92,7 +92,7 @@ average and fitted rate of change. Full window keeps all the values.
 LSTM and GRU read them in order and update internal lists of computed numbers;
 their learned weights are different from the example's Last cycle network.
 Do not interpret that saved prediction as a prediction of those alternatives.
-The [temporal explanation](05_the_model.md#the-stage-left-out-by-default)
+The [temporal explanation](09_temporal.md#the-stage-left-out-by-default)
 shows the memory operations and the distinction between stored memory and
 the output passed to the graph.
 
@@ -109,6 +109,6 @@ these calculations, not what a row means.
 Prediction takes only the sensor input and a trained model. Evaluation then
 compares predictions with the separate answers. Explanation starts with an
 already trained model and asks how its input contributed to a prediction.
-Read the [SHAP worked addition](03_explainability.md) for the separate
+Read the [SHAP worked addition](10_dynamic_shap.md) for the separate
 input → replacement → prediction-difference calculation. An explanation
 does not establish that a sensor caused physical damage.

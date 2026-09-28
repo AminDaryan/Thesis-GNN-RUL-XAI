@@ -41,11 +41,15 @@ _PRIMARY: _Entry = ("explore/playground", "Playground", "explore", 0)
 
 _LEARN: tuple[_Entry, ...] = (
     ("docs/learn/00_start_here.md", "Start here", "learn", 0),
-    ("docs/learn/01_the_problem.md", "How long has this engine got?", "learn", 0),
-    ("docs/learn/02_graphs.md", "What a graph network computes", "learn", 0),
-    ("docs/learn/03_explainability.md", "Which sensor drove this prediction?", "learn", 0),
-    ("docs/learn/04_the_pipeline.md", "From text files to training examples", "learn", 0),
-    ("docs/learn/05_the_model.md", "The model, layer by layer", "learn", 0),
+    ("docs/learn/01_the_problem.md", "Data", "learn", 0),
+    ("docs/learn/04_the_pipeline.md", "Preprocessing", "learn", 0),
+    ("docs/learn/09_temporal.md", "Temporal algorithm", "learn", 0),
+    ("docs/learn/02_graphs.md", "GNN", "learn", 0),
+    ("docs/learn/05_the_model.md", "Architecture and training", "learn", 1),
+    ("docs/learn/03_explainability.md", "XAI", "learn", 0),
+    ("docs/learn/10_dynamic_shap.md", "Dynamic SHAP", "learn", 1),
+    ("docs/learn/11_gnn_lrp.md", "GNN-LRP", "learn", 1),
+    ("docs/learn/08_worked_examples.md", "Follow one real example", "learn", 0),
     ("docs/learn/06_reading_results.md", "Reading a result", "learn", 0),
     ("docs/learn/07_evidence.md", "Paper, choice or measurement", "learn", 0),
 )

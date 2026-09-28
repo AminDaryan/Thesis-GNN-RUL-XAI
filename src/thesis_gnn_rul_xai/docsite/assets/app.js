@@ -473,7 +473,29 @@
       }
       fetch("/api/figure?name=" + encodeURIComponent(holder.dataset.figure))
         .then(function (r) { return r.text(); })
-        .then(function (svg) { holder.innerHTML = svg; })
+        .then(function (svg) {
+          holder.innerHTML = svg;
+          if (holder.dataset.figure === "sensor-selection") {
+            var controls = el("div", { class: "selection-controls" });
+            var play = el("button", { type: "button", class: "button", text: "Show column selection" });
+            var reset = el("button", { type: "button", class: "button button--quiet", text: "Start again" });
+            var status = el("p", { role: "status", text: "The upper table contains all sensor columns." });
+            controls.appendChild(play); controls.appendChild(reset);
+            holder.insertBefore(controls, holder.firstChild); holder.appendChild(status);
+            play.onclick = function () {
+              holder.classList.remove("selection-complete", "selection-playing");
+              void holder.offsetWidth;
+              holder.classList.add(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "selection-complete" : "selection-playing");
+              status.textContent = "Fourteen columns are kept in the model's order; seven are not used. Rows and readings are unchanged.";
+              play.textContent = "Replay column selection";
+            };
+            reset.onclick = function () {
+              holder.classList.remove("selection-complete", "selection-playing");
+              status.textContent = "The upper table contains all sensor columns.";
+              play.textContent = "Show column selection";
+            };
+          }
+        })
         .catch(function (error) {
           holder.innerHTML = '<div class="figure-notice figure-notice--error">' +
             "<strong>This figure could not be loaded</strong><p>" +
@@ -533,6 +555,16 @@
     return { view: view, argument: rest };
   }
 
+  var XAI_MOVED_SECTIONS = {
+    "dividing-credit-fairly": "10_dynamic_shap.md",
+    "shap-the-same-idea-applied-to-a-model": "10_dynamic_shap.md",
+    "exact-not-sampled": "10_dynamic_shap.md",
+    "what-removing-a-sensor-has-to-mean": "10_dynamic_shap.md",
+    "dynamic-the-same-calculation-at-every-cycle": "10_dynamic_shap.md",
+    "what-shap-says-about-the-two-value-sensor": "10_dynamic_shap.md",
+    "walks-the-routes-a-prediction-took-through-the-graph": "11_gnn_lrp.md"
+  };
+
   function navigate() {
     var route = currentRoute();
     var argument = route.argument;
@@ -541,6 +573,12 @@
     if (hashIndex >= 0) {
       fragment = argument.slice(hashIndex + 1);
       argument = argument.slice(0, hashIndex);
+    }
+
+    if (route.view === "doc" && argument === "docs/learn/03_explainability.md" &&
+        XAI_MOVED_SECTIONS[fragment]) {
+      window.location.replace("#/doc/docs/learn/" + XAI_MOVED_SECTIONS[fragment] + "#" + fragment);
+      return;
     }
 
     // The site opens on the playground, and a removed page's address opens the
