@@ -51,6 +51,7 @@ identifier below.
 | A-28 | Each sensor's last reading, average and change as node features | Never considered; Table 4 prints one number per sensor, from the LSTM stage | A stage outside the paper, not the default; **2.910 cycles below the last cycle** (p = 0.00025, engine interval [−5.19, −0.63]), indistinguishable from the recurrent stage on test error |
 | A-29 | Explaining the sensor graph itself | Explains sensor nodes only (Section 2.4), yet says its rankings set "edge weights" and validate its graph (Section 4.4) | Walk shares from GNN-LRP, of the score before the sigmoid, gamma 0 by default and always at the first graph layer; on the default network about half the score is the dense layers' constant (51 ± 4 %), and how much stays within a sensor's group is mostly set by the graph |
 | A-30 | What removing one connection means | Removes the whole graph once and retrains; never one connection | Delete it from the raw graph both ways, rescale, rerun without retraining; on the default network its effect is unrelated to what flowed along it (rank correlation −0.16 ± 0.20, p = 0.158) |
+| A-31 | Placing explanation nodes on an engine | Table 2 names variables and component regions; Fig. 3 places a separate graph beside a schematic engine | An original schematic cutaway with section anchors, distinct markers for calculated and system quantities, and the stored model's graph overlaid; no claim of exact probe coordinates |
 
 ---
 
@@ -3414,6 +3415,87 @@ A-30). `explain/walks.py` finds the groups for any graph with
 **What it does not show.** That the graph is wrong, or that these sensors carry
 the same information in the engine: it is a property of which sensors Table 3
 joins, not of the readings.
+
+---
+
+## A-31 — The engine overlay locates variables by section, not by probe coordinates
+
+**The gap.** Table 2 of Wen et al. names `T30` as "Total temperature at HPC
+outlet" and `phi` as "Ratio of fuel flow to Ps30". Section 2.3.1 distinguishes
+measurements at the same engine station from speed correction, combustion and
+cooling relationships. Figure 3 shows an engine schematic and a separate graph.
+Neither supplies installation coordinates, dimensions or routing for physical
+probes. Checked against page 5 on 2026-09-27.
+
+**What we chose.** The playground adds an original SVG cutaway: a browser drawing
+of the fan, bypass passage, compressors, combustor, turbines and shafts. Sensor
+nodes sit on callouts around it. Dashed leaders anchor them to a component or
+system; solid graph lines retain the model's connections. Circles denote
+measurement regions; rounded boxes denote shaft, calculated or system quantities.
+The geometry, blade counts, callout offsets and cooling branches are illustrative,
+not an engineering drawing of a named production engine. Node positions do not
+enter any model calculation.
+
+**Sources and existing implementations checked.**
+
+- Saxena et al. (2008), [NASA report 20090029214](https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf),
+  Figure 1 and Figure 2 supply the component and flow-path arrangement; Table 2
+  supplies the dataset variable definitions. These are the placement authority.
+- NASA's [Engine Parameter Interactive, EngineSimU](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/enginesimu/)
+  already implements selecting engine components on a schematic. NASA publishes
+  its source in [nasa/BGA](https://github.com/nasa/BGA). It is an educational engine
+  simulator, not a C-MAPSS sensor-coordinate map or a GNN-LRP implementation.
+  Its documented interaction informed this view; no source code, artwork or
+  engine-performance equations were copied into the repository.
+- Frederick et al. (2007), [NASA/TM-2007-215026](https://ntrs.nasa.gov/api/citations/20070034949/downloads/20070034949.pdf),
+  Tables 1.2 and 1.3 distinguish model outputs from other calculated variables.
+  Table 1.3 labels both W31 and W32 as HPT coolant bleed. The dataset paper's
+  Table 2 and Wen et al.'s Table 2 instead identify W32 with the low-pressure
+  turbine. The overlay follows those two dataset definitions; it does not infer
+  a physical measuring station from the earlier guide's conflicting label.
+
+The search found a relevant NASA implementation, but no verified existing
+C-MAPSS cutaway with a GNN-LRP overlay. That is a description of the search,
+not a claim that no such implementation exists.
+
+| Variables | Anchor in this drawing | Limit of the evidence |
+|---|---|---|
+| T24 | Low-pressure compressor outlet | Region documented; position on the casing unknown |
+| T30, P30, Ps30 | High-pressure compressor outlet | Same region, separated callouts for readability |
+| T50 | Low-pressure turbine outlet | Region documented; exact probe position unknown |
+| P15 | Bypass duct | Passage documented; exact point unknown |
+| Nf, NRf | Fan shaft | Physical speed and its corrected quantity, not two located probes |
+| Nc | Core shaft | Shaft speed, not a specified measuring point |
+| phi | Fuel-system callout | A ratio involving fuel flow and Ps30, not a point sensor |
+| BPR | Bypass/core split | A ratio of flow rates, not a point sensor |
+| htBleed | Schematic bleed system | The definition supplies an energy quantity, not a unique station |
+| W31, W32 | Cooling branches associated with the high- and low-pressure turbines | Neither exact extraction nor measuring points are established |
+
+**Why.** A region anchor lets a reader connect a variable name to the part of
+the engine it describes. Separate callout shapes avoid suggesting that every
+input is a physical probe. Graph layout remains available because placing nodes
+by engine section can make their connections overlap. A selected sensor limits
+the emphasis to its neighbours. These are design arguments; improved reader
+understanding has not been measured.
+
+**How much it matters.** The change only reads stored explanations. GNN-LRP
+edges come from the stored connection columns, including connections with a
+zero share. Other methods read the selected seed's saved adjacency matrix;
+if that cannot be read, connections are omitted with an explanation. A layout
+switch must leave those edges and every displayed contribution unchanged.
+Marker strengths and line widths share fixed scales across the stored windows.
+The node values retain their method's units: cycles for Shapley and occlusion,
+shares of the score before conversion to cycles for graph walks.
+
+The saved largest walks combine sensors the graph cannot distinguish (finding
+F-18) and store averages over all explained windows, not a separate value for
+the selected window. The overlay highlights all compatible connections between
+successive groups and names the layer at each step. It does not choose one
+member of a group or assign the average share to a particular window. Repeated
+groups are shown in the layer sequence, including the possibility of remaining
+on one sensor. Connection widths still describe totals over all walks and
+layers, not the selected walk alone. None of these marks is a fault location,
+physical flow of relevance or causal claim about engine damage.
 
 ---
 

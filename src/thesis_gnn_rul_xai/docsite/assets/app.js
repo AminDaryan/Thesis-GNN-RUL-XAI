@@ -467,6 +467,10 @@
     Array.prototype.forEach.call(root.querySelectorAll("[data-figure]"), function (holder) {
       if (holder.dataset.filled) { return; }
       holder.dataset.filled = "1";
+      if (holder.dataset.figure === "engine" && window.ThesisEngineView) {
+        window.ThesisEngineView.mountGuide(holder);
+        return;
+      }
       fetch("/api/figure?name=" + encodeURIComponent(holder.dataset.figure))
         .then(function (r) { return r.text(); })
         .then(function (svg) { holder.innerHTML = svg; })

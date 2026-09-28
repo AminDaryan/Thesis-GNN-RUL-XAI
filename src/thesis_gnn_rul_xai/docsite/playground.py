@@ -1014,9 +1014,16 @@ def _file_counts(subset: str) -> dict[str, Any]:
     sample_keys = [column["key"] for column in sample_columns]
     first_unit = int(train[UNIT_COL].iloc[0])
     sample = train.loc[train[UNIT_COL] == first_unit, sample_keys].head(10)
+    answers = read_rul_file(folder / f"RUL_{subset}.txt")
+    first_test = int(test[UNIT_COL].iloc[0])
     return {"train_rows": len(train), "train_engines": int(train[UNIT_COL].nunique()),
             "test_rows": len(test), "test_engines": int(test[UNIT_COL].nunique()),
-            "labels": len(read_rul_file(folder / f"RUL_{subset}.txt")),
+            "labels": len(answers),
+            "label_example": {"train_unit": first_unit,
+                              "train_last": int(train.loc[train[UNIT_COL] == first_unit, CYCLE_COL].max()),
+                              "test_unit": first_test,
+                              "test_last": int(test.loc[test[UNIT_COL] == first_test, CYCLE_COL].max()),
+                              "test_answer": float(answers.iloc[0])},
             "train_history": {"shortest": int(train_lengths.min()),
                               "median": float(train_lengths.median()),
                               "longest": int(train_lengths.max())},
@@ -1112,35 +1119,42 @@ def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     tag, _ = _decided("subset", subset)
     training = _step(
         "Training engines",
-        "Each history ends at failure. The final recorded cycle therefore lets us calculate the remaining "
-        "life at every earlier cycle. These engines supply learning examples and the engines held back for validation.",
+        "This text file contains one row per simulated engine per operating cycle: an engine number, "
+        "cycle number, three operating settings and 21 sensor readings. An engine's history means all its "
+        "rows in cycle order. The training file follows each engine to the dataset's failure endpoint, "
+        "so its final cycle is known. The next step uses that endpoint to calculate the life left at "
+        "each earlier row. Some whole engines may be reserved for checking training progress.",
         parts=[(f"train_{subset}.txt", None)], shape=raw[0]["shape"], picture="file", source=tag,
-        summary="Histories ending at failure. Used for learning and validation.", outputs=[raw[0]])
+        outputs=[raw[0]])
     test = _step(
         "Test engines",
-        "These are different engines. Their histories stop before failure. After training, the model receives "
-        "each engine's last complete sensor window and predicts how many cycles remain.",
+        "This file has the same columns as the training file but contains different engines. For each "
+        "engine, recording stops while it still has some life left; the last row is not its failure endpoint. "
+        "After training, the model receives the final complete sequence of sensor readings (a window) "
+        "from each engine and predicts its remaining cycles. Its engine numbers identify engines within "
+        "this test file, not the engines with the same numbers in the training file.",
         parts=[(f"test_{subset}.txt", None)], shape=raw[1]["shape"], picture="file", source=tag,
-        summary="Histories stopping before failure. Used for final predictions.", outputs=[raw[1]])
+        outputs=[raw[1]])
     answers = _step(
         "Test answers",
         "One remaining-life answer for each test engine at its last recorded cycle. The answer on line 1 "
         "belongs to test engine 1. These values are attached as labels during preparation and used for scoring "
         "after training; they never become sensor inputs.",
         parts=[(f"RUL_{subset}.txt", None)], picture="file",
-        summary="Correct remaining life at each test engine's stopping point. Used to score predictions.",
         outputs=[{"label": "Answers", "shape": f"({_count(facts['labels']) if facts else 'engines'},)",
                   "axes": "test-engine answers"}])
     train_labels = _step(
         "Calculate training labels",
-        "For each row, subtract its cycle from that engine's final cycle. A label is the correct remaining "
-        "life paired with that row. Add it as a new column.", picture="life",
-        summary="Final cycle minus this row's cycle = cycles left.", outputs=[labelled[0]])
+        "For each row, find the last cycle recorded for that same training engine and subtract the row's "
+        "cycle. This counts how many cycles remain until the known endpoint. Store the result in a new "
+        "column called the label: the answer used to teach or check a prediction. These labels are not "
+        "sensor inputs. They are still uncapped here; preprocessing applies the selected ceiling.",
+        picture="life", outputs=[labelled[0]])
     test_labels = _step(
         "Attach test labels",
         "For each test row, take the engine's last recorded cycle minus this row's cycle, then add that "
         "engine's remaining life from the answer file. The labels are carried separately from model inputs.",
-        picture="life", summary="Match answers by engine. Add remaining life as a new column.", outputs=[labelled[1]])
+        picture="life", outputs=[labelled[1]])
     selection = _step(
         "Select 14 sensor columns for model inputs",
         "Only the selected sensor columns become inputs when the pipeline makes windows. Engine number, "
@@ -1148,6 +1162,23 @@ def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         "which columns to use; it does not shrink this table.",
         picture="select", source=_cite("Table 3"), outputs=labelled,
         summary="Both tables keep their 27 columns. Only the selected sensor readings enter the model.")
+    if facts:
+        ex = facts["label_example"]
+        for step, kind, engine in ((training, "train", ex["train_unit"]), (test, "test", ex["test_unit"])):
+            step["example"] = {"kind": "change", "before": f"{kind}_{subset}.txt",
+                               "note": "Read whitespace-separated numbers into named columns; keep rows in engine/cycle order.",
+                               "after": f"Engine {engine}, cycle 1: engine + cycle + 3 settings + 21 sensor values (26 columns)."}
+        answers["example"] = {"kind": "change", "before": f"Line 1 of RUL_{subset}.txt: {ex['test_answer']:g}",
+                              "note": "Match line number 1 to test engine 1.",
+                              "after": f"{ex['test_answer']:g} cycles left at recorded cycle {ex['test_last']}."}
+        train_labels["example"] = {"kind": "change", "before": f"Engine {ex['train_unit']}, cycle 1; final cycle {ex['train_last']}",
+                                   "note": f"{ex['train_last']} - 1", "after": f"{ex['train_last'] - 1} raw cycles left"}
+        test_labels["example"] = {"kind": "change", "before": f"Test engine {ex['test_unit']}, cycle 1; stopping cycle {ex['test_last']}; answer {ex['test_answer']:g}",
+                                  "note": f"{ex['test_last']} - 1 + {ex['test_answer']:g}",
+                                  "after": f"{ex['test_last'] - 1 + ex['test_answer']:g} raw cycles left, kept out of the sensor input"}
+        selection["example"] = {"kind": "change", "before": "All 21 named sensor columns",
+                                "note": "Choose the model's sensor-column list without changing the readings.",
+                                "after": "T24, T30, T50, P15, P30, Nf, Nc, Ps30, phi, NRf, BPR, htBleed, W31, W32"}
     return [
         _edge("Read all three files during preparation", icon="data") | {
             "summary": "Two separate paths. Follow the arrows down to see how each gets its labels."},
@@ -1392,6 +1423,9 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
         window_step = next(step for step in steps if step.get("picture") == "window")
         window_step["example"] = {"kind": "windows", "engine": run["window_example"]["engine"],
                                    "windows": run["window_example"]["windows"]}
+        for step in steps:
+            if step.get("example", {}).get("kind") == "change":
+                step["example"]["context"] = f"train_{settings['subset']}.txt · engine {row['engine']} · cycle {row['cycle']}"
     else:
         opening["handoff"] = "Rows · 27 columns"
 
@@ -1423,10 +1457,17 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         cells = sum(p.numel() for p in stage.cells.parameters())
         name = "LSTM" if kind == "lstm" else "GRU"
         rows = f"B x {nodes}" if shared else "B"
-        inside = ("learned gates, values between 0 and 1, control what its memory keeps, adds and passes on"
-                  if kind == "lstm" else
-                  "learned gates, values between 0 and 1, control how old information and a new candidate "
-                  "are combined")
+        inside = (
+            f"For each window, this LSTM starts with two lists of {_plural(hidden, 'number')}, all zero. "
+            "The cell state is the list it updates by keeping part of the previous values and adding new "
+            "values. The hidden state is an output calculated from that updated list. The current reading "
+            "and previous hidden state determine the new values and the multipliers called gates. "
+            "Each gate is between 0 and 1: 0 keeps none of a value, 1 keeps all of it. Both lists pass to "
+            "the next cycle. " if kind == "lstm" else
+            f"For each window, this GRU starts with a list of {_plural(hidden, 'number')}, all zero. "
+            "This list is called its hidden state. It combines each new reading with that list to calculate "
+            "an updated list. Multipliers between 0 and 1, called gates, control how much of the old and "
+            "new information is kept. The updated list passes to the next cycle. ")
         steps.append(_step(
             "Split by sensor",
             (f"Each window becomes {nodes} separate sensor histories, one reading per cycle. The same learned "
@@ -1440,22 +1481,25 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
             picture="split"))
         steps.append(_step(
             f"One {name} for all sensors" if shared else f"One {name} per sensor",
-            f"Reads each sensor's history oldest first. At each cycle, {inside}. "
-            + f"Its hidden state is a summary of {_plural(hidden, 'number')} passed to the next cycle. "
-            + ("LSTM also carries a separate memory called the cell state. " if kind == "lstm" else
-               "GRU carries no separate cell state. ")
-            + "Every window starts with zero memory. "
+            f"Reads the {_plural(window, 'cycle')} in order, from oldest to newest. " + inside
+            + "The same weights calculate these updates at every cycle. Training adjusts those weights "
+            "using the final RUL prediction error, through the graph layers that follow. The lists reset "
+            "for each new window; the learned weights remain. "
             + (hidden_note or "The memory width is our choice (assumption A-26)."),
             parts=[(f"hidden {hidden}", "temporal_hidden"),
                    ("shared" if shared else f"{len(stage.cells)} networks", "shared_across_sensors")],
-            shape=f"({rows}, {window}, {hidden})" + ("" if shared else " each"), learned=cells,
+            shape=f"({rows}, {window}, {hidden})" if shared else f"{nodes} x (B, {window}, {hidden})", learned=cells,
             source=_decided("shared_across_sensors", True)[0] if shared else chosen, picture="recurrent"))
         steps[-1]["networks"] = _networks(stage, kind, window, shared)
         steps.append(_step(
             "Keep the last hidden state",
-            "Pass on only the summary after the most recent cycle. Earlier readings can influence it through "
-            "the repeated memory updates; their earlier summaries are not sent separately. "
-            + ("The separate cell-state memory is also not sent on." if kind == "lstm" else
+            f"Each sensor's network produces {_plural(hidden, 'number')} after each reading. "
+            f"After reading all {_plural(window, 'cycle')}, keep the last set of {_plural(hidden, 'number')} "
+            "and send it to the conversion below. This last set was calculated using the earlier sets, "
+            "so it can still contain information from earlier readings. During training, the prediction "
+            "error is traced back through those earlier calculations too. "
+            + ("The cell state has already helped calculate this last hidden state; it is not an additional "
+               "input to the conversion below." if kind == "lstm" else
                "This GRU option is an extension of the paper's architecture."),
             parts=[(f"{_plural(hidden, 'number')} per sensor", None)],
             shape=f"(B x {nodes}, {hidden})" if shared else f"(B, {nodes}, {hidden})",
@@ -2006,6 +2050,30 @@ def list_explanations(root: Path) -> list[dict[str, Any]]:
     return _clean(found)
 
 
+def _explanation_edges(run: Path, summary: Mapping[str, Any]) -> list[list[str]] | None:
+    """Read the chosen seed's actual graph, or report that it is unavailable."""
+    import pickle
+
+    import numpy as np
+
+    from ..data.sensors import PAPER_SENSOR_SYMBOLS
+
+    try:
+        import torch
+
+        seed = int(summary["seed"])
+        saved = torch.load(run / f"seed_{seed}" / "model.pt", map_location="cpu", weights_only=True)
+        matrix = saved["adjacency"].detach().cpu().numpy()
+        symbols = PAPER_SENSOR_SYMBOLS
+        if matrix.shape != (len(symbols), len(symbols)) or not np.isfinite(matrix).all():
+            return None
+        return [[a, b] for i, a in enumerate(symbols) for j, b in enumerate(symbols)
+                if i < j and (matrix[i, j] != 0 or matrix[j, i] != 0)]
+    except (ImportError, OSError, ValueError, TypeError, KeyError, RuntimeError, EOFError,
+            pickle.UnpicklingError):
+        return None
+
+
 def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
     """One stored explanation: its summary and every value it computed."""
     path = (_run_directory(root, run) / "explanations").resolve()
@@ -2015,11 +2083,14 @@ def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
         raise SettingsError(f"{name!r} is not the name of an explanation.")
     if not (folder / "summary.json").is_file():
         raise SettingsError(f"Run {run!r} has no explanation called {name!r}.")
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     return _clean({
-        "summary": json.loads((folder / "summary.json").read_text(encoding="utf-8")),
+        "summary": summary,
         "values": _read_csv(folder / "values.csv"),
         # Only a walk explanation writes this file; the others get an empty list.
         "top_walks": _read_csv(folder / "top_walks.csv"),
+        "graph_edges": (None if summary.get("method") == "walks"
+                        else _explanation_edges(path.parent, summary)),
     })
 
 

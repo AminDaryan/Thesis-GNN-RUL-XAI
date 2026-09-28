@@ -26,6 +26,7 @@ from ..graph.adjacency import (
     to_networkx,
 )
 from ..utils.paths import project_root, raw_data_dir
+from .worked_example import draw as draw_worked_example
 
 __all__ = [
     "FIGURES",
@@ -385,15 +386,15 @@ def draw_rul_curve() -> str:
     curve = piecewise_rul_curve(total, rul_max)
 
     left, top, width, height = 90.0, 60.0, 700.0, 300.0
-    to_x = lambda c: left + width * c / max(total - 1, 1)  # noqa: E731
-    to_y = lambda r: top + height * (1 - r / rul_max)  # noqa: E731
+    to_x = lambda c: left + width * (c - 1) / max(total - 1, 1)  # noqa: E731
+    to_y = lambda r: top + height * (1 - r / max(total - 1, rul_max))  # noqa: E731
 
-    points = " ".join(f"{to_x(i):.1f},{to_y(float(v)):.1f}" for i, v in enumerate(curve))
-    knee = int(np.argmax(curve < rul_max))
+    points = " ".join(f"{to_x(i):.1f},{to_y(float(v)):.1f}" for i, v in enumerate(curve, start=1))
+    knee = total - rul_max
 
     naive = (
-        f'<polyline points="{to_x(0):.1f},{to_y(min(total, rul_max)):.1f} '
-        f'{to_x(total - 1):.1f},{to_y(0):.1f}" fill="none" '
+        f'<polyline data-curve="raw" points="{to_x(1):.1f},{to_y(total - 1):.1f} '
+        f'{to_x(total):.1f},{to_y(0):.1f}" fill="none" '
         f'stroke="var(--fig-muted, #9aa3b0)" stroke-width="1.6" '
         f'stroke-dasharray="6 4" />'
     )
@@ -402,34 +403,35 @@ def draw_rul_curve() -> str:
         _mono(left - 10, to_y(value) + 4, str(value), size=10, anchor="end", opacity=0.6)
         + f'<line x1="{left - 5}" y1="{to_y(value):.1f}" x2="{left}" '
         f'y2="{to_y(value):.1f}" stroke="var(--fig-axis, #8a93a0)" />'
-        for value in (0, 25, 50, 75, 100, 125)
+        for value in (0, 50, 100, 125, 150, total - 1)
     ) + "".join(
         _mono(to_x(value), top + height + 20, str(value), size=10, opacity=0.6)
-        for value in (0, 50, 100, 150, total - 1)
-        if value < total
+        for value in (1, 50, 100, 150, total)
+        if value <= total
     )
 
     return (
         _open(_WIDTH, top + height + 60)
-        + _axes(left, top, width, height, _cycle_axis(1), "label (cycles left)")
+        + _text(_WIDTH / 2, 24, f"train_FD001.txt · engine 1 · recorded cycles 1-{total}", size=13)
+        + _axes(left, top, width, height, _cycle_axis(1), "remaining life (cycles)")
         + ticks
         + naive
-        + f'<line x1="{to_x(knee):.1f}" y1="{top}" x2="{to_x(knee):.1f}" '
+        + f'<line x1="{to_x(knee):.1f}" y1="{to_y(rul_max)}" x2="{to_x(knee):.1f}" '
         f'y2="{top + height}" stroke="var(--fig-warn, #c2521f)" '
         f'stroke-width="1.2" stroke-dasharray="3 3" opacity="0.7" />'
-        + f'<polyline points="{points}" fill="none" '
+        + f'<polyline data-curve="capped" points="{points}" fill="none" '
         f'stroke="var(--fig-accent, #2f7fd1)" stroke-width="2.6" '
         f'stroke-linejoin="round" />'
         + _text(to_x(knee / 2), to_y(rul_max) - 14, "held at the ceiling", size=12,
                 fill="var(--fig-accent, #2f7fd1)", weight="600")
-        + _text(to_x(knee) + 8, top + 22, f"cycle {knee}", size=11,
+        + _text(to_x(knee) + 8, to_y(rul_max) + 22, f"cycle {knee}: {rul_max} left", size=11,
                 anchor="start", fill="var(--fig-warn, #c2521f)")
-        + _text(to_x(total * 0.82), to_y(rul_max * 0.62), "falls by one per cycle",
+        + _text(to_x(total * 0.76), to_y(rul_max * 0.72), "both curves coincide after the ceiling",
                 size=12, fill="var(--fig-accent, #2f7fd1)", weight="600")
-        + _text(to_x(total * 0.30), to_y(rul_max * 0.80), "the dashed line is the",
-                size=11, opacity=0.6)
-        + _text(to_x(total * 0.30), to_y(rul_max * 0.80) + 14,
-                "uncapped alternative", size=11, opacity=0.6)
+        + _text(to_x(total * 0.35), to_y(total - 20), f"Dashed: {total} - cycle (before capping)",
+                size=11, opacity=0.8)
+        + _text(to_x(total * 0.23), to_y(75), f"Solid: min({total} - cycle, {rul_max})",
+                size=11, fill="var(--fig-accent, #2f7fd1)")
         + "</svg>"
     )
 
@@ -1343,6 +1345,7 @@ def draw_lstm_cell() -> str:
 FIGURES: tuple[Figure, ...] = (
     Figure("engine", draw_engine),
     Figure("rul-curve", draw_rul_curve, needs_data=True),
+    Figure("worked-example", draw_worked_example, needs_data=True, needs_torch=True),
     Figure("correlation", draw_correlation, needs_data=True),
     Figure("smoothing", draw_smoothing, needs_data=True),
     Figure("windowing", draw_windowing, needs_data=True),

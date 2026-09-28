@@ -628,6 +628,64 @@ def test_the_page_and_the_server_name_the_same_explanation_methods():
         assert f'{key}: "{name}"' in line, (key, name)
 
 
+def test_explanation_charts_share_one_full_width_tabbed_area():
+    """Every chart is chosen from one accessible tab row, and the deck is not capped at the document width."""
+    import re
+
+    assets = ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets"
+    script = (assets / "playground.js").read_text(encoding="utf-8")
+    css = (assets / "app.css").read_text(encoding="utf-8")
+    deck = re.search(r"\.pg-explanation-charts\s*\{([^}]*)\}", css).group(1)
+
+    assert 'role="tablist" aria-label="Explanation charts"' in script
+    assert 'role="tabpanel" aria-labelledby="pg-chart-tab-' in script
+    assert 'data-action="chart-tab"' in script
+    assert 'class="pg-charts pg-explanation-charts"' in script
+    assert "width: 100%" in deck
+    assert "max-width: none" in deck
+    explanation_width = script.split("function explanationChartWidth", 1)[1].split("function chartHeight", 1)[0]
+    assert "Math.min(panel.clientWidth, 1080)" not in explanation_width
+
+
+def test_project_added_charts_state_their_origin_once_and_explain_their_use():
+    """Method origin belongs in the guide; captions explain how to read the chart."""
+    assets = ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets"
+    script = (assets / "playground.js").read_text(encoding="utf-8")
+    engine_view = (assets / "engine-view.js").read_text(encoding="utf-8")
+    walks = script.split("function drawWalks", 1)[1].split("function walkParts", 1)[0]
+    parts = walks.split("var parts =", 1)[1].split("var swarm =", 1)[0]
+
+    assert "<strong>Not in the paper.</strong>" not in script
+    assert "<strong>Not in the paper." not in engine_view
+    assert walks.count("Walk explanations are added by this project") == 1
+    assert "How to read this chart." in walks
+    assert parts.index("walkParts(rows, forEngine, W, e.index)") < parts.index("partsGuide")
+
+
+def test_engine_drawing_is_compact_inside_the_full_width_chart():
+    """The full-width panel must not enlarge the engine until its sensor details fall far below it."""
+    import re
+
+    css = (ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets" / "app.css").read_text(
+        encoding="utf-8")
+    drawing = re.search(r"\.ev-drawing\s*\{([^}]*)\}", css).group(1)
+
+    assert "width: 100%" in drawing
+    assert "max-width: 1000px" in drawing
+    assert "margin: 0 auto" in drawing
+
+
+def test_test_engine_walk_parts_are_not_drawn_as_an_ordered_engine_sequence():
+    """Engine number is an identifier; distributions and one waterfall replace its scatter plot."""
+    script = (ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets" / "playground.js").read_text(
+        encoding="utf-8")
+    section = script.split("function walkParts", 1)[1].split("function flowGraph", 1)[0]
+    assert "walkPartDistribution(rows, W)" in section
+    assert "walkWaterfall(rows[at], W)" in section
+    assert "middle half of the engines" in section
+    assert 'xlabel: "test engine"' not in section
+
+
 # -- jobs ----------------------------------------------------------------------
 
 

@@ -31,6 +31,54 @@ from thesis_gnn_rul_xai.models import (
 # --- models/layers.py ---------------------------------------------------
 
 
+def test_example_documentation_trace_reaches_the_saved_models_prediction():
+    """The displayed arithmetic uses one real training window and the saved weights."""
+    from thesis_gnn_rul_xai.docsite.worked_example import draw, trace
+
+    try:
+        example = trace()
+    except FileNotFoundError:
+        pytest.skip("The named stored run and FD001 files are required.")
+    assert example["raw"][:3] == [641.82, 642.15, 642.35]
+    assert example["last_cycle"] == 192
+    assert (example["start"], example["end"]) == (1, 30)
+    assert example["target"] == min(192 - example["end"], example["ceiling"])
+    assert example["prediction"] == pytest.approx(example["reference"], abs=1e-6)
+    assert example["steps"][0]["output"][0] == pytest.approx(example["scaled"][-1], abs=1e-6)
+    assert len(example["steps"][5]["terms"]) == example["steps"][5]["input_shape"][-1]
+    for step in example["steps"]:
+        for term in step["terms"]:
+            assert term["product"] == pytest.approx(term["input"] * term["multiplier"], abs=1e-6)
+    html = draw()
+    assert example["run"] in html
+    assert "Separate capped answer" in html
+
+
+def test_example_engine_connections_come_from_the_selected_saved_network(tmp_path):
+    """The correlation graph drawn over the engine equals the saved seed's matrix."""
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS
+    from thesis_gnn_rul_xai.docsite.playground import _explanation_edges
+
+    root = Path(__file__).resolve().parents[1]
+    saved = next(iter(sorted((root / "reports").glob("*correlation*/seed_*/model.pt"))), None)
+    if saved is None:
+        pytest.skip("A stored run on a correlation graph is needed for this example.")
+    seed = int(saved.parent.name.removeprefix("seed_"))
+    edges = _explanation_edges(saved.parents[1], {"seed": seed})
+    matrix = torch.load(saved, map_location="cpu", weights_only=True)["adjacency"].numpy()
+    symbols = PAPER_SENSOR_SYMBOLS
+    expected = [[a, b] for i, a in enumerate(symbols) for j, b in enumerate(symbols)
+                if i < j and (matrix[i, j] != 0 or matrix[j, i] != 0)]
+    assert edges == expected
+    physics, _ = build_physics_adjacency()
+    assert any((matrix[i, j] != 0) != (physics[i, j] != 0)
+               for i in range(len(symbols)) for j in range(i + 1, len(symbols)))
+    assert _explanation_edges(tmp_path, {"seed": seed}) is None
+    assert _explanation_edges(saved.parents[1], {}) is None
+
+
 def test_example_graph_convolution():
     """Two sensors joined by one edge, with a weight of 1, so each ends up
     holding the average of the two: (2 + 4) / 2."""

@@ -354,6 +354,20 @@ They still open their own flowchart, and their tab carries their picture where
 the others carry a number. The steps are then numbered from 1, Preprocessing.
 The author asked for this on 2026-09-26.
 
+Below the four sub-dataset choices, the Data tab describes the selected data
+instead of leaving the rest of the tab empty. Its first row carries the four
+counts transcribed from the paper's Table 5: training engines, test engines,
+operating conditions and fault modes. The files beneath are measured from the
+three real files in `data/raw/`: their row and column counts, engine counts and
+the shortest, middle and longest history. The sensor catalogue then lists all
+21 sensors with their file column, measurement, unit, location and whether the
+paper uses them. Under it, the row section explains the 26-column structure and
+shows ten consecutive rows measured from the selected training file: engine,
+cycle, all three operating settings and the first three sensor inputs. Changing
+FD001–FD004 updates the facts and sample in place. When the files are not
+present, the page keeps the published counts and shared column description but
+says plainly which measurements it cannot make.
+
 Each box of the pipeline shows its step's number in its top left corner, a
 small picture of its step, and what the step is now, "LSTM" or "GCN", so a
 step's name is said once, on its tab, and the number ties the two together.
@@ -1120,10 +1134,165 @@ it is the only version of it the stored windows hold. An explanation stored
 before the readings were kept is coloured by the window's place in the sequence
 instead, and its legend says so.
 
-Every caption of an explanation opens by naming the paper's figure the chart
-follows, as in "As the paper's Fig. 9, left.", or with "Not in the paper.", so
-a reader can tell the paper's pictures from this project's additions (working
-rule 5).
+An explanation names the paper's figure when a chart follows one, as in "As
+the paper's Fig. 9, left." A method added by this project states that origin
+once in its introduction instead of repeating "Not in the paper" on every
+chart. The distinction remains visible without making each caption carry the
+same warning (working rule 5).
+
+The explanation charts share one row of tabs and one full-width viewing area.
+Only the chosen chart is visible, so the engine, remaining-life curve, sensor
+ranking and later views sit beside one another as choices instead of forming a
+long column down the page. The engine opens first. Left and right arrow keys
+move between the tabs; on a narrow screen the tab row scrolls sideways while
+the chart keeps the page's available width.
+
+One shared control sits above those tabs, outside the Engine card. For an
+engine's history it is named **Engine cycle**: the number is the last cycle
+of the readings used for that prediction, not a numbered block called a
+“window”. For comparisons across test engines it is named **Test engine**,
+and its menu shows the actual engine identifiers. Moving between test engines
+does not represent time passing. The arrow buttons move to the previous or
+next saved entry; the menu jumps directly to a cycle or engine. The slider
+shows the endpoints and position among the saved entries, alongside actual
+and predicted remaining life in cycles. Where the saved comparison limits the
+actual-life labels to a ceiling, the control names that limit.
+
+Dragging updates the visible engine or graph, the selected-cycle marker on
+the remaining-life chart, the history readouts, and the selected test engine's
+score breakdown without waiting for release. Only the changing content is
+replaced, at most once per browser drawing frame: the slider itself, selected
+sensor, graph layout and expanded calculation details remain in place. On
+switching chart tabs the newly visible chart uses the current selection.
+Overview charts still include all saved cycles or engines; the selector does
+not filter their data. These controls read stored results, so moving between
+them does not run the model again or interpolate unrecorded cycles.
+
+The guide above a walk explanation names the numbers beneath the sensor labels
+in the Engine tab, explains their signs and units, and tells the reader how to
+select a sensor. Its paragraphs use the full available width. The calculation
+and its checks sit under “How this explanation is calculated and checked”. That
+section includes the selected engine and cycle, the sum of its saved sensor
+contributions, the contribution from added constants, the internal score and
+the prediction in cycles. It updates with the slider. The distinction between
+explaining a calculation and diagnosing engine damage stays visible even when
+the detailed section is closed.
+
+**Wording correction, 2026-09-27.** The previous introduction began “Each value”
+without saying which values it meant, and mixed chart instructions with
+calculation checks. The revised text points to the visible sensor labels and
+introduces the internal score before describing how the explanation divides it.
+
+For a walk explanation over the test engines, engine number is not drawn as a
+horizontal sequence: it is an identifier, so a line or left-to-right pattern
+would have no meaning. Instead, one row per part of the score shows every
+engine, the middle half of their values and their median, the middle value after
+ordering them. Beneath it, one chosen engine is a waterfall: the contribution
+from the added constants starts at zero, the walks that stay within a sensor's
+group start from that subtotal, and the walks that move between groups start
+from the next subtotal. The final outlined bar is the saved score, so the
+adding-up claim is visible rather than left to the reader's arithmetic. These
+are signed totals. A small bar can mean little travelled through the graph, or
+that large positive and negative walks cancelled; the largest-walk table names
+that distinction separately.
+
+**Label correction, 2026-09-28.** The author could not interpret “constants”,
+“stays” and “moves”. These were internal column names presented as explanations.
+The chart now says **model-added part**, **routes within one group** and
+**routes between groups**. Its caption first tells the reader what comparison
+the chart supports: which part has the largest net effect, which parts reinforce
+one another and which cancel. The detailed definitions follow the chart, so
+they remain available without delaying the first view of the data.
+The model-added part comes from learned additions inside the network, also
+called biases. The additions are fixed after training, but their contribution
+can vary because different inputs make different calculations pass them on.
+It is not a reference-engine prediction or a constant sensor channel.
+The groups collect sensor positions with matching model connections, not
+physical engine components. A route between groups leaves its starting group
+at least once, even if it later returns. The saved numeric columns keep their
+original names; only their presentation changes. The selected-engine chart
+shows the saved addition and the resulting prediction, explicitly distinguishing
+score units from cycles.
+
+### Locating the explanations on an engine
+
+The Data documentation calls `ThesisEngineView.mountGuide`, which uses the
+same cutaway and variable-location catalogue as Explain predictions. It shows
+no invented explanation values. Selecting a marker identifies the component
+and explains the measurement; Enter and Space provide the same action.
+
+### Worked examples behind the help cards
+
+Settings and matching diagram steps use the same `sectionHelp` function.
+Clicking a section heading opens its diagram operation; clicking that operation
+returns to the matching setting. Data and preprocessing cards carry real file
+examples. Every help card also links to `docs/learn/08_worked_examples.md` for
+the longer input, calculation and output sequence.
+
+`worked_example.py` recomputes one training-engine window through one saved
+network. Its displayed run name identifies the producing commit and timestamp;
+the selected seed is named too. It never substitutes generated data or an
+untrained network when that run is unavailable. This illustrates arithmetic,
+not a single-seed accuracy claim. Tests compare the separated operations with
+the model's normal prediction. The raw and capped RUL curves use recorded
+cycles starting at one and one common vertical scale; the old dashed line
+incorrectly started at the ceiling and was not an uncapped curve.
+
+### The explanation overlay
+
+Explain predictions opens with an engine cutaway drawn by `engine-view.js`.
+Its layout follows the engine modules in Figures 1 and 2 of
+[NASA's dataset paper](https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf).
+The same paper's Table 2 gives the variables' meanings. The section anchors
+are documented; exact probe positions, blade counts, dimensions and detailed
+cooling routes are not. Our drawing choices are recorded as the engine-overlay
+assumption (A-31). NASA's
+[EngineSim interactive](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/enginesimu/)
+provided a precedent for selecting a component on a cutaway; its code and artwork
+are not embedded in this page.
+
+The engine panel answers two different questions. Dashed leaders answer
+"where does this variable belong?"; graph connections answer "which other
+variables can it exchange information with in this model?" The two types of
+line must never be read as the same relationship. Circles locate temperature
+and pressure measurement regions. Rounded boxes identify shaft quantities,
+calculated quantities such as corrected speed, and system quantities such as
+cooling flow. Selecting a marker explains that distinction and highlights its
+component and graph neighbours. Keyboard users can select markers with Enter
+or Space. The surrounding chart keeps the page's full width, but the drawing
+itself stops at 1,000 pixels and stays centred so the selected sensor's
+explanation remains close below it. A narrow screen scrolls the drawing
+horizontally while the controls and explanation wrap to the available width.
+
+The engine and graph views show the same stored values, with the same colour
+and width scales. Positive shares are blue and negative shares orange; the
+strongest absolute value across all explained windows sets the marker scale.
+The chosen cycle changes with the shared control above the chart tabs. For test
+scope, this picks one test engine's last window; the separate average-connection view remains
+under a disclosure. No model is retrained or sensor data generated to draw it.
+
+For graph walks, connection columns decide which edges exist, even when their
+shares are zero; both directions are added before setting a line's width.
+The total is over all graph layers, and opposing shares can cancel. For
+Shapley and occlusion, `_explanation_edges` reads the selected seed's saved
+matrix of connections, with `weights_only=True`; if the file or PyTorch is
+unavailable, the panel says why it shows no connections. It never substitutes
+the paper's graph for a correlation graph. Equal line widths for these methods
+describe connectivity only, not importance.
+
+The saved-walk selector shows one position per graph layer. A slash denotes
+a group whose members the model cannot distinguish. All compatible connections
+are highlighted; choosing one group member would invent a distinction missing
+from the saved result. The walk's displayed share is its saved average across
+all explained windows, explicitly separate from the chosen window's node and
+connection values. Repeated groups remain visible in the layer sequence even
+when the drawing would place them on top of themselves. A strong share is an
+explanation of this model's prediction, not a diagnosis of the component.
+
+The real stored examples in `tests/test_examples.py` exercise both layouts,
+signed values, fixed scales, zero-share connections and grouped walk paths.
+The saved-matrix example in `tests/test_examples_torch.py` checks that a
+correlation graph comes from the selected network rather than the paper.
 
 **Beside the paper's Fig. 10.** For an engine explained with Shapley values,
 the page redraws the paper's Fig. 10 from the numbers of its Table 12, above

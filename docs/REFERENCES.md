@@ -42,6 +42,30 @@ https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/p
 
 ---
 
+## Engine illustration and interaction
+
+**Frederick, D. K., DeCastro, J. A., & Litt, J. S. (2007).** User's guide for
+the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS).
+*NASA/TM-2007-215026*.
+[NASA Technical Reports Server](https://ntrs.nasa.gov/citations/20070034949)
+
+> Checked for engine structure and variable definitions. The overlay follows
+> the dataset paper's Table 2 for W32 because this guide's Table 1.3 labels
+> both coolant flows as high-pressure turbine flows. This disagreement and
+> the schematic placements are recorded in the engine-overlay choice
+> (assumption A-31).
+
+**NASA Glenn Research Center. (n.d.).** Engine Parameter Interactive
+(EngineSimU). Retrieved September 27, 2026.
+[Interactive and instructions](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/enginesimu/).
+[Published source archive](https://github.com/nasa/BGA).
+
+> A documented, existing example of selecting components on an engine
+> schematic. Used as an interaction reference, not as evidence of C-MAPSS
+> probe coordinates or the validity of GNN-LRP. No code or artwork was copied.
+
+---
+
 ## The label design
 
 **Heimes, F. O. (2008).** Recurrent neural networks for remaining useful life

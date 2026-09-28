@@ -45,6 +45,178 @@ from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
 # --- docsite/ ---------------------------------------------------------
 
 
+def test_example_engine_overlay_preserves_real_walk_values_and_grouped_paths():
+    """The engine and abstract layouts display the same saved FD001 explanation."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.docsite import playground
+
+    root = Path(__file__).resolve().parents[1]
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the browser's engine drawing.")
+    stored = next((p for p in sorted((root / "reports").glob("*/explanations/*/summary.json"))
+                   if json.loads(p.read_text(encoding="utf-8")).get("method") == "walks"), None)
+    if stored is None:
+        pytest.skip("A stored graph-walk explanation of the real FD001 data is needed.")
+    data = playground.explanation_detail(root, stored.parents[2].name, stored.parent.name)
+    script = r"""
+const fs = require('fs'), assert = require('node:assert/strict');
+const E = require('./src/thesis_gnn_rul_xai/docsite/assets/engine-view.js').ThesisEngineView;
+const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+const data = payload.data, sensors = Object.keys(data.summary.mean_abs_start);
+const before = JSON.stringify(data), edges = E.edgesFor(data, sensors, []);
+const limits = E.peaks(data, sensors, edges), row = data.values[0];
+assert.deepEqual(new Set(Object.keys(E.locations)), new Set(sensors));
+assert.equal(E.locations.T30.part, E.locations.P30.part);
+assert.equal(E.locations.Ps30.part, E.locations.P30.part);
+assert.equal(E.locations.NRf.kind, 'derived');
+assert.equal(E.locations.BPR.kind, 'derived');
+assert.equal(E.locations.W32.kind, 'system');
+const opts = {index: 0, graph: payload.graph};
+const base = {sensor: null, overlay: true, walk: -1};
+const engine = E.graphPicture(data, opts, {...base, layout: 'engine'}, sensors, edges, limits);
+const graph = E.graphPicture(data, opts, {...base, layout: 'graph'}, sensors, edges, limits);
+const titles = html => [...html.matchAll(/<title>(.*?)<\/title>/g)].map(x => x[1]).sort();
+assert.deepEqual(titles(engine), titles(graph));
+for (const s of sensors) {
+  assert.ok(engine.includes('data-ev-sensor="' + s + '"'));
+  assert.ok(engine.includes(row['start_' + s].toFixed(3)));
+}
+for (const r of data.values) {
+  const sensorTotal = sensors.reduce((total, s) => total + r['start_' + s], 0);
+  assert.ok(Math.abs(sensorTotal + r.constant - r.score) < 1e-9);
+  const cycles = data.summary.rul_max / (1 + Math.exp(-r.score));
+  assert.ok(Math.abs(cycles - r.predicted) < 1e-3);
+}
+for (const [a,b] of edges) {
+  assert.ok('link_' + a + '_' + b in row || 'link_' + b + '_' + a in row);
+}
+for (const a of sensors) for (const b of sensors) {
+  if (a !== b && 'link_' + a + '_' + b in row) {
+    assert.ok(edges.some(e => e.includes(a) && e.includes(b)));
+  }
+}
+for (const w of data.top_walks) {
+  const steps = E.walkSteps(w.walk, sensors), pairs = E.walkPairs(steps, edges);
+  assert.equal(steps.length, data.summary.steps + 1);
+  assert.deepEqual(steps, w.walk.split(' -> ').map(s => s.split('/')));
+  for (const pair of pairs) assert.ok(edges.includes(pair));
+  for (let i=0; i<steps.length-1; i++) for (const a of steps[i]) for (const b of steps[i+1]) {
+    const edge = edges.find(e => e.includes(a) && e.includes(b));
+    if (a !== b && edge) assert.ok(pairs.includes(edge));
+  }
+}
+assert.equal(JSON.stringify(data), before);
+assert.equal(limits.nodes, Math.max(...data.values.flatMap(r => sensors.map(s => Math.abs(r['start_' + s])))));
+console.log(JSON.stringify({edges: edges.length, sensors: sensors.length, nodePeak: limits.nodes}));
+"""
+    result = subprocess.run([node, "-e", script], cwd=root,
+                            input=json.dumps({"data": data, "graph": playground.options()["graph"]}),
+                            text=True, encoding="utf-8", capture_output=True, check=True)
+    measured = json.loads(result.stdout)
+    assert measured["sensors"] == len(data["summary"]["mean_abs_start"])
+    assert measured["nodePeak"] == max(abs(r[f"start_{s}"]) for r in data["values"]
+                                       for s in data["summary"]["mean_abs_start"])
+
+
+@pytest.mark.parametrize("scope", ["engine", "test"])
+def test_example_shared_selection_updates_on_input_without_replacing_controls(scope):
+    """Dragging through saved FD001 results updates sensor details before release."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.docsite import playground
+
+    root = Path(__file__).resolve().parents[1]
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the browser's live selection.")
+    stored = next((p for p in sorted((root / "reports").glob("*/explanations/*/summary.json"))
+                   if (s := json.loads(p.read_text(encoding="utf-8"))).get("method") == "walks"
+                   and s.get("scope") == scope), None)
+    if stored is None:
+        pytest.skip("A stored graph-walk explanation of the real FD001 data is needed.")
+    data = playground.explanation_detail(root, stored.parents[2].name, stored.parent.name)
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const payload = JSON.parse(fs.readFileSync(0, 'utf8')), data = payload.data;
+const E = require('./src/thesis_gnn_rul_xai/docsite/assets/engine-view.js').ThesisEngineView;
+const frames = new Map(); let serial = 0;
+const context = {window: {
+  requestAnimationFrame(fn) { frames.set(++serial, fn); return serial; },
+  cancelAnimationFrame(id) { frames.delete(id); }
+}};
+vm.createContext(context);
+const source = fs.readFileSync('./src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {S, onInput, selectExplanationIndex, explanationSelection, wireExplanationSelection,
+    setup: function (element, helpers) { root = element; T = helpers; }};`), context);
+const P = context.window.test;
+const range = {type: 'range', value: '0', attributes: {}, style: {setProperty() {}},
+  hasAttribute(name) { return name === 'data-explain-index'; },
+  setAttribute(name, value) { this.attributes[name] = value; }};
+const pick = {value: '0'};
+const fields = new Map();
+const selection = {querySelectorAll() { return [range, pick]; },
+  querySelector(key) { if (!fields.has(key)) fields.set(key, {}); return fields.get(key); }};
+const example = {innerHTML: ''};
+const root = {querySelector(key) { return key === '.pg-selection' ? selection :
+  key === '[data-walk-example]' ? example : null; },
+  set innerHTML(_) { assert.fail('Dragging must not replace the shared selector or open details.'); }};
+P.setup(root, {escapeHtml: String, fixed: (x, places) => Number(x).toFixed(places)});
+P.S.tab = 'explain'; P.S.explain = {values: data, index: 0, chart: 'engine'};
+const state = {sensor: 'T30', layout: 'engine', overlay: true, walk: -1};
+const regions = {'.ev-scroll': {innerHTML: '', scrollLeft: 120}, '.ev-details': {innerHTML: ''}};
+let mounts = 0;
+const container = {set innerHTML(_) { mounts++; }, querySelector(key) { return regions[key]; }};
+P.S.explain.engineController = E.mount(container, data, {index: 0, edges: null, graph: payload.graph}, state);
+P.wireExplanationSelection(root, data, [], 800);
+const flush = () => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(f => f()); };
+const html = P.explanationSelection(data);
+assert.ok(html.includes(data.summary.scope === 'engine' ? 'Engine cycle' : 'Test engine'));
+for (const [i, row] of data.values.entries()) {
+  const name = data.summary.scope === 'engine' ? 'Cycle ' + row.end_cycle : 'Engine ' + row.unit;
+  assert.ok(html.includes('value="' + i + '"' + (i === 0 ? ' selected' : '') + '>' + name));
+}
+assert.equal(fields.get('[data-action="explain-previous"]').disabled, true);
+for (let i = 1; i <= 2; i++) { range.value = String(i); P.onInput({target: range}); }
+assert.equal(frames.size, 1);
+flush(); // No change or pointer-release event: input alone must update the view.
+assert.equal(P.S.explain.index, 2);
+assert.equal(range.value, '2'); assert.equal(pick.value, '2');
+const row = data.values[2];
+assert.ok(regions['.ev-details'].innerHTML.includes(row.start_T30.toFixed(3)));
+assert.ok(regions['.ev-scroll'].innerHTML.includes(row.start_T30.toFixed(3)));
+assert.ok(example.innerHTML.includes('cycle ' + row.end_cycle));
+assert.equal(fields.get('[data-selection-predicted]').textContent, row.predicted.toFixed(1));
+assert.equal(state.sensor, 'T30'); assert.equal(state.overlay, true);
+assert.equal(regions['.ev-scroll'].scrollLeft, 120); assert.equal(mounts, 1);
+state.layout = 'graph'; range.value = '1'; P.onInput({target: range}); flush();
+assert.equal(state.layout, 'graph'); assert.equal(state.sensor, 'T30');
+assert.ok(regions['.ev-details'].innerHTML.includes(data.values[1].start_T30.toFixed(3)));
+P.selectExplanationIndex(data.values.length + 1); flush();
+assert.equal(P.S.explain.index, data.values.length - 1);
+assert.equal(fields.get('[data-action="explain-next"]').disabled, true);
+P.selectExplanationIndex(-1); flush();
+assert.equal(P.S.explain.index, 0);
+assert.equal(fields.get('[data-action="explain-previous"]').disabled, true);
+const lastPicture = regions['.ev-scroll'].innerHTML;
+P.selectExplanationIndex(1); P.S.tab = 'results'; flush();
+assert.equal(regions['.ev-scroll'].innerHTML, lastPicture);
+console.log('Live input, saved identifiers, retained selection and boundary controls passed.');
+"""
+    result = subprocess.run([node, "-e", script], cwd=root,
+                            input=json.dumps({"data": data, "graph": playground.options()["graph"]}), text=True,
+                            encoding="utf-8", capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.parametrize("changes", [{}, {"smoothing_alpha": 0.25},
                                     {"smoothing": False, "window_size": 25, "window_stride": 2,
                                         "validation_fraction": 0.0, "rul_max": 150, "seed": 7}])
@@ -82,6 +254,24 @@ def test_example_preprocessing_story(loaded, changes):
         start = 1 + index * settings["window_stride"]
         end = start + settings["window_size"] - 1
         assert item == {"start": start, "end": end, "life": min(192 - end, settings["rul_max"])}
+
+
+def test_example_rul_chart_uses_file_cycles_and_true_uncapped_life(loaded):
+    """Both plotted lines share the file's cycle coordinates and the same vertical scale."""
+    import xml.etree.ElementTree as ET
+
+    from thesis_gnn_rul_xai.docsite.figures import draw_rul_curve
+
+    root = ET.fromstring(draw_rul_curve())
+    curves = {node.attrib["data-curve"]: node for node in root.iter() if "data-curve" in node.attrib}
+    raw_points = [[float(v) for v in p.split(",")] for p in curves["raw"].attrib["points"].split()]
+    capped = [[float(v) for v in p.split(",")] for p in curves["capped"].attrib["points"].split()]
+    assert len(capped) == 192
+    assert raw_points[0] == [90.0, 60.0]
+    assert raw_points[-1] == capped[-1] == [790.0, 360.0]
+    assert capped[0][1] > raw_points[0][1]
+    assert capped[66][1] == capped[0][1]
+    assert capped[67][1] > capped[66][1]
 
 
 def test_example_preprocessing_without_files(monkeypatch):

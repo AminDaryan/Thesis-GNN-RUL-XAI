@@ -116,6 +116,17 @@ Engine 1 of the training data ran 192 cycles:
 
 {{figure:rul-curve}}
 
+This chart uses every recorded row of **training engine 1 in
+`train_FD001.txt`**, not a test prediction. The dashed line is the original
+remaining life, final cycle minus the row's cycle. The solid line is that
+same value after the ceiling is applied. They meet at cycle 67 and coincide
+from there to cycle 192. At cycle 68 both are 124.
+
+Correction: the earlier drawing incorrectly stretched a line from 125 to
+zero and called it uncapped; it also labelled zero-based row positions as
+cycles. Both curves now use the file's cycle numbers and a shared vertical
+scale that includes the full raw remaining life.
+
 The paper's Equation 19 uses a ceiling but **never prints its value**, so 125
 is this project's choice (assumption A-01). It is read off the paper's Fig. 7,
 whose FD001 panel draws the paper's own label for one engine, so the height of

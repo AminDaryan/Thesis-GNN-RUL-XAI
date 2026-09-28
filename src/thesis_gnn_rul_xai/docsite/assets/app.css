@@ -1247,6 +1247,12 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-section-name { margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; }
 .pg-operation-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: inherit; }
 .pg-operation-link:hover { color: var(--accent); text-decoration: underline; }
+.pg-info-example { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 400; }
+.worked-trace section { border-top: 1px solid var(--line); padding-block: 12px; }
+.worked-io { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px 16px; text-align: left; }
+.worked-io dt { font-weight: 600; }
+.worked-io dd { margin: 0; }
+.worked-trace { overflow-wrap: anywhere; text-align: left; }
 .pg-vstep[data-operation] { cursor: pointer; }
 .pg-vstep.is-target { outline: 2px solid var(--accent); outline-offset: 3px; }
 .pg-step-n .pg-picture { width: 20px; height: 20px; }
@@ -1437,10 +1443,73 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-metric-name { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
 .pg-metric-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pg-metric-value span { font-size: 13px; color: var(--ink-faint); font-weight: 400; }
-/* One column of charts, no wider than --measure-wide. playground.js draws
-   each chart at the width it is shown at and again when that changes, so
-   one unit of a drawing is one pixel on screen and its words keep their size. */
-.pg-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 16px; max-width: var(--measure-wide); }
+/* Run charts keep the document measure. Explanation charts share one
+   full-width deck whose tabs scroll as one row on a narrow screen. */
+.pg-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; max-width: var(--measure-wide); margin-top: 16px; }
+.pg-explanation-charts { display: block; width: 100%; min-width: 0; max-width: none; }
+.pg-selection {
+  display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; gap: 8px 28px;
+  padding: 14px 18px 12px; margin-bottom: 8px; min-width: 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.pg-selection-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
+.pg-selection-main > label { font-size: 14px; font-weight: 700; }
+.pg-selection-stepper { display: flex; gap: 4px; align-items: center; }
+.pg-selection-stepper .button { width: 40px; min-height: 40px; padding: 10px; }
+.pg-selection-stepper .button svg { width: 14px; height: 14px; }
+.pg-selection-stepper .button:disabled { opacity: .4; cursor: default; }
+.pg-selection-stepper select {
+  min-height: 40px; min-width: 132px; padding: 6px 10px; font: 600 15px var(--sans);
+  color: var(--accent); background: var(--page); border: 1px solid var(--line-strong); border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.pg-selection-metric { display: flex; flex-direction: column; justify-content: center; }
+.pg-selection-metric > span { font-size: 12px; color: var(--ink-soft); }
+.pg-selection-metric strong { font-size: 21px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.pg-selection-metric small { color: var(--ink-faint); font-size: 12px; font-weight: 400; }
+.pg-selection-track { grid-column: 1 / -1; min-width: 0; }
+.pg-selection-track input {
+  display: block; appearance: none; -webkit-appearance: none; width: 100%; height: 28px; margin: 0;
+  cursor: pointer; background: transparent; accent-color: var(--accent);
+}
+.pg-selection-track input::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) var(--selection-progress, 0%), var(--line-strong) var(--selection-progress, 0%));
+}
+.pg-selection-track input::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px;
+  background: var(--accent); border: 3px solid var(--page); border-radius: 50%; box-shadow: 0 0 0 1px var(--accent);
+}
+.pg-selection-track input::-moz-range-track { height: 6px; background: var(--line-strong); border-radius: 999px; }
+.pg-selection-track input::-moz-range-progress { height: 6px; background: var(--accent); border-radius: 999px; }
+.pg-selection-track input::-moz-range-thumb { width: 14px; height: 14px; background: var(--accent); border: 3px solid var(--page); border-radius: 50%; box-shadow: 0 0 0 1px var(--accent); }
+.pg-selection-track input:disabled { opacity: .45; cursor: default; }
+.pg-selection-ends { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pg-selection-ends [data-selection-position] { color: var(--ink-faint); }
+.pg-selection > p { grid-column: 1 / -1; max-width: none; margin: 0; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+@container pg-panel (max-width: 700px) {
+  .pg-selection { grid-template-columns: 1fr 1fr; gap: 8px 14px; padding: 12px; }
+  .pg-selection-main { grid-column: 1 / -1; justify-content: space-between; }
+  .pg-selection-metric strong { font-size: 18px; }
+}
+.pg-chart-tabs {
+  display: flex; width: 100%; overflow-x: auto; scrollbar-width: thin;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+.pg-chart-tab {
+  position: relative; flex: 0 0 auto; min-height: 44px; padding: 0 14px;
+  border: 0; background: none; color: var(--ink-soft); font: 600 13px var(--sans);
+  white-space: nowrap; cursor: pointer;
+}
+.pg-chart-tab:hover, .pg-chart-tab[aria-selected="true"] { color: var(--ink); }
+.pg-chart-tab[aria-selected="true"]::after {
+  content: ""; position: absolute; left: 14px; right: 14px; bottom: 0;
+  height: 2px; border-radius: 999px; background: var(--accent);
+}
+.pg-chart-tab:focus-visible { outline-offset: -4px; }
+.pg-chart-panels, .pg-chart-panel { min-width: 0; }
+.pg-chart-panel { padding-top: 12px; }
+.pg-chart-panel > .pg-figure, .pg-chart-panel > .pg-empty { width: 100%; box-sizing: border-box; }
 .pg-figure { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 12px; background: var(--page); min-width: 0; }
 .pg-figure--wide { grid-column: 1 / -1; }
 .pg-figure figcaption { font-size: 13px; color: var(--ink-soft); margin-bottom: 8px; line-height: 1.5; }
@@ -1462,6 +1531,11 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-explain .pg-block { margin-bottom: 0; }
 .pg-explain .pg-field-control select.field { min-width: 0; max-width: 100%; }
 .pg-explain .pg-fields { max-width: var(--measure-form); }
+.pg-explanation-guide { width: 100%; min-width: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+.pg-explanation-guide p { max-width: none; margin: 0 0 8px; }
+.pg-explanation-guide strong { color: var(--ink); }
+.pg-explanation-guide summary { width: auto; font-size: 14px; }
+.pg-explanation-guide details[open] summary { margin-bottom: 8px; }
 .pg-heat-wrap { overflow-x: auto; }
 .pg-heat { display: block; font-family: var(--mono); }
 /* The heat map is drawn at its own size, not scaled, so its labels keep the 11-pixel floor. */
@@ -1487,8 +1561,62 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-ring-label { font-size: 5.4px; font-weight: 700; font-family: var(--mono); fill: var(--fig-ink); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 1.2px; pointer-events: none; }
 .pg-ring-missing { font-size: 8px; fill: var(--ink-faint); }
 .pg-fig10-count { font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin: 4px 0; }
-.pg-slider { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: 8px; }
-.pg-slider input { width: min(240px, 100%); height: 24px; accent-color: var(--accent); }
+.ev-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 16px 0; }
+.ev-controls label { display: flex; align-items: center; gap: 8px; }
+.ev-layout { display: flex; gap: 4px; }
+.ev-layout [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.ev-walk-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.ev-walk-picker select { min-width: 0; max-width: 100%; flex: 1 1 360px; padding: 6px; background: var(--page); border: 1px solid var(--line-strong); border-radius: 5px; }
+.ev-scroll { overflow-x: auto; margin: 8px 0; border-bottom: 1px solid var(--line); }
+/* Keep the drawing close to its designed size so the selected sensor's text
+   remains nearby; the surrounding explanation card still spans the page. */
+.ev-drawing { display: block; width: 100%; min-width: 860px; max-width: 1000px; height: auto; margin: 0 auto; }
+.ev-machine { fill: var(--panel-2); stroke: var(--fig-axis); stroke-width: 1.2; }
+.ev-casing { fill: var(--panel-2); }
+.ev-part { fill: var(--line-strong); fill-opacity: .4; }
+.ev-part.is-active { stroke: var(--ink); stroke-width: 2.5; fill-opacity: .85; }
+.ev-shaft { fill: none; stroke: var(--fig-axis); stroke-width: 5; }
+.ev-air { fill: none; stroke: var(--fig-cool); stroke-width: 2; opacity: .6; }
+.ev-splitter { fill: none; stroke: var(--fig-axis); stroke-width: 5; }
+.ev-flame { fill: none; stroke: var(--fig-axis); stroke-width: 2; }
+.ev-fuel, .ev-cooling { fill: none; stroke: var(--fig-axis); stroke-width: 2; }
+.ev-cooling { stroke-dasharray: 7 4; }
+.ev-component-label { text-anchor: middle; stroke: var(--fig-bg); stroke-width: 4; paint-order: stroke; fill: var(--ink-soft); font: 15px var(--sans); }
+.ev-leader { fill: none; stroke: var(--fig-axis); stroke-width: 1.2; stroke-dasharray: 3 4; }
+.ev-anchor { fill: var(--fig-axis); }
+.ev-node { cursor: pointer; }
+.ev-node-base { fill: var(--fig-bg); stroke: var(--fig-axis); stroke-width: 1.5; }
+.ev-node-value { stroke: none; }
+.ev-node.is-selected .ev-node-base, .ev-node:focus-visible .ev-node-base { stroke: var(--ink); stroke-width: 3.5; }
+.ev-node:hover .ev-node-base { stroke: var(--ink); }
+.ev-symbol { font: 600 16px var(--sans); fill: var(--ink); text-anchor: middle; stroke: var(--fig-bg); stroke-width: 2.5; paint-order: stroke; }
+.ev-value { font: 14px var(--sans); fill: var(--ink-soft); text-anchor: middle; stroke: var(--fig-bg); stroke-width: 4; paint-order: stroke; }
+.ev-details { border-top: 1px solid var(--line); padding-top: 12px; margin: 12px 0; max-width: 100%; }
+.ev-details p { max-width: var(--measure); margin: 8px 0; }
+.ev-walk-steps { display: flex; gap: 10px; align-items: center; overflow-x: auto; padding-bottom: 8px; }
+.ev-walk-steps div { min-width: 155px; padding: 8px 12px; background: var(--panel); border-left: 3px solid var(--accent); }
+.ev-walk-steps small, .ev-walk-steps strong { display: block; }
+.ev-walk-steps small { color: var(--ink-faint); }
+@media (max-width: 600px) {
+  .ev-controls { gap: 12px; }
+}
+
+.pg-score-guide { max-width: var(--measure); margin: 22px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pg-score-guide p { margin: 12px 0; }
+.pg-score-guide dl { margin: 16px 0; }
+.pg-score-guide dt { font-weight: 600; margin-top: 14px; }
+.pg-score-guide dd { margin: 4px 0 0; }
+.pg-walk-pick {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+  border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px;
+  font-size: 12px; color: var(--ink-soft);
+}
+.pg-walk-pick p { margin: 0; max-width: var(--measure); }
+.pg-walk-equation {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 3px 7px;
+  margin: 2px 0 0; color: var(--ink-soft); font: 12px/1.5 var(--mono); font-variant-numeric: tabular-nums;
+}
+.pg-walk-equation b { color: var(--ink-faint); font-weight: 400; }
 
 /* An inline reference is something the pointer has to hit, so its box is
    taller than the text it sits inside; the negative margin keeps the line
