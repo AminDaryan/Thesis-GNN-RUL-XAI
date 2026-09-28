@@ -1775,16 +1775,6 @@ def explain_arguments(request: Mapping[str, Any], progress_path: Path | None,
     return arguments
 
 
-def options() -> dict[str, Any]:
-    """Everything the page needs to draw its form, before anything is chosen."""
-    from .figures import _graph_layout
-
-    graph, positions = _graph_layout()[:2]
-    return {
-        "fields": [{**_with_more(spec, spec["key"]),
-                    "choices": [_with_more(c, f"{spec['key']}={c['value']}") for c in spec.get("choices", [])]}
-                   if "choices" in spec else _with_more(spec, spec["key"]) for spec in FIELDS],
-        "groups": [{"key": k, "label": label} for k, label in GROUPS],
 def _dataset_schema() -> dict[str, Any]:
     """The columns shared by all four raw sub-datasets, including every sensor's meaning."""
     from ..data.sensors import (
@@ -1813,6 +1803,16 @@ def _dataset_schema() -> dict[str, Any]:
     }
 
 
+def options() -> dict[str, Any]:
+    """Everything the page needs to draw its form, before anything is chosen."""
+    from .figures import _graph_layout
+
+    graph, positions = _graph_layout()[:2]
+    return {
+        "fields": [{**_with_more(spec, spec["key"]),
+                    "choices": [_with_more(c, f"{spec['key']}={c['value']}") for c in spec.get("choices", [])]}
+                   if "choices" in spec else _with_more(spec, spec["key"]) for spec in FIELDS],
+        "groups": [{"key": k, "label": label} for k, label in GROUPS],
         "procedures": [_with_more(procedure, "procedure") for procedure in PROCEDURES],
         "procedure_about": PROCEDURE_ABOUT,
         "procedure_more": read_more("procedure"),
@@ -1820,6 +1820,7 @@ def _dataset_schema() -> dict[str, Any]:
         "defaults": {spec["key"]: spec["default"] for spec in FIELDS},
         "result_seeds": RESULT_SEEDS,
         "dataset": DATASET_DESCRIPTION,
+        "dataset_schema": _dataset_schema(),
         "graph": {
             "positions": {node: [round(x, 1), round(y, 1)] for node, (x, y) in positions.items()},
             "edges": [list(edge) for edge in graph.edges()],
@@ -1830,7 +1831,6 @@ def _dataset_schema() -> dict[str, Any]:
             "graphs": list(SHAP_TABLE_12_GRAPHS),
             "values": {sensor: list(values) for sensor, values in SHAP_TABLE_12.items()},
             "ring": list(FIG_10_RING),
-        "dataset_schema": _dataset_schema(),
         },
     }
 

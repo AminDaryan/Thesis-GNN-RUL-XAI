@@ -1437,21 +1437,16 @@
     var body = '<div class="pg-sections">' + SECTIONS[g.key].map(function (section, i) {
       return sectionHtml(section, i, g.key);
     }).join("") + "</div>";
+    if (g.key === "data") {
+      body += dataDetailsHtml(null);
+    }
     if (g.key === "training") {
       body += '<section class="pg-run" id="pg-run" aria-label="Run summary"></section>';
     }
     return '<div class="pg-tabpanel' + (on ? " is-active" : "") + '" role="tabpanel" id="pg-tabpanel-' + g.key +
       '" data-group="' + g.key + '" aria-labelledby="pg-tab-' + g.key + '"' + (on ? "" : " inert") + ">" + body + "</div>";
-    if (g.key === "data") {
-      body += dataDetailsHtml(null);
-    }
   }
 
-  // The settings of a box of the pipeline stand in groups named after the
-  // steps of the box's own flowchart that they decide, in the order those
-  // steps run, each with the step's picture: "Cap the labels" with the label
-  // ceiling and whether the test labels are capped, then "Smooth each
-  // sensor" with its weight, and so on. A group's name replaces the name of
   function dataHistoryWords(history) {
     if (!history) { return ""; }
     var median = Number(history.median);
@@ -1542,6 +1537,11 @@
     if (box) { box.outerHTML = dataDetailsHtml(dataset); }
   }
 
+  // The settings of a box of the pipeline stand in groups named after the
+  // steps of the box's own flowchart that they decide, in the order those
+  // steps run, each with the step's picture: "Cap the labels" with the label
+  // ceiling and whether the test labels are capped, then "Smooth each
+  // sensor" with its weight, and so on. A group's name replaces the name of
   // a list of options it holds alone, whose i then stands beside the group's
   // name, and a switch that turns the whole step on or off stands before it.
   // So no i ever stands without a name beside it. Training has
@@ -2430,14 +2430,14 @@
   function settingsMoved(keys) {
     saveSettings();
     keys.forEach(paintRow);
+    if (keys.indexOf("subset") >= 0 || keys.indexOf("window_size") >= 0) {
+      paintDatasetDetails(null);
+    }
     S.options.fields.forEach(function (other) {
       var box = $('[data-row="' + other.key + '"]');
       if (box) { box.hidden = !visible(other.key); }
     });
     paintProcedure();
-    if (keys.indexOf("subset") >= 0 || keys.indexOf("window_size") >= 0) {
-      paintDatasetDetails(null);
-    }
     paintSections();
     paintPipeline();
     requestZoom(false);
@@ -2489,16 +2489,16 @@
       post("/api/playground/preview", S.settings).then(function (preview) {
         if (asked !== JSON.stringify(S.settings)) { return; }  // a newer request is on its way
         drawRunCard(box, preview, null);
+        paintDatasetDetails(preview.dataset);
       }).catch(function (error) {
         if (asked !== JSON.stringify(S.settings)) { return; }
         drawRunCard(box, null, error.message);
+        paintDatasetDetails({ table5: (S.options.dataset || {})[S.settings.subset], error: error.message });
       });
     }, 220);
-        paintDatasetDetails(preview.dataset);
   }
 
   // A list of cautions, each said first in words, its code after it as a pointer.
-        paintDatasetDetails({ table5: (S.options.dataset || {})[S.settings.subset], error: error.message });
   function caveatList(caveats) {
     if (!caveats || !caveats.length) { return ""; }
     return '<ul class="pg-caveats">' + caveats.map(function (c) {
