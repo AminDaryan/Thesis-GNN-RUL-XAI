@@ -748,7 +748,11 @@ def _read_test_lengths(subset: str) -> tuple[int, ...]:
 
 def dataset_facts(subset: str, window_size: int) -> dict[str, Any]:
     """What Table 5 says about a sub-dataset, and how many test engines this window leaves out."""
-    facts: dict[str, Any] = {"table5": DATASET_DESCRIPTION[subset], "counted": None}
+    facts: dict[str, Any] = {
+        "table5": DATASET_DESCRIPTION[subset],
+        "counted": None,
+        "files": _file_facts(subset),
+    }
     lengths = _test_lengths(subset)
     if lengths:
         # An engine shorter than the window yields no window at all (A-23).
@@ -985,7 +989,10 @@ def _file_counts(subset: str) -> dict[str, Any]:
     """Rows and engines in one sub-dataset's three files, and the kept sensors that barely vary, counted from them."""
     from ..data.loading import read_cmapss_frame, read_rul_file
     from ..data.sensors import (
+        CYCLE_COL,
+        OP_SETTING_COLS,
         PAPER_SENSOR_SYMBOLS,
+        SENSORS,
         UNIT_COL,
         detect_uninformative_sensors,
     )
@@ -994,9 +1001,32 @@ def _file_counts(subset: str) -> dict[str, Any]:
     folder = raw_data_dir()
     train, test = read_cmapss_frame(folder / f"train_{subset}.txt"), read_cmapss_frame(folder / f"test_{subset}.txt")
     check = detect_uninformative_sensors(train)
+    train_lengths = train.groupby(UNIT_COL).size()
+    test_lengths = test.groupby(UNIT_COL).size()
+    sample_columns = [
+        {"key": UNIT_COL, "label": "Engine", "detail": UNIT_COL},
+        {"key": CYCLE_COL, "label": "Cycle", "detail": CYCLE_COL},
+        *[{"key": key, "label": f"Setting {i}", "detail": key}
+          for i, key in enumerate(OP_SETTING_COLS, start=1)],
+        *[{"key": sensor.column, "label": sensor.symbol,
+          "detail": sensor.column} for sensor in SENSORS],
+    ]
+    sample_keys = [column["key"] for column in sample_columns]
+    first_unit = int(train[UNIT_COL].iloc[0])
+    sample = train.loc[train[UNIT_COL] == first_unit, sample_keys].head(10)
     return {"train_rows": len(train), "train_engines": int(train[UNIT_COL].nunique()),
             "test_rows": len(test), "test_engines": int(test[UNIT_COL].nunique()),
             "labels": len(read_rul_file(folder / f"RUL_{subset}.txt")),
+            "train_history": {"shortest": int(train_lengths.min()),
+                              "median": float(train_lengths.median()),
+                              "longest": int(train_lengths.max())},
+            "test_history": {"shortest": int(test_lengths.min()),
+                             "median": float(test_lengths.median()),
+                             "longest": int(test_lengths.max())},
+            "sample": {"source": f"train_{subset}.txt", "columns": sample_columns,
+                       "rows": [{key: (int(row[key]) if key in (UNIT_COL, CYCLE_COL)
+                                       else float(row[key])) for key in sample_keys}
+                                for _, row in sample.iterrows()]},
             "flat": [s for s in PAPER_SENSOR_SYMBOLS if s in check["constant"] + check["low_resolution"]]}
 
 
@@ -1755,6 +1785,34 @@ def options() -> dict[str, Any]:
                     "choices": [_with_more(c, f"{spec['key']}={c['value']}") for c in spec.get("choices", [])]}
                    if "choices" in spec else _with_more(spec, spec["key"]) for spec in FIELDS],
         "groups": [{"key": k, "label": label} for k, label in GROUPS],
+def _dataset_schema() -> dict[str, Any]:
+    """The columns shared by all four raw sub-datasets, including every sensor's meaning."""
+    from ..data.sensors import (
+        OP_SETTING_COLS,
+        PAPER_SENSOR_SYMBOLS,
+        RAW_COLUMNS,
+        SENSORS,
+    )
+
+    used = set(PAPER_SENSOR_SYMBOLS)
+    return {
+        "raw_column_count": len(RAW_COLUMNS),
+        "column_groups": [
+            {"name": "Engine number", "count": 1, "columns": "unit"},
+            {"name": "Cycle number", "count": 1, "columns": "cycle"},
+            {"name": "Operating settings", "count": len(OP_SETTING_COLS),
+             "columns": ", ".join(OP_SETTING_COLS)},
+            {"name": "Sensor readings", "count": len(SENSORS),
+             "columns": f"sensor_1 to sensor_{len(SENSORS)}"},
+        ],
+        "sensors": [
+            {"used": sensor.symbol in used, "symbol": sensor.symbol, "column": sensor.column,
+             "description": sensor.description, "unit": sensor.unit, "station": sensor.station}
+            for sensor in SENSORS
+        ],
+    }
+
+
         "procedures": [_with_more(procedure, "procedure") for procedure in PROCEDURES],
         "procedure_about": PROCEDURE_ABOUT,
         "procedure_more": read_more("procedure"),
@@ -1772,6 +1830,7 @@ def options() -> dict[str, Any]:
             "graphs": list(SHAP_TABLE_12_GRAPHS),
             "values": {sensor: list(values) for sensor, values in SHAP_TABLE_12.items()},
             "ring": list(FIG_10_RING),
+        "dataset_schema": _dataset_schema(),
         },
     }
 

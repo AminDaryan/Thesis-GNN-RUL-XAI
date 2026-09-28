@@ -474,7 +474,23 @@ def test_the_preview_carries_only_what_the_design_tab_draws():
     assert "command" not in answer and "caveats" not in answer
     # The row of the paper is shown for a stored run, not while designing one.
     assert "paper_row" not in answer and "no_row_reason" not in answer
-    assert set(answer["dataset"]) == {"table5", "counted"}
+    assert set(answer["dataset"]) == {"table5", "counted", "files"}
+    if answer["dataset"]["files"]:
+        files = answer["dataset"]["files"]
+        assert files["train_engines"] == answer["dataset"]["table5"]["train_engines"]
+        assert files["test_engines"] == answer["dataset"]["table5"]["test_engines"]
+        assert files["labels"] == files["test_engines"]
+        assert files["train_history"]["shortest"] <= files["train_history"]["median"] <= files["train_history"]["longest"]
+        assert files["test_history"]["shortest"] <= files["test_history"]["median"] <= files["test_history"]["longest"]
+        sample = files["sample"]
+        assert sample["source"] == "train_FD001.txt"
+        assert len(sample["rows"]) == 10
+        assert len({row["unit"] for row in sample["rows"]}) == 1
+        assert [row["cycle"] for row in sample["rows"]] == list(range(1, 11))
+        assert [column["key"] for column in sample["columns"]] == list(sample["rows"][0])
+        from thesis_gnn_rul_xai.data.sensors import RAW_COLUMNS
+
+        assert [column["key"] for column in sample["columns"]] == RAW_COLUMNS
     assert answer["design_cautions"] == []
     assert answer["torch"] is (importlib.util.find_spec("torch") is not None)
     if answer["torch"]:

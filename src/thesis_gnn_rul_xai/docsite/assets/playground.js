@@ -1442,6 +1442,9 @@
     }
     return '<div class="pg-tabpanel' + (on ? " is-active" : "") + '" role="tabpanel" id="pg-tabpanel-' + g.key +
       '" data-group="' + g.key + '" aria-labelledby="pg-tab-' + g.key + '"' + (on ? "" : " inert") + ">" + body + "</div>";
+    if (g.key === "data") {
+      body += dataDetailsHtml(null);
+    }
   }
 
   // The settings of a box of the pipeline stand in groups named after the
@@ -1449,6 +1452,96 @@
   // steps run, each with the step's picture: "Cap the labels" with the label
   // ceiling and whether the test labels are capped, then "Smooth each
   // sensor" with its weight, and so on. A group's name replaces the name of
+  function dataHistoryWords(history) {
+    if (!history) { return ""; }
+    var median = Number(history.median);
+    var middle = Number.isInteger(median) ? count(median) : number(median, 1);
+    return count(history.shortest) + "–" + count(history.longest) + " cycles; median " + middle;
+  }
+
+  function dataFileHtml(group, label, filename, role, rows, columns, engines, history) {
+    return '<tr>' + group + '<th scope="row">' + esc(label) +
+      '<span class="pg-data-column-key">' + esc(filename) + '</span></th><td>' + esc(role) +
+      '</td><td>' + count(rows) + '</td><td>' + count(columns) + '</td><td>' + count(engines) +
+      '</td><td>' + (history ? esc(dataHistoryWords(history)) : 'One answer per engine') + '</td></tr>';
+  }
+
+  function dataSampleValue(value, key) {
+    if (value === null || value === undefined) { return "—"; }
+    return key === "unit" || key === "cycle" ? count(value) : String(value);
+  }
+
+  function dataDetailsHtml(dataset) {
+    var subset = S.settings.subset;
+    var table5 = (dataset && dataset.table5) || (S.options.dataset || {})[subset] || {};
+    var files = dataset && dataset.files;
+    var schema = S.options.dataset_schema || {};
+    var sensors = schema.sensors || [];
+    var sample = files && files.sample;
+    var ready = !!dataset;
+    var status = !ready ? "Reading file details…" : dataset.error ? "Refresh failed" : files ? "" : "Files not found";
+    var fileRows = dataFileHtml('<th scope="rowgroup">Training</th>', "Training histories", "train_" + subset + ".txt",
+      "Sensor readings from each engine's first recorded cycle through its last cycle before failure.",
+      files && files.train_rows, schema.raw_column_count, files && files.train_engines, files && files.train_history) +
+      '</tbody><tbody class="pg-data-testing">' +
+      dataFileHtml('<th scope="rowgroup" rowspan="2">Testing<span class="pg-data-pair">Used together</span></th>', "Test histories", "test_" + subset + ".txt",
+        "Readings stop before failure. The model uses these readings to predict life left.", files && files.test_rows, schema.raw_column_count,
+        files && files.test_engines, files && files.test_history) +
+      dataFileHtml('', "Test answers", "RUL_" + subset + ".txt",
+        "Known life left at each test engine's last recorded cycle, used to score its prediction.", files && files.labels, 1, files && files.test_engines, null);
+    var groups = (schema.column_groups || []).map(function (group) {
+      return '<div><dt>' + esc(group.name) + '</dt><dd><strong>' + count(group.count) + '</strong><span class="pg-data-code">' +
+        esc(group.columns) + "</span></dd></div>";
+    }).join("");
+    var sensorRows = sensors.map(function (sensor) {
+      return '<tr class="' + (sensor.used ? "is-used" : "is-unused") + '"><td><span class="pg-data-use">' +
+        (sensor.used ? "Used" : "Not used") + "</span>" +
+        '</td><th scope="row">' + esc(sensor.symbol) + '</th><td class="pg-data-code">' + esc(sensor.column) +
+        "</td><td>" + esc(sensor.description) + "</td><td>" + esc(sensor.unit === "-" ? "—" : sensor.unit) +
+        "</td><td>" + esc(sensor.station) + "</td></tr>";
+    }).join("");
+    var sampleHead = sample ? sample.columns.map(function (column) {
+      return '<th scope="col"><span>' + esc(column.label) + '</span><span class="pg-data-column-key">' +
+        esc(column.detail) + "</span></th>";
+    }).join("") : "";
+    var sampleRows = sample ? sample.rows.map(function (row) {
+      return "<tr>" + sample.columns.map(function (column, index) {
+        var tag = index === 0 ? 'th scope="row"' : "td";
+        return "<" + tag + ">" + esc(dataSampleValue(row[column.key], column.key)) + "</" + tag.split(" ")[0] + ">";
+      }).join("") + "</tr>";
+    }).join("") : "";
+    var sampleTable = sample ? '<div class="pg-data-table-wrap" tabindex="0" role="region" aria-label="All dataset columns; scroll horizontally"><table class="pg-data-table pg-data-sample"><caption class="visually-hidden">Ten consecutive rows from ' +
+      esc(sample.source) + '</caption><thead><tr>' + sampleHead + "</tr></thead><tbody>" + sampleRows +
+      "</tbody></table></div>" : "";
+    var unavailable = ready && !dataset.error && !files ? '<p class="pg-data-note pg-data-note--warn">The three files are not in data/raw/, so row counts and history lengths cannot be measured here.</p>' : "";
+    var failed = dataset && dataset.error ? '<p class="pg-data-note pg-data-note--warn">File details could not be refreshed: ' +
+      esc(dataset.error) + "</p>" : "";
+    return '<section class="pg-data-detail" id="pg-data-detail" aria-labelledby="pg-data-detail-title" aria-live="polite" aria-busy="' +
+      (!ready) + '"><header class="pg-data-detail-head"><div><h3 id="pg-data-detail-title">' + esc(subset) +
+      '</h3></div>' +
+      (status ? '<span class="pg-data-status">' + esc(status) + '</span>' : '') + '</header><dl class="pg-data-metrics"><div><dt>Training engines</dt><dd>' +
+      count(table5.train_engines) + '</dd></div><div><dt>Test engines</dt><dd>' + count(table5.test_engines) +
+      '</dd></div><div><dt>Operating conditions</dt><dd>' + count(table5.conditions) +
+      '</dd></div><div><dt>Fault modes</dt><dd>' + count(table5.fault_modes) +
+      '</dd></div></dl><div class="pg-data-detail-body"><section aria-labelledby="pg-data-files-title"><h4 id="pg-data-files-title">Files</h4>' +
+      '<div class="pg-data-table-wrap" tabindex="0" role="region" aria-label="Dataset files"><table class="pg-data-table pg-data-files"><caption class="visually-hidden">Training file and complementary testing files</caption><thead><tr><th>Use</th><th>File</th><th>Purpose</th><th>Rows</th><th>Columns</th><th>Engines</th><th>Recorded cycles per engine</th></tr></thead><tbody>' + fileRows + "</tbody></table></div>" + unavailable + failed + "</section>" +
+      '<section class="pg-data-sensors" aria-labelledby="pg-data-sensors-title"><div class="pg-data-sensors-head"><div><h4 id="pg-data-sensors-title">Sensor columns</h4>' +
+      '<p>The paper uses 14 of the 21 sensor readings as model inputs. The other seven stay in the raw files.</p></div></div>' +
+      '<div class="pg-data-table-wrap"><table class="pg-data-table"><caption class="visually-hidden">Every sensor column in ' +
+      esc(subset) + ', its meaning, unit, location and whether the paper uses it</caption><thead><tr><th>Paper input</th><th>Sensor</th>' +
+      '<th>File column</th><th>Measurement</th><th>Unit</th><th>Location</th></tr></thead><tbody>' + sensorRows +
+      '</tbody></table></div></section><section class="pg-data-rows" aria-labelledby="pg-data-columns-title"><h4 id="pg-data-columns-title">Each history row</h4>' +
+      '<p class="pg-data-intro">Each row records one engine at one cycle. These ten consecutive rows from ' +
+      esc(sample ? sample.source : "the training file") + ' show all ' + count(schema.raw_column_count) +
+      ' columns in file order. Scroll horizontally to see every sensor.</p><dl class="pg-data-columns">' + groups + "</dl>" + sampleTable +
+      "</section></div></section>";
+  }
+
+  function paintDatasetDetails(dataset) {
+    var box = $("#pg-data-detail");
+    if (box) { box.outerHTML = dataDetailsHtml(dataset); }
+  }
+
   // a list of options it holds alone, whose i then stands beside the group's
   // name, and a switch that turns the whole step on or off stands before it.
   // So no i ever stands without a name beside it. Training has
@@ -2342,6 +2435,9 @@
       if (box) { box.hidden = !visible(other.key); }
     });
     paintProcedure();
+    if (keys.indexOf("subset") >= 0 || keys.indexOf("window_size") >= 0) {
+      paintDatasetDetails(null);
+    }
     paintSections();
     paintPipeline();
     requestZoom(false);
@@ -2398,9 +2494,11 @@
         drawRunCard(box, null, error.message);
       });
     }, 220);
+        paintDatasetDetails(preview.dataset);
   }
 
   // A list of cautions, each said first in words, its code after it as a pointer.
+        paintDatasetDetails({ table5: (S.options.dataset || {})[S.settings.subset], error: error.message });
   function caveatList(caveats) {
     if (!caveats || !caveats.length) { return ""; }
     return '<ul class="pg-caveats">' + caveats.map(function (c) {
