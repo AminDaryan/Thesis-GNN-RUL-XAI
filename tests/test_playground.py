@@ -343,11 +343,12 @@ def test_the_data_box_counts_the_rows_the_loader_reads(loaded):
     answer = _flowchart("data")
     assert _step(answer, "Training engines")["shape"] == f"({playground._count(len(loaded.train))}, 26)"
     assert _step(answer, "Test engines")["shape"] == f"({playground._count(len(loaded.test))}, 26)"
-    evaluation = next(step for step in answer["steps"] if step.get("kind") == "evaluation")
-    assert evaluation["detached"]
-    assert [step["name"] for step in evaluation["steps"][:2]] == ["Test answers", "Attach test labels"]
+    assert not any(step.get("kind") == "evaluation" for step in answer["steps"])
     main = next(step for step in answer["steps"] if step.get("kind") == "group")
     assert not {"Test answers", "Attach test labels"}.intersection(step["name"] for step in main["steps"])
+    assert [lane["name"] for lane in main["lanes"]] == ["Training data", "Test data"]
+    assert [step["name"] for step in main["lanes"][1]["steps"]] == ["Test engines"]
+    assert main["lanes"][1]["shape"] == _step(answer, "Test engines")["shape"]
 
 
 def test_the_preprocessing_box_counts_the_windows_the_pipeline_makes(raw_dir):

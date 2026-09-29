@@ -69,8 +69,8 @@ read out of the sensors.
 
 {{figure:sensor-selection}}
 
-Choose **Show column selection** to see the kept columns form the model-input
-table. The empty cells stand for rows: this schematic invents no sensor
+The selected columns move into the model-input table every five seconds,
+keeping their original height. The empty cells stand for rows: this schematic invents no sensor
 readings. The real values and complete column list are in the playground's
 Data tab. Engine number, cycle and operating settings remain available to
 organise preprocessing but are not extra sensor inputs.

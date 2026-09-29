@@ -611,6 +611,14 @@ def test_sensor_selection_uses_real_column_names_without_invented_readings():
     assert [g.find(ns).text for g in source] == [s.symbol for s in SENSORS]
     assert [g.find(ns).text for g in picked] == list(PAPER_SENSOR_SYMBOLS)
     assert all(len(list(g.iter(ns))) == 1 for g in source + picked)
+    source_sizes = {
+        g.find(ns).text: g.find("{http://www.w3.org/2000/svg}rect").attrib for g in source
+    }
+    for column in picked:
+        original = source_sizes[column.find(ns).text]
+        selected = column.find("{http://www.w3.org/2000/svg}rect").attrib
+        assert (selected["width"], selected["height"]) == (original["width"], original["height"])
+        assert 250 + float(selected["height"]) < float(svg.attrib["viewBox"].split()[3])
 
 
 def test_old_xai_section_links_redirect_to_existing_subpage_headings(root: Path):
@@ -658,6 +666,25 @@ def test_the_menu_becomes_a_drawer_at_one_width_everywhere(root: Path):
     beside = re.search(r'@media \(min-width: (\d+)px\) and \(max-width: \d+px\) \{ html\[data-nav="open"\] \.toc',
                        (assets / "app.css").read_text(encoding="utf-8")).group(1)
     assert int(beside) == int(widths[0]) + 1
+
+
+def test_desktop_scroll_is_contained_and_resets_when_a_document_changes(root: Path):
+    import re
+
+    assets = root / "src/thesis_gnn_rul_xai/docsite/assets"
+    css = (assets / "app.css").read_text(encoding="utf-8")
+    script = (assets / "app.js").read_text(encoding="utf-8")
+    frame = css.split("/* Desktop uses one screen-sized frame.", 1)[1]
+    desktop = re.search(r"@media \(min-width: (\d+)px\)", frame).group(1)
+    assert f'var desktopFrame = window.matchMedia("(min-width: {desktop}px)")' in script
+    assert "body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }" in frame
+    assert ".layout { flex: 1 1 0; min-height: 0; align-items: stretch; overflow: hidden; }" in frame
+    assert ".content { min-height: 0; overflow-y: auto;" in frame
+    assert ".content:has(.pg-design) { height: auto; min-height: 0; overflow: hidden; }" in frame
+    assert 'content.scrollTo({ top: 0, behavior: "instant" })' in script
+    assert "root: desktopFrame.matches ? content : null" in script
+    assert ".pg-data-table-wrap { position: relative;" in css
+    assert ".pg-data-table caption.visually-hidden { top: 0; left: 0; }" in css
 
 
 def test_the_page_scripts_parse_in_older_safari(root: Path):

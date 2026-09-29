@@ -421,45 +421,6 @@ were removed because each repeated another page.
 
 ---
 
-## P-21 — One real example followed through every step, for readers who know none of it
-
-On 2026-09-26 the author asked for a demonstration, to be built later, in which
-one example input is shown passing through every step of the whole
-architecture, written in English plain enough for someone with no background at
-all, since the site's main readers are students.
-
-**What already exists, and why it is not that.** `docs/learn/04_the_pipeline.md`
-traces the preprocessing with shapes and counts measured on FD001, and follows
-training engine 1 in places: its `T50` smoothed over its first two cycles, and
-its 163 windows. `docs/learn/05_the_model.md` walks the network layer by layer
-with its learned numbers. The playground's pipeline opens each box as a
-flowchart whose arrows carry the shape passed from step to step. None of them
-follows one engine's readings as numbers the whole way, from the raw file row to
-the predicted remaining life, and all of them assume the reader already knows
-what a window, a scaling or a graph layer is.
-
-**Preprocessing now has a partial example (2026-09-27):** its playground
-flowchart shows real file rows, follows one reading through smoothing and
-rescaling, and draws the first overlapping windows with their targets. The
-examples update with the settings and are checked in `tests/test_examples.py`.
-This does not yet follow that same window through the temporal stage, graph
-layers and final prediction; the whole-network demonstration below remains open.
-
-**What finishing looks like:** one real engine and one real window of FD001,
-chosen once and named, followed step by step: its raw readings for a few
-sensors, its label before and after the ceiling, the same readings smoothed
-and rescaled, the window cut from them, what the temporal stage hands on for
-each sensor, what one graph layer does to one sensor's number given its
-neighbours', and the prediction in cycles beside the true remaining life. Every
-number is printed by code run on the real files at one commit, with a stored
-five-seed run's saved network for the model's part (working rules 2 and 3a),
-and each step's arithmetic is a worked example in `tests/test_examples.py` or
-`tests/test_examples_torch.py` (working rule 9). Where it lives is the author's
-call: a page of its own under Learn, or a view of the playground that opens
-from the pipeline.
-
----
-
 ## P-14 — Codes used as words outside the documents the check covers
 
 `scripts/check_prose.py` now fails when a code such as `A-07` is used as a word

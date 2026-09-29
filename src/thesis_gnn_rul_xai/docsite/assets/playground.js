@@ -303,7 +303,7 @@
       return '<span class="pg-info-line">' + (m ? "<strong>" + esc(m[1]) + ":</strong> " + esc(m[2]) : esc(line)) +
         "</span>";
     }).join("") : "";
-    return lines + '<span class="pg-info-example"><strong>Input → operation → output</strong><a href="#/doc/docs/learn/08_worked_examples.md" target="_blank" rel="noopener">Follow a real dataset row and a saved model’s calculations</a></span>' +
+    return lines +
       (source ? '<span class="pg-info-source">' + source + "</span>" : "") +
       (more ? '<span class="pg-info-more"><a href="' + esc(more) + '" target="_blank" rel="noopener">Read more' +
         NEXT + "</a></span>" : "");
@@ -1593,25 +1593,10 @@
   function sectionHelp(section) {
     if (section.procedure) { return infoCard(S.options.procedure_about, "", S.options.procedure_more); }
     var keys = section.toggle ? [section.toggle] : section.fields || [];
-    var help = keys.length === 1 ? hintFor(S.fields[keys[0]]) : infoCard(
+    return keys.length === 1 ? hintFor(S.fields[keys[0]]) : infoCard(
       keys.map(function (key) { return S.fields[key].about; }).filter(Boolean).join("\n"),
       keys.map(function (key) { return sourceNote(S.fields[key].source); }).filter(Boolean).join(" "),
       keys.length ? S.fields[keys[0]].more : "");
-    var step = S.zoomed && S.zoomed.stage === S.zoom && (S.zoomed.steps || []).filter(function (item) {
-      return sectionForStep(item) === section;
-    })[0];
-    return help + (step ? helpExample(step) : "");
-  }
-
-  function helpExample(step) {
-    var ex = step.example;
-    if (!ex) { return ""; }
-    var context = ex.context ? '<span>' + esc(ex.context) + '</span>' : '';
-    if (ex.kind === "change") {
-      return '<span class="pg-info-example">' + context + '<span><strong>Input:</strong> ' + esc(ex.before) +
-        '</span><span><strong>Operation:</strong> ' + esc(ex.note || step.name) + '</span><span><strong>Output:</strong> ' + esc(ex.after) + '</span></span>';
-    }
-    return '<span class="pg-info-example">' + context + '<span>See the worked input and output directly below this step.</span></span>';
   }
 
   function sectionForStep(step) {
@@ -1889,14 +1874,14 @@
     if (item.kind === "edge") {
       var own = item.shape && !(first && !last) && !(last && item.shape === handedOn(before));
       return '<span class="pg-vedge">' + (ICONS[item.icon] || "") + "<span>" + esc(item.name) + "</span></span>" +
-        (item.handoff ? (last ? '<span class="pg-transfer">' + esc(item.handoff) + "</span>" : "") +
-          storyHtml(item) : own ? '<code class="pg-vshape">' + esc(item.shape) + "</code>" : "");
+        (item.handoff ? (last ? '<span class="pg-transfer">' + esc(item.handoff) + "</span>" : "") :
+          own ? '<code class="pg-vshape">' + esc(item.shape) + "</code>" : "") + storyHtml(item);
     }
     if (item.kind === "group") {
       if (item.lanes) {
         return '<div class="pg-vlanes">' + item.lanes.map(function (lane) {
           return '<section class="pg-vlane"><h4>' + esc(lane.name) + '</h4>' +
-            vflowHtml(lane.steps) + '</section>';
+            vflowHtml(lane.steps) + (lane.shape ? arrowHtml(lane.shape) : "") + '</section>';
         }).join("") + '</div>';
       }
       return '<div class="pg-vgroup">' + item.steps.map(function (s) { return vstepHtml(s, true); }).join("") + "</div>";
@@ -1928,7 +1913,7 @@
     var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
       '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
     var section = sectionForStep(step), operation = section && sectionName(section);
-    var words = section ? sectionHelp(section) : infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more) + helpExample(step);
+    var words = section ? sectionHelp(section) : infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
     var row = section && (section.toggle || section.fields[0]);
     var destination = row ? ' data-goto="' + S.fields[row].group + '" data-goto-row="' + row + '"' : '';
     var part = partControl(step);
@@ -1944,40 +1929,9 @@
       (small && step.shape ? '<code class="pg-vshape">' + esc(step.shape) + "</code>" : "") + part + "</div>";
   }
 
-  // Real file rows and operations, with the quantities named at the point they are used.
+  // Keep the flow readable; full explanations belong in the step's help card.
   function storyHtml(step) {
-    var ex = step.example, content = "";
-    if (ex && ex.kind === "rows") {
-      content = '<table class="pg-example-table"><caption>First ' + ex.rows.length +
-        ' rows · 4 columns shown</caption><thead><tr><th scope="col">Engine</th><th scope="col">Cycle</th>' +
-        '<th scope="col">Sensor T24</th><th scope="col">Life left<br>(cycles)</th></tr></thead><tbody>' +
-        ex.rows.map(function (r) { return '<tr><td>' + esc(r.engine) + '</td><td>' + esc(r.cycle) +
-          '</td><td>' + esc(r.reading) + '</td><td>' + esc(r.life) + '</td></tr>'; }).join("") + "</tbody></table>";
-    } else if (ex && ex.kind === "change") {
-      content = '<div class="pg-example-change"><span>' + esc(ex.label) + '</span><span class="pg-example-values">' +
-        esc(ex.before) + '<span aria-label="becomes"> → </span><strong>' + esc(ex.after) + "</strong></span>" +
-        (ex.note ? '<span class="pg-example-note">' + esc(ex.note) + "</span>" : "") + "</div>";
-    } else if (ex && ex.kind === "groups") {
-      content = '<div class="pg-example-groups">' + ex.items.map(function (item) {
-        return '<div><span>' + esc(item.name) + '</span><strong>' + esc(item.value) +
-          '</strong><span>' + esc(item.detail) + "</span></div>";
-      }).join("") + "</div>";
-    } else if (ex && ex.kind === "windows") {
-      var start = ex.windows[0].start, end = ex.windows[ex.windows.length - 1].end, length = end - start + 1;
-      content = '<div class="pg-example-windows"><span>Engine ' + esc(ex.engine) +
-        ' · first ' + ex.windows.length + (ex.windows.length === 1 ? ' window' : ' windows') +
-        '</span><div class="pg-window-axis"><span>Cycle ' +
-        esc(start) + '</span><span>Cycle ' + esc(end) + '</span></div>' + ex.windows.map(function (w) {
-          return '<div class="pg-window-track" aria-hidden="true"><span style="margin-left:' + (100 * (w.start - start) / length) +
-            '%;width:' + (100 * (w.end - w.start + 1) / length) + '%"></span></div>' +
-            '<span class="pg-window-answer">Cycles ' + esc(w.start) + '–' + esc(w.end) +
-            ' → ' + esc(w.life) + " cycles left</span>";
-        }).join("") + "</div>";
-    }
-    return (step.summary ? '<p class="pg-story-summary">' + esc(step.summary) + "</p>" : "") + content +
-      (step.columns ? '<details class="pg-column-key"><summary>What are the 27 columns?</summary><p>' +
-        esc(step.columns) + "</p></details>" : "") +
-      (step.aside ? '<p class="pg-story-aside">' + esc(step.aside) + "</p>" : "");
+    return step.summary ? '<p class="pg-story-summary">' + esc(step.summary) + "</p>" : "";
   }
 
   // The recurrent networks, one per sensor, each a button that opens it; or

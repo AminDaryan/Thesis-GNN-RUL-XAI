@@ -637,6 +637,141 @@ def draw_architecture() -> str:
     )
 
 
+def _architecture_block(x: float, y: float, columns: int, rows: int, colour: str) -> str:
+    """Draw a sensor-by-feature grid with a shallow raised edge."""
+    width, height, depth = max(26, columns * 1.65), rows * 15, 17
+    out = (
+        f'<path d="M{x} {y} l{depth} {-depth} h{width} l{-depth} {depth} Z" '
+        f'fill="{colour}" fill-opacity="0.45" stroke="{colour}" stroke-width="0.8"/>'
+        f'<path d="M{x + width} {y} l{depth} {-depth} v{height} l{-depth} {depth} Z" '
+        f'fill="{colour}" fill-opacity="0.85" stroke="{colour}" stroke-width="0.8"/>'
+        f'<rect x="{x}" y="{y}" width="{width}" height="{height}" '
+        f'fill="{colour}" fill-opacity="0.64" stroke="{colour}"/>'
+    )
+    for row in range(1, rows):
+        out += (f'<path d="M{x} {y + row * 15} h{width}" '
+                'stroke="var(--fig-bg)" stroke-opacity="0.5" stroke-width="0.8"/>')
+    for column in range(1, columns):
+        out += (f'<path d="M{x + width * column / columns} {y} v{height}" '
+                'stroke="var(--fig-bg)" stroke-opacity="0.3" stroke-width="0.55"/>')
+    return out
+
+
+def draw_architecture_overview() -> str:
+    """Illustrate the default model with sensor graphs and connected output units."""
+    from ..config import PreprocessingConfig
+    from ..models.estgnn import ESTGNN
+
+    matrix, symbols = build_physics_adjacency()
+    model = ESTGNN(normalize_adjacency(matrix, method="row"),
+                   window_size=PreprocessingConfig().window_size)
+    summary = model.layer_summary()
+    rows = [{**summary[1], "parameters": summary[0]["parameters"]}, *summary[2:]]
+    blue, rose, purple, gold, green = "#6f9fc7", "#d69ba8", "#b294d2", "#d6b74f", "#99b66a"
+    centres = [70, 220, 373, 526, 680, 842, 979]
+    defs = ('<title id="architecture-overview-title">From sensor readings to remaining life</title>'
+            '<desc id="architecture-overview-desc">The default network without LSTM. '
+            'Each graph has fourteen sensor nodes and the connections used by the model. '
+            'After three graph layers with ReLU, the sensor values become one list, then fully connected layers '
+            'produce one prediction. Only some list entries, units and connections are drawn.</desc>'
+            '<defs><marker id="architecture-overview-arrow" viewBox="0 0 10 10" refX="9" refY="5" '
+            'markerWidth="5" markerHeight="5" orient="auto">'
+            '<path d="M0 0 L10 5 L0 10 Z" fill="var(--fig-axis)"/></marker></defs>')
+    out = (_open(1120, 548, defs)
+           .replace('role="img"', 'role="img" aria-labelledby="architecture-overview-title architecture-overview-desc"'))
+    for left, right, label, colour in [(12, 140, "Input", blue),
+                                       (150, 935, "Hidden layers", gold),
+                                       (945, 1110, "Output", green)]:
+        points = f"{left},20 {right - 19},20 {right},42 {right - 19},64 {left},64 {left + 19},42"
+        out += (f'<polygon points="{points}" fill="{colour}" fill-opacity="0.24"/>'
+                + _text((left + right) / 2 + 5, 48, label, size=20, weight="600"))
+
+    titles = ["Sensor input", "GCN-1", "GCN-2", "GCN-3", "Flatten", "FC-1", "FC-2"]
+    subtitles = ["Last reading", "ReLU", "ReLU", "ReLU", "One list", "ReLU", "Sigmoid"]
+    widths = [model.in_features, *(layer.out_features for layer in model.graph_layers)]
+    for index, (row, centre, title, subtitle) in enumerate(zip(rows, centres, titles, subtitles, strict=True)):
+        count = int(row["parameters"])
+        shape = str(row["out"]).replace("B, ", "")
+        colour = [blue, rose, rose, rose, purple, gold, green][index]
+        out += (f'<g data-architecture-layer="{html.escape(str(row["layer"]))}" '
+                f'data-parameters="{count}" data-shape="{html.escape(shape)}">'
+                + _text(centre, 107, title, size=18, weight="600")
+                + _text(centre, 132, subtitle, size=14, opacity=0.75))
+        if index < 4:
+            width = max(26, widths[index] * 1.65)
+            if index == 0:
+                out += _architecture_block(centre - width / 2 - 8.5, 190,
+                                           widths[index], model.n_nodes, colour)
+            else:
+                angles = np.linspace(-np.pi / 2, 3 * np.pi / 2, model.n_nodes, endpoint=False)
+                points = [(centre + 61 * np.cos(angle), 295 + 89 * np.sin(angle)) for angle in angles]
+                for a in range(model.n_nodes):
+                    for b in range(a + 1, model.n_nodes):
+                        if matrix[a, b] or matrix[b, a]:
+                            ax, ay = points[a]
+                            bx, by = points[b]
+                            out += (f'<path data-graph-edge="{symbols[a]} {symbols[b]}" '
+                                    f'd="M{ax:.2f} {ay:.2f} L{bx:.2f} {by:.2f}" '
+                                    'stroke="var(--fig-axis)" stroke-opacity="0.5" stroke-width="1"/>')
+                for symbol, (node_x, node_y) in zip(symbols, points, strict=True):
+                    out += (f'<circle data-sensor="{symbol}" cx="{node_x:.2f}" cy="{node_y:.2f}" '
+                            f'r="6" fill="{rose}" stroke="var(--fig-bg)" stroke-width="1.2">'
+                            f'<title>{symbol}</title></circle>')
+            if index < 3:
+                start = centre + (width / 2 + 15 if index == 0 else 70)
+                end = centres[index + 1] - 70
+                out += (f'<path d="M{start} 295 H{end}" stroke="var(--fig-axis)" '
+                        'stroke-width="1.8" fill="none" marker-end="url(#architecture-overview-arrow)"/>')
+            dimensions = f"{model.n_nodes} \u00d7 {widths[index]}"
+            meaning = ""
+        elif index == 4:
+            for offset, y in enumerate([181, 209, 237, 265, 321, 349, 377]):
+                out += (f'<rect x="{centre - 13}" y="{y}" width="26" height="22" rx="3" '
+                        f'fill="{purple}" fill-opacity="{0.55 + (offset % 2) * 0.15}"/>')
+            out += _text(centre, 310, "⋮", size=24, fill=purple)
+            for start_y, end_y in [(206, 193), (295, 276), (384, 388)]:
+                out += (f'<path d="M{centres[3] + 70} {start_y} L{centre - 25} {end_y}" '
+                        f'stroke="{rose}" stroke-width="2" fill="none" '
+                        'marker-end="url(#architecture-overview-arrow)"/>')
+            dimensions, meaning = str(model.flattened_size), "numbers"
+        elif index == 5:
+            for source_y in [192, 248, 360, 388]:
+                for dest_y in [185, 229, 273, 329, 373, 417]:
+                    out += (f'<path d="M{centres[4] + 14} {source_y} L{centre - 16} {dest_y}" '
+                            f'stroke="{purple}" stroke-opacity="0.34" stroke-width="1"/>')
+            for y in [185, 229, 273, 329, 373, 417]:
+                out += (f'<path d="M{centre + 16} {y} L{centres[6] - 23} 300" '
+                        f'stroke="{gold}" stroke-width="1.4" stroke-opacity="0.8"/>'
+                        f'<circle cx="{centre}" cy="{y}" r="16" fill="{gold}" '
+                        'fill-opacity="0.6"/>')
+            out += _text(centre, 309, "⋮", size=24, fill=gold)
+            dimensions, meaning = str(model.fc1.out_features), "numbers"
+        else:
+            out += (f'<circle cx="{centre}" cy="300" r="24" fill="{green}" fill-opacity="0.7"/>'
+                    f'<path d="M{centre + 29} 300 H1042" stroke="var(--fig-axis)" '
+                    'stroke-width="1.8" marker-end="url(#architecture-overview-arrow)"/>'
+                    + _text(1067, 247, "Remaining", size=15, weight="600")
+                    + _text(1067, 268, "life", size=15, weight="600")
+                    + _text(1067, 306, "RUL", size=19, weight="600", fill="var(--fig-ink)")
+                    + _text(1067, 335, "in cycles", size=14)
+                    + _text(centre, 369, "Sigmoid → 0 to 1", size=14)
+                    + _text(centre, 392, f"then \u00d7 {model.rul_max}", size=14))
+            dimensions, meaning = str(model.fc2.out_features), "fraction"
+        out += (_text(centre, 456, dimensions, size=23, weight="600")
+                + _text(centre, 478, meaning, size=15, opacity=0.75)
+                + _text(centre, 507, f'{count:,}'.replace(',', ' ') + " learned", size=16, weight="600")
+                + '</g>')
+
+    out += (_text(20, 535, "Default model: last reading per sensor (w/o LSTM).",
+                  size=14, anchor="start", opacity=0.8) + '</svg>')
+    return ('<div class="architecture-overview-scroll" tabindex="0" role="region" '
+            'aria-label="Network architecture; scroll horizontally on a narrow screen">' + out + '</div>'
+            '<p class="architecture-overview-caption">GCN = graph convolution; FC = fully connected. '
+            'Each graph has the same sensors and connections. Sizes show sensors \u00d7 numbers per sensor. '
+            'Only some entries and connections are shown after flattening. '
+            '“Learned” counts the weights and added constants adjusted during training.</p>')
+
+
 def draw_shapley() -> str:
     """What a Shapley value averages over, drawn for a three-player example."""
     players = ("A", "B", "C")
@@ -1345,9 +1480,10 @@ def draw_lstm_cell() -> str:
 def draw_sensor_selection() -> str:
     """Move the real selected column names into a second schematic table."""
     width, step, left = 940, 42, 26
-    out = (_open(width, 360).replace('class="figure-svg"', 'class="figure-svg sensor-selection"', 1)
+    column_height = 124
+    out = (_open(width, 400).replace('class="figure-svg"', 'class="figure-svg sensor-selection"', 1)
            + '<title>Selecting sensor columns</title><desc>Twenty-one raw sensor columns above; '
-           'the fourteen model input columns appear below when selection is played. '
+           'the fourteen model input columns move below, retaining their height, every five seconds. '
            'Cells are empty schematic rows, not generated readings.</desc>'
            + _text(left, 25, "Raw sensor table: all 21 sensor columns", anchor="start", size=15)
            + _text(left, 237, "Model input table: selected columns, same row order", anchor="start", size=15))
@@ -1356,7 +1492,7 @@ def draw_sensor_selection() -> str:
         x = left + index * step
         colour = 'var(--fig-accent)' if sensor.symbol in kept else 'var(--fig-axis)'
         out += f'<g class="select-source {"is-kept" if sensor.symbol in kept else "is-excluded"}">'
-        out += f'<rect x="{x}" y="44" width="{step - 2}" height="124" rx="3" fill="{colour}" fill-opacity=".08" stroke="{colour}"/>'
+        out += f'<rect x="{x}" y="44" width="{step - 2}" height="{column_height}" rx="3" fill="{colour}" fill-opacity=".08" stroke="{colour}"/>'
         out += f'<text transform="translate({x + 24},106) rotate(-90)" fill="{colour}" font-size="11">{sensor.symbol}</text>'
         for y in (116, 133, 150):
             out += f'<path d="M{x} {y}h{step - 2}" stroke="{colour}" stroke-opacity=".3"/>'
@@ -1365,10 +1501,10 @@ def draw_sensor_selection() -> str:
             continue
         target = left + PAPER_SENSOR_SYMBOLS.index(sensor.symbol) * 63
         out += f'<g class="select-picked" style="--from-x:{x}px;--to-x:{target}px">'
-        out += '<rect width="40" height="82" rx="3" fill="var(--fig-bg)" stroke="var(--fig-accent)"/>'
-        out += f'<text transform="translate(24,60) rotate(-90)" fill="var(--fig-accent)" font-size="11">{sensor.symbol}</text>'
-        out += '<path d="M0 65h40M0 74h40" stroke="var(--fig-accent)" stroke-opacity=".3"/></g>'
-    return out + _text(left, 354, "Selection changes which columns enter the model, not their values. Cells are schematic.", anchor="start", size=12) + '</svg>'
+        out += f'<rect width="{step - 2}" height="{column_height}" rx="3" fill="var(--fig-bg)" stroke="var(--fig-accent)"/>'
+        out += f'<text transform="translate(24,62) rotate(-90)" fill="var(--fig-accent)" font-size="11">{sensor.symbol}</text>'
+        out += '<path d="M0 72h40M0 89h40M0 106h40" stroke="var(--fig-accent)" stroke-opacity=".3"/></g>'
+    return out + '</svg>'
 
 
 FIGURES: tuple[Figure, ...] = (
@@ -1385,6 +1521,7 @@ FIGURES: tuple[Figure, ...] = (
     Figure("message-passing", draw_message_passing),
     Figure("reach", draw_reach),
     Figure("architecture", draw_architecture, needs_torch=True),
+    Figure("architecture-overview", draw_architecture_overview, needs_torch=True),
     Figure("lstm-cell", draw_lstm_cell),
     Figure("shapley", draw_shapley),
 )

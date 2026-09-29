@@ -420,6 +420,8 @@
   }
 
   var spyObserver = null;
+  var desktopFrame = window.matchMedia("(min-width: 1200px)");
+  desktopFrame.addEventListener("change", spyOnScroll);
   function spyOnScroll() {
     if (spyObserver) { spyObserver.disconnect(); }
     var links = {};
@@ -443,7 +445,8 @@
           }
         }
       });
-    }, { rootMargin: "-70px 0px -75% 0px", threshold: 0 });
+    }, { root: desktopFrame.matches ? content : null,
+      rootMargin: desktopFrame.matches ? "-16px 0px -75% 0px" : "-70px 0px -75% 0px", threshold: 0 });
     Object.keys(links).forEach(function (anchor) {
       var target = document.getElementById(anchor);
       if (target) { spyObserver.observe(target); }
@@ -475,26 +478,6 @@
         .then(function (r) { return r.text(); })
         .then(function (svg) {
           holder.innerHTML = svg;
-          if (holder.dataset.figure === "sensor-selection") {
-            var controls = el("div", { class: "selection-controls" });
-            var play = el("button", { type: "button", class: "button", text: "Show column selection" });
-            var reset = el("button", { type: "button", class: "button button--quiet", text: "Start again" });
-            var status = el("p", { role: "status", text: "The upper table contains all sensor columns." });
-            controls.appendChild(play); controls.appendChild(reset);
-            holder.insertBefore(controls, holder.firstChild); holder.appendChild(status);
-            play.onclick = function () {
-              holder.classList.remove("selection-complete", "selection-playing");
-              void holder.offsetWidth;
-              holder.classList.add(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "selection-complete" : "selection-playing");
-              status.textContent = "Fourteen columns are kept in the model's order; seven are not used. Rows and readings are unchanged.";
-              play.textContent = "Replay column selection";
-            };
-            reset.onclick = function () {
-              holder.classList.remove("selection-complete", "selection-playing");
-              status.textContent = "The upper table contains all sensor columns.";
-              play.textContent = "Show column selection";
-            };
-          }
         })
         .catch(function (error) {
           holder.innerHTML = '<div class="figure-notice figure-notice--error">' +
@@ -599,6 +582,7 @@
     // aimed where the heading stood when it began, and the figures and
     // formulas that arrive meanwhile move it down by hundreds of pixels.
     window.scrollTo({ top: 0, behavior: "instant" });
+    content.scrollTo({ top: 0, behavior: "instant" });
     tocPanel.innerHTML = "";
     closeDrawer();
     setTitle(menuName(path));

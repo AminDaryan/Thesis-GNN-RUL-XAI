@@ -1119,81 +1119,51 @@ def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     tag, _ = _decided("subset", subset)
     training = _step(
         "Training engines",
-        "This text file contains one row per simulated engine per operating cycle: an engine number, "
-        "cycle number, three operating settings and 21 sensor readings. An engine's history means all its "
-        "rows in cycle order. The training file follows each engine to the dataset's failure endpoint, "
-        "so its final cycle is known. The next step uses that endpoint to calculate the life left at "
-        "each earlier row. Some whole engines may be reserved for checking training progress.",
+        "Each row contains one engine's readings at one cycle, together with its engine number and operating "
+        "settings. Each engine is followed to its final recorded cycle, so its remaining life can be calculated. "
+        "Whole engines may be set aside to check training progress.",
         parts=[(f"train_{subset}.txt", None)], shape=raw[0]["shape"], picture="file", source=tag,
-        outputs=[raw[0]])
+        outputs=[raw[0]], summary="Readings continue until each engine's final cycle.")
     test = _step(
         "Test engines",
-        "This file has the same columns as the training file but contains different engines. For each "
-        "engine, recording stops while it still has some life left; the last row is not its failure endpoint. "
-        "After training, the model receives the final complete sequence of sensor readings (a window) "
-        "from each engine and predicts its remaining cycles. Its engine numbers identify engines within "
-        "this test file, not the engines with the same numbers in the training file.",
+        "These are different engines from those in the training file. Recording stops before failure. "
+        "The model predicts life left from each engine's last complete window, a sequence of consecutive "
+        "readings. A separate answer file checks those predictions after training; its values are never sensor inputs.",
         parts=[(f"test_{subset}.txt", None)], shape=raw[1]["shape"], picture="file", source=tag,
-        outputs=[raw[1]])
-    answers = _step(
-        "Test answers",
-        "One remaining-life answer for each test engine at its last recorded cycle. The answer on line 1 "
-        "belongs to test engine 1. These values are attached as labels during preparation and used for scoring "
-        "after training; they never become sensor inputs.",
-        parts=[(f"RUL_{subset}.txt", None)], picture="file",
-        outputs=[{"label": "Answers", "shape": f"({_count(facts['labels']) if facts else 'engines'},)",
-                  "axes": "test-engine answers"}])
+        outputs=[raw[1]], summary="Readings stop before the engine fails.")
     train_labels = _step(
         "Calculate training labels",
-        "For each row, find the last cycle recorded for that same training engine and subtract the row's "
-        "cycle. This counts how many cycles remain until the known endpoint. Store the result in a new "
-        "column called the label: the answer used to teach or check a prediction. These labels are not "
-        "sensor inputs. They are still uncapped here; preprocessing applies the selected ceiling.",
-        picture="life", outputs=[labelled[0]])
-    test_labels = _step(
-        "Attach test labels",
-        "For each test row, take the engine's last recorded cycle minus this row's cycle, then add that "
-        "engine's remaining life from the answer file. The labels are carried separately from model inputs.",
-        picture="life", outputs=[labelled[1]])
+        "For each row, subtract its cycle from the same engine's final recorded cycle. The result is its "
+        "label: the known remaining life used to teach the model. Preprocessing then limits these answers "
+        "to the selected ceiling. They never become sensor inputs.",
+        picture="life", outputs=[labelled[0]], summary="Subtract the current cycle from the engine's final cycle.")
     selection = _step(
         "Select 14 sensor columns for model inputs",
-        "Only the selected sensor columns become inputs when the pipeline makes windows. Engine number, "
-        "cycle, operating settings and remaining-life labels stay in the working table. Selection records "
-        "which columns to use; it does not shrink this table.",
+        "Choose which sensor readings the model receives. Engine number, cycle, operating settings and "
+        "remaining-life answers stay available for preparing the data, but do not become sensor inputs.",
         picture="select", source=_cite("Table 3"), outputs=labelled,
-        summary="Both tables keep their 27 columns. Only the selected sensor readings enter the model.")
+        summary="The selected sensors supply the model's readings.")
     if facts:
         ex = facts["label_example"]
         for step, kind, engine in ((training, "train", ex["train_unit"]), (test, "test", ex["test_unit"])):
             step["example"] = {"kind": "change", "before": f"{kind}_{subset}.txt",
                                "note": "Read whitespace-separated numbers into named columns; keep rows in engine/cycle order.",
                                "after": f"Engine {engine}, cycle 1: engine + cycle + 3 settings + 21 sensor values (26 columns)."}
-        answers["example"] = {"kind": "change", "before": f"Line 1 of RUL_{subset}.txt: {ex['test_answer']:g}",
-                              "note": "Match line number 1 to test engine 1.",
-                              "after": f"{ex['test_answer']:g} cycles left at recorded cycle {ex['test_last']}."}
         train_labels["example"] = {"kind": "change", "before": f"Engine {ex['train_unit']}, cycle 1; final cycle {ex['train_last']}",
                                    "note": f"{ex['train_last']} - 1", "after": f"{ex['train_last'] - 1} raw cycles left"}
-        test_labels["example"] = {"kind": "change", "before": f"Test engine {ex['test_unit']}, cycle 1; stopping cycle {ex['test_last']}; answer {ex['test_answer']:g}",
-                                  "note": f"{ex['test_last']} - 1 + {ex['test_answer']:g}",
-                                  "after": f"{ex['test_last'] - 1 + ex['test_answer']:g} raw cycles left, kept out of the sensor input"}
         selection["example"] = {"kind": "change", "before": "All 21 named sensor columns",
                                 "note": "Choose the model's sensor-column list without changing the readings.",
                                 "after": "T24, T30, T50, P15, P30, Nf, Nc, Ps30, phi, NRf, BPR, htBleed, W31, W32"}
     return [
-        _edge("Read all three files during preparation", icon="data") | {
-            "summary": "Sensor readings become model inputs. Answers are prepared separately and never become sensor readings."},
+        _edge("Read the engine histories", icon="data"),
         # Keep the steps flat for consumers that inspect a flowchart, while
         # retaining the two paths for the browser renderer to show as lanes.
         {"kind": "group", "steps": [training, train_labels, test],
          "lanes": [
-             {"name": "Training path", "steps": [training, train_labels]},
-             {"name": "Test sensor-input path", "steps": [test, _edge("Recorded readings only", raw[1]["shape"])]}]},
+             {"name": "Training data", "steps": [training, train_labels]},
+             {"name": "Test data", "steps": [test], "shape": raw[1]["shape"]}]},
         selection,
-        _edge("Selected readings go to preprocessing and the model; labels stay separate", icon="preprocessing"),
-        {"kind": "evaluation", "detached": True, "name": "Test answers: separate evaluation path",
-         "steps": [answers, test_labels,
-                   _edge("Compare predictions with these targets after training", icon="output")],
-         "summary": "Prepared alongside the readings, but used to check predictions, not to make them."},
+        _edge("To preprocessing", icon="preprocessing"),
     ]
 
 
@@ -1338,10 +1308,10 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
     """Restore both tables' labelled shapes and keep the single-row walkthrough separate from the flow."""
     window = int(settings["window_size"])
     opening = steps[0]
-    opening["name"] = "Labelled tables from Data"
+    opening["name"] = "Engine histories and remaining-life answers"
     opening["outputs"] = _table_outputs(facts, 27)
-    opening["summary"] = "A shape lists the size of each axis in order. Here: (rows, columns). One row is one engine at one cycle."
-    opening["columns"] = "1 engine number + 1 cycle + 3 operating settings + 21 sensor readings + 1 remaining-life label."
+    opening["summary"] = "One row per engine cycle; remaining life has not yet been capped."
+    opening["columns"] = "1 engine number + 1 cycle + 3 operating settings + 21 sensor readings + 1 uncapped remaining-life label."
     opening["handoff"] = (
         f"{facts['train_rows']:,} rows · 27 columns" if facts else "Rows · 27 columns"
     )
@@ -1349,22 +1319,23 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
         picture = step["picture"]
         step["outputs"] = _table_outputs(facts, 28 if picture in ("conditions", "rescale") else 27)
         if picture == "cap":
-            step["summary"] = "Change the remaining-life labels; keep the sensor readings and table sizes."
+            step["summary"] = "Limit remaining-life answers to the selected ceiling."
         elif picture == "smooth":
-            step["summary"] = "Change sensor values using earlier readings from the same engine. Table sizes stay the same."
+            step["summary"] = "Blend each reading with earlier readings from the same engine."
         elif picture == "hold":
-            step["summary"] = "Choose whole engines for learning or validation. Their rows stay in the working table until windows are separated below."
+            step["summary"] = ("Reserve whole engines to check progress during training."
+                               if settings["validation_fraction"] else "Use every training engine to learn the model.")
         elif picture == "conditions":
-            step["summary"] = "Add each row's operating-condition group as a new column."
+            step["summary"] = "Group rows with similar operating settings."
         elif picture == "rescale":
-            step["summary"] = "Learn the scale from training engines; apply that same scale to every group."
+            step["summary"] = "Use the training engines to set each sensor's scale."
         elif picture == "window":
-            step["summary"] = "Turn the selected sensor columns into windows. Keep remaining-life answers in a separate array, one answer per window."
+            step["summary"] = "Group consecutive readings from one engine."
             step["outputs"] = _window_outputs(run, window, split=False)
             step["aside"] = "Training-file engines supply overlapping windows. Each test engine supplies only its last complete window."
         elif picture == "sets":
-            step["parts"] = []
-            step["summary"] = f"Apply the engine groups chosen with seed {settings['seed']}."
+            step["summary"] = ("Keep learning, progress checks and final testing separate."
+                               if settings["validation_fraction"] else "Keep learning and final testing separate.")
             step["outputs"] = _window_outputs(run, window, split=True)
             if run:
                 step["example"] = {"kind": "groups", "items": [
@@ -1375,10 +1346,9 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
                     {"name": "Test", "value": f"{run['test']:,} windows",
                      "detail": "Used for final evaluation"},
                 ]}
-    steps[-1]["name"] = "Send a batch of sensor windows to the temporal stage"
+    steps[-1]["name"] = "To the temporal stage"
     steps[-1]["outputs"] = [{"label": "Model inputs", "shape": f"(B, 14, {window})", "axes": "windows, sensors, cycles"}]
-    steps[-1]["summary"] = (f"B is the number of windows processed together, up to {int(settings['batch_size']):,}. "
-                             "Remaining-life answers stay separate for training or scoring.")
+    steps[-1]["summary"] = f"B counts windows processed together (at most {int(settings['batch_size']):,})."
     if run:
         row = run["example_rows"][1]
         capped = min(row["life"], int(settings["rul_max"]))
@@ -1391,10 +1361,9 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
                                   "cycle": row["cycle"], "records": records,
                                   "windows": run["window_example"]}
 
-        # `example` and `handoff` are the compact fields used by the browser's
-        # worked-example renderer. Keep the longer `walkthrough` record as the
-        # source of the displayed table and arithmetic.
-        opening["example"] = {"kind": "rows", "rows": [
+        # Keep the real examples available separately from the compact diagram.
+        opening["example"] = {"kind": "rows", "source": f"train_{settings['subset']}.txt",
+                              "label_state": "uncapped", "rows": [
             {"engine": item["engine"], "cycle": item["cycle"],
              "reading": item["reading"], "life": item["life"]}
             for item in run["example_rows"]

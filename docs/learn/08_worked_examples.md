@@ -1,7 +1,7 @@
 # Follow one real example
 
-The help cards link here when an operation needs more room than a small popup.
-The examples use the real FD001 files. The model example loads one named saved
+This page follows the calculations step by step using the real FD001 files.
+The model example loads one named saved
 network; it is an illustration of arithmetic, not a measurement of accuracy.
 It does not change when you edit a new run in the playground.
 
@@ -56,9 +56,9 @@ belongs to its **last** cycle: the first has raw life 192 − 30 = 162, capped
 to 125. Engine number, cycle, operating settings and that answer are not
 extra sensor rows.
 
-The detailed Preprocessing diagram computes the row, smoothing, rescaling and
-window examples for your selected settings. The trace below uses its named
-saved run's settings throughout.
+The playground's Preprocessing diagram shows the steps and sizes for your
+selected settings. The detailed arithmetic below uses its named saved run's
+settings throughout.
 
 ## Through the saved model
 
@@ -81,8 +81,14 @@ new lists; it does not read the raw file again.
 The live trace reports both the hand-separated calculation and, in its test,
 checks it against the model's ordinary prediction function. Expand an
 addition to inspect every product, including products that are zero.
-Graph-layer additions show T24's first mixed number. Fully connected shows
-every term forming its first output. Neither table is a ranking of sensors.
+The first expandable table follows T24, T30 and T50 through smoothing and
+rescaling, using the saved seed's actual training averages and spreads. The
+next list shows all sensor values leaving the temporal stage.
+Each graph layer then exposes two additions: combine T24's neighbours, and
+apply the learned multipliers to that mixture. Fully connected shows every
+term forming its first output; Output shows every term forming the final
+internal score. Each addition includes its learned offset and total. None of
+these tables is a ranking of sensors.
 
 ## Other temporal algorithms
 

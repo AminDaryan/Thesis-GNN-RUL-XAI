@@ -31,6 +31,51 @@ from thesis_gnn_rul_xai.models import (
 # --- models/layers.py ---------------------------------------------------
 
 
+def test_example_architecture_overview_follows_a_real_fd001_window(raw_dir):
+    """The illustrated sizes and learned counts agree with a real window's path."""
+    import xml.etree.ElementTree as ET
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.docsite.figures import render_figure
+
+    config = PreprocessingConfig()
+    prepared = run_preprocessing(config, data_dir=raw_dir)
+    model = ESTGNN(prepared.adjacency_normalized, window_size=config.window_size)
+    with torch.no_grad():
+        numbers = model.temporal(torch.from_numpy(prepared.train.features[:1]))
+        shapes = [tuple(numbers.shape[1:])]
+        for layer in model.graph_layers:
+            numbers = torch.relu(layer(numbers, model.adjacency))
+            shapes.append(tuple(numbers.shape[1:]))
+        numbers = numbers.flatten(start_dim=1)
+        shapes.append(tuple(numbers.shape[1:]))
+        numbers = torch.relu(model.fc1(numbers))
+        shapes.append(tuple(numbers.shape[1:]))
+        numbers = torch.sigmoid(model.fc2(numbers))
+        shapes.append(tuple(numbers.shape[1:]))
+    illustrated = ET.fromstring('<div>' + render_figure('architecture-overview') + '</div>')
+    layers = illustrated.findall('.//*[@data-architecture-layer]')
+    assert [layer.attrib['data-shape'] for layer in layers] == [
+        '(' + ', '.join(map(str, shape)) + ')' for shape in shapes
+    ]
+    summary = model.layer_summary()
+    expected_counts = [summary[0]['parameters'], *(row['parameters'] for row in summary[2:])]
+    assert [int(layer.attrib['data-parameters']) for layer in layers] == expected_counts
+    assert sum(expected_counts) == model.count_parameters()
+    assert shapes[3] == (14, 32) and shapes[4] == (14 * 32,)
+    assert 'Only some entries' in ''.join(illustrated.itertext())
+    matrix, symbols = build_physics_adjacency()
+    expected_edges = {f'{symbols[a]} {symbols[b]}' for a in range(len(symbols))
+                      for b in range(a + 1, len(symbols)) if matrix[a, b] or matrix[b, a]}
+    for layer in layers[1:4]:
+        assert {node.attrib['data-sensor'] for node in layer.findall('.//*[@data-sensor]')} == set(symbols)
+        assert {edge.attrib['data-graph-edge'] for edge in layer.findall('.//*[@data-graph-edge]')} == expected_edges
+        assert 'ReLU' in ''.join(layer.itertext())
+    assert 'ReLU' in ''.join(layers[-2].itertext())
+    assert 'Sigmoid' in ''.join(layers[-1].itertext())
+
+
 def test_example_documentation_trace_reaches_the_saved_models_prediction():
     """The displayed arithmetic uses one real training window and the saved weights."""
     from thesis_gnn_rul_xai.docsite.worked_example import draw, trace
@@ -46,9 +91,23 @@ def test_example_documentation_trace_reaches_the_saved_models_prediction():
     assert example["prediction"] == pytest.approx(example["reference"], abs=1e-6)
     assert example["steps"][0]["output"][0] == pytest.approx(example["scaled"][-1], abs=1e-6)
     assert len(example["steps"][5]["terms"]) == example["steps"][5]["input_shape"][-1]
+    assert len(example["temporal_values"]) == 14
+    for sensor in example["sensor_examples"]:
+        alpha = sensor["alpha"]
+        assert sensor["smoothed"][0] == sensor["raw"][0]
+        for i in (1, 2):
+            assert sensor["smoothed"][i] == pytest.approx(
+                alpha * sensor["raw"][i] + (1 - alpha) * sensor["smoothed"][i - 1])
+        assert sensor["scaled"] == pytest.approx(
+            (np.array(sensor["smoothed"]) - sensor["mean"]) / sensor["spread"])
     for step in example["steps"]:
         for term in step["terms"]:
             assert term["product"] == pytest.approx(term["input"] * term["multiplier"], abs=1e-6)
+        for addition in step["sums"]:
+            for term in addition["terms"]:
+                assert term["product"] == pytest.approx(term["input"] * term["multiplier"], abs=1e-6)
+            assert sum(term["product"] for term in addition["terms"]) + addition["offset"] == pytest.approx(
+                addition["total"], abs=2e-5)
     html = draw()
     assert example["run"] in html
     assert "Separate capped answer" in html

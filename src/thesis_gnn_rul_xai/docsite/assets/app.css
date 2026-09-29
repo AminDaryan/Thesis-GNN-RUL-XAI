@@ -387,8 +387,8 @@ html[data-theme="dark"] .scrim { background: rgba(0, 0, 0, .6); }
    web address, breaks rather than push the page sideways. */
 .prose { --text-w: var(--measure); font-family: var(--serif); font-size: 18px; line-height: 1.72; overflow-wrap: break-word; }
 .prose > * { max-width: var(--text-w); }
-.prose > .figure { max-width: min(var(--measure-wide), 100%); }
-.prose > .table-scroll, .prose > .code-block { width: max-content; min-width: min(var(--text-w), 100%); max-width: min(var(--measure-wide), 100%); }
+.prose > .figure { width: 100%; max-width: min(var(--text-w), 100%); }
+.prose > .table-scroll, .prose > .code-block { width: 100%; max-width: min(var(--text-w), 100%); }
 .prose > *:first-child { margin-top: 0; }
 
 .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
@@ -409,7 +409,8 @@ html[data-theme="dark"] .scrim { background: rgba(0, 0, 0, .6); }
 @media (hover: none) { .prose .anchor { opacity: .6; } }
 .prose .anchor:focus-visible { opacity: 1; }
 
-.prose p { margin: 0 0 1.05em; }
+.prose p { margin: 0 0 1.05em; text-align: justify; }
+@media (max-width: 600px) { .prose p { text-align: left; } }
 .prose ul, .prose ol { margin: 0 0 1.05em; padding-left: 1.4em; }
 .prose li { margin-bottom: .35em; }
 .prose li > ul, .prose li > ol { margin-top: .35em; }
@@ -536,6 +537,11 @@ html.no-math .math-display { padding: 8px 12px; text-align: left; }
   border-radius: var(--radius); padding: 12px 12px 4px;
 }
 .figure-svg { display: block; width: 100%; height: auto; font-family: var(--sans); }
+.architecture-overview-scroll { overflow-x: auto; padding: 4px 0 8px; }
+.prose > .figure:has(.architecture-overview-scroll) { overflow-x: visible; }
+.architecture-overview-scroll:focus-visible { outline: 2px solid var(--fig-accent); outline-offset: 3px; }
+.prose .architecture-overview-scroll .figure-svg { min-width: 820px; }
+.prose .architecture-overview-caption { max-width: 90ch; margin: 8px 14px 6px; font: 13px/1.6 var(--sans); color: var(--ink-soft); }
 /* A figure never shrinks below a width its words can be read at, 820
    pixels: wherever its box is narrower, on a phone or a tablet, the box
    scrolls sideways. Shrunk to a phone's screen its labels fell to 2 to 7
@@ -839,6 +845,18 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
    and their contents scrolling independently. */
 .pg-panel { container: pg-panel / inline-size; }
 .content:has(.pg-design) { height: calc(100dvh - var(--topbar-h)); min-height: 440px; padding-bottom: 16px; }
+/* Desktop uses one screen-sized frame. Long material scrolls inside its
+   content panel; a notice above the layout takes space away from that panel. */
+@media (min-width: 1200px) {
+  html { height: 100%; overflow: hidden; scrollbar-gutter: auto; }
+  body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar, .stale { flex-shrink: 0; }
+  .layout { flex: 1 1 0; min-height: 0; align-items: stretch; overflow: hidden; }
+  .sidebar, .toc { position: static; height: auto; min-height: 0; }
+  .content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .content:has(.pg-design) { height: auto; min-height: 0; overflow: hidden; }
+  .prose :is(h1, h2, h3, h4), .notebook-frame :is(h1, h2, h3, h4) { scroll-margin-top: 16px; }
+}
 .pg:has(.pg-design) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .pg:has(.pg-design) > .pg-steps, .pg:has(.pg-design) > .pg-current { flex-shrink: 0; }
 .pg-panel:has(.pg-design) { flex: 1 1 0; min-height: 0; }
@@ -872,7 +890,7 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
   /* The overview's boxes stand in the middle of the column's height, and
      the heading over them starts where they start. */
   .pg-design > .pg-pipeline .pg-flow { min-height: 100%; justify-content: center; }
-  .pg-design > .pg-pipeline > .pg-pipeline-head { width: min(100%, var(--flow-w)); margin-inline: auto; }
+  .pg-design > .pg-pipeline > .pg-pipeline-head:not(.pg-zoom-head) { width: min(100%, var(--flow-w)); margin-inline: auto; }
 }
 .pg-run .loading { padding: 0; font-size: 13px; }
 .pg-run { display: grid; gap: 12px; padding: 12px 16px 16px; margin-top: 12px; border-radius: var(--radius); background: var(--panel); }
@@ -998,10 +1016,10 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
    learns; what it does and where it comes from are behind its i. What a
    step hands on is written on the arrow under it, so it reads as the next
    step's input: in, what is done, out, with every shape written once. */
-.pg-zoom-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.pg-zoom-back { margin-left: -8px; }
+.pg-zoom-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; margin-bottom: 12px; }
+.pg-zoom-back { justify-self: start; max-width: 100%; margin-left: -8px; }
 .pg-zoom-back svg { width: 12px; height: 12px; }
-.pg-zoom-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 700; line-height: 20px; }
+.pg-zoom-title { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; min-width: 0; text-align: center; overflow-wrap: anywhere; font-size: 16px; font-weight: 700; line-height: 20px; }
 .pg-zoom-icon { color: var(--ink-soft); }
 .pg-vflow { list-style: none; margin: 0; padding: 0; }
 .pg-vitem { display: flex; flex-direction: column; align-items: center; }
@@ -1128,7 +1146,7 @@ button.pg-vstep-value:hover { text-decoration: underline; }
   --accent: var(--ink-soft); --accent-soft: var(--panel-2); --warn: var(--ink-soft); --warn-soft: var(--panel-2);
   --fig-lpc: var(--ink-soft); cursor: progress;
 }
-.pg-zoom-updating { font-size: 12px; color: var(--ink-soft); }
+.pg-zoom-updating { justify-self: end; font-size: 12px; color: var(--ink-soft); }
 .pg-zoom-updating:empty { display: none; }
 .pg-zoom-note { margin: 0 0 16px; padding: 8px 12px; border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 
@@ -1256,20 +1274,18 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .worked-io dt { font-weight: 600; }
 .worked-io dd { margin: 0; }
 .worked-trace { overflow-wrap: anywhere; text-align: left; }
-.selection-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .sensor-selection { min-width: 720px; }
 [data-figure="sensor-selection"] { overflow-x: auto; }
-.select-picked { opacity: 0; transform: translate(var(--to-x), 250px); }
-.selection-playing .select-picked { animation: select-columns 2s ease-in-out forwards; }
-.selection-playing .is-excluded, .selection-complete .is-excluded { opacity: .3; }
-.selection-complete .select-picked { opacity: 1; }
+.sensor-selection .select-picked { transform: translate(var(--to-x), 250px); animation: select-columns 5s ease-in-out infinite; }
+.sensor-selection .is-excluded { opacity: .3; }
 @keyframes select-columns {
-  0% { opacity: 0; transform: translate(var(--from-x), 44px); }
-  20% { opacity: 1; transform: translate(var(--from-x), 44px); }
-  100% { opacity: 1; transform: translate(var(--to-x), 250px); }
+  0%, 8% { opacity: 1; transform: translate(var(--from-x), 44px); }
+  48%, 92% { opacity: 1; transform: translate(var(--to-x), 250px); }
+  98% { opacity: 0; transform: translate(var(--to-x), 250px); }
+  100% { opacity: 0; transform: translate(var(--from-x), 44px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .selection-playing .select-picked { animation: none; opacity: 1; }
+  .sensor-selection .select-picked { animation: none; opacity: 1; }
 }
 .pg-vstep[data-operation] { cursor: pointer; }
 .pg-vstep.is-target { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -1329,7 +1345,8 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-data-sensors { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .pg-data-sensors-head { display: flex; justify-content: space-between; gap: 16px; }
 .pg-data-rows { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
-.pg-data-table-wrap { margin-top: 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.pg-data-table-wrap { position: relative; margin-top: 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.pg-data-table caption.visually-hidden { top: 0; left: 0; }
 .pg-data-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; line-height: 1.4; }
 .pg-data-table th, .pg-data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .pg-data-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); color: var(--ink-soft); font-size: 11px; font-weight: 600; }

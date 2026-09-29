@@ -228,6 +228,10 @@ def test_example_preprocessing_story(loaded, changes):
     answer = playground.stage_detail("preprocessing", settings)
     opening = answer["steps"][0]
     assert opening["handoff"] == "20,631 rows · 27 columns"
+    assert opening["name"] == "Engine histories and remaining-life answers"
+    assert opening["example"]["source"] == "train_FD001.txt"
+    assert opening["example"]["label_state"] == "uncapped"
+    assert "not yet been capped" in opening["summary"]
     sample = opening["example"]["rows"]
     assert sample == [{"engine": 1, "cycle": 1, "reading": 641.82, "life": 191},
                       {"engine": 1, "cycle": 2, "reading": 642.15, "life": 190},

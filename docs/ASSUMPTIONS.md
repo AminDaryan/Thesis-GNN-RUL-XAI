@@ -2460,8 +2460,9 @@ own text (A-15), the R-squared denominator (A-16), and the Conclusions'
 
 ### F-15 — Fig. 9 and Table 12 disagree about which sensors matter most
 
-The paper offers exactly two quantitative interpretability results. They do not
-agree, and the disagreement is not marginal.
+Fig. 9 and Table 12 show different sensor rankings. The paper does not identify
+which engines or windows are represented by Fig. 9, so the two results cannot
+be treated as a comparison on the same examples.
 
 **What Fig. 9 says.** Its caption reads "Red nodes represent the four most
 critical sensors, blue nodes show remaining sensors with importance-based color
@@ -2485,9 +2486,10 @@ steps. Ranking each column by value:
 | BPR | 4 |
 | T24, T30, P15, Nf, **NRf**, htBleed, W31, W32 | **0** |
 
-**The contradiction.** Two of Fig. 9's four most critical sensors — **NRf and
+**The difference in the printed rankings.** Two of Fig. 9's four most critical sensors — **NRf and
 T24** — are in Table 12's top four in **none** of its fifteen columns. Both are
-in the bottom half of every column; T24 falls to 0.76 and NRf to 0.89 by G191.
+outside that leading group; T24 ranks from sixth to tenth across the printed
+columns. T24 falls to 0.76 and NRf to 0.89 by G191.
 Meanwhile **T50 and Ps30 are in the top four in every single column**, and
 Fig. 9 places both in the "remaining sensors" box.
 
@@ -2497,10 +2499,31 @@ P30, Ps30, phi in the middle and Nc, Ps30, BPR, T50 late. NRf and T24 are never
 named as important anywhere in the text.
 
 **What cannot be concluded.** That either is wrong. Fig. 9 may show a different
-engine, a different sub-dataset, or a pooled result rather than the single
-representative unit Table 12 describes; the paper says none of these. What can
-be concluded is that **the two cannot both be describing the same quantity for
-the same unit**, and the paper presents them as a single coherent analysis.
+engine, a different sub-dataset, or a ranking over a different collection of
+windows from the representative unit Table 12 describes. The paper does not
+give that information. Even for one engine, a ranking averaged over its life
+can differ from the ranking at any of the selected windows. The cause of the
+difference remains unresolved.
+
+**Correction, 2026-09-28.** This entry previously said that T24 and NRf were
+both in the bottom half of every Table 12 column. Re-ranking the printed
+values shows that T24 sometimes ranks sixth or seventh, so that statement was
+wrong. It also claimed that the two results could not describe the same
+quantity for the same engine; that conclusion was too strong without knowing
+which windows Fig. 9 includes. The corrected comparison above was checked
+against PDF pages 13 and 14 rendered at scale 8. The transcription gives these
+T24 ranks, with rank 1 assigned to the largest value and ties sharing a rank:
+
+```text
+G1 G2 G3 G4 G5 G78 G79 G80 G81 G82 G187 G188 G189 G190 G191
+ 7  6  7  7  8   9   9  10   9   9    8    8    6    6    9
+```
+
+Recompute them without training a model:
+
+```bash
+python -c "from thesis_gnn_rul_xai.evaluation.published import SHAP_TABLE_12 as t; print([1 + sum(v[i] > t['T24'][i] for v in t.values()) for i in range(len(t['T24']))])"
+```
 
 **Consequence for this project.** F-05 compares this project's sensor ranking
 with the paper's. It must say *which* of the paper's two rankings it is

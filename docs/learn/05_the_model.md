@@ -25,21 +25,22 @@ are the part Table 4 does print, and they are the same either way.
 
 ## The six layers, and how many numbers each learns
 
-{{figure:architecture}}
+{{figure:architecture-overview}}
 
 The figure is drawn from the network this code builds with the default stage,
-so its Input box, the stage's output, is labelled w/o LSTM. Fourteen sensors
+so its sensor-input column shows the last reading of each sensor, without the
+memory-based LSTM stage. Fourteen sensors
 arrive carrying one number each. Three rounds of message passing — each
 sensor's value mixed with its neighbours', as on page 2 — grow that from 1
 number per sensor to 32, then 64, then back down to 32. The 14 × 32 grid is
 flattened into one long vector of 448 numbers, and two **fully connected**
 layers, in which every output is a weighted sum of every input plus a constant
-called a bias, reduce that to a single output. The result of each graph and
-fully connected layer passes through the function named under the layer in the
-figure: ReLU, from page 2, or the sigmoid described below.
+called a bias, reduce that to a single output. Each graph layer and the first
+fully connected layer use ReLU, which turns negative values into zero. The
+final layer uses the sigmoid described below.
 
 The **parameters** are the numbers the network adjusts during training: the
-learned numbers the figure counts in each box. A graph layer holds one weight
+learned numbers the figure counts beneath each stage. A graph layer holds one weight
 matrix, shared by all fourteen sensors: GCN-2 turns 32
 numbers per sensor into 64, so it holds 32 × 64 = 2 048 weights. A fully
 connected layer holds a weight for every input–output pair plus one bias per

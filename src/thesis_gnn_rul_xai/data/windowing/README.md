@@ -490,9 +490,26 @@ WindowedDataset(examples=100, shape=(100, 14, 30), engines=100, target_range=(7,
 
 **Why exactly one window per test engine.** The official label file describes
 **one moment** per engine: how much life remained at that engine's last recorded
-flight. There is no ground truth for any earlier moment, so scoring anything
-else would be scoring against a number nobody supplied. On FD001 that is 100
-predictions, one per engine.
+flight. This project evaluates one prediction at that moment, using the window
+ending there. On FD001 that is 100 predictions, one per engine. Earlier targets
+can also be calculated by adding the number of cycles before that last flight;
+scoring every earlier window would measure a different set of predictions and
+give engines with longer histories more weight.
+
+**What the paper establishes.** Table 5 lists 100 testing samples and 100 test
+engines for FD001. Equation 22 defines its average over test engines. Equation
+7 takes the readings in a window ending at the prediction time, and Table 6
+sets the window length to 30. Together with Section 3.2.1's description of test
+histories stopping before failure, these support using the last available
+window for each test engine. The paper does not explicitly state the test
+window extraction procedure. Matching this code's final-window procedure to
+the authors' implementation is therefore an inference, not a verified detail.
+
+**Correction, 2026-09-28:** this paragraph previously claimed that earlier
+test targets were unavailable. The loading code already derives them from the
+final target and the cycles elapsed. The reason for evaluating only the last
+window is the chosen evaluation procedure, not an inability to calculate
+earlier targets.
 
 ---
 

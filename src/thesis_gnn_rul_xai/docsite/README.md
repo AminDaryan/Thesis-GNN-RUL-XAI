@@ -9,6 +9,18 @@ one page per folder of the code, the assumptions log, the audits and reviews.
 It runs on your own machine, reads the files from disk as you ask for them,
 and publishes nothing.
 
+On desktop, the header and any server-status notice occupy the top of one
+screen-sized frame. The navigation, article and contents list share the height
+left below them and scroll independently. Design a run keeps its existing
+two scrollable panels instead of adding another scroll around them. Long
+articles remain fully readable; the browser page itself does not grow taller
+than the screen. Below the desktop breakpoint, ordinary page scrolling remains.
+Changing documents resets the article's scroll, and section links scroll that
+article rather than moving the surrounding frame.
+Screen-reader table captions are positioned inside their table wrappers.
+Previously those visually hidden, absolutely positioned captions could still
+extend the page beyond a panel's visible bottom and create a stray scrollbar.
+
 Start it with:
 
 ```bash
@@ -224,6 +236,25 @@ from the notebook it describes the way a hand-drawn diagram would.
 `architecture` needs PyTorch, because it builds a real model to read the layer
 shapes off it. Without PyTorch it says so, and nothing else on the site is
 affected.
+
+`architecture-overview` uses the same default model for the Architecture and
+training page. Each graph has the same sensor nodes and actual connections.
+GCN names a graph convolution layer; FC names a fully connected layer. Each
+layer's ReLU or Sigmoid is labelled. Output sizes and counts of learned numbers
+come from the model. Flattening turns the final sensor values into one list:
+14 rows of 32 numbers become
+448 entries. The circles after that list stand for computed numbers in the
+fully connected layers, where every output uses every input. Only some list
+entries, circles and lines are drawn, with the full sizes written beneath.
+The example in `tests/test_examples_torch.py` checks these labels against a
+real FD001 window passed through the default model. On narrow screens the
+drawing scrolls horizontally and can receive keyboard focus. The original
+`architecture` figure remains available to its other callers.
+
+Article figures, tables and code boxes end at the same right edge as the text.
+Wide contents scroll inside that shared width; the figure panel no longer
+extends farther into the margin. Paragraphs align to both margins on desktop;
+on narrow screens they keep ordinary left alignment to avoid large word gaps.
 
 Two of the figures move. `message-passing` fills the nodes in waves, one wave
 per layer, and `windowing` slides a box along an engine's history. Both are
@@ -632,24 +663,21 @@ networks have the same parts and learned numbers of their own. The author
 asked for the drill-down on 2026-09-26.
 
 Every arrow carries what passes along it. **Preprocessing names the quantities
-in words:** `20,631 rows · 27 columns`, then "Same rows · sensor readings
-smoothed", for example. A row means one engine at one flight cycle. The table
-at the entrance shows the first three actual records, with engine number,
-cycle, one sensor and remaining life. "What are the 27 columns?" opens their
-breakdown: engine number, cycle, three operating settings, 21 sensor readings
-and one remaining-life label. The selected 14 sensors become model inputs
-when windows are made; the other columns remain in the working table. Adding
-the operating condition gives it one more column. The separate test file is
-named at the entrance and stays separate for scoring.
+in words:** rows, columns, sensors and cycles. A row means one engine at one
+flight cycle. Boxes name the operation and its selected setting; the arrows
+carry the sizes. The selected sensors become model inputs when windows are
+made; the identifiers and answers remain in the working table. The separate
+test file is named at the entrance and stays separate for scoring.
 
 **Correction, 2026-09-27:** the earlier arrows repeated `(20 631, 27)` with no
 explanation of either number. The author could not tell what the first meant.
 The counts were correct, but the diagram assumed the knowledge it needed to
-teach. The replacement follows a real reading through the changes and draws
-overlapping windows with labelled cycle ranges. The engine split and final
-window groups each show their counts with their purpose; no unexplained
-`B` is needed at the exit, which names the chosen batch size and says that a
-batch is a group of inputs processed together.
+teach. An initial replacement put real-row calculations in every box. That
+made the flow hard to follow, so on 2026-09-28 the examples were moved out of
+the diagram. The calculation details belong on **Follow one real example**.
+The engine split and final window groups still show their counts with their
+purpose. The exit defines `B` as the number of windows processed together
+and names the chosen maximum batch size.
 
 For FD001's default settings and seed 42, engine 1 at cycle 2 starts with
 sensor T24 at 642.15 and 190 cycles left. Capping changes the answer to 125;
@@ -657,9 +685,10 @@ smoothing changes the reading to `0.5 × 642.15 + 0.5 × 641.82 = 641.985`,
 using the first cycle's reading, 641.82. Rescaling gives −1.6039, displayed
 rounded to four decimal places. These are different changes to different
 columns. Its first windows span cycles 1–30, 2–31 and 3–32, with the remaining
-life at each final cycle as their answer. The diagrams use actual window
-endpoints and targets returned by the pipeline; changing the length or spacing
-changes the example. The worked example can be checked with:
+life at each final cycle as their answer. The actual window endpoints and
+targets returned by the pipeline remain available in its response
+for checks; changing the length or spacing changes those examples. The worked
+example can be checked with:
 
 ```bash
 python -m pytest tests/test_examples.py -k preprocessing -v
@@ -667,10 +696,11 @@ python -m pytest tests/test_examples.py -k preprocessing -v
 
 The file rows, split counts, changed readings and window ranges are read or
 computed afresh for the selected settings, never supplied as invented sample
-data. Missing files leave the examples absent. The window display and the
-groups wrap within the pipeline column. Other flowcharts retain the array
-notation described below. A row of steps side by side names what the row hands
-on, the Data flowchart's three files "3 tables".
+data. Missing files leave the examples absent. The diagrams use concise labels;
+the full examples are kept for the dedicated explanation page and checks.
+The Data flowchart shows training and test readings. The test-answer file
+remains in the file details table, where its use in checking predictions is
+explained, rather than adding an evaluation branch to the preparation flow.
 
 The shape of what a step hands on, the size of the table of numbers passed to
 the next step, is written on the arrow under the step, and so reads as the next
@@ -680,8 +710,8 @@ arrow into "Rescale the graph" carries `(14, 14)`, the table of which sensors
 are joined, and the arrow out of it carries the same shape rescaled. Each shape
 is written once: the words that open a flowchart put theirs on the arrow under
 them, and the words that close it show their own only when it differs from the
-one on the arrow above them. Preprocessing uses the named quantities and the
-batch explanation above in place of this notation.
+one on the arrow above them. Preprocessing also names the quantities at its
+entrance and explains `B` at its exit.
 Steps that work side by side on the same input, such as the three files of a
 sub-dataset, share one row, and each shows its own shape inside its box, since
 no one arrow could carry three. In a shape, `B` is the number of windows the
@@ -771,6 +801,14 @@ that links to one of the graph layer widths puts the focus on that layer's own
 number field. When a new answer replaces a flowchart's steps, the focus stays
 with the button it was on, or moves to the one that took its place: after the
 sensor graph's cross, to the + that puts it back.
+
+The detail heading is centred across the whole panel, independently of the
+back button at its upper left. The preprocessing response retains the real
+example rows, their source file and their remaining life before the ceiling
+is applied. These records support the worked-example checks; they no longer
+appear as an opening table in the diagram. The checks compare remaining life
+before and after the ceiling against the file, including a changed ceiling.
+Sensor readings are not capped by this operation.
 
 The words were written from an account of each stage read out of the code and
 then checked against it by a second reader, not from the paper: where the code
@@ -1223,13 +1261,15 @@ same cutaway and variable-location catalogue as Explain predictions. It shows
 no invented explanation values. Selecting a marker identifies the component
 and explains the measurement; Enter and Space provide the same action.
 
-### Worked examples behind the help cards
+### Help cards and the separate worked example
 
 Settings and matching diagram steps use the same `sectionHelp` function.
 Clicking a section heading opens its diagram operation; clicking that operation
-returns to the matching setting. Data and preprocessing cards carry real file
-examples. Every help card also links to `docs/learn/08_worked_examples.md` for
-the longer input, calculation and output sequence.
+returns to the matching setting. Help cards explain the operation once, cite
+its source and link to the relevant reading. They do not repeat the diagram
+as an input, operation and output table. The longer calculation sequence lives
+at `docs/learn/08_worked_examples.md`, reached through **Follow one real
+example** in the menu.
 
 `worked_example.py` recomputes one training-engine window through one saved
 network. Its displayed run name identifies the producing commit and timestamp;
