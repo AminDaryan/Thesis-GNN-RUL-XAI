@@ -544,16 +544,25 @@
   }
 
   var XAI_MOVED_SECTIONS = {
-    "dividing-credit-fairly": "10_dynamic_shap.md",
-    "shap-the-same-idea-applied-to-a-model": "10_dynamic_shap.md",
-    "exact-not-sampled": "10_dynamic_shap.md",
-    "what-removing-a-sensor-has-to-mean": "10_dynamic_shap.md",
-    "dynamic-the-same-calculation-at-every-cycle": "10_dynamic_shap.md",
-    "what-shap-says-about-the-two-value-sensor": "10_dynamic_shap.md",
-    "walks-the-routes-a-prediction-took-through-the-graph": "11_gnn_lrp.md"
+    "dividing-credit-fairly": "10_dynamic_shap.md#dividing-credit-fairly",
+    "shap-the-same-idea-applied-to-a-model": "10_dynamic_shap.md#3--average-what-each-sensor-adds",
+    "exact-not-sampled": "10_dynamic_shap.md#3--average-what-each-sensor-adds",
+    "what-removing-a-sensor-has-to-mean": "10_dynamic_shap.md#1--choose-a-reference-window",
+    "dynamic-the-same-calculation-at-every-cycle": "10_dynamic_shap.md#5--repeat-along-an-engines-history",
+    "what-shap-says-about-the-two-value-sensor": "10_dynamic_shap.md#what-an-explanation-does-and-does-not-establish",
+    "walks-the-routes-a-prediction-took-through-the-graph": "11_gnn_lrp.md#1--follow-the-graph-calculation"
   };
 
   var DATA_MOVED_SECTIONS = {
+    "03_explainability.md#read-an-explanation-in-context": "03_explainability.md#2--read-an-explanation-in-context",
+    "10_dynamic_shap.md#shap-the-same-idea-applied-to-a-model": "10_dynamic_shap.md#3--average-what-each-sensor-adds",
+    "10_dynamic_shap.md#exact-not-sampled": "10_dynamic_shap.md#3--average-what-each-sensor-adds",
+    "10_dynamic_shap.md#what-removing-a-sensor-has-to-mean": "10_dynamic_shap.md#1--choose-a-reference-window",
+    "10_dynamic_shap.md#dynamic-the-same-calculation-at-every-cycle": "10_dynamic_shap.md#5--repeat-along-an-engines-history",
+    "10_dynamic_shap.md#what-shap-says-about-the-two-value-sensor": "10_dynamic_shap.md#what-an-explanation-does-and-does-not-establish",
+    "11_gnn_lrp.md#walks-the-routes-a-prediction-took-through-the-graph": "11_gnn_lrp.md#1--follow-the-graph-calculation",
+    "11_gnn_lrp.md#the-authors-check-adding-and-removing-sensors": "11_gnn_lrp.md#4--check-by-adding-and-removing-sensors",
+    "11_gnn_lrp.md#what-it-does-not-show": "11_gnn_lrp.md#what-the-explanation-does-and-does-not-show",
     "05_the_model.md#output": "05_the_model.md#6--predicted-life-fraction",
     "05_the_model.md#predicted-life-fraction": "05_the_model.md#6--predicted-life-fraction",
     "05_the_model.md#graph-layer-1": "05_the_model.md#1--graph-layer-1",
@@ -620,7 +629,7 @@
 
     if (route.view === "doc" && argument === "docs/learn/03_explainability.md" &&
         XAI_MOVED_SECTIONS[fragment]) {
-      window.location.replace("#/doc/docs/learn/" + XAI_MOVED_SECTIONS[fragment] + "#" + fragment);
+      window.location.replace("#/doc/docs/learn/" + XAI_MOVED_SECTIONS[fragment]);
       return;
     }
 

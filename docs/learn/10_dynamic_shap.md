@@ -1,145 +1,578 @@
 # Dynamic SHAP
 
+A prediction combines information from several sensors. To understand one
+prediction, ask **how much each sensor's actual readings changed it from a
+specified reference**. SHAP, short for SHapley Additive exPlanations, divides
+that difference among the sensors.
+
 ## Dividing credit fairly
 
-The paper's explanation method comes from **cooperative game theory**, the
-branch of mathematics that studies how a group of players who achieve something
-together should divide the credit for it.
+Two sensors can matter together in a way neither does alone. Giving each
+sensor all of the change caused by removing it can therefore count the same
+interaction more than once.
 
-The problem is hard. Imagine three people building something. You cannot just
-measure what each contributes alone, because contributions interact: two of
-them may be useless separately and excellent together. You cannot measure what
-is lost when each leaves, either: each of those two would be credited with
-everything they achieve together, so their joint result would be counted twice.
-
-In 1953 Lloyd Shapley proposed the answer now called the **Shapley value**. It
-asks: for each player, **how much does the result change when that player
-joins, averaged over every possible order in which the group could have been
-assembled?**
+Instead, imagine adding the sensors one at a time. Record how much the
+prediction changes when a sensor joins. Repeat for every possible order, then
+average that sensor's changes. That average is its **Shapley value**.
 
 {{figure:shapley}}
 
-The order matters because B adds a different amount depending on who is already
-there when it joins.
+The figure illustrates why order matters: B may add a different amount when
+it arrives alone than when A is already present. The project uses this same
+calculation for sensors, as set out in the paper's Equation 15, and repeats it
+through time as in Equation 16.
 
-The Shapley value is the only way of dividing credit that meets a small set of
-fairness conditions at once, among them that the shares add up to the total,
-and that two players who always contribute identically get identical shares.
+A SHAP explanation uses the model's **inputs and predictions**. It need not
+read its internal multipliers or follow its graph connections. It keeps the
+trained model fixed and changes which sensor readings it presents to it.
+
+## Example setup
+
+We follow **FD001 test engine 5**, using the T24, T30 and T50 readings at its
+last three recorded cycles. They have already been smoothed and rescaled with
+statistics from the training engines selected using seed 42. The numbers
+therefore describe readings relative to their training means and spreads;
+they are not temperatures in their original units.
+
+This is a **small, untrained demonstration**, shared with the
+[GNN-LRP tutorial](11_gnn_lrp.md). It has three sensors, one graph layer with
+one value per sensor, and deliberately visible multipliers. Its temporal
+route keeps each sensor's last reading. The earlier two readings are shown
+so the rule for replacing a sensor's entire history is visible. These settings
+teach the arithmetic; they are not the full model, a trained result, or a claim
+about engine health. The full explanation uses all fourteen sensors and the
+window length saved with the run.
+
+All input and output columns of this small example are shown. Tables round
+to six decimal places; calculations use full precision. The optional Python
+examples run in page order from the repository root with the real FD001 files.
+
+<details class="process-example">
+<summary>Set up the Python examples</summary>
+
+```python
+from math import factorial
+import numpy as np
+import pandas as pd
+import torch
+from thesis_gnn_rul_xai.config import PreprocessingConfig
+from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+from thesis_gnn_rul_xai.data.windowing import WindowedDataset
+from thesis_gnn_rul_xai.explain.shap import (
+    coalition_weights, dynamic_shap, efficiency_error,
+    mean_window_baseline, shap_values,
+)
+from thesis_gnn_rul_xai.graph.adjacency import build_physics_adjacency, normalize_adjacency
+from thesis_gnn_rul_xai.models import ESTGNN
+
+prepared = run_preprocessing(PreprocessingConfig(seed=42))
+names = ["T24", "T30", "T50"]
+chosen = [list(prepared.sensor_symbols).index(name) for name in names]
+index = int(np.flatnonzero(prepared.test.units == 5)[0])
+features = prepared.test.features[index, chosen, -3:]
+end_cycle = int(prepared.test.end_cycles[index])
+training_windows = prepared.train.features[:, chosen, -3:]
+raw_graph, _ = build_physics_adjacency()
+small_graph = raw_graph[np.ix_(chosen, chosen)]
+with torch.random.fork_rng():
+    torch.manual_seed(0)
+    model = ESTGNN(normalize_adjacency(small_graph, method="row"),
+                   window_size=3, gcn_hidden=(1,), fc_hidden=1)
+with torch.no_grad():
+    model.graph_layers[0].weight.fill_(1)
+    model.fc1.weight.copy_(torch.tensor([[2., 1., -1.]]))
+    model.fc1.bias.fill_(0.5)
+    model.fc2.weight.fill_(1)
+    model.fc2.bias.zero_()
+model.eval()
+
+def history_table(values, cycles):
+    """Show every reading in the three-sensor example."""
+    table = pd.DataFrame(values.T, columns=names)
+    table.insert(0, "Cycle", cycles)
+    return table
+
+actual_window = history_table(features, range(end_cycle - 2, end_cycle + 1))
+training_sums = training_windows.sum(axis=0, dtype=np.float64)
+reference_input = pd.DataFrame(training_sums,
+    columns=["Sum at first position", "Sum at middle position", "Sum at last position"])
+reference_input.insert(0, "Sensor", names)
+reference_input["Training windows"] = len(training_windows)
+```
+
+</details>
+
+<div class="algorithm-intro">
+<p class="algorithm-label">Dynamic SHAP algorithm</p>
+<p>Start with a fixed model, one window to explain, and training windows for
+comparison. Follow steps 1–5: choose the reference, evaluate every group of
+sensors, divide the prediction change, check the total, then repeat along an
+engine's history.</p>
+</div>
 
 ---
 
-## SHAP: the same idea, applied to a model
+## 1 — Choose a reference window
 
-**SHAP**, *SHapley Additive exPlanations*, applies the Shapley value to machine
-learning:
+The model always expects the same number of sensor inputs. A sensor that is
+"absent" from an explanation still needs something in its place. Here its
+actual history is replaced by its **average training window**: for each
+position in the window, average that sensor's reading at that position across
+the training windows.
 
-| Game theory | Machine learning |
+This reference answers a particular question: what changes when the model sees
+this engine's readings instead of the reference readings? The paper's
+Equation 15 needs predictions from groups of sensors but does not specify
+these replacement values. The training-window average is this project's
+choice (assumption A-20).
+
+### Process
+
+#### Input
+
+The complete small window to explain is:
+
+<!-- sample: actual_window -->
+| Cycle | T24 | T30 | T50 |
+|---|---|---|---|
+| 96 | 0.285568 | 0.143344 | -0.050896 |
+| 97 | 0.194873 | 0.328677 | 0.359872 |
+| 98 | -0.373355 | 0.114623 | 0.817606 |
+
+The reference is built separately from the training windows. This table shows
+the sums and counts needed to calculate **every** reference value in the
+three-sensor example. Each sum uses the same relative position across all
+training windows, not successive readings from the test engine.
+
+<!-- sample: reference_input -->
+| Sensor | Sum at first position | Sum at middle position | Sum at last position | Training windows |
+|---|---|---|---|---|
+| T24 | 1075.329490 | 1320.236446 | 1563.394170 | 14459 |
+| T30 | 1137.202889 | 1372.523602 | 1611.045623 | 14459 |
+| T50 | 1166.284838 | 1414.503699 | 1675.003476 | 14459 |
+
+#### Function
+
+Divide each sum by the number of training windows. For example, the first
+position of T24 becomes 1075.329490 ÷
+14,459 = 0.074371. The other positions
+and sensors receive the same operation with their own sums.
+
+Use only the training windows. Do not add validation or test windows when
+building the reference for a particular explanation. A training engine can
+be explained using this same fixed reference, as in step 5.
+The reference need not equal zero: overlapping windows give readings a
+different weighting from the individual rows used to rescale the data.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+baseline = mean_window_baseline(prepared.train)[chosen, -3:]
+reference_window = history_table(baseline, ["First position", "Middle position", "Last position"])
+reference_window = reference_window.rename(columns={"Cycle": "Window position"})
+np.testing.assert_allclose(baseline, training_sums / len(training_windows), atol=1e-6)
+```
+
+</details>
+
+#### Output
+
+One reference history for every sensor, with the same three positions as the
+actual window. These are comparison values, not an observed engine history.
+
+<!-- sample: reference_window -->
+| Window position | T24 | T30 | T50 |
+|---|---|---|---|
+| First position | 0.074371 | 0.078650 | 0.080661 |
+| Middle position | 0.091309 | 0.094925 | 0.097829 |
+| Last position | 0.108126 | 0.111422 | 0.115845 |
+
+---
+
+## 2 — Predict with every group of sensors
+
+For each group, keep the actual histories of the sensors in that group and
+replace all other histories with the reference. The model and its graph stay
+fixed. Only the sensor readings change.
+
+With three sensors there are eight groups, including none and all three.
+This allows us to see what a sensor adds both alone and in combination with
+others.
+
+### Process
+
+#### Input
+
+The actual histories from step 1:
+
+<!-- sample: actual_window -->
+| Cycle | T24 | T30 | T50 |
+|---|---|---|---|
+| 96 | 0.285568 | 0.143344 | -0.050896 |
+| 97 | 0.194873 | 0.328677 | 0.359872 |
+| 98 | -0.373355 | 0.114623 | 0.817606 |
+
+The matching reference histories from step 1:
+
+<!-- sample: reference_window -->
+| Window position | T24 | T30 | T50 |
+|---|---|---|---|
+| First position | 0.074371 | 0.078650 | 0.080661 |
+| Middle position | 0.091309 | 0.094925 | 0.097829 |
+| Last position | 0.108126 | 0.111422 | 0.115845 |
+
+#### Function
+
+Build one complete input per group and ask the same model for a prediction.
+For the group **T24 + T50**, keep their actual columns, but replace **all three**
+T30 readings with T30's reference column. This does not delete a sensor node
+or any of its connections.
+
+The model in this example keeps only the last position before exchanging
+information between sensors. Its first sensor uses the average of T24 and
+T30; its second uses the average of all three; its third uses the average of
+T30 and T50. Negative averages become zero. It then doubles the first result,
+adds the second, subtracts the third, and adds 0.5. Negative totals become zero,
+and the final conversion produces a number between zero and the ceiling of
+125 cycles. The [GNN-LRP page](11_gnn_lrp.md) traces these same calculations.
+SHAP only needs the resulting predictions.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+codes = np.arange(2 ** len(names))
+masks = ((codes[:, None] >> np.arange(len(names))) & 1).astype(bool)
+masked_windows = np.where(masks[:, :, None], features[None], baseline[None])
+with torch.no_grad():
+    predictions = model.predict_cycles(torch.from_numpy(masked_windows)).numpy().astype(np.float64)
+groups = [" + ".join(name for name, keep in zip(names, mask) if keep) or "None"
+          for mask in masks]
+group_predictions = pd.DataFrame(masked_windows[:, :, -1], columns=names)
+group_predictions.insert(0, "Actual sensors", groups)
+group_predictions["Prediction (cycles)"] = predictions
+```
+
+</details>
+
+#### Output
+
+All eight predictions. The three sensor columns show the **last reading actually
+received** in each case, because this example's temporal route uses only that
+position. The complete three-position inputs were built using the same
+keep-or-replace choice for each sensor.
+
+<!-- sample: group_predictions -->
+| Actual sensors | T24 | T30 | T50 | Prediction (cycles) |
+|---|---|---|---|---|
+| None | 0.108126 | 0.111422 | 0.115845 | 84.012863 |
+| T24 | -0.373355 | 0.111422 | 0.115845 | 74.425964 |
+| T30 | 0.108126 | 0.114623 | 0.115845 | 84.086311 |
+| T24 + T30 | -0.373355 | 0.114623 | 0.115845 | 74.377762 |
+| T50 | 0.108126 | 0.111422 | 0.817606 | 80.728539 |
+| T24 + T50 | -0.373355 | 0.111422 | 0.817606 | 69.369339 |
+| T30 + T50 | 0.108126 | 0.114623 | 0.817606 | 80.804764 |
+| T24 + T30 + T50 | -0.373355 | 0.114623 | 0.817606 | 69.352867 |
+
+"None" still makes a prediction: it means all sensors are at their reference
+histories. That prediction is the starting point for the attribution sum.
+
+---
+
+## 3 — Average what each sensor adds
+
+A sensor's contribution depends on which other sensors are already present.
+Its Shapley value averages over **all arrival orders**, giving each order equal
+weight. It is not just the effect of removing the sensor from the full input.
+
+### Process
+
+#### Input
+
+The complete table of group predictions from step 2:
+
+<!-- sample: group_predictions -->
+| Actual sensors | T24 | T30 | T50 | Prediction (cycles) |
+|---|---|---|---|---|
+| None | 0.108126 | 0.111422 | 0.115845 | 84.012863 |
+| T24 | -0.373355 | 0.111422 | 0.115845 | 74.425964 |
+| T30 | 0.108126 | 0.114623 | 0.115845 | 84.086311 |
+| T24 + T30 | -0.373355 | 0.114623 | 0.115845 | 74.377762 |
+| T50 | 0.108126 | 0.111422 | 0.817606 | 80.728539 |
+| T24 + T50 | -0.373355 | 0.111422 | 0.817606 | 69.369339 |
+| T30 + T50 | 0.108126 | 0.114623 | 0.817606 | 80.804764 |
+| T24 + T30 + T50 | -0.373355 | 0.114623 | 0.817606 | 69.352867 |
+
+#### Function
+
+To explain T24, pair every group without T24 with the matching group containing
+T24. Subtract the prediction before it joins from the prediction afterwards.
+
+Three sensors can arrive in six orders. T24 comes first in two orders,
+second after T30 in one, second after T50 in one, and last in two. Therefore
+the four changes receive weights 2/6, 1/6, 1/6 and 2/6. This counts each
+arrival order once without recalculating the same group prediction.
+
+<!-- sample: marginal_table -->
+| Group before T24 | Before (cycles) | After (cycles) | Change (cycles) | Weight | Weighted change |
+|---|---|---|---|---|---|
+| None | 84.012863 | 74.425964 | -9.586899 | 0.333333 | -3.195633 |
+| T30 | 84.086311 | 74.377762 | -9.708549 | 0.166667 | -1.618092 |
+| T50 | 80.728539 | 69.369339 | -11.359200 | 0.166667 | -1.893200 |
+| T30 + T50 | 80.804764 | 69.352867 | -11.451897 | 0.333333 | -3.817299 |
+
+For example, when T24 joins T30, the prediction changes by
+74.377762 − 84.086311 =
+-9.708549 cycles. Multiply by 1/6 to get
+-1.618092 cycles toward T24's final share.
+Adding all four weighted changes gives -10.524223 cycles.
+Repeat the same pairing and averaging for T30 and T50.
+
+The general rule in the paper's Equation 15 gives each group a weight based
+on how many orders put exactly that group before the sensor. The full model
+has 87,178,291,200 arrival orders but only 16,384 distinct groups.
+The project evaluates all those groups, so there is no sampling of arrival
+orders. **Exact** describes this calculation for the chosen model and
+reference; it does not make the reference uniquely correct or the model accurate.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+without_t24 = np.flatnonzero(~masks[:, 0])
+with_t24 = without_t24 | 1
+weights = coalition_weights(len(names))[masks[without_t24].sum(axis=1)]
+changes = predictions[with_t24] - predictions[without_t24]
+marginal_table = pd.DataFrame({
+    "Group before T24": [groups[i] for i in without_t24],
+    "Before (cycles)": predictions[without_t24],
+    "After (cycles)": predictions[with_t24],
+    "Change (cycles)": changes,
+    "Weight": weights,
+    "Weighted change": weights * changes,
+})
+values = shap_values(model, features, baseline)
+contributions = pd.DataFrame({"Sensor": names, "SHAP contribution (cycles)": values})
+np.testing.assert_allclose(values[0], np.sum(weights * changes), atol=1e-5)
+```
+
+</details>
+
+#### Output
+
+One signed contribution per sensor:
+
+<!-- sample: contributions -->
+| Sensor | SHAP contribution (cycles) |
 |---|---|
-| Players | The model's input features |
-| The result the group achieves | The model's prediction |
-| A player's fair share | How much that feature pushed the prediction up or down |
+| T24 | -10.524223 |
+| T30 | 0.023663 |
+| T50 | -4.159435 |
 
-In this project **the players are the 14 sensors**. Each receives an
-**attribution**: a number of flight cycles saying how far that sensor moved the
-prediction away from the one the model makes when every sensor is replaced by
-its average training reading.
+A positive value raises the predicted life relative to the reference; a negative
+one lowers it. The sign describes the model's prediction, not whether a sensor
+is physically good or bad. T24's negative contribution here is an average of
+its changes across different groups, not a claim that changing T24 alone
+would produce that exact difference.
 
-The shares-add-up condition makes this checkable: the 14 attributions plus that
-average-reading prediction must equal the prediction itself, and
-`test_efficiency_holds_to_machine_precision` checks that they do to within
-0.0001 cycles. Numbers that failed it could not be Shapley values, however
-plausible their ranking looked.
-
----
-
-## Exact, not sampled
-
-With 14 sensors there are 14 factorial (14 × 13 × … × 1), or
-87 178 291 200, orders to average over. That is not a computation anyone runs.
-
-One way out is to sample: average over a random selection of orders, which
-gives an estimate rather than the exact value.
-
-This project does not need to. What a sensor adds depends only on which sensors
-are already **present**, not on the order they arrived in, and since each
-sensor is either in or out, there are only $2^{14} = 16\,384$ distinct groups
-that can be drawn from 14 sensors, counting the empty group and the full one.
-Every one can be evaluated. The formula weights each group by how many orders
-have exactly that group present when the sensor joins. In the three-player
-figure, B comes first in two of the six orders, after A alone in one, after C
-alone in one, and after both in two, so B's value is (2 × what B adds on its
-own + 1 × what it adds to A + 1 × what it adds to C + 2 × what it adds to A and
-C) ÷ 6. Counting orders this way for 14 sensors is where the factorials in the
-paper's Equation 15 come from, and the result is the exact Shapley value, with
-no sampling error at all.
-
-The cost is 16 384 runs of the network per prediction explained. Each extra
-sensor doubles that, to 1 048 576 runs at 20 sensors, and the code refuses more
-than 20 rather than silently switching to sampling.
+**Do not confuse SHAP with occlusion.** Occlusion replaces one sensor while
+keeping every other sensor actual. For T24 that uses only the last row of the
+calculation table, which gives -11.451897 cycles here. SHAP combines
+all four rows. Agreement in a particular example would not make the two
+methods interchangeable.
 
 ---
 
-## What "removing a sensor" has to mean
+## 4 — Check that the contributions add up
 
-The Shapley value needs to know what the model predicts from a *group* of
-sensors — say, 13 of the 14. But the network takes exactly 14 inputs. It cannot
-be handed 13. Something has to occupy the fourteenth slot.
+Each arrival order starts from the all-reference input and ends with the
+all-actual input. The changes along that order therefore add up to the same
+overall prediction difference. Averaging those changes over orders preserves
+the total.
 
-The paper's Equation 15 requires this quantity and never says what it puts
-there. **This project replaces an absent sensor with its average reading across
-the training data**, so the model is shown "this sensor is at its typical value"
-(assumption A-20).
+### Process
 
-It is not the only defensible option; substituting zero is another common
-choice, and the two have been compared by explaining the same predictions with
-each.
+#### Input
 
-Under the project's **current** input scaling, which subtracts each sensor's
-training mean so that its typical reading becomes zero, "substitute zero" and
-"substitute the mean" are very nearly the same instruction: on one network
-trained on all 100 training engines, the sensor rankings they produce agree with
-a rank correlation of 0.965, where 1 would mean the same order. Under the
-**previous** min-max scaling, which put each sensor's smallest reading at zero
-instead, the two rankings were unrelated, at −0.16.
+The sensor contributions from step 3:
 
-So how much the stand-in matters depends on the scaling. The mean is kept
-because it stands for a typical reading under any scaling, where zero does so
-only under some, and because it is computed from the training engines alone, so
-nothing from the test engines enters it. An attribution is only as meaningful
-as the value it is measured against.
+<!-- sample: contributions -->
+| Sensor | SHAP contribution (cycles) |
+|---|---|
+| T24 | -10.524223 |
+| T30 | 0.023663 |
+| T50 | -4.159435 |
+
+Their starting point is the prediction for "None" in step 2,
+84.012863 cycles.
+
+#### Function
+
+Add the sensor contributions to the reference prediction:
+
+> 84.012863 + (-10.524223) + (0.023663) +
+> (-4.159435) = 69.352867 cycles.
+
+Compare this with the model's prediction for the all-actual window. The
+difference should be zero apart from numerical rounding. Use the **prediction
+at the reference window**, not the average remaining-life label: only the
+former is the starting point of the group calculations (assumption A-24).
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+reconstructed = predictions[0] + values.sum()
+residual = efficiency_error(model, features, baseline, values)
+check_table = pd.DataFrame({
+    "Reference prediction": [predictions[0]],
+    "Sum of contributions": [values.sum()],
+    "Reconstructed prediction": [reconstructed],
+    "Actual prediction": [predictions[-1]],
+    "Absolute difference": [residual],
+})
+assert residual < 1e-4
+```
+
+</details>
+
+#### Output
+
+The complete check, in cycles:
+
+<!-- sample: check_table -->
+| Reference prediction | Sum of contributions | Reconstructed prediction | Actual prediction | Absolute difference |
+|---|---|---|---|---|
+| 84.012863 | -14.659996 | 69.352867 | 69.352867 | 0.000000 |
+
+This checks the attribution arithmetic. It does not check prediction accuracy.
+Our deliberately untrained example also passes it. Evaluating the model against
+known remaining-life answers is a separate task.
 
 ---
 
-## Dynamic: the same calculation at every cycle
+## 5 — Repeat along an engine's history
 
-A single explanation tells you which sensors drove one prediction. **Dynamic
-SHAP** repeats the calculation cycle after cycle along one engine's life,
-producing a trace of how the attributions change as the engine wears.
+**Dynamic SHAP** repeats the same explanation at successive windows of one
+engine. Keep the model and reference fixed so each row answers the same
+question at a different time. No additional model training happens here.
 
-That shows when in an engine's life the model relies on each sensor: one may
-dominate only in the last twenty cycles, another throughout. It describes the
-model, not the engine: a sensor the model leans on near failure is not thereby
-shown to be where the failure is.
+### Process
 
-The playground's Explain tab draws these attributions for a stored run in the
-layouts the paper uses, and sets one engine's beside the paper's own (its
-Fig. 10). The separate [GNN-LRP page](11_gnn_lrp.md) follows routes through the
-model instead of replacing sensor inputs.
+#### Input
+
+To show three consecutive explanations, now use **training engine 1**, with
+windows ending at cycles 30, 31 and 32. Every reading supplied to the small
+three-cycle demonstrator is shown. Overlap is intentional: the window moves
+forward one cycle at a time.
+
+<!-- sample: trajectory_input -->
+| Window ends | Cycle | T24 | T30 | T50 |
+|---|---|---|---|---|
+| 30 | 28 | -0.692949 | -0.739689 | -1.142521 |
+| 30 | 29 | -1.235571 | -0.918714 | -1.045265 |
+| 30 | 30 | -1.169914 | -0.159372 | -1.293769 |
+| 31 | 29 | -1.235571 | -0.918714 | -1.045265 |
+| 31 | 30 | -1.169914 | -0.159372 | -1.293769 |
+| 31 | 31 | -1.346239 | -0.692049 | -1.368398 |
+| 32 | 30 | -1.169914 | -0.159372 | -1.293769 |
+| 32 | 31 | -1.346239 | -0.692049 | -1.368398 |
+| 32 | 32 | -1.074194 | -0.255078 | -1.196328 |
+
+The reference remains the training-window average from step 1. The test data
+prepared for evaluation contains only the last window of each engine, so that
+single window alone cannot show a time history.
+
+#### Function
+
+For the window ending at cycle 30, evaluate the eight groups and average each
+sensor's added changes. Repeat for the window ending at cycle 31, then for the
+window ending at cycle 32. Each input window stops at its own end cycle.
+The rescaling statistics and reference were fitted beforehand from the full
+training histories, which include later cycles of this training engine. This
+is a retrospective demonstration, not an evaluation that trains on only the
+history available at each of those cycles. Validation and test engines do not
+enter those fitted training statistics or the reference.
+
+For each row, preserve the reference prediction, the actual prediction and
+all three contributions. This lets the sum check from step 4 be applied
+separately at every time.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+indices = np.flatnonzero(prepared.train.units == 1)[:3]
+trajectory_features = prepared.train.features[indices][:, chosen, -3:]
+trajectory_rows = []
+for end, window in zip(prepared.train.end_cycles[indices], trajectory_features):
+    for offset, readings in enumerate(window.T):
+        trajectory_rows.append([int(end), int(end) - 2 + offset, *readings])
+trajectory_input = pd.DataFrame(trajectory_rows, columns=["Window ends", "Cycle", *names])
+trajectory_dataset = WindowedDataset(
+    features=trajectory_features,
+    targets=prepared.train.targets[indices],
+    units=prepared.train.units[indices],
+    end_cycles=prepared.train.end_cycles[indices],
+    sensor_columns=tuple(prepared.train.sensor_columns[i] for i in chosen),
+)
+trajectory = dynamic_shap(model, trajectory_dataset, baseline, unit=1, symbols=names)
+trajectory_output = trajectory[["end_cycle", "baseline", "predicted", *names]].rename(columns={
+    "end_cycle": "Window ends", "baseline": "Reference prediction", "predicted": "Prediction",
+})
+np.testing.assert_allclose(trajectory[names].sum(axis=1) + trajectory["baseline"],
+                           trajectory["predicted"], atol=1e-4)
+```
+
+</details>
+
+#### Output
+
+One explanation per window. All predictions and sensor contributions are in
+cycles; "Window ends" identifies when the input history stops.
+
+<!-- sample: trajectory_output -->
+| Window ends | Reference prediction | Prediction | T24 | T30 | T50 |
+|---|---|---|---|---|---|
+| 30 | 84.012863 | 77.807419 | -4.343442 | -2.337285 | 0.475283 |
+| 31 | 84.012863 | 77.807419 | -4.238299 | -2.547572 | 0.580427 |
+| 32 | 84.012863 | 77.807419 | -4.238299 | -2.547572 | 0.580427 |
+
+Here the prediction stays the same while some contributions change: the
+changes in their shares cancel. An unchanged prediction does not require an
+unchanged explanation.
+
+A colour map can show this same table with time in one direction and sensors
+in the other. Keep the sign visible when asking which sensors raised or lowered
+a prediction. Taking the absolute value answers a different question: how large
+a contribution was, regardless of direction.
 
 ---
 
-## What SHAP says about the two-value sensor
+## What an explanation does and does not establish
 
-`P15` takes only two distinct values across the whole training set, yet the
-paper keeps it in the graph. On the network behind the 0.965 above, exact
-Shapley values over every prediction along the lives of three of its training
-engines rank it last of the fourteen sensors on each engine, and the paper's
-Fig. 9 also puts it last. Its attribution is not always near zero, though. On engine 5, whose
-reading switches between the two values 34 times, one prediction gives it an
-attribution 6.8 cycles in size; on engine 25, whose reading never switches, none
-is larger than 1.7 (finding F-05).
+The full playground explanation uses the selected **saved run and saved
+seed's model**, its matching preprocessing, and all fourteen sensors. Changing
+the model, the input window or the reference can change the explanation.
+A sensor ranking from one trained model is not a general result across training
+runs.
 
-Because attributions can vary this much from one prediction to the next, a
-claim about them has to be computed over every prediction. The first version of
-this result used 14 of engine 5's 240 predictions, and got both the size of the
-effect and its cause wrong.
+The earlier version of this page quoted reference-choice comparisons and the
+two-value sensor P15's rankings from a single trained network. Those are
+limited case studies, not established behaviour across seeds. Their settings
+and corrections remain in the records for
+[the reference choice](../ASSUMPTIONS.md#a-20--an-absent-sensor-is-replaced-by-its-average-training-window)
+(assumption A-20) and
+[the two-value sensor](../ASSUMPTIONS.md#f-05--what-shap-says-about-p15-and-what-it-does-not)
+(finding F-05).
+
+Replacing sensor histories can also create combinations not observed together
+in a real engine. SHAP describes how the model responds to those combinations
+under this reference choice. It does not prove physical causation, identify a
+failed component, or provide a confidence interval for remaining life. A large
+contribution is a statement about a model's calculation, not a diagnosis.
+
+To follow routes **inside** the network instead of replacing its inputs,
+continue to [GNN-LRP](11_gnn_lrp.md). Its scores answer a different question and
+use a different unit.

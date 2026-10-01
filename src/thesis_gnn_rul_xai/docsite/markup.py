@@ -225,6 +225,8 @@ class _SiteRenderer(HTMLRenderer):
         if self.source_path in {
             "docs/learn/01_the_problem.md", "docs/learn/04_the_pipeline.md",
             "docs/learn/09_temporal.md", "docs/learn/02_graphs.md", "docs/learn/05_the_model.md",
+            "docs/learn/03_explainability.md", "docs/learn/10_dynamic_shap.md",
+            "docs/learn/11_gnn_lrp.md",
         }:
             stage = re.fullmatch(r"(\d+) — (.+)", plain) if level == 2 else None
             if stage:

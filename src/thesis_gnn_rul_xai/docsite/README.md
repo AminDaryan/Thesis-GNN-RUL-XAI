@@ -1036,8 +1036,8 @@ same as its documentation heading when that setting changes. Tests render the
 actual cards and check the links, headings and tutorial labels across the
 available stages and changed settings.
 
-The Data, Preprocessing, Temporal algorithm, GNN and Architecture and training
-pages integrate each example into its numbered
+The Data, Preprocessing, Temporal algorithm, GNN, Architecture and training,
+XAI, Dynamic SHAP and GNN-LRP pages integrate each example into its numbered
 stage: intuition and the figure first, then a Process with complete sample
 input and output tables. Input, Function and Output teach the information and
 the general transformation, without naming the implementation. An expandable
@@ -1056,6 +1056,13 @@ The saved-model walkthrough remains on the Worked examples page, separate from
 these calculations. Shared and separate recurrent networks have distinct
 examples, while duplicate last-reading and average sections now have one
 destination each.
+The XAI tutorials share one small untrained network and real FD001 test-engine
+readings. The overview compares explanation units; Dynamic SHAP follows every
+sensor combination and its contribution; GNN-LRP follows every route and the
+checks made by changing which sensors remain connected. Each page shows all
+values in its reduced example. These arithmetic demonstrations are separate
+from conclusions about trained models. The earlier XAI overview's section
+links go directly to their current subpage sections through `XAI_MOVED_SECTIONS`.
 Document navigation waits for its figures before aligning the requested heading;
 otherwise an image arriving later could push the linked section off screen.
 

@@ -57,6 +57,8 @@ def test_two_headings_with_the_same_words_get_different_anchors():
 @pytest.mark.parametrize("filename,process_count", [
     ("01_the_problem.md", 5), ("04_the_pipeline.md", 8),
     ("09_temporal.md", 12), ("02_graphs.md", 2), ("05_the_model.md", 7),
+    ("03_explainability.md", 2),
+    ("10_dynamic_shap.md", 5), ("11_gnn_lrp.md", 4),
 ])
 def test_tutorials_separate_concepts_examples_and_results(root: Path, filename, process_count):
     """Every process has named phases and keeps its optional code before the output."""
@@ -97,6 +99,7 @@ def test_tutorials_separate_concepts_examples_and_results(root: Path, filename, 
 
 @pytest.mark.parametrize("filename", [
     "01_the_problem.md", "04_the_pipeline.md", "09_temporal.md", "02_graphs.md", "05_the_model.md",
+    "03_explainability.md", "10_dynamic_shap.md", "11_gnn_lrp.md",
 ])
 def test_tutorial_contents_show_sections_without_process_phases(root: Path, filename):
     """Both contents menus retain section links and leave the process detail in the article."""
@@ -716,7 +719,9 @@ def test_old_xai_section_links_redirect_to_existing_subpage_headings(root: Path)
 
     script = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.js").read_text(encoding="utf-8")
     mapping = script.split("var XAI_MOVED_SECTIONS = {", 1)[1].split("};", 1)[0]
-    for anchor, name in re.findall(r'"([^"]+)": "([^"]+)"', mapping):
+    for old, destination in re.findall(r'"([^"]+)": "([^"]+)"', mapping):
+        name, anchor = destination.split("#")
+        assert old
         page = root / "docs/learn" / name
         rendered = markup.render_markdown(page.read_text(encoding="utf-8"), source_path=page.as_posix())
         assert anchor in {heading.anchor for heading in rendered.headings}

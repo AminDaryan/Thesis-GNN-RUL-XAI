@@ -274,6 +274,54 @@ def test_example_how_many_numbers_the_network_learns_with_each_temporal_stage():
 # --- explain/shap.py ----------------------------------------------------
 
 
+def test_example_xai_overview_keeps_prediction_and_explanation_units_distinct(raw_dir, monkeypatch):
+    """Recompute every visible cell and both reconstructions on the same real window."""
+    from test_examples import _check_design_tutorial
+
+    example = _check_design_tutorial("03_explainability.md", monkeypatch, minimum_tables=4)
+    assert example["readings"].Cycle.tolist() == [96, 97, 98]
+    assert example["window"].shape == (3, 3)
+    assert example["reconstruction"].Unit.tolist() == ["cycles", "internal score"]
+    assert example["shap_total"] == pytest.approx(example["predicted"], abs=1e-5)
+    assert example["walk_total"] == pytest.approx(example["score"], abs=1e-6)
+    assert example["phi"][1] > 0 > example["routes"][1]
+
+
+def test_example_dynamic_shap_tutorial_traces_every_group_and_window(raw_dir, monkeypatch):
+    """Verify all printed samples and complete group enumeration on real sensor histories."""
+    from test_examples import _check_design_tutorial
+
+    example = _check_design_tutorial("10_dynamic_shap.md", monkeypatch, minimum_tables=13)
+    assert example["features"].shape == (3, 3)
+    assert example["masked_windows"].shape == (8, 3, 3)
+    np.testing.assert_array_equal(example["masked_windows"][0], example["baseline"])
+    np.testing.assert_array_equal(example["masked_windows"][-1], example["features"])
+    assert example["values"].shape == (3,)
+    assert example["trajectory_features"].shape == (3, 3, 3)
+    assert example["trajectory"]["end_cycle"].tolist() == [30, 31, 32]
+    assert example["residual"] < 1e-4
+
+
+def test_example_gnn_lrp_tutorial_traces_routes_and_checks_changed_graphs(raw_dir, monkeypatch):
+    """Verify every printed route and each sensor-addition and removal result."""
+    from test_examples import _check_design_tutorial
+
+    example = _check_design_tutorial("11_gnn_lrp.md", monkeypatch, minimum_tables=13)
+    assert example["window"].shape == (3, 3)
+    assert len(example["walk_table"]) == 9
+    assert len(example["subset_table"]) == 8
+    np.testing.assert_allclose(example["walks"].relevance[0], example["manual_shares"], atol=1e-12)
+    assert example["walks"].gamma == (0.0,)
+    assert example["adding_order"] == [1, 0, 2]
+    assert example["removing_order"] == [0, 1, 2]
+    assert example["adding_curve"]["Sensors present"].tolist() == [
+        "None", "T30", "T24, T30", "T24, T30, T50",
+    ]
+    assert example["removing_curve"]["Sensors present"].tolist() == [
+        "T24, T30, T50", "T30, T50", "T50", "None",
+    ]
+
+
 def test_example_coalition_weights():
     """With three sensors, the empty group and the full group each count 1/3,
     and each single-sensor group counts 1/6."""

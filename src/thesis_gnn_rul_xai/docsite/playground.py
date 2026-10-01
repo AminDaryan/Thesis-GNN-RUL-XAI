@@ -518,12 +518,12 @@ _READ_MORE: dict[str, tuple[str, str]] = {
     "seeds": ("docs/learn/06_reading_results.md", "One seed is not a result"),
     "fixed_split": ("docs/learn/06_reading_results.md", "One seed is not a result"),
     "device": (_TRAINING, "What one run does"),
-    "explain=shap": ("docs/learn/10_dynamic_shap.md", "SHAP: the same idea, applied to a model"),
-    "explain=occlusion": ("docs/learn/10_dynamic_shap.md", 'What "removing a sensor" has to mean'),
-    "explain=walks": ("docs/learn/11_gnn_lrp.md", "Walks: the routes a prediction took through the graph"),
-    "explain=engine": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
+    "explain=shap": ("docs/learn/10_dynamic_shap.md", "3 — Average what each sensor adds"),
+    "explain=occlusion": ("docs/learn/10_dynamic_shap.md", "3 — Average what each sensor adds"),
+    "explain=walks": ("docs/learn/11_gnn_lrp.md", "1 — Follow the graph calculation"),
+    "explain=engine": ("docs/learn/10_dynamic_shap.md", "5 — Repeat along an engine's history"),
     "explain=test": ("docs/learn/03_explainability.md", "Why a number is not enough"),
-    "explain=every": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
+    "explain=every": ("docs/learn/10_dynamic_shap.md", "5 — Repeat along an engine's history"),
 }
 
 # Diagram steps link by their displayed names; a shared picture does not imply
