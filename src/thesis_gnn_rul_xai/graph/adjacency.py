@@ -23,6 +23,7 @@ __all__ = [
     "build_correlation_adjacency",
     "build_fully_connected_adjacency",
     "build_physics_adjacency",
+    "connections_of",
     "normalize_adjacency",
     "pairs_beyond_reach",
 ]
@@ -225,6 +226,13 @@ def adjacency_report(
         report["algebraic_connectivity"] = None
 
     return report
+
+
+def connections_of(raw_adjacency: np.ndarray) -> list[tuple[int, int]]:
+    """Return every connection once, as its lower and higher sensor positions."""
+    matrix = np.asarray(raw_adjacency)
+    rows, cols = np.nonzero(np.triu(matrix, k=1))
+    return [(int(i), int(j)) for i, j in zip(rows, cols, strict=True)]
 
 
 def pairs_beyond_reach(

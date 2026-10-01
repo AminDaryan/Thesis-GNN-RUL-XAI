@@ -1,148 +1,315 @@
-# Graphs, and what a graph network computes
+# GNN: connections between sensors
 
-## A graph is points and connections
+A single sensor can miss part of an engine's condition. A **graph neural
+network**, or **GNN**, lets a sensor's calculated values depend on other sensors
+as well as itself. The graph specifies which sensors may contribute.
 
-A **graph** is a set of points, called **nodes**, with connections between
-them, called **edges**. A road map is a graph: junctions are nodes, roads are
-edges.
+A **node** is one sensor position. An **edge** is a permitted connection
+between two positions. An edge permits exchange of information inside the
+model; it does not prove that one measurement causes another.
 
-Here, **every sensor is a node**, and an edge between two sensors means "these
-two measurements are physically related". There are 14 sensors, so 14 nodes.
+Keep three objects separate:
 
-## The adjacency matrix is the graph written as a table
+| Object | What its rows contain | Where it comes from |
+|---|---|---|
+| Sensor input table | Readings or temporal summaries for each sensor | The engine data and the selected temporal algorithm |
+| Graph table | Which sensors may send to each receiving sensor | The chosen connection rule |
+| Calculated sensor values | Results of combining inputs and applying learned multipliers | The graph layers |
 
-For 14 sensors the **adjacency matrix** is a 14-by-14 table: the entry in row
-*i*, column *j* is 1 if sensors *i* and *j* are connected and 0 if not. It holds
-the same information as a drawing of the graph, in a form a computer can
-multiply.
+The temporal algorithm follows cycles **within** a sensor. The graph layers
+combine information **between** sensors. A column produced by a graph layer
+is a calculated value, not another time or another physical sensor.
+
+## Example setup
+
+The examples keep all fourteen sensor positions. The input sample shows
+three complete FD001 rows with all selected sensor columns. We then build
+the implemented Physics graph and follow the same graph through rescaling.
+The graph is not inferred from those three rows: its connections are supplied
+by the project's copy of the paper's Table 3.
+
+The tables stand on their own. The optional code uses the real FD001 files;
+run the setup and then the examples in page order to reproduce every table.
+
+<details class="process-example">
+<summary>Set up the Python examples</summary>
+
+```python
+import numpy as np
+import pandas as pd
+from thesis_gnn_rul_xai.data.loading import load_subset
+from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_COLUMNS
+from thesis_gnn_rul_xai.graph.adjacency import build_physics_adjacency, normalize_adjacency
+from thesis_gnn_rul_xai.utils.paths import raw_data_dir
+
+raw = load_subset("FD001", data_dir=raw_data_dir())
+matrix, names = build_physics_adjacency()
+names = list(names)
+sample = raw.train.loc[:2, list(PAPER_SENSOR_COLUMNS)].copy()
+sample.columns = names
+sample.insert(0, "Cycle", raw.train.loc[:2, "cycle"].to_numpy())
+relationships = pd.DataFrame({"Sensor": names,
+    "Permitted other senders": [", ".join(names[j] for j in np.flatnonzero(row)) for row in matrix]})
+
+def graph_table(values):
+    """Show all receiving rows and sending columns in the fixed sensor order."""
+    frame = pd.DataFrame(values, columns=names)
+    frame.insert(0, "Receiver", names)
+    return frame
+
+raw_graph = graph_table(matrix.astype(int))
+```
+
+</details>
+
+<div class="algorithm-intro">
+<p class="algorithm-label">Sensor-graph preparation algorithm</p>
+<p>Follow steps 1 and 2 to turn a connection rule into the fixed multipliers
+used by every graph layer. Sensor readings remain a separate input. The
+Architecture and training page then follows those readings through the layers.</p>
+</div>
+
+---
+
+## 1 — Sensor graph
+
+First decide which sensor positions may exchange information. The **adjacency matrix** is that decision written as a table: a 1 permits a connection and a 0 excludes it. Rows name receiving sensors; columns name sending sensors.
+
+The left table shows the permitted connections. Its diagonal is zero because including the receiving sensor itself is the next step's job. The right table previews the combining shares calculated in that next step.
 
 {{figure:adjacency}}
 
-The matrix is **symmetric**: if `T24` is a neighbour of `P30`, then `P30` is a
-neighbour of `T24`. Its diagonal is zero, because a sensor is not listed as its
-own neighbour. The code checks both when it is imported.
+### Process
+
+#### Input
+
+Three actual rows of sensor readings establish the sensor columns and their order. These readings do not choose the Physics graph's connections:
+
+<!-- sample: sample -->
+| Cycle | T24 | T30 | T50 | P15 | P30 | Nf | Nc | Ps30 | phi | NRf | BPR | htBleed | W31 | W32 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 641.820000 | 1589.700000 | 1400.600000 | 21.610000 | 554.360000 | 2388.060000 | 9046.190000 | 47.470000 | 521.660000 | 2388.020000 | 8.419500 | 392 | 39.060000 | 23.419000 |
+| 2 | 642.150000 | 1591.820000 | 1403.140000 | 21.610000 | 553.750000 | 2388.040000 | 9044.070000 | 47.490000 | 522.280000 | 2388.070000 | 8.431800 | 392 | 39.000000 | 23.423600 |
+| 3 | 642.350000 | 1587.990000 | 1404.200000 | 21.610000 | 554.260000 | 2388.080000 | 9052.940000 | 47.270000 | 522.420000 | 2388.030000 | 8.417800 | 390 | 38.950000 | 23.344200 |
+
+#### Function
+
+Use the supplied relationships below, rather than calculating connections from the sample readings. This list includes every sensor and every permitted other sender in the implemented Physics graph:
+
+<!-- sample: relationships -->
+| Sensor | Permitted other senders |
+|---|---|
+| T24 | T30, P15, P30, Nf, Ps30, NRf, BPR |
+| T30 | T24, T50, P30, Nc, Ps30, phi, htBleed, W31 |
+| T50 | T30, Nc, W31, W32 |
+| P15 | T24, Nf, NRf, BPR |
+| P30 | T24, T30, Nc, Ps30, phi, htBleed, W31 |
+| Nf | T24, P15, NRf, BPR |
+| Nc | T30, T50, P30, Ps30, phi, htBleed, W31, W32 |
+| Ps30 | T24, T30, P30, Nc, phi, htBleed, W31 |
+| phi | T30, P30, Nc, Ps30, htBleed, W31 |
+| NRf | T24, P15, Nf, BPR |
+| BPR | T24, P15, Nf, NRf |
+| htBleed | T30, P30, Nc, Ps30, phi, W31, W32 |
+| W31 | T30, T50, P30, Nc, Ps30, phi, htBleed, W32 |
+| W32 | T50, Nc, htBleed, W31 |
+
+For each receiving row, mark 1 under each listed sender and 0 elsewhere. For example, P15 permits T24, Nf, NRf and BPR. Its T24 entry becomes 1, its T30 entry 0, and its own entry stays 0. Apply the same rule to all rows; a permitted pair is recorded in both directions.
+
+Design a run also offers two different rules. **Every sensor joined to every other** permits every distinct pair. **The most correlated sensor pairs** ranks how strongly the training readings vary together, either in the same or opposite directions, and keeps the requested pairs (assumption A-27). That rule uses the training engines after the split; held-back and test engines do not choose its connections. The Physics rule is the one worked through here.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+rebuilt = np.zeros_like(matrix)
+for receiver, senders in enumerate(relationships["Permitted other senders"]):
+    for sender in senders.split(", "):
+        if sender:
+            rebuilt[receiver, names.index(sender)] = 1
+np.testing.assert_array_equal(rebuilt, matrix)
+np.testing.assert_array_equal(rebuilt, rebuilt.T)
+assert not np.diag(rebuilt).any()
+graph_output = graph_table(rebuilt.astype(int))
+graph_counts = pd.DataFrame({"Sensors": [len(names)], "Undirected connections": [int(matrix.sum() // 2)]})
+```
+
+</details>
+
+#### Output
+
+The complete connection table. Every row and column uses the sensor order of the input. The sensor measurements themselves have not changed.
+
+<!-- sample: graph_output -->
+| Receiver | T24 | T30 | T50 | P15 | P30 | Nf | Nc | Ps30 | phi | NRf | BPR | htBleed | W31 | W32 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T24 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 1 | 1 | 0 | 0 | 0 |
+| T30 | 1 | 0 | 1 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 0 | 1 | 1 | 0 |
+| T50 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 1 |
+| P15 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 |
+| P30 | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 1 | 1 | 0 |
+| Nf | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 |
+| Nc | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 1 | 1 | 1 |
+| Ps30 | 1 | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 1 | 1 | 0 |
+| phi | 0 | 1 | 0 | 0 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 1 | 1 | 0 |
+| NRf | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| BPR | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
+| htBleed | 0 | 1 | 0 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 1 |
+| W31 | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 1 |
+| W32 | 0 | 0 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 |
+
+Counted from this table (a pair is counted once, rather than once in each direction):
+
+<!-- sample: graph_counts -->
+| Sensors | Undirected connections |
+|---|---|
+| 14 | 41 |
 
 ---
 
-## The graph this project uses
+## 2 — Rescale the graph
 
-Counted from this project's copy of the paper's Table 3, the graph has 41 edges
-between its 14 sensors. It is drawn further down, carrying information from one
-sensor to the rest.
+More neighbours would produce a larger sum even if all their values were alike. Rescaling controls how much each sender contributes, while including the receiving sensor's own value so that it is not discarded.
 
-**The graph is a physical claim, not a statistical one.** The edges were
-hand-designed by the paper's authors from engine physics, not learned from
-correlations in the data. That makes it a **prior**: knowledge put into the
-model from outside, before it sees any measurements.
+**Do not confuse this with rescaling sensor readings.** Here we change the numbers describing connections. The earlier preprocessing step changes measurements.
+
+### Process
+
+#### Input
+
+The same complete raw connection table from step 1:
+
+<!-- sample: raw_graph -->
+| Receiver | T24 | T30 | T50 | P15 | P30 | Nf | Nc | Ps30 | phi | NRf | BPR | htBleed | W31 | W32 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T24 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 1 | 1 | 0 | 0 | 0 |
+| T30 | 1 | 0 | 1 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 0 | 1 | 1 | 0 |
+| T50 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 1 |
+| P15 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 |
+| P30 | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 1 | 1 | 0 |
+| Nf | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 |
+| Nc | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 1 | 1 | 1 |
+| Ps30 | 1 | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 1 | 1 | 0 |
+| phi | 0 | 1 | 0 | 0 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 1 | 1 | 0 |
+| NRf | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
+| BPR | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
+| htBleed | 0 | 1 | 0 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 1 |
+| W31 | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 1 |
+| W32 | 0 | 0 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 |
+
+#### Function
+
+For the default **row** method, put 1 on the diagonal to include each sensor itself. Count the ones in each receiving row and divide every entry by that count. Allowed senders get equal shares whose total is 1, so the next graph layer takes their average. This particular rescaling is a project choice (assumption A-21); the paper's text around Equation 8 specifies rescaling with self-connections without its formula.
+
+P15 has four other senders. Including itself makes five, so each permitted entry becomes `1 / 5 = 0.2`. T24 has seven other senders; including itself makes eight, giving `1 / 8 = 0.125`. The complete counts are:
+
+<!-- sample: counts_table -->
+| Receiver | Other senders | Including itself | Each allowed share |
+|---|---|---|---|
+| T24 | 7 | 8 | 0.125000 |
+| T30 | 8 | 9 | 0.111111 |
+| T50 | 4 | 5 | 0.200000 |
+| P15 | 4 | 5 | 0.200000 |
+| P30 | 7 | 8 | 0.125000 |
+| Nf | 4 | 5 | 0.200000 |
+| Nc | 8 | 9 | 0.111111 |
+| Ps30 | 7 | 8 | 0.125000 |
+| phi | 6 | 7 | 0.142857 |
+| NRf | 4 | 5 | 0.200000 |
+| BPR | 4 | 5 | 0.200000 |
+| htBleed | 7 | 8 | 0.125000 |
+| W31 | 8 | 9 | 0.111111 |
+| W32 | 4 | 5 | 0.200000 |
+
+The **symmetric** option uses both endpoints' counts: divide a connection's 1 by the square root of the two counts multiplied together. P15 receiving from T24 gets `1 / sqrt(5 × 8) = 0.158114`. The reverse connection gets the same multiplier. A row need not sum to 1, so this is not generally an average.
+
+<!-- sample: method_comparison -->
+| Method | P15 receives from T24 | P15 row total |
+|---|---|---|
+| Row | 0.200000 | 1.000000 |
+| Symmetric | 0.158114 | 0.958114 |
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+with_self = matrix + np.eye(len(names), dtype=matrix.dtype)
+counts = with_self.sum(axis=1)
+scaled = normalize_adjacency(matrix, method="row")
+symmetric = normalize_adjacency(matrix, method="symmetric")
+np.testing.assert_allclose(scaled, with_self / counts[:, None])
+counts_table = pd.DataFrame({"Receiver": names, "Other senders": matrix.sum(axis=1).astype(int),
+                             "Including itself": counts.astype(int), "Each allowed share": 1 / counts})
+p15, t24 = names.index("P15"), names.index("T24")
+method_comparison = pd.DataFrame({"Method": ["Row", "Symmetric"],
+    "P15 receives from T24": [scaled[p15, t24], symmetric[p15, t24]],
+    "P15 row total": [scaled[p15].sum(), symmetric[p15].sum()]})
+scaled_output = graph_table(scaled)
+```
+
+</details>
+
+#### Output
+
+The complete table of combining multipliers for the **row** method. Each graph layer reuses it. Training adjusts another table of multipliers for transforming the combined values; it does not adjust these connections or their combining shares.
+
+<!-- sample: scaled_output -->
+| Receiver | T24 | T30 | T50 | P15 | P30 | Nf | Nc | Ps30 | phi | NRf | BPR | htBleed | W31 | W32 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T24 | 0.125000 | 0.125000 | 0.000000 | 0.125000 | 0.125000 | 0.125000 | 0.000000 | 0.125000 | 0.000000 | 0.125000 | 0.125000 | 0.000000 | 0.000000 | 0.000000 |
+| T30 | 0.111111 | 0.111111 | 0.111111 | 0.000000 | 0.111111 | 0.000000 | 0.111111 | 0.111111 | 0.111111 | 0.000000 | 0.000000 | 0.111111 | 0.111111 | 0.000000 |
+| T50 | 0.000000 | 0.200000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.200000 |
+| P15 | 0.200000 | 0.000000 | 0.000000 | 0.200000 | 0.000000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 |
+| P30 | 0.125000 | 0.125000 | 0.000000 | 0.000000 | 0.125000 | 0.000000 | 0.125000 | 0.125000 | 0.125000 | 0.000000 | 0.000000 | 0.125000 | 0.125000 | 0.000000 |
+| Nf | 0.200000 | 0.000000 | 0.000000 | 0.200000 | 0.000000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 |
+| Nc | 0.000000 | 0.111111 | 0.111111 | 0.000000 | 0.111111 | 0.000000 | 0.111111 | 0.111111 | 0.111111 | 0.000000 | 0.000000 | 0.111111 | 0.111111 | 0.111111 |
+| Ps30 | 0.125000 | 0.125000 | 0.000000 | 0.000000 | 0.125000 | 0.000000 | 0.125000 | 0.125000 | 0.125000 | 0.000000 | 0.000000 | 0.125000 | 0.125000 | 0.000000 |
+| phi | 0.000000 | 0.142857 | 0.000000 | 0.000000 | 0.142857 | 0.000000 | 0.142857 | 0.142857 | 0.142857 | 0.000000 | 0.000000 | 0.142857 | 0.142857 | 0.000000 |
+| NRf | 0.200000 | 0.000000 | 0.000000 | 0.200000 | 0.000000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 |
+| BPR | 0.200000 | 0.000000 | 0.000000 | 0.200000 | 0.000000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 |
+| htBleed | 0.000000 | 0.125000 | 0.000000 | 0.000000 | 0.125000 | 0.000000 | 0.125000 | 0.125000 | 0.125000 | 0.000000 | 0.000000 | 0.125000 | 0.125000 | 0.125000 |
+| W31 | 0.000000 | 0.111111 | 0.111111 | 0.000000 | 0.111111 | 0.000000 | 0.111111 | 0.111111 | 0.111111 | 0.000000 | 0.000000 | 0.111111 | 0.111111 | 0.111111 |
+| W32 | 0.000000 | 0.000000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | 0.200000 | 0.200000 | 0.200000 |
 
 ---
 
-## What a graph neural network does: message passing
+## How information travels through layers
 
-A **graph neural network** (GNN) is a neural network that operates on a graph.
-The mechanism is called **message passing**, and one round of it is three
-steps:
-
-1. **Collect.** Every node looks at its neighbours and gathers their current
-   values.
-2. **Combine.** It mixes those values together with its own.
-3. **Update.** It transforms the mixture — the same transformation everywhere
-   in the graph — to produce its new value.
-
-Every node does this at the same time. One round is one **layer**. Stack three
-layers and information travels up to three edges, or hops, because in each
-round a node takes in values that already hold what its neighbours collected in
-the round before.
+A graph layer first combines each receiving sensor's permitted senders,
+using the shares above. It does that separately for every input column.
+Learned multipliers then turn each combined row into new calculated values.
+Negative results become zero. These updated rows are the next layer's inputs.
+This collect–combine–update operation is called **message passing**.
 
 {{figure:message-passing}}
 
-The drawing is the graph of Table 3 itself: each circle is a sensor, a larger
-circle has more neighbours, and each line is an edge. **`T24` is the only
-sensor whose removal splits the graph**, which is what its dashed ring marks:
-the four fan and bypass sensors, `P15`, `Nf`, `NRf` and `BPR`, reach the other
-nine only through `T24`, so everything `P15` sends to them passes `T24` first.
-
-However long the network trains, three graph layers reach no further. Two
-sensors four edges apart, such as `P15` and the one the drawing marks "never",
-do not affect each other inside the graph layers at all; they meet only in the
-layers after them, which take all fourteen sensors' results together. The next
-figure counts every pair of sensors by how far apart the two are.
+In the drawing, T24 receives P15's information in one round. A sensor that
+receives T24's updated value in the next round can then depend on P15 too.
+This is why one layer can reach immediate neighbours, two layers can reach
+two connections away, and three can reach three. All sensors use the previous
+layer's values; updates within a layer do not cascade through the whole graph.
 
 {{figure:reach}}
 
----
+Three layers do not necessarily connect every pair. The figure counts the
+distances in the implemented graph. Later fully connected layers combine all
+sensor positions, including those that cannot reach each other within the
+graph layers. [Graph layer 1](05_the_model.md#1--graph-layer-1) starts a complete
+numerical walkthrough of that process.
 
-## One graph layer, as a formula
+## Why use a graph?
 
-$$H' = \mathrm{ReLU}\left(\hat{A} H W\right)$$
+The Physics graph expresses a hypothesis about useful sensor relationships,
+proposed from engine structure in the paper's Section 2.3.1. Whether that
+hypothesis helps prediction must be measured; the presence of a connection
+alone is not evidence of benefit or causation.
 
-`H` is the current table of node values: one row per sensor, holding that
-sensor's current numbers. `Â` is the adjacency matrix after the normalisation
-below, and multiplying by it is the collect-and-combine step: row *i* of `ÂH` is
-a weighted sum of the rows of sensor *i* and its neighbours. `W` is a matrix of
-numbers the network learns; multiplying by it is the update step, turning each
-row into a new row with as many numbers as `W` has columns. It is the *same*
-`W` for every node, which is why the layer works on a graph of any size. `ReLU`
-replaces every negative number with zero, and the result, `H′`, is the new
-table of node values that the next layer starts from.
+Joining every sensor to every other is not a neutral replacement: after row
+rescaling, every sensor receives the same average. Different sensor positions
+then lose their distinct inputs to that layer. Some rows also coincide in the
+Physics graph. The [graph implementation guide](../../src/thesis_gnn_rul_xai/graph/README.md)
+explains these effects and links to the measured comparisons, with the
+configuration and training procedure each comparison used.
 
-The hat on `Â` is the normalisation this project uses, drawn in the right panel
-of the adjacency matrix figure:
-
-$$\hat{A} = D^{-1} (A + I)$$
-
-Adding the identity matrix `I`, which has ones on its diagonal and zeros
-elsewhere, gives every node an edge to itself, called a **self-loop**, so a
-sensor's own value survives the mixing instead of being replaced by its
-neighbours'. `D` holds each row total of `A + I` on its diagonal and zeros
-elsewhere, so multiplying by $D^{-1}$ divides every row by its total. `P15` has
-four neighbours, so its row of `A + I` holds five ones and becomes five entries
-of 0.2: row `P15` of `ÂH` is the average of the rows of `P15`, `T24`, `Nf`,
-`NRf` and `BPR`. `T24`, with seven neighbours, gets eight entries of 0.125, the
-average of eight rows. Without the division `T24` would receive a sum of eight
-rows and `P15` a sum of five, so a sensor's value would grow with its number of
-neighbours.
-
-> **A choice hides here.** The paper says its matrix is "normalized ...
-> incorporating self-loops" and never prints the formula. The symmetric form
-> $D^{-1/2}(A+I)D^{-1/2}$ fits that description as well as the row form above:
-> it divides the entry joining two sensors by the square root of the product of
-> their two row totals, so the `P15`–`T24` entry becomes 1/√(5 × 8) ≈ 0.158 in
-> both their rows. Over five training runs on all 100 training engines, the row
-> form's error on the test engines was 0.25 cycles lower, a difference five runs
-> cannot tell from zero (*p* = 0.068). The default keeps a fifth of the training
-> engines out of training, and no difference between the two forms has been
-> shown there either (assumption A-21).
-
----
-
-## Why a graph at all
-
-It is a hypothesis, not a certainty: telling the model which sensors are
-physically related should help it more than leaving it to work that out from
-the data. The paper's evidence is one experiment: without the physics graph,
-its model's error rises by 0.56 cycles, from 11.78 to 12.34 (its Table 11).
-
-This project has repeated that comparison, replacing the physics graph with one
-joining every sensor to every other, on its default network, which leaves out
-one stage of the paper's model (assumption A-11). Under three configurations it
-measured the error rising by 0.044, 2.396 and, under the current default
-settings, 2.784 cycles. The physics graph was the same each time. What moved
-were settings the paper does not state, among them the input scaling, the
-normalisation of the graph and how many training engines were kept out of
-training, so a reader cannot tell whether the paper's 0.56 would survive a
-different choice of them (finding F-04).
-
-Joining every sensor to every other removes more than the knowledge. Every row
-of `A + I` becomes fourteen ones, so every row of `Â` is fourteen entries of
-1/14, and every sensor receives the same average. The paper's graph repeats
-some rows too: `P15`, `Nf`, `NRf` and `BPR` are each joined to `T24` and to the
-other three, so all four get the row of five entries of 0.2 worked out above,
-and the paper's 14 rows hold only 9 different ones. A graph built from the data
-instead, joining the 41 sensor pairs whose readings move together most
-strongly, has as many edges as the paper's; rebuilt from each training run's
-own engines, it had 10 to 12 different rows over five runs. Under the current
-default its error is only 0.096 cycles higher than the physics graph's, a
-difference five runs cannot tell from zero (*p* = 0.655). So, in that
-configuration, most of the 2.784 measures the averaging into one row rather
-than the missing knowledge (assumption A-27).
+The next page, [Architecture and training](05_the_model.md), follows actual
+FD001 readings through the graph layers and onwards to a prediction.

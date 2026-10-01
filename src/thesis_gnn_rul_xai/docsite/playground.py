@@ -428,7 +428,7 @@ GROUPS = (
     ("preprocessing", "Preprocessing"),
     ("temporal", "Temporal stage"),
     ("graph", "Graph layers"),
-    ("training", "Training"),
+    ("training", "Training config"),
 )
 
 # The four model variants of Table 11, as settings: a stored run is set beside
@@ -445,7 +445,8 @@ ABLATIONS = (
 
 # What the choice of procedure is for, behind the i beside its name.
 PROCEDURE_ABOUT = ("Decides whether some training engines are set aside to check the network's progress, "
-                   "and so which pass's learned numbers are kept at the end.")
+                   "and so which pass's learned numbers are kept at the end. The engine groups are chosen "
+                   "during preprocessing, before calculating rescaling statistics.")
 
 # The two training procedures, and the only control for how many engines are
 # held back and whether the best pass's weights are restored. They are one
@@ -472,7 +473,7 @@ PROCEDURES = (
 
 # Where the "Read more" at the foot of an i leads, opened in a new tab: the part
 # of the documentation that explains a setting (by its key), an option
-# ("key=value"), a step of a box's flowchart (by its picture) or an option of
+# ("key=value") or an option of
 # the Explain tab ("explain=value"). A heading is written as the document has
 # it; "entry" leads to an entry of the assumptions log instead.
 _PIPELINE, _MODEL, _GRAPHS = "docs/learn/04_the_pipeline.md", "docs/learn/05_the_model.md", "docs/learn/02_graphs.md"
@@ -483,31 +484,31 @@ _READ_MORE: dict[str, tuple[str, str]] = {
     "validation_fraction": (_TRAINING, "Validation is optional, and what changes without it"),
     "early_stopping": (_TRAINING, "Validation is optional, and what changes without it"),
     "early_stopping_patience": (_TRAINING, "Validation is optional, and what changes without it"),
-    "window_size": (_PIPELINE, "8 — Window"),
-    "window_stride": (_PIPELINE, "8 — Window"),
-    "rul_max": (_PIPELINE, "4 — Cap the labels"),
-    "clip_test_labels": (_PIPELINE, "4 — Cap the labels"),
-    "smoothing": (_PIPELINE, "5 — Smooth *(leakage-critical)*"),
-    "smoothing_alpha": (_PIPELINE, "5 — Smooth *(leakage-critical)*"),
-    "normalization": (_PIPELINE, "7 — Rescale *(leakage-critical)*"),
-    "temporal": (_MODEL, "Before Table 4: the stage the paper does not tabulate"),
-    "temporal=lstm": (_TEMPORAL, "`lstm` — what the paper actually describes"),
+    "window_size": (_PIPELINE, "5 — Cut into windows"),
+    "window_stride": (_PIPELINE, "5 — Cut into windows"),
+    "rul_max": (_PIPELINE, "1 — Cap the labels"),
+    "clip_test_labels": (_PIPELINE, "1 — Cap the labels"),
+    "smoothing": (_PIPELINE, "2 — Smooth each sensor"),
+    "smoothing_alpha": (_PIPELINE, "2 — Smooth each sensor"),
+    "normalization": (_PIPELINE, "Rescale each sensor"),
+    "temporal": ("docs/learn/09_temporal.md", "Choose a route"),
+    "temporal=lstm": ("docs/learn/09_temporal.md", "One LSTM per sensor"),
     "temporal=last_cycle": (_MODEL, "The stage left out by default"),
-    "temporal=gru": (_TEMPORAL, "The stages"),
+    "temporal=gru": ("docs/learn/09_temporal.md", "One GRU per sensor"),
     "temporal=mean_window": (_TEMPORAL, "The stages"),
     "temporal=window_summary": (_TEMPORAL, "`window_summary` — three numbers a person could read off a plot"),
     "temporal=raw_window": (_TEMPORAL, "`raw_window` — kept, named, and gated"),
-    "temporal_hidden": (_TEMPORAL, "`lstm` — what the paper actually describes"),
-    "temporal_out_features": (_TEMPORAL, "`lstm` — what the paper actually describes"),
-    "shared_across_sensors": (_TEMPORAL, "`lstm` — what the paper actually describes"),
-    "graph": (_GRAPHS, "The graph this project uses"),
+    "temporal_hidden": ("docs/learn/09_temporal.md", "One LSTM per sensor"),
+    "temporal_out_features": ("docs/learn/09_temporal.md", "4 — Turn into numbers per sensor"),
+    "shared_across_sensors": ("docs/learn/09_temporal.md", "One LSTM for all sensors"),
+    "graph": (_GRAPHS, "1 — Sensor graph"),
     "graph=physics": ("src/thesis_gnn_rul_xai/graph/README.md", "Where this graph comes from"),
     "graph=complete": ("entry", "A-19"),
     "graph=correlation": ("src/thesis_gnn_rul_xai/graph/README.md", "The graph built from the data instead"),
     "adjacency_normalization": ("src/thesis_gnn_rul_xai/graph/README.md", "Normalising the matrix before use"),
-    "gcn_hidden": (_GRAPHS, "One graph layer, as a formula"),
-    "gcn_bias": (_GRAPHS, "One graph layer, as a formula"),
-    "fc_hidden": (_MODEL, "The six layers, and how many numbers each learns"),
+    "gcn_hidden": (_MODEL, "1 — Graph layer 1"),
+    "gcn_bias": (_MODEL, "1 — Graph layer 1"),
+    "fc_hidden": (_MODEL, "5 — Fully connected"),
     "epochs": (_MODEL, "Training"),
     "batch_size": (_MODEL, "Training"),
     "learning_rate": (_TRAINING, "The learning-rate schedule"),
@@ -523,35 +524,56 @@ _READ_MORE: dict[str, tuple[str, str]] = {
     "explain=engine": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
     "explain=test": ("docs/learn/03_explainability.md", "Why a number is not enough"),
     "explain=every": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
-    "file": ("docs/learn/01_the_problem.md", "NASA's benchmark data: C-MAPSS"),
-    "life": ("docs/learn/01_the_problem.md", "What the model is asked to predict"),
-    "select": ("docs/learn/01_the_problem.md", "Only 14 of the 21 sensors"),
-    "cap": (_PIPELINE, "4 — Cap the labels"),
-    "smooth": (_PIPELINE, "5 — Smooth *(leakage-critical)*"),
-    "hold": (_PIPELINE, "6 — Split *(leakage-critical)*"),
-    "conditions": ("src/thesis_gnn_rul_xai/data/normalization/README.md", "What an operating condition is"),
-    "rescale": (_PIPELINE, "7 — Rescale *(leakage-critical)*"),
-    "window": (_PIPELINE, "8 — Window"),
-    "sets": (_PIPELINE, "8 — Window"),
-    "split": (_TEMPORAL, "`lstm` — what the paper actually describes"),
-    "recurrent": (_TEMPORAL, "`lstm` — what the paper actually describes"),
-    "last": (_TEMPORAL, "The stages"),
-    "project": (_TEMPORAL, "`lstm` — what the paper actually describes"),
-    "average": (_TEMPORAL, "The stages"),
-    "slope": (_TEMPORAL, "`window_summary` — three numbers a person could read off a plot"),
-    "stack": (_TEMPORAL, "`window_summary` — three numbers a person could read off a plot"),
-    "graph-step": (_GRAPHS, "The graph this project uses"),
-    "table": ("src/thesis_gnn_rul_xai/graph/README.md", "Normalising the matrix before use"),
-    "gcn": (_GRAPHS, "One graph layer, as a formula"),
-    "flatten": (_MODEL, "The six layers, and how many numbers each learns"),
-    "dense": (_MODEL, "The six layers, and how many numbers each learns"),
-    "sigmoid": (_MODEL, "The last layer, and what it makes impossible"),
-    "scale": (_MODEL, "The last layer, and what it makes impossible"),
 }
+
+# Diagram steps link by their displayed names; a shared picture does not imply
+# a shared operation (the last reading and the last hidden state differ).
+_STEP_DOCUMENTS = {
+    **dict.fromkeys(("Training engines", "Test engines", "Calculate training labels",
+                     "Select 14 sensor columns for model inputs"), "docs/learn/01_the_problem.md"),
+    **dict.fromkeys(("Cap the labels", "Smooth each sensor", "Hold engines back", "Find operating conditions",
+                     "Rescale each sensor", "Cut into windows"), _PIPELINE),
+    **dict.fromkeys(("Split by sensor", "One LSTM per sensor", "One LSTM for all sensors",
+                     "One GRU per sensor", "One GRU for all sensors", "Keep the last hidden state",
+                     "Turn into numbers per sensor", "Keep the last reading", "Average the window",
+                     "Last reading", "Average", "Change over the window", "Three numbers per sensor",
+                     "Pass every cycle"), "docs/learn/09_temporal.md"),
+    **dict.fromkeys(("Sensor graph", "Rescale the graph"), _GRAPHS),
+    **dict.fromkeys(("Graph layer 1", "Graph layer 2", "Graph layer 3", "Flatten", "Fully connected",
+                     "Predicted life fraction", "Scale to cycles"), _MODEL),
+}
+
+_STEP_HEADINGS = {
+    "Select 14 sensor columns for model inputs": "3 — Select 14 sensor columns for model inputs",
+    "Cap the labels": "1 — Cap the labels",
+    "Smooth each sensor": "2 — Smooth each sensor",
+    "Hold engines back": "3 — Hold engines back",
+    "Cut into windows": "5 — Cut into windows",
+    "Sensor graph": "1 — Sensor graph",
+    "Rescale the graph": "2 — Rescale the graph",
+    "Split by sensor": "1 — Split by sensor",
+    "Keep the last hidden state": "3 — Keep the last hidden state",
+    "Turn into numbers per sensor": "4 — Turn into numbers per sensor",
+    "Last reading": "Keep the last reading",
+    "Average": "Average the window",
+    "Graph layer 1": "1 — Graph layer 1",
+    "Graph layer 2": "2 — Graph layer 2",
+    "Graph layer 3": "3 — Graph layer 3",
+    "Flatten": "4 — Flatten",
+    "Fully connected": "5 — Fully connected",
+    "Predicted life fraction": "6 — Predicted life fraction",
+    "Scale to cycles": "7 — Scale to cycles",
+}
+_READ_MORE.update({f"operation={name}": (path, _STEP_HEADINGS.get(name, name))
+                   for name, path in _STEP_DOCUMENTS.items()})
+_READ_MORE.update({f"temporal={value}": (_STEP_DOCUMENTS[name], name) for value, name in {
+    "last_cycle": "Keep the last reading", "mean_window": "Average the window",
+    "window_summary": "Three numbers per sensor", "raw_window": "Pass every cycle",
+}.items()})
 
 
 def read_more(key: str) -> str:
-    """The site address of the documentation for a setting, an option, a step's picture or an Explain option."""
+    """The site address of the documentation for a setting or option."""
     from .markup import slugify
 
     path, heading = _READ_MORE[key]
@@ -700,7 +722,7 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     elif settings.get("lr_schedule") == "plateau":
         add("warn", "A-17", "The plateau schedule needs held-back engines; with none the "
             "rate never leaves its first value.", ("design", "run"))
-    if settings.get("clip_test_labels", True):
+    if settings.get("clip_test_labels") is True:
         add("info", "A-02", "Test answers are capped at the prediction ceiling. This cannot increase "
             "RMSE or the NASA score for these bounded predictions, but R² and ASUE need not improve.")
     if settings.get("graph") == "complete":
@@ -874,9 +896,58 @@ def stage_detail(stage: str, settings: Mapping[str, Any]) -> dict[str, Any]:
         step = pending.pop()
         pending.extend(step.get("steps", []))
         pending.extend(step.get("lanes", []))
-        key = "graph-step" if step.get("picture") == "graph" else step.get("picture", "")
-        if key in _READ_MORE:
-            step["more"] = read_more(key)
+        if step.get("picture"):
+            step["more"] = read_more(f"operation={step['name']}")
+        if not step.get("shape"):
+            continue
+        picture, name = step.get("picture"), step["name"]
+        axes, label, note = "rows, columns", "Data table", ""
+        if stage == "temporal":
+            axes, label = "windows, sensors, values per sensor", "Sensor values"
+            if picture in ("split", "recurrent"):
+                values = "readings per cycle" if picture == "split" else "memory values per cycle"
+                label = "Sensor histories" if picture == "split" else "Memory after every cycle"
+                if settings["shared_across_sensors"]:
+                    axes = f"window-sensor pairs, cycles, {values}"
+                    note = "The first dimension combines the window and sensor counts; each pair is processed separately."
+                else:
+                    axes = f"sensor histories x (windows, cycles, {values})"
+                    note = "The leading multiplier counts separate sensor histories, each with one sequence per window."
+            elif name == "Keep the last hidden state":
+                label = "Final memory values"
+                axes = ("window-sensor pairs, memory values" if settings["shared_across_sensors"]
+                        else "windows, sensors, memory values")
+                note = "These are the memory values after the final cycle of each sensor's window."
+                if settings["shared_across_sensors"]:
+                    note += " The first dimension combines the window and sensor counts."
+            elif name in ("Last reading", "Average", "Change over the window"):
+                axes, label = "windows, sensors", name
+                note = "There is one summary value for each sensor in each window."
+            elif (step.get("icon") == "preprocessing" or picture == "window"
+                  or (step.get("kind") == "edge" and settings["temporal"] == "raw_window")):
+                axes, label = "windows, sensors, cycles", "Sensor readings"
+            elif picture == "project":
+                note = "Each sensor passes these computed values to the graph layers."
+        elif stage == "graph":
+            axes, label = "windows, sensors, values per sensor", "Sensor values"
+            if picture in ("graph", "table"):
+                axes, label = "receiving sensors (rows), sending sensors (columns)", "Sensor graph"
+                note = ("Each entry says whether the column's sensor can send to the row's sensor."
+                        if picture == "graph" else
+                        "Each entry is the weight used when the column's sensor sends to the row's sensor.")
+            elif picture in ("flatten", "dense"):
+                axes, label = "windows, values per window", "Combined sensor values"
+                note = "Each window now has one list of values, with no separate sensor dimension."
+            elif picture in ("sigmoid", "scale") or step.get("icon") == "output":
+                axes = "windows"
+                label = "Life fractions" if picture == "sigmoid" else "Remaining life in cycles"
+                note = "There is one prediction per window. The comma in (B,) denotes a single dimension."
+        if not step.get("outputs"):
+            step["outputs"] = [{"label": label, "shape": step["shape"], "axes": axes}]
+        if "B" in step["shape"]:
+            note = (note + f" B is the number of windows processed together, at most {int(settings['batch_size'])}.").strip()
+        if note:
+            step["output_note"] = note
     return answer
 
 
@@ -1097,17 +1168,16 @@ def _table_outputs(facts: dict[str, Any] | None, columns: int) -> list[dict[str,
             for label, key in (("Training file", "train_rows"), ("Test file", "test_rows"))]
 
 
-def _window_outputs(run: dict[str, Any] | None, window: int, split: bool) -> list[dict[str, str]]:
+def _window_outputs(run: dict[str, Any] | None, window: int, with_validation: bool) -> list[dict[str, str]]:
     """Name each collection's sensor-input shape and its separate remaining-life-answer shape."""
-    groups = ([("Training", run["train"]), *([("Validation", run["validation"])] if run["held"] else []),
-               ("Test", run["test"])] if run and split else
-              [("Training file", run["train"] + run["validation"] if run else None),
-               ("Test", run["test"] if run else None)])
+    groups = [("Training", run["train"] if run else None),
+              *([("Validation", run["validation"] if run else None)] if with_validation else []),
+              ("Test", run["test"] if run else None)]
     purposes = {"Training": "Used to update the model during training", "Validation": "Used to check progress during training",
                 "Test": "Used for final evaluation after training"}
     return [{"label": label, "shape": f"({_count(n) if n is not None else 'windows'}, 14, {window})",
              "axes": "windows, sensors, cycles", "targets": f"({_count(n) if n is not None else 'windows'},)"}
-            | ({"use": purposes[label]} if split else {})
+            | {"use": purposes[label]}
             for label, n in groups]
 
 
@@ -1223,8 +1293,8 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
             f"Set aside {fraction:.0%} of the training-file engines before calculating rescaling statistics "
             f"(random seed {seed}). These validation engines check predictions after each full pass through the "
             "training windows and select which learned weights to keep. Whole engines are separated so "
-            "overlapping windows of one engine cannot appear in both groups. This selection is our procedure, "
-            "not one the paper describes. " + note,
+            "overlapping windows of one engine cannot appear in both groups. The Training procedure controls "
+            "this choice; it is applied here before rescaling. The test file stays separate. " + note,
             parts=[(count, "validation_fraction")], shape=table, source=tag, picture="hold"))
     else:
         _, note = _decided("validation_fraction", fraction)
@@ -1232,7 +1302,8 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
             "Hold engines back",
             "Every training-file engine is used to learn the model's weights. Training runs for the chosen "
             "number of passes and keeps the final weights, without a separate group for selecting an earlier "
-            "version. The paper specifies a fixed training length and does not describe validation. " + note,
+            "version. The Training procedure controls this choice; it is applied here before rescaling. "
+            "The test file stays separate. " + note,
             parts=[("none", "validation_fraction")], shape=table, picture="hold"))
 
     method = settings["normalization"]
@@ -1275,29 +1346,14 @@ def _preprocessing_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         "Cut into windows",
         f"A window is {_plural(window, 'consecutive cycle')} from one engine, arranged as 14 sensor histories. "
         f"Training-file windows start {every}; each is paired with the remaining life at its final cycle. "
-        "A test engine supplies only its last complete window. " + note + " " + stride_note
+        "A test engine supplies only its last complete window. Every window keeps its engine's group "
+        "from Hold engines back; there is no new split here. " + note + " " + stride_note
         + (f" {_plural(left_out, 'test engine')} shorter than {_plural(window, 'cycle')} "
                     f"{'is' if left_out == 1 else 'are'} left out (assumption A-23)." if left_out else ""),
         parts=[(_plural(window, "cycle"), "window_size"), (f"a new one {every}", "window_stride")],
         shape=f"({_count(run['train'] + run['validation'])}, 14, {window})" if run else f"(windows, 14, {window})",
         source=tag, picture="window"))
 
-    if run:
-        if fraction > 0:
-            steps.append(_step(
-                "Three sets of windows",
-                f"The windows are divided by engine as chosen above; the counts are seed {seed}'s. Only the "
-                "training windows teach the network, the held-back ones score it after every pass, and the test "
-                "windows are scored once, at the end.",
-                parts=[(f"{_count(run['train'])} training · {_count(run['validation'])} held back · "
-                        f"{_count(run['test'])} test", None)],
-                shape=f"({_count(run['train'])}, 14, {window})", picture="sets"))
-        else:
-            steps.append(_step(
-                "Two sets of windows",
-                "Every training-file window teaches the network, and the test windows are scored once, at the end.",
-                parts=[(f"{_count(run['train'])} training · {_count(run['test'])} test", None)],
-                shape=f"({_count(run['train'])}, 14, {window})", picture="sets"))
     steps.append(_edge("To the temporal stage, B windows at a time", f"(B, 14, {window})", icon="temporal"))
     _preprocessing_story(steps, settings, run, facts)
     return steps
@@ -1310,7 +1366,8 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
     opening = steps[0]
     opening["name"] = "Engine histories and remaining-life answers"
     opening["outputs"] = _table_outputs(facts, 27)
-    opening["summary"] = "One row per engine cycle; remaining life has not yet been capped."
+    opening["handoff_outputs"] = opening["outputs"]
+    opening["summary"] = ""
     opening["columns"] = "1 engine number + 1 cycle + 3 operating settings + 21 sensor readings + 1 uncapped remaining-life label."
     opening["handoff"] = (
         f"{facts['train_rows']:,} rows · 27 columns" if facts else "Rows · 27 columns"
@@ -1318,34 +1375,31 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
     for step in steps[1:-1]:
         picture = step["picture"]
         step["outputs"] = _table_outputs(facts, 28 if picture in ("conditions", "rescale") else 27)
+        if picture in ("hold", "conditions", "rescale"):
+            groups = [("Training", run["train_rows"] if run else None),
+                      *([("Validation", run["held_rows"] if run else None)]
+                        if settings["validation_fraction"] else []),
+                      ("Test", facts["test_rows"] if facts else None)]
+            columns = 27 if picture == "hold" else 28
+            step["outputs"] = [{"label": label, "shape": f"({_count(n) if n is not None else 'rows'}, {columns})",
+                                "axes": "rows, columns"} for label, n in groups]
         if picture == "cap":
             step["summary"] = "Limit remaining-life answers to the selected ceiling."
         elif picture == "smooth":
             step["summary"] = "Blend each reading with earlier readings from the same engine."
         elif picture == "hold":
-            step["summary"] = ("Reserve whole engines to check progress during training."
-                               if settings["validation_fraction"] else "Use every training engine to learn the model.")
+            step["summary"] = (("Assign whole engines to training or validation. "
+                                if settings["validation_fraction"] else "Keep all training-file engines for learning. ")
+                               + "Chosen in Training → Procedure; applied here before rescaling.")
         elif picture == "conditions":
             step["summary"] = "Group rows with similar operating settings."
         elif picture == "rescale":
             step["summary"] = "Use the training engines to set each sensor's scale."
         elif picture == "window":
-            step["summary"] = "Group consecutive readings from one engine."
-            step["outputs"] = _window_outputs(run, window, split=False)
+            step["summary"] = "Group consecutive readings; each window keeps its engine's assigned group."
+            step["outputs"] = _window_outputs(run, window, with_validation=bool(settings["validation_fraction"]))
             step["aside"] = "Training-file engines supply overlapping windows. Each test engine supplies only its last complete window."
-        elif picture == "sets":
-            step["summary"] = ("Keep learning, progress checks and final testing separate."
-                               if settings["validation_fraction"] else "Keep learning and final testing separate.")
-            step["outputs"] = _window_outputs(run, window, split=True)
-            if run:
-                step["example"] = {"kind": "groups", "items": [
-                    {"name": "Training", "value": f"{run['train']:,} windows",
-                     "detail": "Used to update learned numbers"},
-                    *([{"name": "Held back", "value": f"{run['validation']:,} windows",
-                        "detail": "Used to check progress"}] if run["validation"] else []),
-                    {"name": "Test", "value": f"{run['test']:,} windows",
-                     "detail": "Used for final evaluation"},
-                ]}
+        step["handoff_outputs"] = step["outputs"]
     steps[-1]["name"] = "To the temporal stage"
     steps[-1]["outputs"] = [{"label": "Model inputs", "shape": f"(B, 14, {window})", "axes": "windows, sensors, cycles"}]
     steps[-1]["summary"] = f"B counts windows processed together (at most {int(settings['batch_size']):,})."
@@ -1480,7 +1534,7 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         projection = sum(p.numel() for p in stage.project.parameters())
         _, out_note = _decided("temporal_out_features", k)
         steps.append(_step(
-            f"Turn into {_plural(k, 'number')} per sensor",
+            "Turn into numbers per sensor",
             f"Multiply the summary's {_plural(hidden, 'number')} by learned weights, add them, and add a "
             f"learned offset to produce each of {_plural(k, 'output number')}. All sensors use the same weights "
             "and offsets. This conversion is our choice; the paper specifies one number entering the graph "
@@ -1697,11 +1751,15 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
               "positions." + (f" {fc_note}" if fc_note else ""),
               parts=[(_plural(fc, "number"), "fc_hidden")], shape=fc1["out"], learned=int(fc1["parameters"]),
               source=_cite("Eq. 12"), picture="dense"),
-        _step("Output",
+        _step("Predicted life fraction",
               f"Combine the {_plural(fc, 'number')} using learned multipliers and an added offset. "
               "The sigmoid, a smooth S-shaped function, maps this result to a fraction between 0 and 1. "
-              "It is a fraction of the life ceiling, not a probability of failure.",
-              parts=[("a fraction from 0 to 1", None)], shape="(B,)", learned=int(fc2["parameters"]),
+              "It is a fraction of the life ceiling, not a probability of failure. "
+              "B counts the windows processed together. The final layer first produces shape (B, 1); "
+              "squeeze(-1) removes the one-value axis, leaving shape (B,). The comma marks a shape "
+              "with one dimension; no prediction is removed.",
+              parts=[("0 to 1 of the life ceiling", None)], shape="(B,)", learned=int(fc2["parameters"]),
+              summary="One fraction per window. (B,) means B values in one dimension.",
               source=_cite("Eq. 13"), picture="sigmoid"),
         _step("Scale to cycles",
               "The fraction times the ceiling gives remaining life in flight cycles, so no prediction can exceed "
@@ -1833,6 +1891,7 @@ def options() -> dict[str, Any]:
         "procedures": [_with_more(procedure, "procedure") for procedure in PROCEDURES],
         "procedure_about": PROCEDURE_ABOUT,
         "procedure_more": read_more("procedure"),
+        "operation_more": {name: read_more(f"operation={name}") for name in _STEP_DOCUMENTS},
         "explain_more": {key.split("=")[1]: read_more(key) for key in _READ_MORE if key.startswith("explain=")},
         "defaults": {spec["key"]: spec["default"] for spec in FIELDS},
         "result_seeds": RESULT_SEEDS,
@@ -1869,10 +1928,24 @@ def _clean(value: Any) -> Any:
 def _run_directory(root: Path, name: str) -> Path:
     """A run folder in reports/, refusing any name that is not one."""
     reports = (root / "reports").resolve()
-    path = (root / "reports" / name).resolve()
-    # Looking for separators is not enough on Windows: a name carrying a
-    # drive, "C:x", holds none of them, and joining it throws the base away.
-    if not name or name.startswith(".") or path.parent != reports:
+    candidate = Path(name)
+    path = (reports / candidate).resolve()
+    # A sensitivity study groups runs below one study folder, so a valid name
+    # may contain several parts.  Every part must still stay below reports/.
+    # Looking only for separators is not enough on Windows: a name carrying a
+    # drive, "C:x", can throw the base away.
+    try:
+        relative = path.relative_to(reports)
+    except ValueError:
+        relative = None
+    if (
+        not name
+        or candidate.is_absolute()
+        or candidate.drive
+        or relative is None
+        or relative == Path(".")
+        or any(part in {"", ".", ".."} or part.startswith(".") for part in relative.parts)
+    ):
         raise SettingsError(f"{name!r} is not the name of a run.")
     if not (path / "summary.json").is_file():
         raise SettingsError(f"There is no finished run called {name!r} in reports/.")
@@ -1896,7 +1969,7 @@ def _read_csv(path: Path) -> list[dict[str, Any]]:
     return _clean(frame.astype(object).where(frame.notna(), None).to_dict(orient="records"))
 
 
-def _describe(path: Path) -> dict[str, Any] | None:
+def _describe(path: Path, name: str | None = None) -> dict[str, Any] | None:
     """One stored run, as the results table lists it."""
     try:
         summary = json.loads((path / "summary.json").read_text(encoding="utf-8"))
@@ -1927,7 +2000,7 @@ def _describe(path: Path) -> dict[str, Any] | None:
         "lr_schedule": summary.get("lr_schedule"),
     }
     return _clean({
-        "name": path.name,
+        "name": name or path.name,
         "commit": commit,
         "dirty": commit.endswith("-dirty"),
         "finished": str(summary.get("finished_utc", "")),
@@ -1948,8 +2021,10 @@ def _describe(path: Path) -> dict[str, Any] | None:
         "validation_fraction": validation_fraction,
         # What train() does, read from the settings rather than trusted from a
         # field: with nothing held back it can only keep the last pass.
-        "reported_weights": ("final_epoch" if not validation_fraction
-                             else "best_validation_epoch"),
+        "reported_weights": summary.get("reported_weights") or (
+            None if validation_fraction is None else
+            "final_epoch" if not validation_fraction else "best_validation_epoch"
+        ),
         "lr_schedule": summary.get("lr_schedule"),
         "model": model,
         "training": summary.get("training"),
@@ -1967,9 +2042,15 @@ def list_runs(root: Path) -> list[dict[str, Any]]:
     reports = root / "reports"
     if not reports.is_dir():
         return []
-    runs = [described for path in sorted(reports.iterdir())
-            if path.is_dir() and not path.name.startswith(".")
-            and (described := _describe(path)) is not None]
+    runs = []
+    for results_path in sorted(reports.rglob("results.csv")):
+        path = results_path.parent
+        relative = path.relative_to(reports)
+        if any(part.startswith(".") for part in relative.parts):
+            continue
+        described = _describe(path, relative.as_posix())
+        if described is not None:
+            runs.append(described)
     runs.sort(key=lambda run: run["finished"], reverse=True)
     return runs
 
@@ -1977,7 +2058,7 @@ def list_runs(root: Path) -> list[dict[str, Any]]:
 def run_detail(root: Path, name: str) -> dict[str, Any]:
     """One run in full: every seed's numbers, curves, predictions and explanations."""
     path = _run_directory(root, name)
-    described = _describe(path)
+    described = _describe(path, name)
     if described is None:
         raise SettingsError(f"{name!r} is not a training run.")
     seeds = {}
@@ -1986,6 +2067,7 @@ def run_detail(root: Path, name: str) -> dict[str, Any]:
             "history": _read_csv(folder / "training_history.csv"),
             "predictions": _read_csv(folder / "test_predictions.csv"),
             "has_weights": (folder / "model.pt").is_file(),
+            "training": _read_yaml(folder / "training_config.yaml"),
         }
     explanations = []
     for summary_path in sorted((path / "explanations").glob("*/summary.json")):
@@ -2001,6 +2083,8 @@ def run_detail(root: Path, name: str) -> dict[str, Any]:
         **described,
         "results": _read_csv(path / "results.csv"),
         "preprocessing": _read_yaml(path / "preprocessing_config.yaml"),
+        "recorded_summary": json.loads((path / "summary.json").read_text(encoding="utf-8")),
+        "recorded_model": _read_yaml(path / "model_config.yaml"),
         "per_seed": seeds,
         "explanations": explanations,
     })

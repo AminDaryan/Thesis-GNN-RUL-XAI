@@ -219,9 +219,26 @@ class _SiteRenderer(HTMLRenderer):
 
     def heading(self, text: str, level: int, **attrs: object) -> str:
         anchor = slugify(text, self._seen)
-        self.headings.append(Heading(level, strip_markup(text), anchor))
+        plain = strip_markup(text)
+        self.headings.append(Heading(level, plain, anchor))
+        extra = ""
+        if self.source_path in {
+            "docs/learn/01_the_problem.md", "docs/learn/04_the_pipeline.md",
+            "docs/learn/09_temporal.md", "docs/learn/02_graphs.md", "docs/learn/05_the_model.md",
+        }:
+            stage = re.fullmatch(r"(\d+) — (.+)", plain) if level == 2 else None
+            if stage:
+                extra = ' class="tutorial-stage"'
+                text = (f'<span class="stage-number">{stage[1]}</span> '
+                        f'<span class="stage-title">{html.escape(stage[2])}</span>')
+            elif plain == "Process":
+                extra = ' class="tutorial-process"'
+            elif plain in {"Input", "Function", "Output"}:
+                extra = f' class="tutorial-phase" data-phase="{plain.lower()}"'
+            elif level in {2, 3}:
+                extra = ' class="tutorial-section"'
         return (
-            f'<h{level} id="{anchor}">{text}<a class="anchor" href="#{anchor}"'
+            f'<h{level} id="{anchor}"{extra}>{text}<a class="anchor" href="#{anchor}"'
             f' aria-label="Link to this section">#</a></h{level}>\n'
         )
 

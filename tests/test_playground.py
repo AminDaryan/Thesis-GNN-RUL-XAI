@@ -172,6 +172,7 @@ def test_the_procedure_is_the_only_control_for_what_is_held_back():
     # the choice of procedure.
     assert "procedure" not in {key for key, _ in playground.GROUPS}
     assert "training" in {key for key, _ in playground.GROUPS}
+    assert dict(playground.GROUPS)["training"] == "Training config"
     paper, held_back = playground.PROCEDURES
     assert paper["settings"] == {"validation_fraction": 0.0, "early_stopping": False}
     assert held_back["label"] == "Held back, best pass"
@@ -240,6 +241,158 @@ def _steps(answer: dict) -> list[dict]:
 
 def _step(answer: dict, name: str) -> dict:
     return next(step for step in _steps(answer) if step["name"] == name)
+
+
+@pytest.mark.parametrize("stage,settings", [
+    ("data", {}),
+    ("preprocessing", {}),
+    ("preprocessing", {"validation_fraction": 0.0, "early_stopping": False}),
+    *(("temporal", {"temporal": kind}) for kind in TEMPORAL_CHOICES),
+    *(("temporal", {"temporal": kind, "shared_across_sensors": True,
+                     "temporal_out_features": 2}) for kind in ("lstm", "gru")),
+    ("graph", {}),
+    ("graph", {"graph": "complete", "adjacency_normalization": "symmetric",
+               "gcn_hidden": [1, 2, 3], "fc_hidden": 1, "gcn_bias": True}),
+    ("graph", {"graph": "correlation"}),
+])
+def test_diagram_links_open_matching_tutorial_sections(stage, settings, raw_dir):
+    """Every displayed operation lands on its own named input-to-output example."""
+    import re
+
+    from thesis_gnn_rul_xai.docsite.markup import render_markdown
+
+    pytest.importorskip("torch")
+    answer = _flowchart(stage, **settings)
+    assert "error" not in answer
+    documents = {}
+    for step in _steps(answer):
+        path, anchor = step["more"].removeprefix("#/doc/").split("#")
+        if path not in documents:
+            text = (ROOT / path).read_text(encoding="utf-8")
+            documents[path] = render_markdown(text, source_path=path)
+        rendered = documents[path]
+        heading = next(h for h in rendered.headings if h.anchor == anchor)
+        assert heading.text == playground._STEP_HEADINGS.get(step["name"], step["name"])
+        section = rendered.html.split(f'id="{anchor}"', 1)[1]
+        section = re.split(rf"<h[1-{heading.level}]\b", section, maxsplit=1)[0]
+        for label in ("Input", "Function", "Output", "Example"):
+            assert re.search(rf"\b{label}\b", section, re.I), (step["name"], label)
+
+
+@pytest.mark.parametrize("changes", [
+    {},
+    {"normalization": "minmax_global", "temporal": "gru", "shared_across_sensors": True},
+    {"normalization": "minmax_per_condition", "temporal": "last_cycle", "smoothing": False,
+     "validation_fraction": 0.0, "early_stopping": False},
+    {"temporal": "mean_window", "graph": "complete", "adjacency_normalization": "symmetric"},
+    {"temporal": "window_summary", "graph": "correlation"},
+    {"temporal": "raw_window", "gcn_hidden": [1, 2, 3], "gcn_bias": True},
+    {"temporal": "lstm", "shared_across_sensors": True},
+    {"temporal": "gru", "shared_across_sensors": False},
+])
+def test_diagram_cards_share_matching_help_and_explain_every_output(raw_dir, changes):
+    """All diagram layouts explain their outputs and keep matching operation help and tutorial links."""
+    import shutil
+
+    pytest.importorskip("torch")
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the diagram's rendered links.")
+    settings = playground.validate_settings(changes)
+    flows = {stage: playground.stage_detail(stage, settings) for stage in playground.STAGES}
+    payload = {"settings": settings, "options": playground.options(), "flows": flows,
+               "diagrams": {stage: _steps(answer) for stage, answer in flows.items()}}
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+const context = {window: {}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {S, SECTIONS, sectionHtml, vstepHtml, vflowHtml, sectionForStep, sectionName, sectionHelp, optionNote,
+    setup: function (helpers) { T = helpers; }};`), context);
+const P = context.window.test;
+const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+P.setup({escapeHtml, fixed: (x, n) => Number(x).toFixed(n)});
+P.S.settings = payload.settings; P.S.infos = 0; P.S.restore = {}; P.S.options = payload.options;
+P.S.fields = Object.fromEntries(payload.options.fields.map(f => [f.key, f]));
+for (const [group, sections] of Object.entries(P.SECTIONS)) {
+  sections.forEach((section, index) => {
+    const html = P.sectionHtml(section, index, group);
+    assert.equal((html.match(/class="pg-info-button"/g) || []).length, 1,
+      group + ': only the section title should have an info button');
+    assert.ok(!html.slice(html.indexOf('<div class="pg-fields">')).includes('class="pg-info-button"'),
+      group + ': an individual setting or option still has an info button');
+  });
+}
+function firstCard(html) {
+  const start = html.indexOf('class="pg-info-card">') + 'class="pg-info-card">'.length;
+  const content = html.slice(start);
+  let depth = 1;
+  for (const tag of content.matchAll(/<\/?span\b[^>]*>/g)) {
+    depth += tag[0].startsWith('</') ? -1 : 1;
+    if (depth === 0) return content.slice(0, tag.index);
+  }
+  throw new Error('Unclosed information card');
+}
+for (const [stage, steps] of Object.entries(payload.diagrams)) {
+  P.S.zoom = stage;
+  const flow = P.vflowHtml(payload.flows[stage].steps);
+  const shapes = [...flow.matchAll(/<code class="pg-vshape">([^<]+)<\/code>/g)];
+  assert.ok(shapes.length, stage + ' must display its output dimensions');
+  for (const shape of shapes) {
+    const afterShape = flow.slice(shape.index + shape[0].length);
+    assert.match(afterShape, /^<span class="pg-info[^\"]*"><button [^>]*aria-label="About outputs after /,
+      stage + ': missing output info beside ' + shape[1]);
+    const card = firstCard(afterShape);
+    assert.ok(card.includes('class="pg-transfer-output"'), stage + ': missing output');
+    assert.match(card, /class="pg-transfer-axes">[^<]+</, stage + ': missing dimension meanings');
+    if (shape[1].includes('B')) {
+      assert.ok(card.includes('B is the number of windows'), stage + ': unexplained B');
+    }
+  }
+  for (const step of steps) {
+    const html = P.vstepHtml(step, false);
+    const card = firstCard(html);
+    assert.ok(card.includes('href="' + escapeHtml(step.more) + '"'), step.name);
+    const section = P.sectionForStep(step);
+    if (section && section.fields.length === 1 && section.fields[0] === 'temporal') {
+      const choice = P.S.fields.temporal.choices.find(c => c.value === payload.settings.temporal);
+      assert.equal(card, P.optionNote(choice).replace(/<a /g, '<a tabindex="-1" '), step.name);
+    } else if (section) {
+      assert.equal(card, P.sectionHelp(section, step.more).replace(/<a /g, '<a tabindex="-1" '), step.name);
+    } else {
+      assert.ok(card.includes(escapeHtml(step.does)), step.name);
+    }
+    assert.ok(card.includes('target="_blank" rel="noopener"'), step.name);
+  }
+}
+"""
+    rendered = subprocess.run([node, "-e", script], cwd=ROOT, input=json.dumps(payload),
+                              text=True, encoding="utf-8", capture_output=True)
+    assert rendered.returncode == 0, rendered.stderr
+
+
+def test_design_controls_and_information_cards_keep_the_requested_layout():
+    """The visible layer table, card footer and stateful reset are one UI contract."""
+    import re
+
+    assets = ROOT / "src/thesis_gnn_rul_xai/docsite/assets"
+    script = (assets / "playground.js").read_text(encoding="utf-8")
+    css = (assets / "app.css").read_text(encoding="utf-8")
+
+    assert '<section class="pg-layers"' in script
+    assert '<h4 id="pg-layers-title">Layer by layer</h4>' in script
+    assert 'details class="pg-details" data-layers' not in script
+    assert 'class="pg-info-footer"' in script
+    footer = re.search(r"\.pg-info-footer\s*\{([^}]+)\}", css).group(1)
+    settings_foot = re.search(r"\.pg-settings-foot\s*\{([^}]+)\}", css).group(1)
+    assert "display: flex" in footer and "justify-content: space-between" in footer
+    assert "justify-content: flex-start" in settings_foot
+    assert 'class="button button--small pg-reset-all"' in script
+    assert '(settingsChanged() ? "" : " disabled")' in script
+    assert "resetAll.disabled = !settingsChanged()" in script
 
 
 def test_a_box_the_pipeline_does_not_have_is_refused():
@@ -326,7 +479,9 @@ def test_one_network_shared_by_all_sensors_is_never_tagged_as_the_papers():
 def test_with_nothing_held_back_no_step_speaks_of_held_back_windows(raw_dir):
     answer = _flowchart("preprocessing", validation_fraction=0.0, early_stopping=False)
     names = [step["name"] for step in _steps(answer)]
-    assert "Two sets of windows" in names and "Three sets of windows" not in names
+    assert "Two sets of windows" not in names and "Three sets of windows" not in names
+    assert [group["label"] for group in _step(answer, "Hold engines back")["outputs"]] == ["Training", "Test"]
+    assert [group["label"] for group in _step(answer, "Cut into windows")["outputs"]] == ["Training", "Test"]
     assert "held-back" not in _step(answer, "Rescale each sensor")["does"]
 
 
@@ -351,15 +506,32 @@ def test_the_data_box_counts_the_rows_the_loader_reads(loaded):
     assert main["lanes"][1]["shape"] == _step(answer, "Test engines")["shape"]
 
 
-def test_the_preprocessing_box_counts_the_windows_the_pipeline_makes(raw_dir):
+@pytest.mark.parametrize("fraction,seed", [(0.2, 42), (0.0, 43)])
+def test_the_preprocessing_groups_start_at_the_engine_split_and_keep_their_membership(raw_dir, fraction, seed):
     from thesis_gnn_rul_xai.config import PreprocessingConfig
     from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.data.windowing import split_units_by_id
 
-    settings = playground.validate_settings({"window_size": 25})
-    prepared = run_preprocessing(PreprocessingConfig(**playground.preprocessing_settings(settings)))
-    step = _step(playground.stage_detail("preprocessing", settings), "Three sets of windows")
-    assert [item["value"] for item in step["example"]["items"]] == [
-        f"{len(data):,} windows" for data in (prepared.train, prepared.validation, prepared.test)]
+    settings = playground.validate_settings({"window_size": 25, "validation_fraction": fraction, "seed": seed})
+    prepared = run_preprocessing(PreprocessingConfig(**playground.preprocessing_settings(settings)), keep_frames=True)
+    kept, held = split_units_by_id(prepared.raw.train.unit.unique(), validation_fraction=fraction, seed=seed)
+    row_counts = [("Training", prepared.raw.train.unit.isin(kept).sum()),
+                  *([("Validation", prepared.raw.train.unit.isin(held).sum())] if fraction else []),
+                  ("Test", len(prepared.raw.test))]
+    answer = playground.stage_detail("preprocessing", settings)
+    for name, columns in (("Hold engines back", 27), ("Find operating conditions", 28), ("Rescale each sensor", 28)):
+        step = _step(answer, name)
+        assert [(o["label"], o["shape"]) for o in step["handoff_outputs"]] == [
+            (label, f"({playground._count(n)}, {columns})") for label, n in row_counts]
+    windows = _step(answer, "Cut into windows")
+    groups = [("Training", prepared.train), *([("Validation", prepared.validation)] if fraction else []),
+              ("Test", prepared.test)]
+    assert [(o["label"], o["shape"], o["targets"]) for o in windows["handoff_outputs"]] == [
+        (label, f"({playground._count(len(data))}, 14, 25)", f"({playground._count(len(data))},)")
+        for label, data in groups]
+    assert "no new split" in windows["does"]
+    assert "Training → Procedure" in _step(answer, "Hold engines back")["summary"]
+    assert not any(step.get("picture") == "sets" for step in answer["steps"])
 
 
 def test_the_defaults_the_paper_states_are_the_ones_it_prints():
@@ -798,7 +970,7 @@ def test_a_job_record_with_a_damaged_process_number_does_not_break_the_listing(t
     assert listed[folder.name]["status"] == "interrupted"
 
 
-@pytest.mark.parametrize("name", ["C:", "C:Windows", "../secret", "..", "", ".hidden", "sub/dir"])
+@pytest.mark.parametrize("name", ["C:", "C:Windows", "../secret", "..", "", ".hidden", "sub/.hidden"])
 def test_a_run_name_that_points_outside_reports_is_refused(tmp_path: Path, name: str):
     """The same hazard as a job name: a name carrying a drive throws the base away."""
     with pytest.raises(playground.SettingsError):
@@ -813,6 +985,92 @@ def test_an_explanation_name_that_points_outside_its_run_is_refused(tmp_path: Pa
     for bad in ("C:", "C:Windows", "..", "sub/dir", "", ".hidden"):
         with pytest.raises(playground.SettingsError):
             playground.explanation_detail(tmp_path, "somerun", bad)
+
+
+def test_nested_training_runs_are_listed_by_their_path_below_reports(tmp_path: Path):
+    """Grouped sensitivity runs remain distinct and can be opened from Run History."""
+    reports = tmp_path / "reports"
+    for dataset in ("FD002", "FD003"):
+        run = reports / "sensitivity_study" / "runs" / dataset / "reference"
+        run.mkdir(parents=True)
+        (run / "results.csv").write_text("seed,rmse\n42,12.0\n", encoding="utf-8")
+        (run / "summary.json").write_text(json.dumps({
+            "mean": {"rmse": 12.0}, "std": {"rmse": 0.0}, "subset": dataset,
+            "seeds": 1, "finished_utc": f"2026-09-{dataset[-1]}T00:00:00Z",
+        }), encoding="utf-8")
+
+    names = {run["name"] for run in playground.list_runs(tmp_path)}
+    assert names == {
+        "sensitivity_study/runs/FD002/reference",
+        "sensitivity_study/runs/FD003/reference",
+    }
+    detail = playground.run_detail(tmp_path, "sensitivity_study/runs/FD002/reference")
+    assert detail["subset"] == "FD002"
+    assert detail["name"] == "sensitivity_study/runs/FD002/reference"
+    assert detail["reported_weights"] is None
+    assert detail["preprocessing"] == detail["recorded_model"] == {}
+    assert not any(note["ref"] == "A-02" for note in detail["caveats"])
+
+
+def test_saved_settings_render_all_fields_without_using_current_defaults():
+    """Recorded false, zero, absent and seed-specific settings stay distinct in the UI."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the saved-settings view.")
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const context = {window: {}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {runConfiguration, runInterpretation, setup: function (helpers) { T = helpers; }};`), context);
+const P = context.window.test;
+const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+P.setup({escapeHtml});
+const record = {
+  preprocessing: {validation_fraction: 0, clip_test_labels: false, smoothing_alpha: null,
+    notes: '<script>unsafe</script>', future_preparation_setting: 'retained'},
+  model: {temporal: 'last_cycle', shared_across_sensors: false, gcn_bias: false, gcn_hidden: [8, 4]},
+  recorded_summary: {training: {batch_size: 128}, seeds: 2, split: 'fixed'},
+  per_seed: {'42': {training: {batch_size: 16, seed: 42, gradient_clip: null}},
+             '43': {training: {batch_size: 64, seed: 43, optimizer: 'adam'}}},
+  results: [{seed: 42}, {seed: 43}]
+};
+const html = P.runConfiguration(record);
+function setting(key) {
+  return html.split('data-setting="' + key + '">')[1].split('</dd>')[0];
+}
+assert.match(setting('validation_fraction'), /<dd>0/);
+assert.match(setting('clip_test_labels'), /<dd>No/);
+assert.match(setting('smoothing_alpha'), /<dd>Off/);
+assert.match(setting('gcn_bias'), /<dd>No/);
+assert.match(setting('gcn_hidden'), /\[8,4\]/);
+assert.match(setting('future_preparation_setting'), /retained/);
+assert.match(setting('window_size'), /Not recorded/);
+assert.match(setting('batch_size'), /Seed 42:<\/span> 16/);
+assert.match(setting('batch_size'), /Seed 43:<\/span> 64/);
+assert.ok(!setting('batch_size').includes('128'));
+assert.match(setting('optimizer'), /Seed 42:<\/span>.*Not recorded/);
+assert.match(setting('optimizer'), /Seed 43:<\/span> Adam/);
+assert.ok(html.includes('&lt;script&gt;unsafe&lt;/script&gt;') && !html.includes('<script>'));
+assert.ok(html.includes('unused by this temporal route'));
+const legacy = P.runConfiguration({training: {batch_size: 128}, results: [{seed: 42}]});
+assert.match(legacy, /<dd>128.*\(run summary\)/);
+assert.ok(P.runConfiguration({}).includes('Not recorded'));
+const summaryOnly = P.runConfiguration({recorded_summary: {subset: 'FD003', temporal_stage: 'gru', temporal_hidden: 16}});
+assert.match(summaryOnly, /<dd>FD003.*\(run summary\)/);
+assert.match(summaryOnly, /<dd>GRU.*\(run summary\)/);
+const notes = P.runInterpretation([{ref: 'A-26', text: '<test>', level: 'info'},
+  {ref: 'F-16', text: 'Saved choice', level: 'warn'}], '<p>Comparison</p>');
+assert.ok(notes.includes('How to interpret this run') && notes.includes('Temporal choices'));
+assert.ok(notes.includes('Choosing the reported weights') && notes.includes('#/entry/F-16'));
+assert.ok(notes.includes('&lt;test&gt;') && !notes.includes('<test>'));
+"""
+    rendered = subprocess.run([node, "-e", script], cwd=ROOT, text=True, encoding="utf-8", capture_output=True)
+    assert rendered.returncode == 0, rendered.stderr
 
 
 def test_jobs_an_earlier_server_left_on_disk_are_listed_from_their_folders(tmp_path: Path):
@@ -908,6 +1166,12 @@ def test_a_playground_run_stores_everything_the_page_reads_back(raw_dir, tmp_pat
     detail = playground.run_detail(tmp_path, "first")
     assert len(detail["per_seed"]["42"]["predictions"]) == 100
     assert len(detail["per_seed"]["42"]["history"]) == 1
+    assert detail["recorded_summary"] == summary
+    assert detail["recorded_model"] == summary["model"]
+    saved_training = playground._read_yaml(first / "seed_42" / "training_config.yaml")
+    assert detail["per_seed"]["42"]["training"] == saved_training
+    assert saved_training["optimizer"] == "adam"
+    assert saved_training["gradient_clip"] is None
 
     comparison = playground.compare_runs(tmp_path, "first", "second")
     assert {"setting": "model.temporal", "first": "last_cycle", "second": "mean_window"} in comparison["differences"]

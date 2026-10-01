@@ -259,6 +259,7 @@ Everything `adjacency.py` offers.
 | `build_correlation_adjacency(frame, sensor_columns, threshold=None, n_edges=None)` | Builds a graph from data instead. Give exactly one rule: `threshold` joins every pair whose absolute correlation reaches it; `n_edges` joins that many of the most strongly correlated pairs, ties going to the pair that comes first in sensor order. A sensor whose readings never change counts as correlated with nothing. **Training data only.** Same pair of return values. |
 | `normalize_adjacency(matrix, add_self_loops=True, method="symmetric")` | Rescales a graph for the network, in one of the two forms above. Rejects a matrix that is not square or not symmetric, and one where a node has nothing joined to it. Set `add_self_loops=False` only to demonstrate what the self-loops do; the network needs them. |
 | `adjacency_report(matrix, symbols)` | Measures a graph. Returns the dictionary described above. |
+| `connections_of(matrix)` | Returns every connection once as the two sensor positions it joins, with the lower position first. |
 | `pairs_beyond_reach(matrix, symbols, n_layers)` | The sensor pairs too far apart for that many layers to connect, as `(name, name, distance)`, sorted by distance and then by name. Empty when every pair is within reach. |
 | `adjacency_to_frame(matrix, symbols)` | The grid as a labelled table, for looking at in a notebook. |
 | `to_networkx(matrix, symbols)` | Hands the graph to the `networkx` library, with the sensors named. Self-loops are ignored. |

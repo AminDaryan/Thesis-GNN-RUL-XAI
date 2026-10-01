@@ -328,33 +328,181 @@ def test_example_coalition_weights_add_up_to_one():
 # --- models/temporal/ ---------------------------------------------------
 
 
-def test_example_temporal_stages_on_two_hand_checkable_sensors():
-    """Two sensors, four cycles each, so every number can be checked by hand.
+@pytest.fixture(scope="module")
+def playground_temporal_example(raw_dir):
+    """Load the tutorial's real FD001 engine-1 window and its T50 position."""
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
 
-    The three stages differ only in what they leave on a node, and all three
-    hand the graph layers the same shape, which is what makes them swappable.
-    """
-    windows = torch.tensor([[[1.0, 2.0, 3.0, 4.0],
-                             [10.0, 20.0, 30.0, 40.0]]])
+    prepared = run_preprocessing(PreprocessingConfig(seed=42), data_dir=raw_dir)
+    row = int(np.flatnonzero(prepared.train.units == 1)[0])
+    assert prepared.train.end_cycles[row] == 30
+    windows = torch.from_numpy(prepared.train.features[row:row + 1])
+    sensor = list(prepared.sensor_symbols).index("T50")
+    return windows, sensor
 
-    last = LastCycle(4)(windows)
-    torch.testing.assert_close(last, torch.tensor([[[4.0], [40.0]]]))
 
-    mean = MeanWindow(4)(windows)
-    # (1 + 2 + 3 + 4) / 4 = 2.5 and (10 + 20 + 30 + 40) / 4 = 25.0
-    torch.testing.assert_close(mean, torch.tensor([[[2.5], [25.0]]]))
+def _playground_temporal_stage(kind, shared=False, outputs=1):
+    """Build the tutorial's untrained arithmetic demonstration on real readings."""
+    stage = LSTMStage(window_size=30, n_nodes=14, hidden_size=1,
+                      cell=kind, shared_across_sensors=shared, out_features=outputs)
+    with torch.no_grad():
+        for cell in stage.cells:
+            cell.weight_ih_l0.fill_(0.2)
+            cell.weight_hh_l0.fill_(0.1)
+            cell.bias_ih_l0.zero_()
+            cell.bias_hh_l0.zero_()
+        stage.project.weight.fill_(0.5)
+        stage.project.bias.fill_(0.1)
+        if outputs == 2:
+            stage.project.weight[1].fill_(-0.25)
+            stage.project.bias[1].fill_(0.2)
+    return stage
 
-    summary = WindowSummary(4)(windows)
-    # Cycles numbered from the middle: t = -1.5, -0.5, +0.5, +1.5, and sum t^2 = 5.
-    # Sensor 0: sum t * reading = -1.5 - 1.0 + 1.5 + 6.0 = 5, slope 5 / 5 = 1 per
-    # cycle, and the change from the first cycle to the last is 1 x 3 = 3.
-    # Sensor 1 is the same series times ten, so every number is ten times larger.
-    torch.testing.assert_close(summary, torch.tensor([[[4.0, 2.5, 3.0],
-                                                      [40.0, 25.0, 30.0]]]))
 
-    learned = LSTMStage(window_size=4, n_nodes=2, hidden_size=8)
-    assert tuple(learned(windows).shape) == (1, 2, 1)
-    assert last.shape == mean.shape == learned(windows).shape
+def test_example_playground_temporal_fixed_summaries(playground_temporal_example):
+    """Check each displayed fixed summary against arithmetic on the real window."""
+    from thesis_gnn_rul_xai.models.temporal import RawWindow
+
+    windows, sensor = playground_temporal_example
+    readings = windows[0, sensor]
+    assert tuple(windows.shape) == (1, 14, 30)
+    assert [round(float(x), 6) for x in readings[:3]] == [-0.99521, -0.8415, -0.700499]
+    assert [round(float(x), 6) for x in windows[0, 0, :3]] == [-1.987346, -1.6039, -1.179785]
+    assert [round(float(x), 6) for x in windows[0, 1, :3]] == [-0.146319, 0.060766, -0.209812]
+
+    positions = torch.arange(30, dtype=windows.dtype) - 14.5
+    terms = readings * positions
+    numerator = terms.sum()
+    denominator = positions.square().sum()
+    slope = numerator / denominator
+    assert [round(float(x), 6) for x in terms[:3]] == [14.430549, 11.360254, 8.756233]
+    assert round(float(readings.sum()), 6) == -31.346590
+    assert round(float(numerator), 6) == -27.887846
+    assert float(denominator) == 2247.5
+    assert round(float(slope), 9) == -0.012408385
+    assert round(float(readings[-1] - readings[0]), 6) == -0.298558
+
+    hand_slope = sum(float(t) * float(x) for t, x in zip(positions, readings, strict=True))
+    hand_slope /= sum(float(t) ** 2 for t in positions)
+    hand_summary = [float(readings[-1]), sum(map(float, readings)) / 30, hand_slope * 29]
+    summary = WindowSummary(30)(windows)
+    np.testing.assert_allclose(summary[0, sensor].numpy(), hand_summary, atol=1e-6)
+    assert [round(float(x), 6) for x in summary[0, sensor]] == [-1.293769, -1.044886, -0.359843]
+    torch.testing.assert_close(LastCycle(30)(windows), summary[:, :, :1])
+    torch.testing.assert_close(MeanWindow(30)(windows), summary[:, :, 1:2])
+    assert tuple(summary.shape) == (1, 14, 3)
+    assert RawWindow(30)(windows) is windows
+    print("Real T50 summaries:", [round(float(x), 6) for x in summary[0, sensor]])
+
+
+@pytest.mark.parametrize("kind", ["lstm", "gru"])
+@pytest.mark.parametrize("shared", [False, True])
+@pytest.mark.parametrize("outputs", [1, 2])
+def test_example_playground_temporal_memory_and_projection(
+    playground_temporal_example, kind, shared, outputs
+):
+    """Rebuild every memory update and projection independently on real T50 data."""
+    windows, sensor = playground_temporal_example
+    stage = _playground_temporal_stage(kind, shared, outputs)
+    h = torch.zeros((), dtype=windows.dtype)
+    c = torch.zeros((), dtype=windows.dtype)
+    hidden_values, candidate_values, gates, cell_values = [], [], [], []
+    for reading in windows[0, sensor]:
+        gate = torch.sigmoid(0.2 * reading + 0.1 * h)
+        if kind == "lstm":
+            candidate = torch.tanh(0.2 * reading + 0.1 * h)
+            c = gate * c + gate * candidate
+            h = gate * torch.tanh(c)
+        else:
+            candidate = torch.tanh(0.2 * reading + gate * 0.1 * h)
+            h = gate * h + (1 - gate) * candidate
+        gates.append(float(gate))
+        candidate_values.append(float(candidate))
+        cell_values.append(float(c))
+        hidden_values.append(h)
+
+    with torch.no_grad():
+        if shared:
+            histories, _ = stage.cells[0](windows.reshape(14, 30, 1))
+            history = histories[sensor, :, 0]
+            assert tuple(histories.shape) == (14, 30, 1)
+        else:
+            histories, _ = stage.cells[sensor](windows[:, sensor, :, None])
+            history = histories[0, :, 0]
+            assert tuple(histories.shape) == (1, 30, 1)
+        actual = stage(windows)
+        repeated = stage(windows)
+    torch.testing.assert_close(history, torch.stack(hidden_values), atol=1e-7, rtol=1e-6)
+    torch.testing.assert_close(actual, repeated)
+    assert tuple(actual.shape) == (1, 14, outputs)
+    expected = [0.5 * float(h) + 0.1]
+    if outputs == 2:
+        expected.append(-0.25 * float(h) + 0.2)
+    np.testing.assert_allclose(actual[0, sensor].numpy(), expected, atol=1e-7)
+
+    def rounded(values):
+        """Match the six-decimal values printed by the tutorial."""
+        return [round(float(x), 6) for x in values]
+    if kind == "lstm":
+        assert rounded(gates[:3]) == [0.450403, 0.457037, 0.463692]
+        assert rounded(candidate_values[:3]) == [-0.196455, -0.170591, -0.144468]
+        assert rounded(cell_values[:3]) == [-0.088484, -0.118407, -0.121893]
+        assert rounded(history[:3]) == [-0.03975, -0.053865, -0.056243]
+        assert round(float(history[-1]), 6) == -0.081576
+        assert rounded(actual[0, sensor]) == [0.059212, 0.220394][:outputs]
+        assert rounded(actual[0, :3, 0]) == [0.062085, 0.081797, 0.059212]
+    else:
+        assert rounded(gates[:3]) == [0.450403, 0.455345, 0.461487]
+        assert rounded(candidate_values[:3]) == [-0.196455, -0.171505, -0.145636]
+        assert rounded(history[:3]) == [-0.107971, -0.142575, -0.144224]
+        assert round(float(history[-1]), 6) == -0.246909
+        assert rounded(actual[0, sensor]) == [-0.023454, 0.261727][:outputs]
+        assert rounded(actual[0, :3, 0]) == [-0.010399, 0.056611, -0.023454]
+    print(kind, "shared" if shared else "dedicated", "T50 hidden:", round(float(h), 6),
+          "graph input:", rounded(actual[0, sensor]))
+
+
+@pytest.mark.parametrize("kind", ["lstm", "gru"])
+def test_example_playground_temporal_sharing_keeps_histories_separate(
+    playground_temporal_example, kind
+):
+    """Verify separate sensor memories and the difference between shared and dedicated weights."""
+    windows, sensor = playground_temporal_example
+    dedicated = _playground_temporal_stage(kind)
+    shared = _playground_temporal_stage(kind, shared=True)
+    with torch.no_grad():
+        before = dedicated(windows)
+        torch.testing.assert_close(before, shared(windows))
+        dedicated.cells[0].weight_ih_l0.fill_(0.3)
+        after = dedicated(windows)
+        assert not torch.allclose(after[:, 0], before[:, 0])
+        torch.testing.assert_close(after[:, 1:], before[:, 1:])
+
+        reverse_sensors = windows.flip(dims=(1,))
+        torch.testing.assert_close(shared(reverse_sensors).flip(dims=(1,)), shared(windows))
+        separate = [windows[:, node, :, None] for node in range(14)]
+        flat = windows.reshape(14, 30, 1)
+        assert len(separate) == 14
+        assert tuple(separate[sensor].shape) == (1, 30, 1)
+        torch.testing.assert_close(separate[sensor][0], flat[sensor])
+
+
+@pytest.mark.parametrize("filename,minimum_tables", [
+    ("09_temporal.md", 30), ("05_the_model.md", 28),
+])
+def test_example_design_model_tutorials(raw_dir, monkeypatch, filename, minimum_tables):
+    """Execute every teaching step and check every displayed input, calculation and output."""
+    from test_examples import _check_design_tutorial
+
+    namespace = _check_design_tutorial(filename, monkeypatch, minimum_tables)
+    if filename == "09_temporal.md":
+        assert tuple(namespace["windows"].shape) == (1, 14, 4)
+        assert namespace["source"].shape == (4, 15)
+    else:
+        assert tuple(namespace["window"].shape) == (1, 14, 30)
+        with torch.no_grad():
+            torch.testing.assert_close(namespace["cycles"], namespace["model"].predict_cycles(namespace["window"]))
 
 
 def test_example_the_stage_decides_the_width_of_the_first_graph_matrix(raw_dir):

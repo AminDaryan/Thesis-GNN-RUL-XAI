@@ -19,6 +19,7 @@ import pytest
 
 from thesis_gnn_rul_xai.data.labeling import apply_piecewise_rul, piecewise_rul_curve
 from thesis_gnn_rul_xai.data.sensors import (
+    PAPER_SENSOR_COLUMNS,
     SENSOR_COLS,
     detect_uninformative_sensors,
 )
@@ -231,7 +232,8 @@ def test_example_preprocessing_story(loaded, changes):
     assert opening["name"] == "Engine histories and remaining-life answers"
     assert opening["example"]["source"] == "train_FD001.txt"
     assert opening["example"]["label_state"] == "uncapped"
-    assert "not yet been capped" in opening["summary"]
+    assert opening["summary"] == ""
+    assert "uncapped remaining-life label" in opening["columns"]
     sample = opening["example"]["rows"]
     assert sample == [{"engine": 1, "cycle": 1, "reading": 641.82, "life": 191},
                       {"engine": 1, "cycle": 2, "reading": 642.15, "life": 190},
@@ -290,6 +292,88 @@ def test_example_preprocessing_without_files(monkeypatch):
 
 
 # --- data/labeling/ ---------------------------------------------------
+
+
+def test_example_design_data_tutorial(loaded, monkeypatch):
+    """The Data page reproduces every cell of its complete FD001 sample tables."""
+    namespace = _check_design_tutorial("01_the_problem.md", monkeypatch)
+    assert namespace["training"].shape == (20631, 26)
+    assert namespace["labelled"].shape == (20631, 27)
+    assert namespace["history"].shape == (13096, 26)
+    assert namespace["test_labelled"].shape == (13096, 27)
+    assert namespace["selected"].shape == (20631, 14)
+    pd.testing.assert_frame_equal(
+        namespace["selection_output"], namespace["selection_input"][list(PAPER_SENSOR_COLUMNS)],
+    )
+
+
+def test_example_design_preprocessing_tutorial(loaded, monkeypatch):
+    """The preparation examples preserve rows and reproduce every displayed cell."""
+    namespace = _check_design_tutorial("04_the_pipeline.md", monkeypatch)
+    for preceding, following in (
+        ("cap_output", "smooth_input"), ("smooth_output", "condition_input"),
+        ("condition_output", "scale_input"),
+    ):
+        pd.testing.assert_frame_equal(namespace[preceding], namespace[following])
+    assert namespace["cap_output"].rul.tolist() == [125, 125, 125]
+    np.testing.assert_allclose(namespace["smooth_output"].sensor_2, [641.82, 641.985, 642.1675])
+    stats = namespace["scale_statistics"].query("column == 'sensor_2'").iloc[0]
+    assert stats["mean"] == pytest.approx(642.6751709174424)
+    assert stats["std"] == pytest.approx(0.4303079837962261)
+    assert namespace["scale_output"].sensor_2.iloc[1] == pytest.approx(-1.603900, abs=5e-7)
+    assert namespace["windows"].features.shape == (3, 14, 3)
+    for i in range(3):
+        expected = namespace["window_input"].iloc[i:i + 3][list(PAPER_SENSOR_COLUMNS)].to_numpy()
+        np.testing.assert_allclose(namespace["windows"].features[i].T, expected)
+    assert len(namespace["mini_kept"]) == len(namespace["mini_held"]) == 1
+    for prefix in ("sets", "two_sets"):
+        pd.testing.assert_frame_equal(
+            namespace[f"{prefix}_input"], namespace[f"{prefix}_output"].drop(columns="destination"),
+        )
+    assert namespace["sets_output"].destination.tolist() == ["train"] * 3 + ["validation"] * 3 + ["test"] * 3
+    assert namespace["two_sets_output"].destination.tolist() == ["train"] * 6 + ["test"] * 3
+    assert len(namespace["prepared"].train) + len(namespace["prepared"].validation) == 17731
+
+
+def test_example_design_graph_tutorial(loaded, monkeypatch):
+    """The graph tutorial reproduces every entry of both complete connection tables."""
+    namespace = _check_design_tutorial("02_graphs.md", monkeypatch, minimum_tables=8)
+    assert namespace["sample"].shape == (3, 15)
+    assert namespace["raw_graph"].shape == namespace["scaled_output"].shape == (14, 15)
+
+
+def _check_design_tutorial(filename, monkeypatch, minimum_tables=10):
+    """Execute the page in order and compare its named samples with every printed cell."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(root)
+    document = (root / "docs" / "learn" / filename).read_text(encoding="utf-8")
+    namespace = {}
+    blocks = re.findall(r"```python\n(.*?)\n```", document, flags=re.DOTALL)
+    assert blocks
+    for code in blocks:
+        exec(compile(code, filename, "exec"), namespace)
+    tables = re.findall(r"<!-- sample: (\w+) -->\n((?:\|[^\n]+\n)+)", document)
+    assert len(tables) >= minimum_tables
+    for name, table in tables:
+        lines = [[cell.strip() for cell in line.strip().strip("|").split("|")]
+                 for line in table.strip().splitlines()]
+        actual = namespace[name]
+        assert lines[0] == list(actual.columns), name
+        assert len(lines) - 2 == len(actual), name
+        for expected, row in zip(lines[2:], actual.itertuples(index=False, name=None), strict=True):
+            assert len(expected) == len(row), name
+            for printed, value in zip(expected, row, strict=True):
+                if isinstance(value, (int, float)):
+                    assert float(printed) == pytest.approx(value, abs=5.1e-7, rel=0), (name, printed, value)
+                else:
+                    assert printed == str(value), (name, printed, value)
+    if filename == "01_the_problem.md":
+        first_lines = (root / "data" / "raw" / "train_FD001.txt").read_text().splitlines()[:3]
+        for line in first_lines:
+            assert line.rstrip() in document
+    return namespace
 
 
 def test_example_apply_piecewise_rul():

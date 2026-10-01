@@ -105,8 +105,9 @@
       '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>'),
     temporal: icon('<rect x="7" y="8" width="10" height="10" rx="2"/><path d="M2 13h5m10 0h5M20 13V3H4v5m-2-2 2 2 2-2"/>' +
       '<path d="M10 11h4m-4 4h4"/>'),
-    graph: icon('<circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="17.5" r="2.2"/>' +
-      '<path d="M8.2 7h7.6M7.1 9l3.8 6.6M16.9 9l-3.8 6.6"/>'),
+    graph: icon('<path d="M5.5 5.5 10 10M14 11l4-3M13 14l3 4M9.5 13l-4 4M4 7v9M7 19h8"/>' +
+      '<circle cx="4" cy="4" r="2"/><circle cx="20" cy="6" r="2"/><circle cx="4" cy="19" r="2"/>' +
+      '<circle cx="18" cy="20" r="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/>'),
     output: icon('<path d="M7 3.5h10M7 20.5h10M8 3.5v2.2c0 2.3 4 3.8 4 6.3s-4 4-4 6.3v2.2M16 3.5v2.2c0 2.3-4 3.8-4 6.3s4 ' +
       '4 4 6.3v2.2"/>')
   };
@@ -173,8 +174,10 @@
     // the graph as a table of rescaled numbers
     table: picture('<rect x="10" y="3" width="28" height="26" rx="2"/><path d="M10 12h28M10 20h28M19 3v26M28 3v26"/>'),
     // a graph layer: each sensor gathers from its neighbours
-    gcn: picture(FILLED(24, 16, 3.5) + DOT(7, 7) + DOT(7, 25) + DOT(41, 7) + DOT(41, 25) +
-      '<path d="M9.5 8.5 20 14M9.5 23.5 20 18M38.5 8.5 28 14M38.5 23.5 28 18"/>'),
+    gcn: picture('<path d="M8 9 11 23M14 25l20 1M28 5l11 5" opacity=".45"/>' +
+      '<path d="M10 8l9 6m-4-1 4 1-1-4M14 23l6-4m-4 0h4v4M26 7l-2 5m-2-3 2 3 3-1' +
+      'M38 12l-11 3m3-3-3 3 4 1M34 24l-8-5m1 4-1-4 4 0"/>' +
+      DOT(7, 6) + DOT(12, 26) + DOT(27, 4) + DOT(41, 11) + DOT(36, 26) + FILLED(23, 16, 3)),
     // each sensor's numbers laid end to end
     flatten: picture('<rect x="4" y="4" width="10" height="10" rx="1"/><rect x="4" y="18" width="10" height="10" rx="1"/>' +
       '<path d="M17 16h5m-2-2 2 2-2 2"/><rect x="25" y="12" width="20" height="8" rx="1"/>'),
@@ -292,9 +295,9 @@
   }
 
   // The words behind an i: first what the thing is for, one line of plain
-  // text per paragraph, then, under a thin line, where its value comes from
-  // (HTML from sourceNote), and last a "Read more" that opens the part of the
-  // documentation that explains it in a new tab. Any part may be missing. A
+  // text per paragraph, then a footer with where its value comes from and a
+  // "Read more" link to the part of the documentation that explains it.
+  // Any part may be missing. A
   // line after the first that opens "Option words: ..." explains one option,
   // and its option's words are set in the heavier weight, so the eye finds them.
   function infoCard(about, source, more) {
@@ -303,10 +306,10 @@
       return '<span class="pg-info-line">' + (m ? "<strong>" + esc(m[1]) + ":</strong> " + esc(m[2]) : esc(line)) +
         "</span>";
     }).join("") : "";
-    return lines +
-      (source ? '<span class="pg-info-source">' + source + "</span>" : "") +
+    var footer = (source ? '<span class="pg-info-source">' + source + "</span>" : "") +
       (more ? '<span class="pg-info-more"><a href="' + esc(more) + '" target="_blank" rel="noopener">Read more' +
         NEXT + "</a></span>" : "");
+    return lines + (footer ? '<span class="pg-info-footer">' + footer + "</span>" : "");
   }
 
   function temporalName(value) {
@@ -715,7 +718,7 @@
   function optionList(name, choices, current, data, noteOf, labelledBy) {
     return '<div class="opts" role="radiogroup"' + (labelledBy ? ' aria-labelledby="' + labelledBy + '"' : "") + ">" +
       choices.map(function (c, i) {
-        var note = noteOf(c);
+        var note = noteOf ? noteOf(c) : "";
         var id = name + "-" + i;
         return '<label class="opt' + (c.value === current ? " is-active" : "") + '"><input type="radio" name="' + name +
           '" value="' + esc(c.value) + '"' + (c.value === current ? " checked" : "") + " " + data +
@@ -1333,6 +1336,8 @@
 
   function isChanged(f) { return !same(S.settings[f.key], f.default); }
 
+  function settingsChanged() { return !same(S.settings, S.options.defaults); }
+
   // How many settings of a group differ from their defaults. Training counts
   // the procedure as one setting, and the inputs only it shows as theirs.
   function changedIn(group) {
@@ -1396,7 +1401,8 @@
       '<div class="pg-design">' + pipelineHtml() + '<div class="pg-form">' +
       '<section class="pg-block pg-settings" aria-label="Settings">' + tabsHtml() +
       '<div class="pg-tabpanels">' + S.options.groups.map(panelHtml).join("") + "</div>" +
-      '<div class="pg-settings-foot"><button type="button" class="pg-reset" data-action="reset-all">Reset all</button></div>' +
+      '<div class="pg-settings-foot"><button type="button" class="button button--small pg-reset-all" data-action="reset-all"' +
+      (settingsChanged() ? "" : " disabled") + ">Reset all</button></div>" +
       "</section></div></div>";
     // What the pipeline was just drawn with, so the first change of settings
     // finds it unchanged instead of drawing it again under the pointer.
@@ -1570,13 +1576,17 @@
       { name: "Temporal stage", picture: "window", fields: ["temporal"] },
       { name: function () { return "One " + networkWord() + (S.settings.shared_across_sensors ? " for all sensors" : " per sensor"); },
         picture: "recurrent", fields: ["temporal_hidden", "shared_across_sensors"] },
-      { name: function () { return "Turn into " + plural(Number(S.settings.temporal_out_features) || 1, "number") + " per sensor"; },
+      { name: "Turn into numbers per sensor",
         picture: "project", fields: ["temporal_out_features"] }
     ],
     graph: [
       { name: "Sensor graph", picture: "graph", fields: ["graph"] },
       { name: "Rescale the graph", picture: "table", fields: ["adjacency_normalization"] },
-      { name: "Graph layers", picture: "gcn", fields: ["gcn_hidden", "gcn_bias"] },
+      { name: "Graph layers", picture: "gcn", fields: ["gcn_hidden", "gcn_bias"],
+        about: "Each layer combines a sensor's numbers with those of its connected neighbours, using the graph's fixed weights. " +
+          "Learned multipliers then turn that combination into new numbers for the sensor. Optional learned offsets are added, " +
+          "and negative results become zero. The multipliers are shared across sensors. Each layer's width sets how many " +
+          "numbers it produces per sensor. Repeating the operation lets information travel through successive connections." },
       { name: "Fully connected", picture: "dense", fields: ["fc_hidden"] }
     ],
     training: [
@@ -1590,13 +1600,14 @@
 
   function sectionName(section) { return typeof section.name === "function" ? section.name() : section.name || ""; }
 
-  function sectionHelp(section) {
+  function sectionHelp(section, destination) {
     if (section.procedure) { return infoCard(S.options.procedure_about, "", S.options.procedure_more); }
     var keys = section.toggle ? [section.toggle] : section.fields || [];
-    return keys.length === 1 ? hintFor(S.fields[keys[0]]) : infoCard(
-      keys.map(function (key) { return S.fields[key].about; }).filter(Boolean).join("\n"),
+    var more = destination || (S.options.operation_more || {})[sectionName(section)];
+    return keys.length === 1 ? hintFor(S.fields[keys[0]], more) : infoCard(
+      section.about || keys.map(function (key) { return S.fields[key].about; }).filter(Boolean).join("\n"),
       keys.map(function (key) { return sourceNote(S.fields[key].source); }).filter(Boolean).join(" "),
-      keys.length ? S.fields[keys[0]].more : "");
+      more || (keys.length ? S.fields[keys[0]].more : ""));
   }
 
   function sectionForStep(step) {
@@ -1607,6 +1618,15 @@
           return part.setting && (section.fields || []).indexOf(part.setting) >= 0;
         });
       })[0];
+  }
+
+  function stepHelp(step, section) {
+    if (section && section.fields.length === 1 && section.fields[0] === "temporal") {
+      var choice = S.fields.temporal.choices.filter(function (option) { return option.value === S.settings.temporal; })[0];
+      return infoCard(choice.about, sourceNote(choice.source), step.more);
+    }
+    return section ? sectionHelp(section, step.more) :
+      infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
   }
 
   function locateOperation() {
@@ -1843,6 +1863,25 @@
   // its own arrow, so names none.
   function handedOn(item) { return item && item.kind !== "branch" ? item.shape || "" : ""; }
 
+  // Every displayed shape uses the same help card, including branches and endpoints.
+  function outputInfo(item) {
+    var outputs = item.handoff_outputs || item.outputs || [];
+    if (!outputs.length) { return ""; }
+    var note = item.output_note || (item.handoff_outputs ?
+      "The arrow summarises the training file. The groups below stay separate." : "");
+    var sameAxes = outputs.every(function (output) { return output.axes === outputs[0].axes; });
+    return info((note ? '<span class="pg-info-line">' + esc(note) + '</span>' : '') +
+      outputs.map(function (output) {
+        return '<span class="pg-transfer-output"><span>' + esc(output.label) + '</span><code>' + esc(output.shape) + '</code></span>' +
+          (!sameAxes ? '<span class="pg-transfer-axes">' + esc(output.axes) + '</span>' : '');
+      }).join('') + (sameAxes ? '<span class="pg-transfer-axes">' + esc(outputs[0].axes) + '</span>' : ''),
+      "outputs after " + item.name);
+  }
+
+  function shapeHtml(shape, details) {
+    return '<span class="pg-arrow-label"><code class="pg-vshape">' + esc(shape) + '</code>' + (details || '') + '</span>';
+  }
+
   // Every item of a box's flowchart, each followed by the arrow to the next
   // with the shape of what passes along it written on it: so each step reads
   // from top to bottom as what comes in, what is done to it and what goes
@@ -1853,9 +1892,11 @@
     steps.forEach(function (item, i) {
       if (item.kind === "branch") { return; }
       var next = steps[i + 1], last = i === steps.length - 1;
-      var after = last || next.detached ? "" : item.handoff ? '<div class="pg-varrow pg-varrow--named"><span class="pg-transfer">' +
-        esc(item.handoff) + "</span></div>" : next && next.kind === "branch" ?
-        joinHtml(handedOn(item), next) : arrowHtml(handedOn(item));
+      var details = outputInfo(item);
+      var after = last || next.detached ? "" : item.handoff ?
+        '<div class="pg-varrow pg-varrow--named"><span class="pg-transfer">' +
+        esc(item.handoff) + details + "</span></div>" : next && next.kind === "branch" ?
+        joinHtml(handedOn(item), next, details) : arrowHtml(handedOn(item), false, details);
       items.push('<li class="pg-vitem' + (item.kind === "edge" ? " pg-vitem--edge" : "") + '">' +
         vbodyHtml(item, steps[i - 1], i === 0, last) + after + "</li>");
     });
@@ -1875,13 +1916,13 @@
       var own = item.shape && !(first && !last) && !(last && item.shape === handedOn(before));
       return '<span class="pg-vedge">' + (ICONS[item.icon] || "") + "<span>" + esc(item.name) + "</span></span>" +
         (item.handoff ? (last ? '<span class="pg-transfer">' + esc(item.handoff) + "</span>" : "") :
-          own ? '<code class="pg-vshape">' + esc(item.shape) + "</code>" : "") + storyHtml(item);
+          own ? shapeHtml(item.shape, outputInfo(item)) : "") + storyHtml(item);
     }
     if (item.kind === "group") {
       if (item.lanes) {
         return '<div class="pg-vlanes">' + item.lanes.map(function (lane) {
           return '<section class="pg-vlane"><h4>' + esc(lane.name) + '</h4>' +
-            vflowHtml(lane.steps) + (lane.shape ? arrowHtml(lane.shape) : "") + '</section>';
+            vflowHtml(lane.steps) + (lane.shape ? arrowHtml(lane.shape, false, outputInfo(lane)) : "") + '</section>';
         }).join("") + '</div>';
       }
       return '<div class="pg-vgroup">' + item.steps.map(function (s) { return vstepHtml(s, true); }).join("") + "</div>";
@@ -1890,17 +1931,17 @@
   }
 
   // The arrow under an item, carrying the shape it hands on, if any.
-  function arrowHtml(shape, long) {
+  function arrowHtml(shape, long, details) {
     return '<div class="pg-varrow' + (long ? " pg-varrow--long" : "") + '">' + (shape ? '<span class="visually-hidden">' +
-      "hands on </span>" + '<code class="pg-vshape">' + esc(shape) + "</code>" : "") + "</div>";
+      "hands on </span>" + shapeHtml(shape, details) : "") + "</div>";
   }
 
   // The main line runs straight down to the step after the branch, and the
   // branch's steps stand beside it and end in an arrow into the same step.
-  function joinHtml(shape, branch) {
-    return '<div class="pg-vjoin"><div class="pg-vjoin-main">' + arrowHtml(shape, true) + "</div>" +
+  function joinHtml(shape, branch, details) {
+    return '<div class="pg-vjoin"><div class="pg-vjoin-main">' + arrowHtml(shape, true, details) + "</div>" +
       '<ol class="pg-vjoin-side">' + branch.steps.map(function (s) {
-        return '<li class="pg-vitem">' + vstepHtml(s, false) + arrowHtml(handedOn(s)) + "</li>";
+        return '<li class="pg-vitem">' + vstepHtml(s, false) + arrowHtml(handedOn(s), false, outputInfo(s)) + "</li>";
       }).join("") + "</ol></div>";
   }
 
@@ -1913,7 +1954,7 @@
     var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
       '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
     var section = sectionForStep(step), operation = section && sectionName(section);
-    var words = section ? sectionHelp(section) : infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
+    var words = stepHelp(step, section);
     var row = section && (section.toggle || section.fields[0]);
     var destination = row ? ' data-goto="' + S.fields[row].group + '" data-goto-row="' + row + '"' : '';
     var part = partControl(step);
@@ -1926,7 +1967,7 @@
       storyHtml(step) +
       (step.networks ? networksHtml(step.networks) : "") +
       (step.learned ? '<span class="pg-vstep-learned">' + count(step.learned) + " learned numbers</span>" : "") +
-      (small && step.shape ? '<code class="pg-vshape">' + esc(step.shape) + "</code>" : "") + part + "</div>";
+      (small && step.shape ? shapeHtml(step.shape, outputInfo(step)) : "") + part + "</div>";
   }
 
   // Keep the flow readable; full explanations belong in the step's help card.
@@ -2301,8 +2342,9 @@
     });
     return cell({
       key: "procedure", label: named ? "" : "Procedure", size: "wide",
-      hint: named ? "" : infoCard(S.options.procedure_about, "", S.options.procedure_more),
-      control: optionList("pg-procedure", choices, chosenProcedure().key, "data-procedure", optionNote,
+      control: '<p class="pg-procedure-note">This choice sets the engine groups during Preprocessing, before rescaling. ' +
+        'Validation checks progress later, during training.</p>' +
+        optionList("pg-procedure", choices, chosenProcedure().key, "data-procedure", null,
         named || nameIds("procedure")) +
         '<div class="pg-fields pg-fields--sub">' +
         fieldsOf("procedure").filter(function (f) { return f.kind !== "bool"; })
@@ -2321,7 +2363,7 @@
 
   // The words behind a setting's i: what it is for and, for the sub-dataset,
   // what Table 5 says the chosen one holds; then where its default comes from.
-  function hintFor(f) {
+  function hintFor(f, more) {
     var about = [f.about];
     if (f.key === "subset") {
       var t5 = (S.options.dataset || {})[S.settings.subset];
@@ -2330,7 +2372,7 @@
           " test engines, " + plural(t5.conditions, "operating condition") + ", " + plural(t5.fault_modes, "fault mode") + ".");
       }
     }
-    return infoCard(about.filter(Boolean).join("\n"), sourceNote(f.source), f.more);
+    return infoCard(about.filter(Boolean).join("\n"), sourceNote(f.source), more || f.more);
   }
 
   // The words behind one option's i, when the option has any of its own.
@@ -2356,7 +2398,7 @@
       control = selectField(id, f.choices, value, data);
     } else if (f.kind === "choice") {
       size = "wide";
-      control = optionList(id, f.choices, value, data, optionNote,
+      control = optionList(id, f.choices, value, data, null,
         named || (byTab ? "pg-tab-name-" + f.group : nameIds(f.key)));
       id = null;
     } else if (f.kind === "widths") {
@@ -2368,13 +2410,10 @@
     } else {
       control = numberField(id, f, value, data, parts.unit);
     }
-    // A list its step's tab names has no name of its own, so its i, saying
-    // what the step is for, stands alone above its options; a list a group
-    // names has its i beside the group's name.
+    // Design settings keep their help on the section title, not on each control.
     return cell({
       key: f.key, id: id, label: bare ? "" : parts.label, infoName: f.label, hidden: !visible(f.key),
       size: f.group === "data" ? "wide" : size, inline: f.kind === "bool",
-      hint: named ? "" : hintFor(f),
       control: control,
       reset: resetHtml(f)
     });
@@ -2469,6 +2508,8 @@
     paintPipeline();
     requestZoom(false);
     paintTabs();
+    var resetAll = $('[data-action="reset-all"]');
+    if (resetAll) { resetAll.disabled = !settingsChanged(); }
     refreshPreview();
   }
 
@@ -2578,21 +2619,20 @@
     } else if (preview && torch && !preview.network_error && preview.layers) {
       network = '<div class="pg-network">' +
         '<div class="pg-big">' + count(preview.parameters) + " <span>learned numbers</span></div>" +
-        '<details class="pg-details" data-layers' + (S.layersOpen ? " open" : "") + "><summary>Layer by layer</summary>" +
+        '<section class="pg-layers" aria-labelledby="pg-layers-title"><h4 id="pg-layers-title">Layer by layer</h4>' +
         '<table class="pg-mini"><thead><tr><th>Layer</th><th>Out</th><th class="num">Learned numbers</th></tr></thead><tbody>' +
         table4Rows(preview.layers).map(function (l) {
           return "<tr><td>" + esc(l.layer) + (l.from ? ' <span class="pg-faint">from ' + esc(l.from) + "</span>" : "") +
             "</td><td><code>" + esc(l.out) + '</code></td><td class="num">' + count(Number(l.parameters)) + "</td></tr>";
         }).join("") + "</tbody></table>" +
         '<p class="pg-faint">B is the number of windows in a batch. Table 4 prints no counts; each is read from the built model.</p>' +
-        "</details></div>";
+        "</section></div>";
     }
 
     // The card is drawn again after every change of settings. What the
-    // keyboard was on in it keeps the focus, and "Layer by layer" stays as
-    // the reader left it, rather than closing at every change.
+    // keyboard was on in it keeps the focus.
     var active = box.contains(document.activeElement) ? document.activeElement : null;
-    var had = active && (active.matches("summary") ? "summary" : active.matches(".pg-train") ? ".pg-train" : null);
+    var had = active && (active.matches(".pg-train") ? ".pg-train" : null);
     var summary = [S.settings.subset, stageName(S.settings.temporal, S.settings.temporal_hidden),
       graphName(S.settings.graph, S.settings.adjacency_normalization) + " graph",
       S.settings.window_size + " cycles per window"].join(" · ");
@@ -2601,8 +2641,6 @@
       '</p>' + network + caveatList(notes) + '<div class="pg-run-action">' +
       '<button type="button" class="button button--primary pg-train" data-action="run"' + (canRun ? "" : " disabled") +
       ">Train " + plural(S.settings.seeds, "seed") + "</button></div>";
-    var layers = box.querySelector("details[data-layers]");
-    if (layers) { layers.addEventListener("toggle", function () { S.layersOpen = layers.open; }); }
     var again = had && box.querySelector(had);
     if (again && !again.disabled) { again.focus({ preventScroll: true }); }
     else if (active) { box.setAttribute("tabindex", "-1"); box.focus({ preventScroll: true }); }
@@ -2870,7 +2908,8 @@
           (r.paper_row ? fixed(r.paper_row.rmse, 2) : "—") + "</td>" + (showData ? "<td>" + esc(r.subset) + "</td>" : "") +
           "<td>" + esc(stageName(r.temporal, r.temporal_hidden)) + "</td><td>" + esc(graphName(r.graph, r.adjacency_normalization)) + "</td>" +
           '<td><span class="chip' + (r.exploratory ? " chip--warn" : "") + '">' + count(r.seeds) + "</span></td>" +
-          "<td>" + (r.reported_weights === "final_epoch" ? "final pass" : "best pass") +
+          "<td>" + (r.reported_weights === "final_epoch" ? "final pass" :
+            r.reported_weights === "best_validation_epoch" ? "best pass" : "not recorded") +
           (r.has_weights ? ' <span class="chip chip--good">files</span>' : "") + "</td>" +
           '<td class="col-commit"><code class="pg-commit' + (r.dirty ? " pg-commit--dirty" : "") + '">' + esc(r.commit) + "</code></td></tr>";
       }).join("") + "</tbody></table></div>";
@@ -2969,6 +3008,143 @@
   // A run already read is drawn again over its old drawing, with no loading
   // line between: the page never shrinks to one line and back, which would
   // throw the reader to its top.
+  function savedSettingValue(key, value) {
+    if (value === undefined) { return '<span class="pg-setting-missing">Not recorded</span>'; }
+    if (value === null) {
+      var unset = { smoothing_alpha: "Off", early_stopping_patience: "Off", gradient_clip: "Off",
+        lr_step_epoch: "Automatic: halfway when using the step schedule", temporal_hidden: "Not used" };
+      return esc(unset[key] || "None");
+    }
+    if (typeof value === "boolean") { return value ? "Yes" : "No"; }
+    if (Array.isArray(value)) { return esc(JSON.stringify(value)); }
+    if (typeof value === "object") { return esc(JSON.stringify(value)); }
+    var names = {
+      zscore: "Subtract the mean and divide by the spread", minmax_global: "One range per sensor across training readings",
+      minmax_per_condition: "Separate ranges per sensor and operating condition", physics: "Physics graph",
+      complete: "Every sensor joined to every other", correlation: "Most correlated sensor pairs",
+      row: "Divide each receiving row by its total", symmetric: "Rescale using both sensors' connection counts",
+      lstm: "LSTM", gru: "GRU", last_cycle: "Keep the last reading", mean_window: "Average the window",
+      raw_window: "Pass every cycle", window_summary: "Three numbers per sensor",
+      adam: "Adam", mse: "Mean squared error", step: "One step down", exponential: "Exponential reduction",
+      cosine: "Cosine reduction", plateau: "Reduce when validation stops improving", constant: "Constant rate",
+      fixed: "Same engine split for every seed", varies_with_seed: "Engine split varies with the seed",
+      best_validation_epoch: "Best pass on held-back engines", final_epoch: "Final training pass",
+      auto: "Automatic device selection", cpu: "CPU", cuda: "CUDA graphics processor"
+    };
+    var namedChoice = ["normalization", "graph", "adjacency_normalization", "temporal", "optimizer",
+      "loss", "lr_schedule", "split", "reported_weights", "device"].indexOf(key) >= 0;
+    return namedChoice && Object.prototype.hasOwnProperty.call(names, value)
+      ? esc(names[value]) + ' <span class="pg-setting-raw">(' + esc(value) + ")</span>" : esc(String(value));
+  }
+
+  function savedSettingsGroup(title, source, labels, values, renderValue) {
+    var keys = Object.keys(labels);
+    Object.keys(values).forEach(function (key) { if (keys.indexOf(key) < 0) { keys.push(key); } });
+    return '<section class="pg-settings-group"><h3>' + esc(title) + '</h3><p class="pg-setting-source">' +
+      esc(source) + '</p><dl>' + keys.map(function (key) {
+        return '<div class="pg-setting-row" data-setting="' + esc(key) + '"><dt>' +
+          esc(labels[key] || key.replace(/_/g, " ")) + '</dt><dd>' +
+          (renderValue ? renderValue(key) : savedSettingValue(key, values[key])) + '</dd></div>';
+      }).join("") + '</dl></section>';
+  }
+
+  function runConfiguration(d) {
+    var summary = d.recorded_summary || {}, preprocessing = copy(d.preprocessing || {});
+    var model = copy(d.model || {}), training = summary.training || d.training || {};
+    var preparationFallback = {}, modelFallback = {};
+    ["subset", "graph", "adjacency_normalization", "clip_test_labels", "validation_fraction"].forEach(function (key) {
+      if (preprocessing[key] === undefined && summary[key] !== undefined) {
+        preprocessing[key] = summary[key]; preparationFallback[key] = true;
+      }
+    });
+    Object.keys({temporal: 1, temporal_hidden: 1}).forEach(function (key) {
+      var saved = summary[key === "temporal" ? "temporal_stage" : key];
+      if (model[key] === undefined && saved !== undefined) { model[key] = saved; modelFallback[key] = true; }
+    });
+    var seeds = Object.keys(d.per_seed || {});
+    (d.results || []).forEach(function (row) {
+      if (row.seed !== null && row.seed !== undefined && seeds.indexOf(String(row.seed)) < 0) { seeds.push(String(row.seed)); }
+    });
+    seeds.sort(function (a, b) { return Number(a) - Number(b); });
+    var trainingKeys = copy(training), recordedSeeds = {};
+    seeds.forEach(function (seed) {
+      var saved = ((d.per_seed || {})[seed] || {}).training || {};
+      recordedSeeds[seed] = saved;
+      Object.keys(saved).forEach(function (key) { trainingKeys[key] = saved[key]; });
+    });
+    function trainingValue(key) {
+      if (!seeds.length) { return savedSettingValue(key, training[key]); }
+      var rows = seeds.map(function (seed) {
+        var saved = recordedSeeds[seed], fromSummary = !Object.keys(saved).length;
+        return { seed: seed, value: savedSettingValue(key, (fromSummary ? training : saved)[key]), fromSummary: fromSummary };
+      });
+      var same = rows.every(function (row) { return row.value === rows[0].value && row.fromSummary === rows[0].fromSummary; });
+      function rendered(row) {
+        return row.value + (row.fromSummary && training[key] !== undefined ? ' <span class="pg-setting-raw">(run summary)</span>' : "");
+      }
+      return same ? rendered(rows[0]) : '<ul class="pg-setting-seeds">' + rows.map(function (row) {
+        return '<li><span>Seed ' + esc(row.seed) + ':</span> ' + rendered(row) + '</li>';
+      }).join("") + '</ul>';
+    }
+    var recordLabels = { seeds: "Number of seeds", split: "Engine split across seeds",
+      early_stopping: "Early stopping enabled for this run", reported_weights: "Weights used for the results",
+      commit: "Code version", config_digest: "Configuration identifier", finished_utc: "Finished, UTC" };
+    var record = {};
+    Object.keys(recordLabels).forEach(function (key) { record[key] = summary[key]; });
+    var raw = { "summary.json": summary, "preprocessing_config.yaml": d.preprocessing || {},
+      "model_config.yaml": d.recorded_model || {} };
+    seeds.forEach(function (seed) { raw['seed_' + seed + '/training_config.yaml'] = recordedSeeds[seed]; });
+    return '<section class="pg-run-settings" aria-labelledby="pg-run-settings-title">' +
+      '<h2 id="pg-run-settings-title">Settings used for this run</h2>' +
+      '<p class="pg-settings-intro">Values saved with this run. Missing values are marked “Not recorded”. ' +
+      'Training settings are shown for every seed when they differ.</p><div class="pg-settings-grid">' +
+      savedSettingsGroup("Data and preprocessing", "Saved preprocessing configuration; summary values identified when used", {
+        subset: "Data subset", window_size: "Cycles per window", window_stride: "Cycles between windows",
+        rul_max: "Remaining-life ceiling (cycles)", clip_test_labels: "Cap test answers at that ceiling",
+        normalization: "Rescale sensor readings", smoothing_alpha: "Smoothing weight on the new reading",
+        graph: "Sensor graph", adjacency_normalization: "Rescale the graph",
+        validation_fraction: "Fraction of engines held back", seed: "First engine-split seed", notes: "Saved notes"
+      }, preprocessing, function (key) {
+        return savedSettingValue(key, preprocessing[key]) + (preparationFallback[key] ? ' <span class="pg-setting-raw">(run summary)</span>' : '');
+      }) +
+      savedSettingsGroup("Temporal algorithm and GNN", (summary.model ? "Saved model settings in the run summary." : "Saved model configuration.") +
+        (model.temporal && model.temporal !== "lstm" && model.temporal !== "gru" ?
+          " Memory size, conversion width and recurrent sharing are unused by this temporal route." : ""), {
+        temporal: "Temporal algorithm", temporal_hidden: "Memory size", temporal_out_features: "Graph-input values per sensor",
+        shared_across_sensors: "Share the recurrent network across sensors", gcn_hidden: "Values after each graph layer",
+        fc_hidden: "Fully connected width", gcn_bias: "Add offsets in graph layers"
+      }, model, function (key) {
+        return savedSettingValue(key, model[key]) + (modelFallback[key] ? ' <span class="pg-setting-raw">(run summary)</span>' : '');
+      }) +
+      savedSettingsGroup("Training", "Per-seed training files, with run-summary values identified when used", {
+        epochs: "Maximum passes over the training data", batch_size: "Windows per update",
+        learning_rate: "Initial learning rate", final_learning_rate: "Final learning-rate setting",
+        optimizer: "Parameter update rule", loss: "Training error measure", lr_schedule: "Learning-rate schedule",
+        lr_step_epoch: "Pass at the learning-rate step", early_stopping_patience: "Passes without improvement before stopping",
+        min_improvement: "Minimum improvement to reset the wait", gradient_clip: "Gradient limit (loss derivatives)",
+        seed: "Training seed", device: "Requested computing device", notes: "Saved notes"
+      }, trainingKeys, trainingValue) + '</div>' +
+      savedSettingsGroup("Run record", "Saved run summary", recordLabels, record) +
+      '<details class="pg-recorded-files"><summary>Inspect the complete saved configuration and source record</summary>' +
+      '<p>These are the recorded fields, including additional settings and the software environment when available. ' +
+      'An empty object means no readable record was available.</p><pre><code>' +
+      esc(JSON.stringify(raw, null, 2)) + '</code></pre></details></section>';
+  }
+
+  function runInterpretation(cautions, compared) {
+    var titles = { "A-26": "Temporal choices", "F-16": "Choosing the reported weights", "A-02": "Test-label ceiling",
+      "D-6": "Last-reading temporal route", "Section 2.2": "Shared sensor network", "Table 4": "Different layer widths",
+      "A-17": "Learning-rate schedule", "D-2": "Complete sensor graph", "A-27": "Graph varies with the training engines",
+      "A-23": "Test engines left out" };
+    return '<section class="pg-run-interpretation" aria-labelledby="pg-run-interpretation-title">' +
+      '<h2 id="pg-run-interpretation-title">How to interpret this run</h2>' + compared +
+      '<div class="pg-run-notes">' + cautions.map(function (c) {
+        return '<article class="pg-run-note' + (c.level === "warn" ? ' pg-run-note--warn' : '') + '"><h3>' +
+          esc(titles[c.ref] || "Comparison limits") + '</h3><p>' + esc(c.text) + '</p>' +
+          (c.ref ? '<span class="pg-run-note-ref">Background: ' + refLink(c.ref) + '</span>' : '') + '</article>';
+      }).join("") + '</div></section>';
+  }
+
   function drawDetail() {
     var panel = $("#pg-panel");
     if (!panel || !S.selected) { return Promise.resolve(); }
@@ -3045,11 +3221,12 @@
         chip(d.dirty ? "warn" : "", "commit " + d.commit) + chip("", plural(d.seeds, "seed")) + chip("", d.subset) +
         (d.temporal ? chip("", stageName(d.temporal, d.temporal_hidden)) : "") +
         (d.graph ? chip("", graphName(d.graph, d.adjacency_normalization) + " graph") : "") +
-        chip("", d.reported_weights === "final_epoch" ? "final pass reported" : "best pass restored") + "</div>" +
+        chip("", d.reported_weights === "final_epoch" ? "final pass reported" :
+          d.reported_weights === "best_validation_epoch" ? "best pass restored" : "reported weights not recorded") + "</div>" +
         '<details class="pg-details"><summary>Folder</summary><code class="pg-code">' + esc(d.name) + "</code></details></div>" +
         '<div class="pg-actions"><button type="button" class="button" data-action="again">Set these settings up again</button>' +
         (d.has_weights ? '<button type="button" class="button button--primary" data-action="explain-this">Explain this run</button>' : "") + "</div></div>" +
-        '<div class="pg-metrics">' + cards + "</div>" + compared + caveatList(cautions) +
+        '<div class="pg-metrics">' + cards + "</div>" + runInterpretation(cautions, compared) + runConfiguration(d) +
         '<div class="pg-charts"><figure class="pg-figure pg-figure--wide">' + perSeedPlot + "</figure>" +
         (curves ? '<figure class="pg-figure pg-figure--wide">' +
           (hasValidation ? "<figcaption>A ring marks the reported pass.</figcaption>" : "") +

@@ -17,9 +17,15 @@ from thesis_gnn_rul_xai.graph.adjacency import (
     build_correlation_adjacency,
     build_fully_connected_adjacency,
     build_physics_adjacency,
+    connections_of,
     normalize_adjacency,
     pairs_beyond_reach,
 )
+
+
+def test_connections_are_listed_once_in_sensor_order():
+    matrix = np.array([[0, 1, 1], [1, 0, 0], [1, 0, 0]])
+    assert connections_of(matrix) == [(0, 1), (0, 2)]
 
 
 def test_the_graph_has_fourteen_nodes():

@@ -52,6 +52,7 @@ identifier below.
 | A-29 | Explaining the sensor graph itself | Explains sensor nodes only (Section 2.4), yet says its rankings set "edge weights" and validate its graph (Section 4.4) | Walk shares from GNN-LRP, of the score before the sigmoid, gamma 0 by default and always at the first graph layer; on the default network about half the score is the dense layers' constant (51 ± 4 %), and how much stays within a sensor's group is mostly set by the graph |
 | A-30 | What removing one connection means | Removes the whole graph once and retrains; never one connection | Delete it from the raw graph both ways, rescale, rerun without retraining; on the default network its effect is unrelated to what flowed along it (rank correlation −0.16 ± 0.20, p = 0.158) |
 | A-31 | Placing explanation nodes on an engine | Table 2 names variables and component regions; Fig. 3 places a separate graph beside a schematic engine | An original schematic cutaway with section anchors, distinct markers for calculated and system quantities, and the stored model's graph overlaid; no claim of exact probe coordinates |
+| A-32 | Learning-rate sensitivity levels | Table 6 gives `0.001` at the start and `0.0001` at the end; it gives no sensitivity study | Test those rates, one tenth of both, and ten times both, keeping the ten-to-one ratio |
 
 ---
 
@@ -3519,6 +3520,81 @@ groups are shown in the layer sequence, including the possibility of remaining
 on one sensor. Connection widths still describe totals over all walks and
 layers, not the selected walk alone. None of these marks is a fault location,
 physical flow of relevance or causal claim about engine damage.
+
+---
+
+## A-32 — The learning-rate sensitivity uses one decade below and above the paper's rates
+
+**Where:** `scripts/run_sensitivity.py`
+
+**The gap.** Table 6 of Wen et al. gives a learning rate that starts at 0.001
+and ends at 0.0001. It does not report whether the result is sensitive to the
+size of those rates. The schedule between them is a separate missing detail,
+recorded in assumption A-17.
+
+**What we chose.** The sensitivity study keeps the ten-to-one ratio and tests
+three scales: `0.0001 -> 0.00001`, the paper's `0.001 -> 0.0001`, and
+`0.01 -> 0.001`. Every other setting stays at the reference value for this
+comparison. The lower and upper pairs are experiment settings, not values
+attributed to the paper and not new defaults.
+
+**Why.** Moving both endpoints by one power of ten gives one clearly smaller
+and one clearly larger update scale while preserving the relationship between
+the two numbers printed in the paper. A narrower interval could miss a real
+effect; a wider one is more likely to compare failed training with successful
+training rather than measure ordinary sensitivity.
+
+**How much it matters, measured.** Over seeds 42 through 46 on FD001, one tenth
+of both rates raised mean RMSE by 0.428 cycles (13.663 ± 0.676, paired
+p = 0.274), which cannot be distinguished from zero. Ten times both rates
+raised it by 1.372 cycles (14.607 ± 0.307, p = 0.0094). That second p-value is
+below 0.05 on its own, but not below the conservative threshold of 0.00294 for
+all seventeen comparisons in the sensitivity study. The other C-MAPSS
+sub-datasets were not run. The complete record is finding F-19.
+
+---
+
+### F-19 — On FD001, the temporal stage dominates the measured one-factor changes
+
+**Established from.** Eighteen configurations at `fd65a3b-dirty`, each trained
+with seeds 42 through 46, stored under
+`reports/sensitivity_fd65a3b-dirty_20260929T101059Z`. Each comparison changes
+one available choice around the recurrent-stage reference. The graph widths,
+dense-layer width, batch size, epoch limit, first seed, recurrent width,
+numbers passed per sensor, label ceiling, window length, stride and smoothing
+weight were held fixed. `summary.csv` holds all four test measures and their
+paired differences; `REPORT.md` explains the complete table.
+
+**The reference.** One dedicated long short-term memory network per sensor,
+the paper's physics graph, row graph rescaling, no graph-layer offset, z-score
+sensor scaling, smoothing, the one-drop learning-rate path, 20% of training
+engines held back and early stopping gave **13.234 ± 0.723 RMSE**.
+
+**The resolved changes.** Passing only the final sensor reading raised RMSE by
+**3.456 cycles** (16.690 ± 0.229, paired p = 0.00097). Passing the window
+average raised it by **9.200 cycles** (22.434 ± 0.516, p = 0.000032). Those are
+the only differences below `0.05 / 17 = 0.00294`, a conservative correction
+for the seventeen comparisons.
+
+Multiplying both learning rates by ten raised RMSE by 1.372 cycles
+(14.607 ± 0.307, unadjusted p = 0.0094), which does not pass that correction.
+None of the other temporal, graph, rescaling, bias, smoothing, scaling,
+learning-rate-path or lower-rate comparisons could be distinguished from zero
+over these five paired seeds. This is not evidence that those components never
+matter: two earlier comparisons in this project reversed when the surrounding
+architecture changed.
+
+**Two equalities need mechanisms, not rankings.** Per-condition and global
+range scaling are identical on FD001 because it has one operating condition.
+The step, plateau and constant learning-rate paths also produced identical
+predictions: every reference run selected pass 5 to 24 and stopped by pass 44,
+before the step at pass 100, and the plateau path did not reduce the rate before
+stopping.
+
+**A scoring change, measured without retraining.** Scoring the same reference
+predictions against uncapped test answers raised RMSE from 13.234 ± 0.723 to
+**14.398 ± 0.732**, a paired increase of 1.164 cycles (p = 0.000027). It changes
+the answers used to score the predictions, not the predictions themselves.
 
 ---
 

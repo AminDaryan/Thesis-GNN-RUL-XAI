@@ -12,17 +12,14 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ..graph.adjacency import AdjacencyNormalization, normalize_adjacency
+from ..graph.adjacency import (
+    AdjacencyNormalization,
+    connections_of,
+    normalize_adjacency,
+)
 from ..models.estgnn import ESTGNN
 
 __all__ = ["connection_removal", "connections_of"]
-
-
-def connections_of(raw_adjacency: np.ndarray) -> list[tuple[int, int]]:
-    """Every connection of the raw graph, once, as (lower index, higher index)."""
-    matrix = np.asarray(raw_adjacency)
-    rows, cols = np.nonzero(np.triu(matrix, k=1))
-    return [(int(i), int(j)) for i, j in zip(rows, cols, strict=True)]
 
 
 @torch.no_grad()

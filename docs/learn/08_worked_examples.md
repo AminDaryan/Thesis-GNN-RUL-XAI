@@ -27,7 +27,7 @@ For an earlier test row, add the cycles between that row and the last recorded
 row to the answer-file value. This is label preparation, not information the
 model is allowed to read. Changing an answer must not change its sensor input.
 
-The [Data chart](01_the_problem.md#what-the-model-is-asked-to-predict) shows
+The [label chart](04_the_pipeline.md#1--cap-the-labels) shows
 the entire training engine, before and after capping. The raw remaining life
 may exceed the ceiling; the capped training label cannot.
 

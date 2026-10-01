@@ -634,8 +634,14 @@ Each step shows a small drawing of what it does above its name, so it can be
 recognised and remembered by its shape as well as its words: a jagged line
 made smooth for the smoothing, a window over a line of cycles for the cutting
 into windows, a few sensors joined by lines for the sensor graph, a table for
-its rescaling, one sensor gathering from four for a graph layer, an S-shaped
-curve for the output. The server names each step's drawing (its `picture`),
+its rescaling, arrows from connected sensors into a filled sensor for a graph
+layer, an S-shaped curve for **Predicted life fraction**. That step produces
+one fraction of the life ceiling per window; **Scale to cycles** converts it
+to remaining flight cycles. Its visible caption explains that `(B,)` contains
+B values in one dimension, and its information card explains that B counts
+windows processed together. The last layer initially gives `(B, 1)`;
+`squeeze(-1)` removes the one-value axis without removing any predictions.
+The server names each step's drawing (its `picture`),
 and the groups of the form that decide a step carry the same drawing. The
 words that open and close a flowchart, what comes in and what goes out, stand
 with the picture of the box they come from or go to, as the overview draws
@@ -722,7 +728,7 @@ property of the step rather than as the thing passed from one step to the next.
 | Box | Its steps |
 |---|---|
 | 1 Data | the training engines, the test engines and the file of their remaining life, side by side; a remaining life for every row; and the 14 of 21 sensors kept, in Table 3's order |
-| 2 Preprocessing | capping the labels, smoothing, holding engines back, finding the operating conditions, rescaling, cutting windows, and the two or three sets of windows that result |
+| 2 Preprocessing | capping the labels, smoothing, holding engines back, finding the operating conditions, rescaling and cutting windows; the groups appear immediately after holding engines back and persist through the remaining steps |
 | 3 Temporal stage | for the LSTM or the GRU: splitting the window by sensor, one network per sensor (or one shared by all), its last hidden state, and the one weighted sum, shared by all sensors, that turns it into the numbers the graph layers receive; for the other stages, what each does to a window instead |
 | 4 Graph layers | the sensor graph, its rescaling, the three graph layers, the flattening, the fully connected layer, the output and its scaling to cycles |
 
@@ -739,6 +745,32 @@ the window length "was changed from its default, 30 cycles (the paper's Table
 6)", and carries no tag. This rule came from a review that found the first
 version tagging a changed window with Table 6, and a shared LSTM with the
 Section 2.2 it departs from.
+
+**Choosing a procedure and applying its split happen in different places.**
+Training owns the procedure control because validation also decides which
+saved model to keep. Preprocessing applies its engine split before fitting
+the rescaling statistics. Each arrow keeps its compact summary of the training
+file, with an **i** beside it for the full breakdown. That card shows training,
+validation and test row counts immediately after **Hold engines back**, carries
+those groups through rescaling, and shows their window counts after **Cut into
+windows**. It opens on hover, keyboard focus or click. The diagram has no
+additional two-set or three-set operation. The stored
+windows are collected by engine later in the pipeline, using the same
+membership chosen earlier. This is a conceptual view of group membership,
+not a claim that the program creates separate table objects at that point.
+The real-data diagram tests check every group's row and window counts against
+the pipeline, including the procedure without validation.
+
+Every displayed output shape in Data, Preprocessing, the temporal stage and
+the graph layers has the same **i** beside it. Its card names the output and
+explains the dimensions in order, including the meaning of `B`. This includes
+the sensor graph on the side branch and the separate window-summary outputs.
+For recurrent networks, the card distinguishes a separate history for each
+sensor from the combined window–sensor dimension used by a shared network.
+After flattening, the card describes one list per window; after prediction,
+it describes one value per window. The compact shape stays on the arrow.
+The renderer checks cover every temporal option, both recurrent sharing
+choices, the graph branch and the data lanes, using the real stage descriptions.
 
 Nothing in a flowchart is typed in by hand as a number. `stage_detail()` counts
 the rows and engines from the NASA files, runs the real preprocessing for the
@@ -920,14 +952,15 @@ beside settings that are still being chosen.
 
 ### Where each default comes from
 
-Every setting has an i beside its name. Pointing at the i or reaching it with
+Each settings section has an i beside its title. Individual controls and
+choices have no separate icons. Pointing at the title's i or reaching it with
 the keyboard shows a small card in two parts. First, in plain words, what the
-setting is for: the problem it answers and what changing it does to the run,
+section's settings are for: the problem they answer and what changing them does to the run,
 written for a reader who has never met the method, so that they can tell
 whether to touch it. Then, under a thin line, a tag saying which of four
 things set the default, because that is the distinction the thesis depends
-on, and a few words on why. The first seed and the device have only the first
-part, since no source decides either. The author asked for the order on
+on, and a few words on why. Sections without a source, such as **Device**,
+have only the explanation. The author asked for the order on
 2026-09-26: the card beside "Sensor scaling" had said only where the default
 came from, and never what sensor scaling is for. Choosing the i keeps the card
 open, and only then can the keyboard reach a link in it; the card closes once
@@ -935,7 +968,7 @@ the focus moves on, or with Escape. The form itself shows only names, so it
 reads as a list of choices rather than a list of citations.
 
 The plain words are held in `FIELDS` in `playground.py`, as each setting's
-`about`, and for the options that have an i of their own, as the option's.
+`about`, and as the option's `about` for descriptions of particular choices.
 Each was checked against the code it describes, never against the paper,
 which is the tag's business, so none of them carries a table, an equation or
 an assumption's number. A flowchart step's i has the same two parts: what the
@@ -982,23 +1015,71 @@ physical cause also follows the
 Every card ends with **Read more**, a link that opens, in a new tab, the part
 of the documentation that explains the setting, the option or the step: the
 section of a Learn page, of a folder's README or an entry of the assumptions
-log. `_READ_MORE` in `playground.py` holds where each one leads, as a document
-and a heading written as the document has it, and a test checks that every
-one of those headings exists, so a heading renamed later fails the suite
-rather than leaving a link that leads nowhere. The author asked for it after
-meeting "Find operating conditions" in a flowchart with nothing to say where
-it came from. A card is drawn over everything around it: each grid of settings is
+log. `_READ_MORE` in `playground.py` holds the settings and option destinations.
+Diagram cards use `_STEP_DOCUMENTS`, which pairs each displayed operation name
+with its taught page. `_STEP_HEADINGS` adds the stage number where the page
+uses one; the operation's name stays the same. Each destination explains
+**Input**, **Function**, **Output** and a worked **Example** from real FD001
+readings. For example, **Calculate training labels** opens that section of
+**Data**, where the subtraction from an engine's final recorded cycle is shown
+before the separate ceiling operation. Temporal alternatives each have their
+own section, so keeping a reading cannot accidentally open the explanation of
+a calculated memory state merely because both use the same picture.
+
+**Correction, 2026-09-29.** Diagram cards previously reused broad topic links,
+and a card connected to a setting could replace its operation's explanation
+and link with that setting's help. The diagram now keeps the operation's own
+text and tutorial link; its clickable values still open the related settings.
+The number of values produced by the temporal conversion remains in the
+diagram's detail, while its name, **Turn into numbers per sensor**, stays the
+same as its documentation heading when that setting changes. Tests render the
+actual cards and check the links, headings and tutorial labels across the
+available stages and changed settings.
+
+The Data, Preprocessing, Temporal algorithm, GNN and Architecture and training
+pages integrate each example into its numbered
+stage: intuition and the figure first, then a Process with complete sample
+input and output tables. Input, Function and Output teach the information and
+the general transformation, without naming the implementation. An expandable
+**Example in Python** follows the conceptual calculation and precedes the
+output. Its code blocks run in page order, and the example
+tests check every table cell against those calculations on FD001. Older section
+bookmarks are redirected by `DATA_MOVED_SECTIONS` in `app.js`, so merging the
+earlier duplicate sections does not leave their links pointing nowhere.
+The temporal tutorial uses four real FD001 cycles and one value per memory
+list, so all readings, gates and memory updates can be shown. Its recurrent
+parameters come from a fixed initialization and are not trained. The architecture
+tutorial likewise uses an untrained teaching network with graph widths of
+3, 2 and 1 and a fully connected width of 3. These teaching widths keep every
+input, multiplier and output visible; they do not change the project's defaults.
+The saved-model walkthrough remains on the Worked examples page, separate from
+these calculations. Shared and separate recurrent networks have distinct
+examples, while duplicate last-reading and average sections now have one
+destination each.
+Document navigation waits for its figures before aligning the requested heading;
+otherwise an image arriving later could push the linked section off screen.
+
+An introduction marks the start of each page's algorithm, whose steps begin
+at 1. The step number appears in a badge in the article; earlier numbered
+addresses redirect to their new sections. Wider gaps and dividers separate
+stages and their operations. Process has a distinct heading, followed by
+Input, Function and Output headings. These details remain in the article;
+the right-hand contents and the folded contents on smaller screens show only
+sections and subsections. Plain step numbers, regular-weight text and an
+unfilled active link keep the contents visually secondary to the site navigation.
+These treatments use the site's existing colours and fonts in both themes.
+
+A card is drawn over everything around it: each grid of settings is
 drawn by the browser in a layer of its own, since the layout's width rules
 measure it, so while a card shows, the setting, the grid and the group that
 hold it are lifted above their neighbours; before, a switch and an i of the
 next group showed through it.
 
-Each fact is said once: when every option of a setting shares one source, the
-tag is behind the setting's i; when the options differ, as for the sensor graph
-and the temporal stage, each option has an i of its own. An option's i is not a
-stop for the Tab key. Moving onto the option with the arrow keys opens its card,
-and a screen reader reads the card as the option's description. The cards of
-the Explain predictions tab's options work the same way.
+Design a run keeps the source notes and tutorial links in the section-title
+cards and the corresponding diagram operations. Its radio choices no longer
+open individual cards when reached with the arrow keys. In **Explain
+predictions**, options still have their own cards: the radio button opens its
+description for keyboard users, and the icon is not an extra Tab stop.
 
 A pass over the whole training set is what PyTorch calls an **epoch**; the page
 says "pass" throughout.
@@ -1078,6 +1159,39 @@ the request that starts it and the next poll. So a job this page started is
 also announced when the very first poll already finds it ended.
 
 ### A run, and two runs
+
+An opened run shows **Settings used for this run** before its charts. Three
+groups show data preparation, temporal and graph layers, and training. They
+read the saved preprocessing configuration, saved model configuration and
+each seed's training configuration. Training values shared by all seeds appear
+once; differing values name each seed. A seed without a training file uses
+the recorded summary where available, visibly labelled as such. Missing
+settings say **Not recorded**, never the current form's defaults. Zero,
+false and null retain their distinct meanings. A saved but unused recurrent
+setting remains visible, with a note when the temporal route does not use it.
+
+The run record shows the stored split policy, stopping policy, reported
+weights, code version and completion time. An expandable source record keeps
+every saved field accessible, including notes, additional configuration keys,
+the launch command and software environment when the run recorded them.
+The API's `recorded_summary` and `recorded_model` preserve the saved mappings;
+`per_seed[seed].training` holds that seed's complete training settings.
+Grouped study runs retain their full path below `reports/`, so opening or
+revisiting two runs named `reference` does not mix up their records.
+
+**How to interpret this run** gives each comparison note a descriptive title
+and a separate background link. Its columns use the available width, becoming
+one column in a narrow panel. The notes qualify the results; they do not
+stand in for the actual recorded settings. The test-label note appears only
+when capping was recorded, and an unknown weight-selection policy is labelled
+as unknown rather than being described as the final pass.
+
+**Correction, 2026-10-01.** Run history previously showed only a few settings
+in badges and never exposed the complete per-seed training files. Inspecting
+those saved files showed that information such as the optimizer, device and
+stopping threshold was available but missing from the UI. The settings groups
+now show it; tests compare the API response with the files written by a real
+FD001 training run and check missing, disabled and differing settings in the UI.
 
 Each list shows ten rows a page, with the way to the page before and the page
 after and which rows are on show, "11–20 of 34". Its filters stand above it,
@@ -1263,7 +1377,21 @@ and explains the measurement; Enter and Space provide the same action.
 
 ### Help cards and the separate worked example
 
-Settings and matching diagram steps use the same `sectionHelp` function.
+Settings and diagram steps with the same title use the same `sectionHelp`
+function: the explanation, source note and tutorial link are identical. For
+example, both **Rescale each sensor** cards explain the mean-and-spread and
+training-range choices. The selected choice remains visible under the diagram
+title. The tutorial addresses come from the same operation-name catalogue, so
+sharing a card cannot replace its named tutorial with a general settings page.
+Related titles share the explanation too: **Graph layer 1**, **Graph layer 2**
+and **Graph layer 3** use the **Graph layers** help, while each links to its own
+tutorial section. Their selected widths and input/output dimensions remain on
+the diagram. The fixed temporal operations (last reading, average, three
+summaries or every cycle) share the corresponding option's explanation and
+tutorial link. Matching depends on the setting an operation controls as well
+as its title, so a singular name or an alternative temporal stage does not
+silently fall back to a second version of the text. Data operations without a
+settings counterpart keep their own explanation in the same card layout.
 Clicking a section heading opens its diagram operation; clicking that operation
 returns to the matching setting. Help cards explain the operation once, cite
 its source and link to the relevant reading. They do not repeat the diagram
@@ -1739,8 +1867,12 @@ draw.
 
 ### `list_runs(root)`, `run_detail(root, name)` and `compare_runs(root, first, second)`
 
-Every finished run in `reports/`, newest first, each with the published row it
-may be set beside and the cautions that apply; one run in full, with every
-seed's per-pass record and test predictions and every stored explanation; and
-two runs paired seed by seed, with the settings that differ and a paired *t*
-and *p* for each measure.
+Every finished run anywhere below `reports/`, newest first, each with the
+published row it may be set beside and the cautions that apply.  An ordinary
+run is named by its folder; a run grouped inside a sensitivity study is named
+by its whole path below `reports/`, such as
+`sensitivity_.../runs/FD001/reference`, so two sub-datasets' `reference`
+folders remain distinct.  The other two functions return one run in full,
+with every seed's per-pass record and test predictions and every stored
+explanation, or two runs paired seed by seed, with the settings that differ
+and a paired *t* and *p* for each measure.

@@ -201,12 +201,12 @@
   }
 
   function typeset(root) {
-    if (window._mathFailed || !window.MathJax || !window.MathJax.tex2chtmlPromise) { return; }
+    if (window._mathFailed || !window.MathJax || !window.MathJax.tex2chtmlPromise) { return Promise.resolve(); }
     var nodes = root.querySelectorAll(".math-inline, .math-display");
-    Array.prototype.forEach.call(nodes, function (node) {
+    return Promise.all(Array.prototype.map.call(nodes, function (node) {
       if (node.dataset.typeset) { return; }
       var display = node.classList.contains("math-display");
-      window.MathJax.tex2chtmlPromise(node.textContent, { display: display })
+      return window.MathJax.tex2chtmlPromise(node.textContent, { display: display })
         .then(function (rendered) {
           node.textContent = "";
           node.appendChild(rendered);
@@ -217,7 +217,7 @@
           }
         })
         .catch(function () { document.documentElement.classList.add("no-math"); });
-    });
+    }));
   }
 
   // ------------------------------------------------------------- sidebar
@@ -355,18 +355,23 @@
     tocPanel.innerHTML = "";
     var old = content.querySelector(".toc-inline");
     if (old) { old.parentNode.removeChild(old); }
-    var useful = (headings || []).filter(function (h) { return h.level >= 2 && h.level <= 4; });
+    var useful = (headings || []).filter(function (h) {
+      return h.level >= 2 && h.level <= 3 && h.text !== "Process";
+    });
     if (useful.length < 2) { return; }
     tocPanel.appendChild(el("div", { class: "toc-title", text: "On this page" }));
     var folded = el("details", { class: "toc-inline" });
     folded.appendChild(el("summary", { text: "On this page" }));
     useful.forEach(function (heading) {
+      var stage = heading.level === 2 && heading.text.match(/^(\d+) — (.+)$/);
+      var kind = stage ? "stage" : "section";
       var link = {
         href: pageRoute() + "#" + heading.anchor,
         "data-level": heading.level,
         "data-anchor": heading.anchor,
-        text: heading.text
+        "data-kind": kind
       };
+      link.text = stage ? stage[1] + ". " + stage[2] : heading.text;
       tocPanel.appendChild(el("a", link));
       folded.appendChild(el("a", link));
     });
@@ -467,14 +472,14 @@
   }
 
   function fillFigures(root) {
-    Array.prototype.forEach.call(root.querySelectorAll("[data-figure]"), function (holder) {
+    return Promise.all(Array.prototype.map.call(root.querySelectorAll("[data-figure]"), function (holder) {
       if (holder.dataset.filled) { return; }
       holder.dataset.filled = "1";
       if (holder.dataset.figure === "engine" && window.ThesisEngineView) {
         window.ThesisEngineView.mountGuide(holder);
         return;
       }
-      fetch("/api/figure?name=" + encodeURIComponent(holder.dataset.figure))
+      return fetch("/api/figure?name=" + encodeURIComponent(holder.dataset.figure))
         .then(function (r) { return r.text(); })
         .then(function (svg) {
           holder.innerHTML = svg;
@@ -484,7 +489,7 @@
             "<strong>This figure could not be loaded</strong><p>" +
             escapeHtml(error.message) + "</p></div>";
         });
-    });
+    }));
   }
 
   // Every table gets a box of its own that scrolls sideways when the table is
@@ -548,7 +553,62 @@
     "walks-the-routes-a-prediction-took-through-the-graph": "11_gnn_lrp.md"
   };
 
+  var DATA_MOVED_SECTIONS = {
+    "05_the_model.md#output": "05_the_model.md#6--predicted-life-fraction",
+    "05_the_model.md#predicted-life-fraction": "05_the_model.md#6--predicted-life-fraction",
+    "05_the_model.md#graph-layer-1": "05_the_model.md#1--graph-layer-1",
+    "05_the_model.md#graph-layer-2": "05_the_model.md#2--graph-layer-2",
+    "05_the_model.md#graph-layer-3": "05_the_model.md#3--graph-layer-3",
+    "05_the_model.md#flatten": "05_the_model.md#4--flatten",
+    "05_the_model.md#fully-connected": "05_the_model.md#5--fully-connected",
+    "05_the_model.md#scale-to-cycles": "05_the_model.md#7--scale-to-cycles",
+    "05_the_model.md#run-the-examples-on-this-page": "05_the_model.md#example-setup",
+    "05_the_model.md#before-table-4-the-stage-the-paper-does-not-tabulate": "09_temporal.md#choose-a-route",
+    "05_the_model.md#the-six-layers-and-how-many-numbers-each-learns": "05_the_model.md#shapes-and-the-default-architecture",
+    "05_the_model.md#the-last-layer-and-what-it-makes-impossible": "05_the_model.md#6--predicted-life-fraction",
+    "05_the_model.md#why-the-shapes-are-checked-so-aggressively": "05_the_model.md#shapes-and-the-default-architecture",
+    "05_the_model.md#the-stage-left-out-by-default": "09_temporal.md#the-stage-left-out-by-default",
+    "09_temporal.md#what-enters-and-leaves": "09_temporal.md#choose-a-route",
+    "09_temporal.md#load-the-tutorial-example": "09_temporal.md#example-setup",
+    "09_temporal.md#split-by-sensor": "09_temporal.md#1--split-by-sensor",
+    "09_temporal.md#keep-the-last-hidden-state": "09_temporal.md#3--keep-the-last-hidden-state",
+    "09_temporal.md#turn-into-numbers-per-sensor": "09_temporal.md#4--turn-into-numbers-per-sensor",
+    "09_temporal.md#last-reading": "09_temporal.md#keep-the-last-reading",
+    "09_temporal.md#average": "09_temporal.md#average-the-window",
+    "02_graphs.md#sensor-graph": "02_graphs.md#1--sensor-graph",
+    "02_graphs.md#rescale-the-graph": "02_graphs.md#2--rescale-the-graph",
+    "02_graphs.md#a-graph-is-points-and-connections": "02_graphs.md#1--sensor-graph",
+    "02_graphs.md#the-adjacency-matrix-is-the-graph-written-as-a-table": "02_graphs.md#1--sensor-graph",
+    "02_graphs.md#the-graph-this-project-uses": "02_graphs.md#1--sensor-graph",
+    "02_graphs.md#what-a-graph-neural-network-does-message-passing": "02_graphs.md#how-information-travels-through-layers",
+    "02_graphs.md#one-graph-layer-as-a-formula": "05_the_model.md#1--graph-layer-1",
+    "02_graphs.md#why-a-graph-at-all": "02_graphs.md#why-use-a-graph",
+    "04_the_pipeline.md#4--cap-the-labels": "04_the_pipeline.md#1--cap-the-labels",
+    "04_the_pipeline.md#5--smooth-each-sensor": "04_the_pipeline.md#2--smooth-each-sensor",
+    "04_the_pipeline.md#6--hold-engines-back": "04_the_pipeline.md#3--hold-engines-back",
+    "04_the_pipeline.md#7--put-readings-on-a-comparable-scale": "04_the_pipeline.md#4--put-readings-on-a-comparable-scale",
+    "04_the_pipeline.md#8--cut-into-windows": "04_the_pipeline.md#5--cut-into-windows",
+    "04_the_pipeline.md#9--assign-windows-to-their-sets": "04_the_pipeline.md#prepared-windows",
+    "04_the_pipeline.md#6--assign-windows-to-their-sets": "04_the_pipeline.md#prepared-windows",
+    "01_the_problem.md#only-14-of-the-21-sensors": "01_the_problem.md#3--select-14-sensor-columns-for-model-inputs",
+    "01_the_problem.md#select-14-sensor-columns-for-model-inputs": "01_the_problem.md#3--select-14-sensor-columns-for-model-inputs",
+    "01_the_problem.md#what-the-model-is-asked-to-predict": "04_the_pipeline.md#1--cap-the-labels",
+    "04_the_pipeline.md#1--load": "01_the_problem.md#1--read-the-engine-histories",
+    "04_the_pipeline.md#2--diagnose": "01_the_problem.md#2--check-which-sensors-vary",
+    "04_the_pipeline.md#3--select": "01_the_problem.md#3--select-14-sensor-columns-for-model-inputs",
+    "04_the_pipeline.md#cap-the-labels": "04_the_pipeline.md#1--cap-the-labels",
+    "04_the_pipeline.md#5--smooth-leakage-critical": "04_the_pipeline.md#2--smooth-each-sensor",
+    "04_the_pipeline.md#smooth-each-sensor": "04_the_pipeline.md#2--smooth-each-sensor",
+    "04_the_pipeline.md#6--split-leakage-critical": "04_the_pipeline.md#3--hold-engines-back",
+    "04_the_pipeline.md#hold-engines-back": "04_the_pipeline.md#3--hold-engines-back",
+    "04_the_pipeline.md#7--rescale-leakage-critical": "04_the_pipeline.md#rescale-each-sensor",
+    "04_the_pipeline.md#8--window": "04_the_pipeline.md#5--cut-into-windows",
+    "04_the_pipeline.md#cut-into-windows": "04_the_pipeline.md#5--cut-into-windows",
+    "04_the_pipeline.md#what-the-model-receives-one-number-per-sensor-not-thirty": "09_temporal.md#choose-a-route"
+  };
+
   function navigate() {
+    var requestedHash = window.location.hash;
     var route = currentRoute();
     var argument = route.argument;
     var fragment = "";
@@ -561,6 +621,12 @@
     if (route.view === "doc" && argument === "docs/learn/03_explainability.md" &&
         XAI_MOVED_SECTIONS[fragment]) {
       window.location.replace("#/doc/docs/learn/" + XAI_MOVED_SECTIONS[fragment] + "#" + fragment);
+      return;
+    }
+
+    var mergedSection = DATA_MOVED_SECTIONS[argument.replace(/^docs\/learn\//, "") + "#" + fragment];
+    if (route.view === "doc" && mergedSection) {
+      window.location.replace("#/doc/docs/learn/" + mergedSection);
       return;
     }
 
@@ -598,6 +664,7 @@
 
     markActive(path);
     Promise.resolve(done).then(function () {
+      if (window.location.hash !== requestedHash) { return; }
       if (fragment) {
         var target = findSection(fragment);
         if (target) { target.scrollIntoView({ behavior: "instant" }); }
@@ -617,7 +684,9 @@
   // ------------------------------------------------------- view: document
 
   function viewDocument(path) {
+    var requestedHash = window.location.hash;
     return get("/api/doc?path=" + encodeURIComponent(path)).then(function (doc) {
+      if (window.location.hash !== requestedHash) { return; }
       var meta = [];
       if (doc.minutes) { meta.push("<span>about " + doc.minutes + (doc.minutes === 1 ? " minute" : " minutes") + "</span>"); }
       meta.push("<code>" + breakablePath(doc.path) + "</code>");
@@ -629,10 +698,10 @@
       if (path === LOG_PATH) { showVerification(content.querySelector(".prose h1")); }
       fullSectionLinks(content.querySelector(".prose"));
       wrapTables(content);
-      fillFigures(content);
+      var figuresReady = fillFigures(content);
       buildToc(doc.headings);
-      typeset(content);
       setTitle(doc.title);
+      return Promise.all([figuresReady, typeset(content)]);
     }).catch(function (error) {
       showError("That document could not be shown", error.message);
     });

@@ -501,3 +501,22 @@ and taught pages for the same claims.
 retain legitimate methodological cautions, and add any numerical examples
 using real FD001 inputs to the existing example tests. Do not present a
 mathematical guarantee where only a possible outcome is established.
+
+---
+
+## P-26 — Complete the fixed-setting sensitivity study on FD002, FD003 and FD004
+
+The 18-scenario, five-seed study completed on FD001 on 2026-09-29 has not yet
+been run on the other three C-MAPSS sub-datasets.  The author requested the
+same scenarios while keeping the graph layer widths, first fully connected
+width, windows per update, passes over the training data, first seed,
+recurrent hidden size, numbers handed to the graph per sensor, label ceiling,
+window length, cycles between windows and smoothing weight on the newest
+reading unchanged.
+
+**What finishing looks like:** run all 18 predefined scenarios with five seeds
+on FD002, FD003 and FD004; retain each run's code identity and measured files;
+make grouped runs visible in the website's Run History; report the mean and
+seed-to-seed spread of every measure; record the resulting cross-dataset
+finding in `docs/ASSUMPTIONS.md`; run the relevant tests; and delete this
+entry.

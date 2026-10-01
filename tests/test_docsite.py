@@ -54,6 +54,96 @@ def test_two_headings_with_the_same_words_get_different_anchors():
     assert [h.anchor for h in rendered.headings] == ["files", "files-1"]
 
 
+@pytest.mark.parametrize("filename,process_count", [
+    ("01_the_problem.md", 5), ("04_the_pipeline.md", 8),
+    ("09_temporal.md", 12), ("02_graphs.md", 2), ("05_the_model.md", 7),
+])
+def test_tutorials_separate_concepts_examples_and_results(root: Path, filename, process_count):
+    """Every process has named phases and keeps its optional code before the output."""
+    import re
+
+    path = "docs/learn/" + filename
+    source = (root / path).read_text(encoding="utf-8")
+    rendered = markup.render_markdown(source, source_path=path)
+    processes = [i for i, h in enumerate(rendered.headings) if h.text == "Process"]
+    assert len(processes) == process_count
+    for i in processes:
+        phases = rendered.headings[i + 1:i + 4]
+        assert [h.text for h in phases] == ["Input", "Function", "Output"]
+        assert all(h.level == rendered.headings[i].level + 1 for h in phases)
+        function_html = rendered.html.split(f'id="{phases[1].anchor}"', 1)[1]
+        function_html = function_html.split(f'id="{phases[2].anchor}"', 1)[0]
+        assert '<summary>Example in Python</summary>' in function_html
+        assert '<div class="code-block">' in function_html
+        example_html = function_html.split('<details class="process-example">', 1)[1]
+        assert '<div class="code-block">' in example_html.split('</details>', 1)[0]
+        assert '</details>' in function_html
+    concepts = re.sub(r'<details\b[\s\S]*?</details>', '', source)
+    for implementation_name in (
+        "DataFrame", "NumPy", "read_cmapss_frame", "attach_rul", "PAPER_SENSOR_COLUMNS",
+        "apply_piecewise_rul", "apply_ewma", "split_units_by_id", "OperatingConditionEncoder",
+        "SensorNormalizer", "make_windows", "make_last_windows", "subset_by_units", "WindowedDataset",
+    ):
+        assert implementation_name not in concepts, implementation_name
+    for heading in rendered.headings:
+        match = re.fullmatch(r"(\d+) — (.+)", heading.text)
+        if match:
+            assert f'id="{heading.anchor}" class="tutorial-stage"' in rendered.html
+            assert f'<span class="stage-number">{match[1]}</span>' in rendered.html
+    steps = [int(h.text.split(" — ")[0]) for h in rendered.headings if re.match(r"\d+ — ", h.text)]
+    assert steps == list(range(1, len(steps) + 1))
+    assert rendered.html.index('class="algorithm-intro"') < rendered.html.index('class="tutorial-stage"')
+
+
+@pytest.mark.parametrize("filename", [
+    "01_the_problem.md", "04_the_pipeline.md", "09_temporal.md", "02_graphs.md", "05_the_model.md",
+])
+def test_tutorial_contents_show_sections_without_process_phases(root: Path, filename):
+    """Both contents menus retain section links and leave the process detail in the article."""
+    import re
+    import shutil
+    import subprocess
+    from dataclasses import asdict
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the contents menu.")
+    path = "docs/learn/" + filename
+    headings = markup.render_markdown((root / path).read_text(encoding="utf-8"), source_path=path).headings
+    source = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.js").read_text(encoding="utf-8")
+    function = re.search(r"  function buildToc\(headings\) \{[\s\S]*?\n  \}", source)[0]
+    script = r"""
+const vm = require('vm'), fs = require('fs'), assert = require('node:assert/strict');
+const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+const el = (tag, attrs) => ({tag, attrs, children: [], appendChild(child) {this.children.push(child);}});
+const panel = el('aside', {});
+let folded;
+const title = {parentNode: {insertBefore(node) {folded = node;}}};
+const context = {tocPanel: panel, content: {querySelector: selector => selector === '.toc-inline' ? null : title},
+  el, pageRoute: () => '#/doc/docs/learn/01_the_problem.md', spyOnScroll: () => {}, escapeHtml: text => text};
+vm.createContext(context); vm.runInContext(payload.function, context);
+context.buildToc(payload.headings);
+for (const target of [panel, folded]) {
+  const links = target.children.filter(x => x.tag === 'a');
+  const sections = payload.headings.filter(h => h.level >= 2 && h.level <= 3 && h.text !== 'Process');
+  assert.equal(links.length, sections.length);
+  assert.ok(!links.some(x => /^(Process|Input|Function|Output)$/.test(x.attrs.text)));
+  for (const heading of sections) {
+    const link = links.find(x => x.attrs['data-anchor'] === heading.anchor);
+    assert.ok(link, heading.text);
+    assert.equal(link.attrs.href, '#/doc/docs/learn/01_the_problem.md#' + heading.anchor);
+    if (/^\d+ — /.test(heading.text)) {
+      assert.equal(link.attrs.text, heading.text.replace(' — ', '. '));
+      assert.ok(!link.attrs.html);
+    }
+  }
+}
+"""
+    result = subprocess.run([node, "-e", script], cwd=root, capture_output=True, text=True,
+                            input=json.dumps({"function": function, "headings": [asdict(h) for h in headings]}))
+    assert result.returncode == 0, result.stderr
+
+
 def test_mathematics_survives_the_markdown_parser_untouched():
     # An underscore inside a formula is a subscript, not the start of italics.
     rendered = markup.render_markdown(r"Then $\mathrm{RUL}_{\max} = 125$ holds.")
@@ -630,6 +720,71 @@ def test_old_xai_section_links_redirect_to_existing_subpage_headings(root: Path)
         page = root / "docs/learn" / name
         rendered = markup.render_markdown(page.read_text(encoding="utf-8"), source_path=page.as_posix())
         assert anchor in {heading.anchor for heading in rendered.headings}
+
+
+def test_merged_data_sections_keep_old_bookmarks(root: Path):
+    """Old tutorials reach one canonical section, without retaining duplicate headings."""
+    import re
+
+    script = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.js").read_text(encoding="utf-8")
+    mapping = script.split("var DATA_MOVED_SECTIONS = {", 1)[1].split("};", 1)[0]
+    aliases = dict(re.findall(r'"([^"]+)": "([^"]+)"', mapping))
+    assert "01_the_problem.md#only-14-of-the-21-sensors" in aliases
+    assert aliases["04_the_pipeline.md#4--cap-the-labels"] == "04_the_pipeline.md#1--cap-the-labels"
+    for old, destination in aliases.items():
+        assert old != destination
+        assert destination not in aliases
+        filename, anchor = destination.split("#")
+        path = "docs/learn/" + filename
+        rendered = markup.render_markdown((root / path).read_text(encoding="utf-8"), source_path=path)
+        assert anchor in {heading.anchor for heading in rendered.headings}, destination
+
+
+def test_document_is_ready_for_section_scroll_only_after_figures_load(root: Path):
+    """A slow figure must not move a heading after a Read more link has aligned it."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check asynchronous document loading.")
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/app.js', 'utf8');
+const holders = ['smoothing', 'windowing'].map(figure => ({dataset: {figure}, innerHTML: ''}));
+const pending = [];
+const context = {
+  window: {location: {hash: '#/doc/example.md#section'}},
+  content: {querySelectorAll: () => holders, querySelector: () => ({})},
+  fetch: () => new Promise(resolve => pending.push(resolve)),
+  get: () => Promise.resolve({html: '<h2>Example</h2>', path: 'example.md', headings: [], title: 'Example'}),
+  expandFigures: text => text, breakablePath: text => text, escapeHtml: text => text,
+  fullSectionLinks: () => {}, wrapTables: () => {}, buildToc: () => {}, setTitle: () => {},
+  typeset: () => Promise.resolve(), LOG_PATH: 'assumptions', showError: error => {throw Error(error);}
+};
+vm.createContext(context);
+vm.runInContext(source.slice(source.indexOf('  function fillFigures('),
+                            source.indexOf('  // Every table gets')), context);
+vm.runInContext(source.slice(source.indexOf('  function viewDocument('),
+                            source.indexOf('  function loadLog(')), context);
+(async () => {
+  let ready = false;
+  const loading = context.viewDocument('example.md').then(() => { ready = true; });
+  await Promise.resolve();
+  assert.equal(pending.length, 2);
+  assert.equal(ready, false);
+  pending[0]({text: () => Promise.resolve('<svg>first</svg>')});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(holders[0].innerHTML, '<svg>first</svg>');
+  assert.equal(ready, false);
+  pending[1]({text: () => Promise.resolve('<svg>second</svg>')});
+  await loading;
+  assert.equal(ready, true);
+  assert.equal(holders[1].innerHTML, '<svg>second</svg>');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    result = subprocess.run([node, "-e", script], cwd=root, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
 def test_a_figure_placeholder_inside_code_stays_text(root: Path):
