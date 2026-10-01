@@ -118,7 +118,7 @@ def test_example_engine_connections_come_from_the_selected_saved_network(tmp_pat
     from pathlib import Path
 
     from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS
-    from thesis_gnn_rul_xai.docsite.playground import _explanation_edges
+    from thesis_gnn_rul_xai.docsite.playground.runs import _explanation_edges
 
     root = Path(__file__).resolve().parents[1]
     saved = next(iter(sorted((root / "reports").glob("*correlation*/seed_*/model.pt"))), None)

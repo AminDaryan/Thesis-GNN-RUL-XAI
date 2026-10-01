@@ -1,7 +1,7 @@
 """Reads the assumptions log and the last re-check of its numbers, for the website.
 
 Read README.md in this folder. It explains everything this file does. The
-stored training runs are read by playground.py, which the playground draws from.
+stored training runs are read by playground/runs.py, which the playground draws from.
 """
 
 from __future__ import annotations

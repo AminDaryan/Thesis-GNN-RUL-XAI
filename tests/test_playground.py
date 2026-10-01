@@ -126,7 +126,7 @@ def test_every_read_more_leads_to_a_heading_that_exists():
     from thesis_gnn_rul_xai.docsite.markup import slugify
 
     known = {entry.identifier for entry in results.load_entries(ROOT)}
-    for key in playground._READ_MORE:
+    for key in playground.settings._READ_MORE:
         address = playground.read_more(key)
         if address.startswith("#/entry/"):
             assert address.removeprefix("#/entry/") in known, key
@@ -138,7 +138,7 @@ def test_every_read_more_leads_to_a_heading_that_exists():
         assert anchor in slugs, (key, path, anchor)
     # Every setting and every option with an i of its own has one.
     for field in playground.FIELDS:
-        assert field["key"] in playground._READ_MORE, field["key"]
+        assert field["key"] in playground.settings._READ_MORE, field["key"]
 
 
 def test_where_a_default_comes_from_is_said_once_per_setting():
@@ -272,7 +272,7 @@ def test_diagram_links_open_matching_tutorial_sections(stage, settings, raw_dir)
             documents[path] = render_markdown(text, source_path=path)
         rendered = documents[path]
         heading = next(h for h in rendered.headings if h.anchor == anchor)
-        assert heading.text == playground._STEP_HEADINGS.get(step["name"], step["name"])
+        assert heading.text == playground.settings._STEP_HEADINGS.get(step["name"], step["name"])
         section = rendered.html.split(f'id="{anchor}"', 1)[1]
         section = re.split(rf"<h[1-{heading.level}]\b", section, maxsplit=1)[0]
         for label in ("Input", "Function", "Output", "Example"):
@@ -496,8 +496,8 @@ def test_the_rescaled_graph_says_what_its_rows_sum_to_as_measured():
 
 def test_the_data_box_counts_the_rows_the_loader_reads(loaded):
     answer = _flowchart("data")
-    assert _step(answer, "Training engines")["shape"] == f"({playground._count(len(loaded.train))}, 26)"
-    assert _step(answer, "Test engines")["shape"] == f"({playground._count(len(loaded.test))}, 26)"
+    assert _step(answer, "Training engines")["shape"] == f"({playground.design._count(len(loaded.train))}, 26)"
+    assert _step(answer, "Test engines")["shape"] == f"({playground.design._count(len(loaded.test))}, 26)"
     assert not any(step.get("kind") == "evaluation" for step in answer["steps"])
     main = next(step for step in answer["steps"] if step.get("kind") == "group")
     assert not {"Test answers", "Attach test labels"}.intersection(step["name"] for step in main["steps"])
@@ -522,12 +522,12 @@ def test_the_preprocessing_groups_start_at_the_engine_split_and_keep_their_membe
     for name, columns in (("Hold engines back", 27), ("Find operating conditions", 28), ("Rescale each sensor", 28)):
         step = _step(answer, name)
         assert [(o["label"], o["shape"]) for o in step["handoff_outputs"]] == [
-            (label, f"({playground._count(n)}, {columns})") for label, n in row_counts]
+            (label, f"({playground.design._count(n)}, {columns})") for label, n in row_counts]
     windows = _step(answer, "Cut into windows")
     groups = [("Training", prepared.train), *([("Validation", prepared.validation)] if fraction else []),
               ("Test", prepared.test)]
     assert [(o["label"], o["shape"], o["targets"]) for o in windows["handoff_outputs"]] == [
-        (label, f"({playground._count(len(data))}, 14, 25)", f"({playground._count(len(data))},)")
+        (label, f"({playground.design._count(len(data))}, 14, 25)", f"({playground.design._count(len(data))},)")
         for label, data in groups]
     assert "no new split" in windows["does"]
     assert "Training → Procedure" in _step(answer, "Hold engines back")["summary"]
@@ -802,7 +802,7 @@ def test_the_page_and_the_server_name_the_same_explanation_methods():
     script = (ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets" / "playground.js").read_text(
         encoding="utf-8")
     line = next(x for x in script.splitlines() if x.strip().startswith("var METHODS = {"))
-    for key, name in playground._METHOD_NAMES.items():
+    for key, name in playground.settings._METHOD_NAMES.items():
         assert f'{key}: "{name}"' in line, (key, name)
 
 
@@ -1168,7 +1168,7 @@ def test_a_playground_run_stores_everything_the_page_reads_back(raw_dir, tmp_pat
     assert len(detail["per_seed"]["42"]["history"]) == 1
     assert detail["recorded_summary"] == summary
     assert detail["recorded_model"] == summary["model"]
-    saved_training = playground._read_yaml(first / "seed_42" / "training_config.yaml")
+    saved_training = playground.runs._read_yaml(first / "seed_42" / "training_config.yaml")
     assert detail["per_seed"]["42"]["training"] == saved_training
     assert saved_training["optimizer"] == "adam"
     assert saved_training["gradient_clip"] is None

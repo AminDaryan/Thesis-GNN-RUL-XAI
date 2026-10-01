@@ -1,5 +1,5 @@
 /* The playground: set up a run, follow it, read its results, explain it.
-   README.md in this folder explains what each part is for and why every run
+   docsite/playground/README.md explains what each part is for and why every run
    started here goes through scripts/train.py and lands in reports/.
 
    How the page is put together: every view is a string of HTML built from
@@ -281,7 +281,7 @@
   }
 
   // Where a default comes from: the paper, a numbered choice, a project rule,
-  // or an option the paper does not have. README.md lists the four.
+  // or an option the paper does not have. docsite/playground/README.md lists the four.
   function sourceTag(source) {
     if (!source || !SOURCE_NAMES[source.kind]) { return ""; }
     return '<span class="src src--' + source.kind + '" title="' + esc(SOURCE_TITLES[source.kind]) + '">' +

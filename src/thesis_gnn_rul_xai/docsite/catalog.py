@@ -86,6 +86,7 @@ _CODE: tuple[_Entry, ...] = (
     (f"{_PACKAGE}/explain/README.md", "Explaining", "reference", 0),
     (f"{_PACKAGE}/utils/README.md", "Shared helpers", "reference", 0),
     (f"{_PACKAGE}/docsite/README.md", "This website", "reference", 0),
+    (f"{_PACKAGE}/docsite/playground/README.md", "The playground", "reference", 1),
 )
 
 # The dated audits and reviews are found on disk rather than listed, so a new

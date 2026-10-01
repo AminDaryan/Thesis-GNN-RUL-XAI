@@ -285,7 +285,7 @@ def test_example_preprocessing_without_files(monkeypatch):
     """Missing NASA files produce descriptions without invented readings or counts."""
     from thesis_gnn_rul_xai.docsite import playground
 
-    monkeypatch.setattr(playground, "_files_present", lambda subset: False)
+    monkeypatch.setattr(playground.design, "_files_present", lambda subset: False)
     answer = playground.stage_detail("preprocessing", playground.validate_settings({}))
     assert "not in data/raw/" in answer["note"]
     assert all("example" not in step for step in answer["steps"])
