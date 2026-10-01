@@ -61,7 +61,13 @@ Each measure:
     removing it does.
 ``gamma_agreement_*``
     Spearman's rank correlation, over the 41 connections, between what flowed
-    along each at gamma 0 and at the other setting.
+    along each at the authors' setting of gamma and at the other setting.
+``aufc_<task>_<ranking>``
+    The GNN-LRP paper's own check of an explanation (its Section 4.1; A-33):
+    the mean, over the test windows, of the area under the curve the score
+    traces as sensors are added to an empty graph (``activation``; higher is
+    better) or removed from the full one (``pruning``; lower is better), in the
+    order each ranking gives.
 ``same_rows_drift``
     Trained networks only. For every pair of sensors with identical rows in the
     rescaled graph, how far the difference between their blocks of ``fc1``
@@ -101,10 +107,14 @@ from thesis_gnn_rul_xai.utils.provenance import (
     write_code_state_archive,
 )
 
-# ASSUMPTION A-29: the two positive settings of gamma tried beside 0. The paper
-# that introduced the method uses values falling towards the output; these two
-# are ours, one falling and one flat, chosen before any result was seen.
-GAMMAS: dict[str, tuple[float, float, float]] = {
+# The authors' own setting comes first and every measure is taken under it;
+# None asks walk_relevance for their default schedule, 0 at the first graph
+# layer. Gamma 0 everywhere is their simpler baseline, GNN-GI.
+# ASSUMPTION A-29: the other two settings, tried only to see how far a ranking
+# moves with gamma, are ours, one falling and one flat, chosen before any
+# result was seen.
+GAMMAS: dict[str, tuple[float, float, float] | None] = {
+    "authors": None,
     "0": (0.0, 0.0, 0.0),
     "0_0.5_0.25": (0.0, 0.5, 0.25),
     "0_1_1": (0.0, 1.0, 1.0),
@@ -153,9 +163,11 @@ def _connection_flow(result, raw: np.ndarray, symbols, groups) -> np.ndarray:
 def _measures(model, features, prepared) -> tuple[dict[str, float], dict[str, np.ndarray]]:
     """Every measure for one network over the given windows."""
     from thesis_gnn_rul_xai.explain import (
+        aufc,
         connection_removal,
         crossing_relevance,
         indistinguishable_sensors,
+        node_flipping,
         walk_relevance,
     )
 
@@ -169,7 +181,7 @@ def _measures(model, features, prepared) -> tuple[dict[str, float], dict[str, np
     for name, gamma in GAMMAS.items():
         results[name] = walk_relevance(model, features, gamma=gamma)
         flows[name] = np.abs(_connection_flow(results[name], raw, symbols, groups)).mean(axis=0)
-    result = results["0"]
+    result = results["authors"]
     table = crossing_relevance(result, symbols, pool=groups)
     stay_size = table["absolute_stays"]
     walks_sum = table["stays"] + table["moves"]
@@ -187,11 +199,16 @@ def _measures(model, features, prepared) -> tuple[dict[str, float], dict[str, np
     for key, values in per_window.items():
         row[f"{key}_median"] = float(np.median(values))
         row[f"{key}_mean"] = float(np.mean(values))
-    row["removal_agreement"] = _spearman(flows["0"], flows["removal"])
+    row["removal_agreement"] = _spearman(flows["authors"], flows["removal"])
     for name in GAMMAS:
-        if name != "0":
-            row[f"gamma_agreement_{name}"] = _spearman(flows["0"], flows[name])
+        if name != "authors":
+            row[f"gamma_agreement_{name}"] = _spearman(flows["authors"], flows[name])
     row["score_at_zero"] = result.score_at_zero
+    # The authors' own check (their Section 4.1), against their GNN-GI baseline,
+    # node-level rankings and random orders.
+    checked = aufc(node_flipping(model, features, {"GNN-LRP": result, "GNN-GI": results["0"]}))
+    for entry in checked.itertuples():
+        row[f"aufc_{entry.task}_{entry.ranking}"] = float(entry.mean)
     return row, flows
 
 
@@ -247,7 +264,7 @@ def main() -> int:
                     "removal_cycles": float(flows["removal"][index]),
                 })
             if label == "trained":
-                flows_by_seed[seed] = pd.Series(flows["0"], index=names)
+                flows_by_seed[seed] = pd.Series(flows["authors"], index=names)
 
     per_seed = pd.DataFrame(rows)
     connections = pd.DataFrame(connection_rows)
@@ -292,7 +309,8 @@ def main() -> int:
                 "run": stored.name,
                 "seeds": seeds,
                 "windows": "the last window of every test engine",
-                "gammas": {name: list(value) for name, value in GAMMAS.items()},
+                "gammas": {name: (None if value is None else list(value))
+                           for name, value in GAMMAS.items()},
                 "uncommitted_files": changed,
                 "measures": summary_measures,
                 "connection_ranking_agreement_between_seeds": {

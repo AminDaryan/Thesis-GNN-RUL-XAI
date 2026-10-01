@@ -21,12 +21,13 @@ Three methods are available, and only the first is the paper's:
     Shapley average in which the sensor arrives last, so the two agree only
     when the sensors do not interact.
 ``walks``
-    Not in the paper. GNN-LRP (A-29): the network's weights are read and each
-    window's score before the sigmoid -- the number the network's last step
-    turns into a prediction -- is split exactly into one share per walk
-    through the sensor graph, plus a part that belongs to no sensor. Nothing is
-    replaced and the network runs once. The shares are parts of that score,
-    not cycles.
+    Not in the paper. GNN-LRP (Schnake et al., 2022; A-29): the network's
+    weights are read and each window's score before the sigmoid -- the number
+    the network's last step turns into a prediction -- is split exactly into
+    one share per walk through the sensor graph, plus a part that belongs to no
+    sensor, with the authors' own setting of its rule. Nothing is replaced. The
+    shares are parts of that score, not cycles. The authors' own check of an
+    explanation, node flipping (A-33), is run on every window beside it.
 
 and two things can be explained:
 
@@ -66,9 +67,13 @@ walks starting there, added up), one ``link_<from>_<to>`` per connection the
 graph has, in each direction and including each sensor's connection to itself
 (what passed along it, over every graph layer), and the ``reading_<sensor>``
 columns. ``top_walks.csv`` holds the ten walks with the largest average share.
-Its ``summary.json`` holds no ``mean_abs`` and no ``baseline``; it holds
-``mean_abs_start`` instead, and the largest miss of walks plus constant against
-the score.
+``flipping.csv`` holds, for every window, both of the paper's flipping tasks
+and every ranking checked -- the walks and their starting sensors, at the
+authors' setting and at their simpler baseline, and random orders -- the order
+the sensors were flipped in and the curve the paper plots, one column per step.
+Its ``summary.json`` holds no ``mean_abs`` and no ``baseline``; it holds the
+sensors, the largest miss of walks plus constant against the score, and the
+area under each flipping curve averaged over the windows.
 
 Examples
 --------
@@ -166,11 +171,6 @@ def main() -> int:
     device = resolve_device(arguments.device)
     model.to(device).eval()
 
-    # ASSUMPTION A-20: a sensor left out is replaced by its average window over
-    # the training engines. Equation 15 needs a prediction without a sensor and
-    # the paper never says what stands in for it.
-    baseline = mean_window_baseline(prepared.train)
-
     if arguments.scope == "test":
         source, source_name = prepared.test, "test"
         order = np.argsort(source.units)
@@ -199,6 +199,12 @@ def main() -> int:
             arguments, model, source, source_name, order, unit, seed, run,
             features, symbols, started, progress, code_state, commit,
         )
+
+    # ASSUMPTION A-20: a sensor left out is replaced by its average window over
+    # the training engines. Equation 15 needs a prediction without a sensor and
+    # the paper never says what stands in for it. Walks replace nothing, so they
+    # never reach this line.
+    baseline = mean_window_baseline(prepared.train)
 
     if arguments.method == "shap":
         values = np.empty((len(order), features.shape[1]))
@@ -295,17 +301,23 @@ def _explain_walks(
 ) -> int:
     """Split every window's score into walks and write what the playground draws."""
     from thesis_gnn_rul_xai.explain import (
+        aufc,
         connection_relevance,
         conservation_error,
         crossing_relevance,
         indistinguishable_sensors,
+        node_flipping,
         node_relevance,
         top_walks,
         walk_relevance,
     )
 
     try:
+        # The authors' own protocol: gamma per their default schedule, 0 at the
+        # first graph layer (explain/README.md). GNN-GI, the same split at gamma
+        # 0 everywhere, is the baseline their own check sets beside it.
         result = walk_relevance(model, features)
+        baseline_result = walk_relevance(model, features, gamma=0.0)
     except (ValueError, RuntimeError, TypeError) as refused:
         raise SystemExit(str(refused)) from refused
     progress("window", done=len(order), total=len(order),
@@ -315,6 +327,8 @@ def _explain_walks(
     links = connection_relevance(result, symbols, pool=groups)
     parts = crossing_relevance(result, symbols, pool=groups)
     top = top_walks(result, symbols, count=10, pool=groups)
+    flipping = node_flipping(model, features, {"GNN-LRP": result, "GNN-GI": baseline_result})
+    checked = aufc(flipping)
     seconds = time.perf_counter() - started
 
     columns = {
@@ -340,11 +354,11 @@ def _explain_walks(
     table = pd.DataFrame(columns)
 
     walks_sum = np.abs(parts["stays"] + parts["moves"]).to_numpy()
-    ranking = pd.Series(np.abs(starts).mean(axis=0), index=symbols).sort_values(ascending=False)
     output = _output_folder(arguments, run, unit, seed, commit)
     write_code_state_archive(output, code_state)
     table.to_csv(output / "values.csv", index=False)
     top.to_csv(output / "top_walks.csv", index=False)
+    flipping.to_csv(output / "flipping.csv", index=False)
     error = conservation_error(result)
     (output / "summary.json").write_text(
         json.dumps(
@@ -373,7 +387,12 @@ def _explain_walks(
                     parts["absolute_total"].to_numpy() / np.maximum(walks_sum, 1e-300)
                 )),
                 "seconds": round(seconds, 1),
-                "mean_abs_start": {symbol: float(v) for symbol, v in ranking.items()},
+                "sensors": symbols,
+                "flipping_aufc": [
+                    {"task": row.task, "ranking": row.ranking, "mean": float(row.mean),
+                     "std": float(row.std) if row.count > 1 else None, "windows": int(row.count)}
+                    for row in checked.itertuples()
+                ],
             },
             indent=2,
         ),

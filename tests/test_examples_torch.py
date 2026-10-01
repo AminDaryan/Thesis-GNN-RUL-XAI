@@ -683,3 +683,66 @@ def test_example_removing_a_connection_by_hand_on_the_same_three_sensors(raw_dir
     assert list(table.columns) == ["T24-T30", "T30-T50"]
     assert round(125 / (1 + np.exp(-0.5)), 2) == 77.81
     assert [round(float(v), 2) for v in table.iloc[0]] == [-8.45, 6.85]
+
+
+# --- explain/flipping.py ------------------------------------------------
+
+
+def test_example_node_flipping_by_hand_on_the_same_three_sensors(raw_dir):
+    """The GNN-LRP paper's own check (its Section 4.1) on the walk example's network.
+
+    What the walks say a set of sensors is worth is every walk lying wholly
+    inside it: {T30} is worth T30 -> T30 = 0.0382, {T50} is worth T50 -> T50 =
+    -0.4088, {T24} is worth nothing (its own walk carries 0). Adding sensors
+    greedily (Equation 14) takes T30 first; then {T30, T24} is worth
+    0.0382 - 0.1245 = -0.0862 and {T30, T50} is worth
+    0.0382 + 0.2725 - 0.0573 - 0.4088 = -0.1554, so T24 comes second and T50 last.
+
+    The network on each of those graphs, with the missing sensors' rows and
+    columns of the rescaled graph set to zero: with no sensor, fc1 gives its
+    constant 0.5, the score; with T30 alone, T30 holds 0.1146 / 3 = 0.0382 and
+    the score is 0.5382; adding T24, T30 holds (-0.3734 + 0.1146) / 3 < 0 and
+    switches off, the score is 0.5 again; with all three, 0.2202. The area under
+    that curve is its mean, (0.5 + 0.5382 + 0.5 + 0.2202) / 4 = 0.4396.
+    """
+    from dataclasses import replace
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.explain import (
+        node_flipping,
+        subgraph_relevance,
+        walk_relevance,
+    )
+
+    prepared = run_preprocessing(replace(PreprocessingConfig(), seed=42), data_dir=raw_dir)
+    row = int(np.where(prepared.test.units == 5)[0][0])
+    chosen = [list(prepared.sensor_symbols).index(s) for s in ("T24", "T30", "T50")]
+    window = prepared.test.features[row, chosen]
+
+    path = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]], dtype=np.float32)
+    model = ESTGNN(
+        normalize_adjacency(path, method="row"), window_size=30, gcn_hidden=(1,), fc_hidden=1
+    )
+    with torch.no_grad():
+        model.graph_layers[0].weight.fill_(1.0)
+        model.fc1.weight.copy_(torch.tensor([[2.0, 1.0, -1.0]]))
+        model.fc1.bias.fill_(0.5)
+        model.fc2.weight.fill_(1.0)
+        model.fc2.bias.fill_(0.0)
+
+    walks = walk_relevance(model, window)
+    worth = {
+        name: round(subgraph_relevance(walks.relevance[0], np.array(mask, dtype=bool)), 4)
+        for name, mask in (("T24", [1, 0, 0]), ("T30", [0, 1, 0]), ("T50", [0, 0, 1]),
+                           ("T24 T30", [1, 1, 0]), ("T30 T50", [0, 1, 1]))
+    }
+    assert worth == {"T24": 0.0, "T30": 0.0382, "T50": -0.4088,
+                     "T24 T30": -0.0862, "T30 T50": -0.1554}
+
+    table = node_flipping(model, window, {"GNN-LRP": walks}, random_orders=0)
+    adding = table[(table["task"] == "activation") & (table["ranking"] == "GNN-LRP, walks")].iloc[0]
+    assert adding["order"] == "1 0 2"
+    curve = [round(float(adding[f"step_{k}"]), 4) for k in range(4)]
+    assert curve == [0.5, 0.5382, 0.5, 0.2202]
+    assert round(float(adding["aufc"]), 4) == 0.4396

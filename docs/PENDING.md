@@ -141,28 +141,34 @@ question about the graph. Three things keep it from being settled.
 
 ---
 
-## P-23 — Walks through the sensor graph: no gamma in the playground, and measured on uncommitted code
+## P-23 — Walks through the sensor graph: measured on uncommitted code, and one setting in the playground
 
-`explain/walks.py` (assumption A-29) and `explain/connections.py` (assumption
-A-30) were added on 2026-09-26, measured the same day over five stored runs by
-`scripts/measure_walks.py`, wired into `scripts/explain.py` and the
-playground's Explain tab, taught in `docs/learn/03_explainability.md`, and given
-a notebook, `notebooks/xai/03_walks_fd001.ipynb`. The sensors the graph cannot
-tell apart are finding F-18. What is left:
+`explain/walks.py` (assumption A-29), `explain/connections.py` (assumption
+A-30) and `explain/flipping.py` (assumption A-33) are wired into
+`scripts/explain.py` and the playground's Explain tab, taught in
+`docs/learn/11_gnn_lrp.md`, and shown in `notebooks/xai/03_walks_fd001.ipynb`.
+On 2026-10-01 an audit against the GNN-LRP paper and its authors' code made the
+authors' own setting of gamma the default (it had been gamma 0, their simpler
+baseline) and added their node-flipping check; every walk measurement in the log
+was redone under that setting. What is left:
 
-1. **Gamma in the playground.** The Explain tab always splits at gamma 0. The
-   measurement shows connection rankings move little with gamma (A-29), so this
-   is low priority; if added, a positive value must never reach the first graph
+1. **The measurements are at `692d2d4-dirty`.** Once the walk code is
+   committed, rerun `scripts/measure_walks.py` on the five runs named in A-29,
+   replace the folder names in A-29, A-30 and A-33 if any figure moves, and
+   re-execute `notebooks/xai/03_walks_fd001.ipynb`, which reads the newest
+   folder.
+2. **Other settings of gamma in the playground.** The Explain tab always uses
+   the authors' setting. Offering others would let a reader see what the A-29
+   table measures; if added, a positive value must never reach the first graph
    layer.
-2. **A walk-level version measured from the average window**, suggested by a
-   review on 2026-09-26: integrating the walk split along the straight line from
-   the average training window (A-20) to the window would add up to the
-   prediction in cycles minus the average-window prediction, like the Shapley
-   values. It is not a published method and would need its own assumption entry.
-3. **The measurements are at `14c1d64-dirty`.** Rerun `scripts/measure_walks.py`
-   on the five runs once the walk code is committed, replace the folder names
-   in A-29 and A-30 if any figure moves, and re-execute
-   `notebooks/xai/03_walks_fd001.ipynb`, which reads the newest folder.
+3. **Four walk explanations stored before 2026-10-01 were made at gamma 0** and
+   carry no stored check (two in the default run, two in recurrent-stage runs
+   made from the playground). The page labels them as GNN-GI; they can be
+   explained again when wanted.
+
+The suggestion of 2026-09-26 to measure walks from the average training window
+was dropped on 2026-10-01: it borrows the Shapley explanation's point of
+comparison, which the GNN-LRP paper does not use.
 
 ---
 
@@ -513,6 +519,20 @@ width, windows per update, passes over the training data, first seed,
 recurrent hidden size, numbers handed to the graph per sensor, label ceiling,
 window length, cycles between windows and smoothing weight on the newest
 reading unchanged.
+
+**The running study is mixing code states (found 2026-10-01).** The study
+started on 2026-09-30 in `reports/sensitivity_fd65a3b-dirty_20260930T160040Z/`
+is still running. It trains each scenario in a fresh `scripts/train.py`
+process, and since the package is installed in editable mode, each process
+uses the code in the working tree as it stands when that process starts, not
+the code the study started with. Its first 34 runs record `fd65a3b-dirty`.
+`runs/FD003/scaling_minmax_global`, finished at 22:59 on 2026-10-01, records
+`692d2d4-dirty`: a commit made that evening, plus whatever several sessions had
+uncommitted at that moment. Each run's own `code_state` keeps that run
+reproducible, but the folder name no longer describes everything inside it, and
+`test_the_directory_name_of_every_run_carries_its_commit` fails because of it.
+Either restart the remaining scenarios from a committed tree in a folder of
+their own, or compare runs only within one recorded commit.
 
 **What finishing looks like:** run all 18 predefined scenarios with five seeds
 on FD002, FD003 and FD004; retain each run's code identity and measured files;

@@ -38,10 +38,10 @@
       "The values need not add to the prediction's difference from the input where every sensor is replaced. They describe " +
       "the model, not the causes of engine failure.",
     walks: "Splits the model's score, before conversion to remaining-life cycles, into shares along graph routes. " +
-      "A route takes one connection per graph layer, starting from a sensor's temporal output. The calculation " +
-      "uses learned weights and which intermediate values are positive for this input. Route shares and a " +
-      "separate share from added constants sum to the score within rounding error. They do not measure what " +
-      "removing a connection would do or establish physical causes.",
+      "A route takes one connection per graph layer, starting from a sensor's temporal output. Each layer's numbers " +
+      "are divided among their sources by the rule of the method's authors, with their own setting. Route shares and a " +
+      "separate share from added constants sum to the score within rounding error. The authors' own check, adding and " +
+      "removing sensors in the order the routes rank them, is run beside it. They do not establish physical causes.",
     engine: "Explains successive windows of one engine's history to show how sensor contributions change " +
       "over time. The engine comes from those held back from training; if none were held back, it comes " +
       "from the training engines. The window spacing and the setting below determine which windows are explained.",
@@ -3340,8 +3340,9 @@
           { value: "occlusion", label: "Occlusion, one sensor at a time", about: EXPLAIN_ABOUT.occlusion, note: sourceTag({ kind: "extension" }) +
             " Evaluates the original input and one replacement per sensor. Replacement readings are averaged across training windows separately at each window position (" + refLink("A-20") + ")." },
           { value: "walks", label: METHODS.walks, about: EXPLAIN_ABOUT.walks, note: sourceTag({ kind: "extension" }) +
-            " Adapted from the graph-route explanation method of Schnake et al. (2022), using the model's unmodified " +
-            "weights (" + refLink("A-29") + "). Identical graph outputs are grouped where routes end (" + refLink("F-18") + ")." }
+            " GNN-LRP of Schnake et al. (2022) with the authors' own rule setting: \u03b3 0 at the first graph layer, whose inputs can be negative, " +
+            "then their default schedule (" + refLink("A-29") + "). Their node-flipping check is stored with every explanation (" + refLink("A-33") +
+            "). Identical graph outputs are grouped where routes end (" + refLink("F-18") + ")." }
         ], e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) }) +
       cell({ key: "pg-e-scope", label: "What is explained", size: "wide",
         control: optionList("pg-e-scope", [
@@ -3691,10 +3692,34 @@
     return (v > 0 ? "+" : "") + fixed(v, 3);
   }
 
+  // The sensors a walk explanation covers; explanations saved before 2026-10-01
+  // named them only through an average-size ranking.
+  function walkSensors(sum) {
+    return sum.sensors || Object.keys(sum.mean_abs_start || {});
+  }
+
+  // Which setting of the rule a saved walk explanation used, in words.
+  function gammaNote(sum) {
+    var gamma = sum.gamma || [];
+    var authors = gamma.length > 1 && gamma[0] === 0 && gamma.every(function (g, i) {
+      return Math.abs(g - 3 * (1 - i / (gamma.length - 1))) < 1e-9 || i === 0;
+    });
+    var listed = gamma.map(function (g) { return fixed(g, 2); }).join(", ");
+    if (authors) {
+      return "The rule's setting \u03b3 is " + listed + " at the graph layers in order: the authors' default schedule, falling from 3 to 0, " +
+        "with 0 at the first layer because its inputs can be negative (" + refLink("A-29") + ").";
+    }
+    if (gamma.length && gamma.every(function (g) { return g === 0; })) {
+      return "This saved explanation used \u03b3 0 at every graph layer, the simpler baseline the authors call GNN-GI, not their own setting. " +
+        "Explain the run again for the authors' setting (" + refLink("A-29") + ").";
+    }
+    return "The rule's setting \u03b3 is " + listed + " at the graph layers in order, which is not the authors' default (" + refLink("A-29") + ").";
+  }
+
   // Show the saved arithmetic for the selected engine and cycle.
   function walkExample(data, index) {
     var selected = data.values[index];
-    var sensorTotal = Object.keys(data.summary.mean_abs_start).reduce(function (total, sensor) {
+    var sensorTotal = walkSensors(data.summary).reduce(function (total, sensor) {
       return total + Number(selected["start_" + sensor]);
     }, 0);
     return '<strong>Example from the selected ' + (data.summary.scope === "engine" ? 'engine cycle' : 'test engine') + '.</strong> Engine ' + esc(selected.unit) +
@@ -3714,8 +3739,7 @@
   // is set beside its figures, and the beeswarm already ranks the sensors.
   function drawWalks(box, data) {
     var e = S.explain, sum = data.summary, rows = data.values, top = data.top_walks || [];
-    var ranking = sum.mean_abs_start || {};
-    var symbols = Object.keys(ranking);
+    var symbols = walkSensors(sum);
     if (!symbols.length) {
       box.innerHTML = errorBox("This walk explanation stored no share for any sensor.");
       return;
@@ -3723,12 +3747,6 @@
     var sensorOrder = Object.keys(rows[0]).filter(function (k) {
       return k.indexOf("start_") === 0 && symbols.indexOf(k.slice(6)) >= 0;
     }).map(function (k) { return k.slice(6); });
-    var shown = rows.map(function (r) {
-      var row = {};
-      Object.keys(r).forEach(function (k) { row[k] = r[k]; });
-      symbols.forEach(function (s) { row[s] = r["start_" + s]; });
-      return row;
-    });
     if (e.index >= rows.length) { e.index = 0; }
     var forEngine = sum.scope === "engine";
     var groups = sum.groups || [];
@@ -3745,9 +3763,8 @@
       '<p><strong>Check on the addition.</strong> Across this saved explanation, the largest difference between the sum ' +
       'of those parts and the model\'s internal score is ' + Number(sum.conservation_error_max).toExponential(1) +
       ' score units. This checks the explanation\'s arithmetic; it does not check whether the prediction is correct (' + refLink("A-29") + ').</p>' +
-      '<p><strong>Comparing explanation methods.</strong> Shapley values divide a difference in predicted remaining life ' +
-      'into sensor contributions measured in cycles. The walk numbers here divide the internal score, before conversion to cycles. ' +
-      'You can compare which sensors the methods rank highest, but their numerical contributions use different scales.</p>';
+      '<p><strong>The rule.</strong> At each graph layer, a sensor\'s number is divided among the sensors it came from in proportion to what each sent, ' +
+      'with positive contributions counted more heavily by a setting called \u03b3, as the method\'s authors do (Schnake et al., 2022). ' + gammaNote(sum) + '</p>';
     if (groups.length === 1 && groups[0].length === symbols.length) {
       methodNotes += '<p><strong>Why sensor names are grouped.</strong> In this model every sensor is connected to every other sensor. ' +
         'The steps that combine connected sensors therefore produce the same result at every sensor position. ' +
@@ -3802,44 +3819,87 @@
       : "How to read these charts. The first compares each score part across test engines; the second builds the selected engine's score step by step. Use them to see which part usually has the largest net effect and where positive and negative parts cancel.";
     var parts = '<figure class="pg-figure pg-figure--wide"><figcaption>' +
       partsCaption + "</figcaption>" + walkParts(rows, forEngine, W, e.index) + partsGuide + "</figure>";
-    var swarm = '<figure class="pg-figure pg-figure--wide"><figcaption>Every sensor\'s ' +
-      "share, one dot per " + what + ", the sensors ranked by the average size of their shares.</figcaption>" +
-      beeswarm(shown, symbols, W, "") + "</figure>";
     var walks = topWalks(top, sum);
+    var check = flippingFigure(data, e.index, W);
     var fleetFlow = forEngine ? "" : '<details class="pg-figure pg-figure--wide"><summary>Average connection shares across all test engines</summary>' +
       '<p>Both directions and all graph layers together, averaged over the test engines. This is separate from the chosen engine above.</p>' +
       flowGraph(rows, null, sensorOrder) + '</details>';
 
-    var body;
-    if (forEngine) {
-      var history = '<figure class="pg-figure pg-figure--wide"><figcaption>' +
-        "Every sensor's share, across the whole life. Point at any panel to read every sensor at that cycle.</figcaption>" +
-        sensorHistory(shown, symbols, e.index, "") + "</figure>";
-      body = head + explanationCharts([
-        { key: "engine", label: "Engine", html: engineFigure() },
-        { key: "life", label: "Remaining life", html: lifeFigure(rows, rows[e.index], W) },
-        { key: "parts", label: "Score parts", html: parts },
-        { key: "values", label: "Sensor shares", html: swarm },
-        { key: "walks", label: "Largest walks", html: walks },
-        { key: "history", label: "Over time", html: history }
-      ]) + "</section>";
-    } else {
-      var heat = '<figure class="pg-figure pg-figure--wide"><figcaption>Every sensor\'s share at every ' +
-        "test engine (columns, by engine number). Blue raised the predicted remaining life, orange lowered it; the stronger " +
-        "the colour, the larger the share.</figcaption>" + heatmap(shown, sensorOrder, "") + "</figure>";
-      body = head + explanationCharts([
-        { key: "engine", label: "Engine", html: engineFigure() },
-        { key: "parts", label: "Score parts", html: parts },
-        { key: "values", label: "Sensor shares", html: swarm },
-        { key: "connections", label: "Connections", html: fleetFlow },
-        { key: "walks", label: "Largest walks", html: walks },
-        { key: "engines", label: "All engines", html: heat }
-      ]) + "</section>";
-    }
+    // Only views the method's own paper uses, or this project's split of the
+    // score: no view borrowed from the Shapley explanation or the main paper.
+    var body = head + explanationCharts([
+      { key: "engine", label: "Engine", html: engineFigure() },
+      { key: "parts", label: "Score parts", html: parts },
+      { key: "connections", label: "Connections", html: fleetFlow },
+      { key: "walks", label: "Largest walks", html: walks },
+      { key: "check", label: "Authors' check", html: check }
+    ]) + "</section>";
     box.innerHTML = body;
     mountEngine(box, data);
-    wireHistory(box, forEngine ? shown : []);
     wireExplanationSelection(box, data, sensorOrder, W);
+  }
+
+  // The authors' own check of the explanation (Schnake et al., Section 4.1):
+  // sensors added to an empty graph, or removed from the full one, in the order
+  // each ranking gives, with the score followed at every step.
+  var FLIP_STYLES = {
+    "GNN-LRP, walks": { colour: "var(--fig-ink)", width: 2.2 },
+    "GNN-LRP, starting sensors": { colour: "var(--fig-ink)", dash: "6 4" },
+    "GNN-GI, walks": { colour: "var(--fig-cool)", width: 2.2 },
+    "GNN-GI, starting sensors": { colour: "var(--fig-cool)", dash: "6 4" },
+    "random": { colour: "var(--fig-muted)", dash: "2 4" }
+  };
+  var FLIP_NAMES = {
+    "GNN-LRP, walks": "walks, the authors' setting",
+    "GNN-LRP, starting sensors": "their starting sensors only",
+    "GNN-GI, walks": "walks, the simpler baseline (\u03b3 0)",
+    "GNN-GI, starting sensors": "its starting sensors only",
+    "random": "random orders, averaged"
+  };
+
+  function flippingFigure(data, index, W) {
+    var rows = (data.flipping || []).filter(function (r) { return Number(r.window) === index; });
+    if (!rows.length) {
+      return '<div class="pg-empty">This saved explanation was made before the authors\' check was stored. Explain the run again to add it.</div>';
+    }
+    var steps = Object.keys(rows[0]).filter(function (k) { return k.indexOf("step_") === 0; }).length;
+    var H = chartHeight(W);
+    function chart(task) {
+      var series = rows.filter(function (r) { return r.task === task; }).map(function (r) {
+        var style = FLIP_STYLES[r.ranking] || { colour: "var(--fig-axis)" };
+        var points = [];
+        for (var k = 0; k < steps; k++) { points.push([k, Number(r["step_" + k])]); }
+        return { name: FLIP_NAMES[r.ranking] || r.ranking, colour: style.colour, width: style.width, dash: style.dash, points: points };
+      });
+      return plot({ width: W, height: H, series: series,
+        label: task === "activation" ? "Score as sensors are added" : "Change in score as sensors are removed",
+        xlabel: task === "activation" ? "sensors added to an empty graph" : "sensors removed from the full graph",
+        ylabel: task === "activation" ? "score before the sigmoid" : "distance from the full graph's score" });
+    }
+    var averages = (data.summary.flipping_aufc || []);
+    var table = "";
+    if (averages.length) {
+      var names = Object.keys(FLIP_NAMES).filter(function (name) {
+        return averages.some(function (a) { return a.ranking === name; });
+      });
+      table = '<table class="pg-mini"><thead><tr><th>Order from</th><th class="num">Adding: higher is better</th>' +
+        '<th class="num">Removing: lower is better</th></tr></thead><tbody>' + names.map(function (name) {
+          var cell = function (task) {
+            var a = averages.filter(function (x) { return x.ranking === name && x.task === task; })[0];
+            return a ? fixed(a.mean, 3) + (a.std !== null && a.std !== undefined ? " \u00b1 " + fixed(a.std, 3) : "") : "";
+          };
+          return "<tr><td>" + esc(FLIP_NAMES[name]) + '</td><td class="num">' + cell("activation") +
+            '</td><td class="num">' + cell("pruning") + "</td></tr>";
+        }).join("") + "</tbody></table>";
+    }
+    var what = data.summary.scope === "engine" ? "window" : "test engine";
+    return '<figure class="pg-figure pg-figure--wide"><figcaption>Not in the paper. The check the GNN-LRP paper uses on its own explanations ' +
+      '(Schnake et al., 2022, Section 4.1), on the selected ' + what + '. Sensors are added to an empty graph, or removed from the full one, ' +
+      'one at a time in the order each ranking gives; a sensor is taken out by cutting all its connections, its link to itself included (' + refLink("A-33") + '). ' +
+      'A ranking that describes the network well raises the score fastest when adding and moves it least when removing.</figcaption>' +
+      chart("activation") + chart("pruning") +
+      (table ? '<p class="pg-faint">The mean of each curve, its area under the flipping curve, averaged over all ' + count(averages[0].windows) + " " + what +
+        (averages[0].windows === 1 ? "" : "s") + ' of this explanation, with the spread between them:</p>' + table : "") + "</figure>";
   }
 
   // Each score split into walks that stay, walks that move, and the part no sensor owns.

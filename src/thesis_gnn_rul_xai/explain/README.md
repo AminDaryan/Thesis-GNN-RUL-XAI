@@ -31,11 +31,14 @@ pip install -e ".[model]"
   network's own weights and splits one prediction into shares, one per route
   through the sensor graph (GNN-LRP, explained in
   [Walks through the sensor graph](#walks-through-the-sensor-graph-gnn-lrp)).
+- `flipping.py` — the GNN-LRP paper's own check of an explanation: add or
+  remove sensors in the order the walks rank them and follow the score
+  ([The authors' check](#the-authors-check-node-flipping)).
 - `connections.py` — its companion, also not in the paper: remove one
   connection of the sensor graph at a time, rescale, and record how far the
   prediction moves, in cycles
   ([Removing a connection](#removing-a-connection-a-different-question)).
-- `__init__.py` — re-exports the public names from all five.
+- `__init__.py` — re-exports the public names from all six.
 
 The notebooks in `notebooks/xai/` use these on a stored trained network, one
 method per notebook; `03_walks_fd001.ipynb` covers walks and removing a
@@ -242,24 +245,20 @@ and the shared scale.
 
 ## Walks through the sensor graph (GNN-LRP)
 
-### The question the other two methods cannot answer
+### What the method is for
 
-Shapley values and occlusion treat the network as a closed box: they change the
-inputs, run the network, and watch the output move. That tells you *which
-sensor's readings* mattered. It cannot tell you *how* they reached the output —
-whether a sensor's reading mattered at its own node, or because the graph
-layers mixed it into its neighbours and it was used there.
+A graph network passes numbers between connected sensors, so a prediction is
+not built from each sensor on its own: part of what a sensor holds arrives from
+its neighbours, and from theirs. **GNN-LRP** (Schnake et al., 2022) is an
+explanation method made for exactly that kind of network. It reads every
+weight and divides the network's output into shares, one per **walk** through
+the sensor graph, so it can say which connections carried a prediction, not
+only which sensors.
 
-That second question is the one the paper's claims about its graph are about.
-Its Section 4.4 says the sensor rankings "determine both the node coloring and
-edge weights in the interpretability graph", and that the changing patterns
-"validate the effectiveness of the physics-informed graph structure". A ranking
-of fourteen sensors says nothing about any connection between two of them, so
-it cannot support either sentence.
-
-`walks.py` answers it with **GNN-LRP** (Schnake et al., 2022): it opens the box,
-reads every weight, and divides the network's output into shares, one per
-**walk** through the sensor graph. It is not in the paper (assumption A-29).
+`walks.py` implements it as its authors define it, with their rule, their
+setting of it and their own check of the result. It is not in the paper this
+project re-implements, which explains sensors only (assumption A-29), and
+nothing in it is taken from that paper's explanation method or its results.
 The method's authors call a share a *relevance*, which is why the functions
 here are named `walk_relevance`, `node_relevance` and so on; this file says
 "share" for the same number.
@@ -329,13 +328,13 @@ network as it already is, not changes made for the explanation:
 What does not trace back to any sensor is the constant that the two ordinary
 layers add, `fc1` and `fc2`. It is reported as `constant`, one number per
 window. It changes from window to window, because it passes through `fc1`'s
-ReLUs and which of those are on depends on the window. So it is not the same
-kind of thing as the prediction at the average window that Shapley values are
-measured from, which is one number for the whole network.
+ReLUs and which of those are on depends on the window. So it is not a fixed
+point of reference: it is one number per window, not one for the whole
+network.
 
 **Do not confuse the constant with a reference engine.** The walks add up to
 *score minus constant*. They do not add up to *score minus the score of some
-typical engine*, which is what Shapley values add up to. The nearest thing to a
+typical engine*. The nearest thing to a
 typical engine here is `score_at_zero`, the score when every number entering
 the graph layers is zero — for the default stage, a window of training averages.
 It is one number for the network, and it differs from the constant of a given
@@ -393,8 +392,9 @@ builds this network and checks every number above.
 
 ### The rule behind the shares, and what "the score" is
 
-Written generally, with the ReLU pattern of this window held fixed, the share
-of the walk `i0 -> i1 -> i2 -> i3` is
+Written generally for the setting gamma = 0 (the next section says what a
+positive gamma changes), with the ReLU pattern of this window held fixed, the
+share of the walk `i0 -> i1 -> i2 -> i3` is
 
 ```
 R(i0, i1, i2, i3) = A_hat[i1, i0] * A_hat[i2, i1] * A_hat[i3, i2]
@@ -416,7 +416,7 @@ the network backwards once per walk with every other route blocked; the test
 `test_every_walk_matches_the_authors_masked_gradient` does it their way for 30
 walks and requires the same numbers.
 
-### The setting gamma, and why it is 0 here
+### The setting gamma: the authors' own
 
 GNN-LRP has one setting, **gamma**, applied layer by layer. What it does is
 easiest to see at one node that receives from two sources. Say one source
@@ -431,30 +431,48 @@ gamma = 1:  count each positive weight twice: 2 x (1 + 1) = 4, and -0.5 stays
                                      -0.5 x 1.5 / 3.5  = -0.214   (add up to 1.5)
 ```
 
-A positive gamma shrinks the negative shares and keeps the total. Schnake et
-al. report that with gamma = 0 many walks get large positive and negative shares
-that largely cancel, which makes an explanation hard to read, and in their own
-experiments they use positive values that fall towards the output. With
-gamma = 0 their method is the same as their own simpler baseline, which they
-call GNN-GI: each starting number times how fast the score changes with it,
-kept apart walk by walk.
+A positive gamma shrinks the negative shares and keeps the total. In the
+formula above it replaces each weight table `W` by `W + gamma * max(0, W)` and
+each on/off pattern `g` by the factor that rescales the layer back to what it
+computed. With gamma = 0 the method is what its authors call GNN-GI, a simpler
+baseline they report as noisier; their method proper uses gamma > 0.
 
-Two things decide the setting here:
+**The setting used here is the authors' own** (assumption A-29), `paper_gammas`
+in `walks.py`:
 
-- **At the first graph layer gamma must be 0.** The rule's derivation assumes
-  the numbers entering a layer are never negative (their appendix C). The first
-  graph layer receives rescaled readings, which are negative whenever a sensor
-  is below its training average; there, doubling a positive weight pushes a
-  negative contribution further the wrong way, and the rescaling can divide by
-  a total of the wrong sign. `walk_relevance` refuses a positive gamma at the
-  first layer. From the second layer on, every entering number has been through
-  a ReLU, so it is never negative, and a gamma is accepted.
-- **The default is 0 everywhere** (assumption A-29). It is the one setting at
-  which each share is exactly what the network computes at this window, it
-  needs no value chosen, and no source gives a value for this network. A
-  positive gamma is offered to measure how far a conclusion depends on it: a
-  ranking of walks that holds only at one gamma is a statement about the
-  setting, not about the network.
+- **Their default schedule.** Their published code, when given no setting,
+  uses gamma = 3 at the first graph layer falling in equal steps to 0 at the
+  last (`linspace(3, 0, depth)`), and their paper keeps gamma = 0 in the layers
+  after the graph, which here are `fc1` and `fc2`.
+- **Gamma 0 at the first graph layer.** The rule's derivation assumes the
+  numbers entering a layer are never negative (their appendix C), and where a
+  network lacks that structure — a ReLU, then a weighted sum, then a ReLU — the
+  authors use gamma = 0 themselves, as for their SchNet model. This network's
+  first graph layer receives rescaled readings, which are negative whenever a
+  sensor is below its training average; there, a positive gamma pushes a
+  negative contribution further the wrong way and can divide by a total of the
+  wrong sign. `walk_relevance` refuses a positive gamma at the first layer.
+
+For three graph layers the setting is therefore 0, 1.5 and 0. It matters: on
+the stored default network, seed 42, the walks of the held-back engine 5 move
+by a median of 34 % of their total size between this setting and gamma 0 on
+184 of its 240 windows (`notebooks/xai/03_walks_fd001.ipynb`, step 4). On the
+other 56 they do not move at all, which is the one case where gamma cannot
+matter. With one number per sensor, every
+sensor leaves the first graph layer holding the positive or the negative part
+of the same weight row, scaled by its own total; when all the sensors feeding
+a node at layer 2 come from the same side, the extra weight from gamma scales
+the top and bottom of every share alike and cancels.
+
+Any other setting can be passed, one number per graph layer with 0 first, to
+see how far a conclusion depends on gamma.
+
+One small difference from the authors' code: it adds `1e-6` to every layer's
+rule-weighted total before dividing by it, so that a total of zero cannot
+break the division. Here a layer's numbers are divided only where its ReLU is
+on, and there the rule-weighted total is at least the layer's own total, which
+is above zero, so no such guard is needed and the layer passes on exactly what
+it computed.
 
 **The score is not the prediction.** The network's last step turns a score
 `z` into a prediction with `125 / (1 + e^-z)`, the sigmoid. That step bends:
@@ -472,9 +490,10 @@ because the three quantities are computed by separate routes: the walks by the
 multiplication above, the constant by carrying the layers' added numbers
 forward on their own, and the score by running the network's layers.
 
-More checks sit in `tests/test_walks.py`, each comparing the walks with a
-quantity PyTorch computes by its own differentiation, sharing no code with
-`walks.py`:
+More checks sit in `tests/test_walks.py`. Three of them compare the walks at
+gamma 0, the authors' GNN-GI, with a quantity PyTorch computes by its own
+differentiation, sharing no code with `walks.py`; at gamma 0 every share is a
+number times its derivative, so these must agree exactly:
 
 - added up by **starting** sensor, the walks give that sensor's number times
   how fast the score changes when that number changes;
@@ -486,10 +505,57 @@ quantity PyTorch computes by its own differentiation, sharing no code with
   is a large change that also rescales the rest of its row, so what removal
   does is a different measurement, which this file does not make.
 
-And the score, put through the sigmoid, must reproduce the network's own
-prediction; `walk_relevance` itself refuses to return anything if it does not,
-so a network that one day computes something else is refused rather than
-explained.
+At any setting, each walk's share must equal what the authors' own procedure
+gives — rewriting each layer, masking every route but the walk, differentiating
+once (their Section 3.2.1) — which
+`test_every_walk_matches_the_authors_masked_gradient` checks for 30 walks at
+gamma 0 and at gamma (0, 0.5, 0.25). And the score, put through the sigmoid,
+must reproduce the network's own prediction; `walk_relevance` itself refuses to
+return anything if it does not, so a network that one day computes something
+else is refused rather than explained.
+
+### The authors' check: node flipping
+
+The GNN-LRP paper checks every explanation against the network it describes,
+by a procedure it calls node flipping (its Section 4.1). `flipping.py` runs it.
+
+**What a ranking says a set of sensors is worth.** For walks, every walk lying
+wholly inside the set, added up (`subgraph_relevance`); for a ranking of single
+sensors, their shares added up. With no sensor the worth is 0; with all of them
+it is the walks' whole sum.
+
+**Two tasks.** *Adding*: start from a graph with no sensor and add, one at a
+time, the sensor whose set the ranking rates highest (their Equation 14).
+*Removing*: start from the full graph and remove the sensor whose loss the
+ranking rates smallest (their Equation 15). After each step the network is run
+on the graph that is left (`subgraph_scores`). The paper plots the score while
+adding, and its distance from the full graph's score while removing; the mean
+of each curve is its **area under the flipping curve**. A ranking that
+describes the network well raises the score fastest when adding (higher is
+better) and moves it least when removing (lower is better).
+
+**What is set beside the walks.** As in the paper: the same check run with the
+walks' shares added up by starting sensor, which the paper says matches a
+node-level method (Pope et al.); with the simpler GNN-GI; and with random
+orders, averaged (`RANDOM_ORDERS`, 20).
+
+**How a sensor is taken out** (assumption A-33): its row and its column of the
+rescaled graph are set to zero, its link to itself included, and nothing is
+rescaled again — the paper feeds its networks the masked connectivity. Its
+readings stay in the window, but with no connection left nothing of them
+reaches the score through the graph layers. With no sensor at all, every graph
+layer holds zeros and the score is `score_at_zero`
+(`test_the_full_graph_scores_what_the_walks_split_and_the_empty_graph_its_zero`).
+
+The worked example: on the three-sensor network of the walk example, the walks
+rank T30 first, then T24, then T50. With no sensor the score is the constant,
+0.5; with T30 it is 0.5382; adding T24 brings it back to 0.5; with all three
+it is 0.2202; the area under that curve is their mean, 0.4396
+(`tests/test_examples_torch.py::test_example_node_flipping_by_hand_on_the_same_three_sensors`).
+
+The paper also allows replacing a greedy step, at regular intervals, by adding
+the sensor with the largest share on its own; it calls this optional and gives
+no interval, so `flipping.py` does not do it.
 
 ### What this method is, in seven answers
 
@@ -507,8 +573,10 @@ explained.
    (`step_relevance`), or into walks that never leave their starting sensor
    against walks that move (`crossing_relevance`).
 6. **What it assumes:** that holding the ReLU pattern fixed describes the
-   network near this window, and that a number's share is the number times its
-   effect. The first is less local than it sounds: the graph layers add no
+   network near this window, and that each layer's numbers are divided among
+   their sources by the authors' rule — at gamma 0, a number's share is the
+   number times its effect; with the authors' setting, positive contributions
+   count more heavily at the second graph layer. The first is less local than it sounds: the graph layers add no
    constant, so scaling the numbers entering them by any positive factor
    scales every graph layer's numbers by the same factor and switches none of
    their ReLUs
@@ -533,21 +601,6 @@ explained.
      is many times the size of the walks' actual sum, a list of the largest
      walks shows mostly cancellation, and should be read with that number
      beside it.
-
-### Do not confuse a walk's share with a Shapley value
-
-| | Shapley value (`shap.py`) | Walk share (`walks.py`) |
-|---|---|---|
-| Split among | the 14 sensors | the walks through the graph |
-| Unit | flight cycles | the score before the sigmoid; no unit |
-| Compared against | the prediction at the average window | the constant the dense layers add |
-| How | 16,384 runs of the network with sensors replaced | one reading of the weights; nothing replaced |
-| Adds up to | prediction minus the average-window prediction | score minus the constant |
-
-Adding a sensor's walks up with `node_relevance` gives a per-sensor number, but
-it is still not a Shapley value: it is in score units, measured with every
-other sensor present, from zero rather than from the average window. Rankings
-of the two may be compared; sizes may not.
 
 ### Where the walks start, for each temporal stage
 
@@ -674,8 +727,9 @@ On the graph where every sensor is joined to every other, all fourteen rows are
 identical, so all fourteen sensors form one group. There, walks differ only by
 where they start, and a walk list is no explanation of the graph at all.
 
-Shapley values and occlusion are not affected, because the prediction depends
-only on the group's total, which training does shape.
+The network's predictions are not affected, because they depend only on the
+group's total, which training does shape; nor is any explanation that replaces
+a sensor's readings whole, for the same reason.
 
 ### Traps
 
@@ -688,8 +742,8 @@ only on the group's total, which training does shape.
   `(windows, from, to)` — the transpose of `A_hat`, whose rows are the sensor
   that receives.
 - **An untrained network conserves perfectly.** Conservation is a property of
-  the arithmetic, like the Shapley values' efficiency, so passing it says
-  nothing about whether the network learned anything.
+  the arithmetic, so passing it says nothing about whether the network
+  learned anything.
 - **Much of what a walk share says is fixed before training.** A sensor's
   connection to itself weighs one over its number of connections plus one, so
   walks that move between sensors carry most of the score in any network built
@@ -728,7 +782,7 @@ why removal is not the same thing as flow. The prediction goes from 69.35 to
 (`tests/test_examples_torch.py::test_example_removing_a_connection_by_hand_on_the_same_three_sensors`).
 
 On the default network's five stored seeds, ranking the connections by flow and
-by removal gives unrelated orders (the table is in assumption A-30). Removing a
+by removal gives weakly opposite orders (the table is in assumption A-30). Removing a
 connection that touches one of the sensors the graph cannot tell apart makes
 that sensor's row differ from its group's, so what that removal does is partly
 the random start too.
@@ -751,13 +805,17 @@ wrong one.
   explains sensors only. GNN-LRP rather than a mask method, for the reasons in
   [Why this method](#why-this-method-and-not-gnnexplainer-or-pgexplainer);
   the score before the sigmoid rather than the prediction in cycles, because
-  the sigmoid cannot be split into shares that add up; gamma = 0 by default
-  and always at the first graph layer; the dense layers' constants reported as
+  the sigmoid cannot be split into shares that add up; the authors' own
+  setting of gamma, with 0 at the first graph layer; the dense layers' constants reported as
   one number per window rather than spread over the walks; walks that start at
   the temporal stage's output rather than at the raw readings; and sensors the
   graph cannot tell apart counted as one wherever a walk ends.
 - **What removing a connection means** (assumption A-30): deleted from the raw
   graph in both directions, the graph rescaled, the network not retrained.
+- **Running the authors' check on this network** (assumption A-33): a sensor
+  is taken out by zeroing its row and column of the rescaled graph without
+  rescaling again, the random ranking averages 20 orders, and the optional
+  coarse steps are left out.
 
 That the paper's Table 12 cannot hold signed Shapley values satisfying its own
 Equation 14 is not a choice of ours but an observation about the paper (finding
@@ -815,14 +873,21 @@ Everything `shap.py`, `occlusion.py`, `plots.py` and `walks.py` offer.
 | `MAX_EXACT_NODES` | 20. Above this, trying every combination stops being reasonable. |
 | `occlusion_values(model, features, baseline, batch_size=512, device=None)` | From `occlusion.py`. The prediction with every sensor real minus the prediction with one sensor replaced by the baseline, one number per sensor. Takes one window or many, like `shap_values`; `batch_size` changes speed and memory only. |
 | `plot_contributions_over_time(table, sensors, compare=None, method="Shapley value", compare_method="occlusion", title=None)` | From `plots.py`. The figure described above, from a table shaped like `dynamic_shap`'s. `compare` is a second table of values for the same windows, one column per sensor. |
-| `walk_relevance(model, features, gamma=0.0, batch_size=16, device=None)` | From `walks.py`. Splits each window's score before the sigmoid into one share per walk through the sensor graph. Takes one window or many, like `shap_values`, and returns a `WalkRelevance`, described below. `gamma` is one number, used from the second graph layer on, or one number per graph layer with 0 first. Refuses a network whose own prediction it cannot rebuild, and more than `MAX_WALKS_PER_EXAMPLE` walks per window. `batch_size` changes speed and memory only. |
+| `walk_relevance(model, features, gamma=None, batch_size=16, device=None)` | From `walks.py`. Splits each window's score before the sigmoid into one share per walk through the sensor graph. Takes one window (`(sensors, cycles)`) or many (`(windows, sensors, cycles)`) and returns a `WalkRelevance`, described below. `gamma` left out is the authors' setting (`paper_gammas`); otherwise one number, used from the second graph layer on, or one number per graph layer with 0 first. Refuses a network whose own prediction it cannot rebuild, and more than `MAX_WALKS_PER_EXAMPLE` walks per window. `batch_size` changes speed and memory only. |
 | `WalkRelevance` | The record `walk_relevance` returns, one entry per window in every array. Its fields are listed below. |
 | `conservation_error(result)` | The largest amount by which walks plus constant miss the score, in units of the score. Anything above rounding noise means a bug. |
 | `node_relevance(result)` | Each sensor's share: every walk that starts at it, added up. Shaped `(windows, sensors)`. |
 | `step_relevance(result, step)` | What passed along each connection at one graph layer, `step` counted from 1. Shaped `(windows, from, to)`. At every step the entries add up to the same total. |
 | `crossing_relevance(result, symbols=(), pool=())` | One row per window: the walks that never leave their starting sensor (or its group, with `pool`), the walks that move, the constant, the score and the prediction. The columns are listed below. |
 | `connection_relevance(result, symbols, pool=())` | What passed along each connection, added over every graph layer, shaped `(windows, from, to)`. With `pool`, what arrives at a group at the last layer is split equally among its members. |
-| `cycle_relevance(model, features)` | Each sensor's walk total at gamma 0, split over the cycles of its window, shaped like the windows. Refuses a stage that learns its own numbers. |
+| `cycle_relevance(model, features, gamma=None)` | Each sensor's walk total, under the same setting of the rule as `walk_relevance`, split over the cycles of its window, shaped like the windows. Refuses a stage that learns its own numbers. |
+| `paper_gammas(n_layers)` | The authors' default setting for that many graph layers: `linspace(3, 0, n_layers)` with 0 at the first layer. `[0, 1.5, 0]` for three. |
+| `PAPER_GAMMA_START` | 3. The gamma the authors' published code gives the first graph layer when given none. |
+| `node_flipping(model, features, explanations, random_orders=20)` | From `flipping.py`. The authors' check: for every window, both tasks and every ranking — each explanation's walks and its starting sensors, and random orders — the order sensors were flipped in (`order`), the curve the paper plots (`step_0` to `step_14`) and its mean (`aufc`). `explanations` maps a name to a `WalkRelevance` of the same windows. |
+| `aufc(table)` | From `flipping.py`. The area under each flipping curve averaged over the windows: one row per task and ranking, with its spread and count. |
+| `subgraph_relevance(relevance, present)` | From `flipping.py`. What one window's walks say a set of sensors is worth: every walk lying wholly inside it, added up. |
+| `subgraph_scores(model, window, masks)` | From `flipping.py`. The network's score before the sigmoid with only each mask's sensors left in its graph, one per mask. |
+| `FLIPPING_TASKS`, `RANDOM_ORDERS` | From `flipping.py`. The two tasks, adding (`activation`) and removing (`pruning`), and the 20 random orders averaged into the random ranking. |
 | `connection_removal(model, features, raw_adjacency, symbols, method=...)` | From `connections.py`. One column per connection of the raw graph, named `T24-T30`: the prediction with the graph as trained minus the prediction with that connection removed and the graph rescaled, in cycles. `method` is the run's own rescaling. |
 | `connections_of(raw_adjacency)` | Defined beside the graph inspection tools in `graph/adjacency.py` and re-exported here for existing explanation code. Every connection of the raw graph once, as pairs of sensor positions. |
 | `top_walks(result, symbols, count=20, pool=())` | The walks that carried the most across the windows given, named by sensor. `pool` takes groups of sensors, usually from `indistinguishable_sensors`, and adds together walks that differ only by which member of a group they pass through or end at. The columns are listed below. |

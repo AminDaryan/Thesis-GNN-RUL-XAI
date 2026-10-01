@@ -122,10 +122,10 @@ def test_the_score_turns_into_the_networks_own_prediction(model, windows):
 
 
 def test_each_sensors_total_is_its_reading_times_its_derivative(model, windows):
-    """PyTorch differentiates the score with respect to the numbers entering the
-    first graph layer; multiplied by those numbers, that must be each sensor's
-    total over the walks that start at it."""
-    result = walk_relevance(model, windows)
+    """At gamma 0 (the authors' GNN-GI) each sensor's total over the walks that
+    start at it is its number times how fast the score changes with it, which
+    PyTorch computes on its own."""
+    result = walk_relevance(model, windows, gamma=0.0)
     double = ESTGNN(
         model.adjacency.numpy(),
         window_size=model.temporal.window_size,
@@ -173,8 +173,9 @@ def test_what_passes_along_a_connection_is_its_graph_entry_times_the_scores_deri
 ):
     """Added over the three layers, what passed from T24 to T30 equals the graph's
     entry for that pair times how fast the score changes when that one entry
-    changes, the same entry being used by all three layers."""
-    result = walk_relevance(model, windows[0])
+    changes, the same entry being used by all three layers. That holds at
+    gamma 0, where every share is a reading times its derivative."""
+    result = walk_relevance(model, windows[0], gamma=0.0)
     net = _double_copy(model)
     adjacency = net.adjacency.clone().requires_grad_(True)
     hidden = net.temporal(torch.from_numpy(windows[:1].astype(np.float64)))
@@ -278,6 +279,20 @@ def test_every_walk_matches_the_authors_masked_gradient(prepared, windows, gamma
     for walk in walks[::173]:
         expected = _walk_by_masked_gradient(network, windows[0], walk, gamma)
         assert result.relevance[(0, *walk)] == pytest.approx(expected, abs=1e-12)
+
+
+def test_the_default_is_the_authors_schedule_with_zero_at_the_first_layer(model, windows):
+    """linspace(3, 0, depth), the authors' default, with gamma 0 at the first
+    graph layer, whose rescaled readings can be negative."""
+    from thesis_gnn_rul_xai.explain import PAPER_GAMMA_START, paper_gammas
+
+    assert PAPER_GAMMA_START == 3.0
+    assert paper_gammas(3) == [0.0, 1.5, 0.0]
+    assert paper_gammas(5) == [0.0, 2.25, 1.5, 0.75, 0.0]
+    assert paper_gammas(1) == [0.0]
+    result = walk_relevance(model, windows[:2])
+    assert result.gamma == (0.0, 1.5, 0.0)
+    assert conservation_error(result) < 1e-9
 
 
 def test_a_positive_gamma_is_given_to_every_layer_but_the_first(model, windows):
@@ -577,3 +592,57 @@ def test_connections_keep_their_total_and_split_a_groups_last_arrivals_equally(
     p30, ps30 = names.index("P30"), names.index("Ps30")
     np.testing.assert_allclose(pooled[:, :, p30], pooled[:, :, ps30], atol=1e-15)
     assert not np.allclose(plain[:, :, p30], plain[:, :, ps30])
+
+
+# --- the paper's own check: node flipping --------------------------------
+
+
+def test_the_full_graph_scores_what_the_walks_split_and_the_empty_graph_its_zero(model, windows):
+    from thesis_gnn_rul_xai.explain import subgraph_scores
+
+    result = walk_relevance(model, windows[:2])
+    for index in range(2):
+        scores = subgraph_scores(model, windows[index], np.array([[True] * 14, [False] * 14]))
+        assert scores[0] == pytest.approx(result.score[index], abs=1e-9)
+        assert scores[1] == pytest.approx(result.score_at_zero, abs=1e-9)
+
+
+def test_what_the_walks_say_the_full_and_empty_graphs_are_worth(model, windows):
+    """Every walk for the full graph, which is the score minus the constant; none for the empty one."""
+    from thesis_gnn_rul_xai.explain import subgraph_relevance
+
+    result = walk_relevance(model, windows[0])
+    full = subgraph_relevance(result.relevance[0], np.ones(14, dtype=bool))
+    assert full == pytest.approx(result.score[0] - result.constant[0], abs=1e-9)
+    assert subgraph_relevance(result.relevance[0], np.zeros(14, dtype=bool)) == 0.0
+
+
+def test_flipping_gives_every_task_and_ranking_with_curves_of_fifteen_steps(model, windows):
+    from thesis_gnn_rul_xai.explain import aufc, node_flipping
+
+    explanations = {"GNN-LRP": walk_relevance(model, windows[:3]),
+                    "GNN-GI": walk_relevance(model, windows[:3], gamma=0.0)}
+    table = node_flipping(model, windows[:3], explanations, random_orders=4)
+    assert set(table["task"]) == {"activation", "pruning"}
+    assert set(table["ranking"]) == {"GNN-LRP, walks", "GNN-LRP, starting sensors",
+                                     "GNN-GI, walks", "GNN-GI, starting sensors", "random"}
+    assert len(table) == 3 * 2 * 5
+    steps = [f"step_{k}" for k in range(15)]
+    assert all(column in table.columns for column in steps)
+    pruning = table[table["task"] == "pruning"]
+    assert np.all(pruning["step_0"] == 0.0)
+    adding = table[(table["task"] == "activation") & (table["ranking"] != "random")]
+    for _, row in adding.iterrows():
+        assert sorted(int(n) for n in row["order"].split()) == list(range(14))
+        assert row["step_14"] == pytest.approx(explanations["GNN-LRP"].score[int(row["window"])], abs=1e-9)
+    np.testing.assert_allclose(table["aufc"], table[steps].mean(axis=1), atol=1e-12)
+    summary = aufc(table)
+    assert len(summary) == 10 and set(summary["count"]) == {3}
+
+
+def test_flipping_refuses_an_explanation_of_another_window(model, windows):
+    from thesis_gnn_rul_xai.explain import node_flipping
+
+    other = walk_relevance(model, windows[1:2])
+    with pytest.raises(ValueError, match="different networks or windows"):
+        node_flipping(model, windows[0:1], {"GNN-LRP": other}, random_orders=0)

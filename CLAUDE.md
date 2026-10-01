@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 416 tests; must all pass
+pytest                # 520 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -857,7 +857,13 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — 416 are
+With everything present — the data, PyTorch and the stored runs — 520 were
+collected late on 2026-10-01 and 519 passed. The one failure is a stored
+sensitivity run whose folder name and recorded commit disagree, because the
+study writing it picks up the working tree as it changes; it is written up in
+`docs/PENDING.md`. Earlier that day all 511 passed, after the GNN-LRP audit
+added the authors' setting of its rule and their node-flipping check. Before
+that, 416 were
 collected since the walk explanation's 45 tests were added on 2026-09-26, and
 415 passed that day; the one failure was a playground text test broken by
 uncommitted playground edits that the walk change did not touch. Before that,

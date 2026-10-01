@@ -1210,11 +1210,14 @@ def test_a_playground_run_stores_everything_the_page_reads_back(raw_dir, tmp_pat
     # Nothing a page drawing sensor values in cycles reads is written, so an
     # older page fails loudly instead of drawing score shares as cycles.
     assert not {"mean_abs", "sum_gap_max", "baseline", "baseline_prediction"} & set(summary)
+    # Nothing shaped by the Shapley explanation either: no average-size ranking.
+    assert "mean_abs_start" not in summary
     assert summary["value_unit"] == "score before the sigmoid"
     assert summary["conservation_error_max"] < 1e-9
+    assert summary["gamma"] == [0.0, 1.5, 0.0]
     assert len(walks["values"]) == summary["windows"]
     row = walks["values"][0]
-    symbols = list(summary["mean_abs_start"])
+    symbols = summary["sensors"]
     assert not set(symbols) & set(row) and "baseline" not in row
     for window in walks["values"]:
         starts = sum(window[f"start_{s}"] for s in symbols)
@@ -1225,3 +1228,10 @@ def test_a_playground_run_stores_everything_the_page_reads_back(raw_dir, tmp_pat
     assert all(f"reading_{s}" in row for s in symbols)
     assert 1 <= len(walks["top_walks"]) <= 10
     assert (first / "explanations" / name / "top_walks.csv").is_file()
+    # The GNN-LRP paper's own check is stored with every walk explanation.
+    rankings = {"GNN-LRP, walks", "GNN-LRP, starting sensors", "GNN-GI, walks",
+                "GNN-GI, starting sensors", "random"}
+    assert {r["ranking"] for r in walks["flipping"]} == rankings
+    assert len(walks["flipping"]) == summary["windows"] * 2 * len(rankings)
+    assert {(a["task"], a["ranking"]) for a in summary["flipping_aufc"]} == {
+        (task, ranking) for task in ("activation", "pruning") for ranking in rankings}

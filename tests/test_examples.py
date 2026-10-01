@@ -68,7 +68,7 @@ def test_example_engine_overlay_preserves_real_walk_values_and_grouped_paths():
 const fs = require('fs'), assert = require('node:assert/strict');
 const E = require('./src/thesis_gnn_rul_xai/docsite/assets/engine-view.js').ThesisEngineView;
 const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
-const data = payload.data, sensors = Object.keys(data.summary.mean_abs_start);
+const data = payload.data, sensors = data.summary.sensors || Object.keys(data.summary.mean_abs_start);
 const before = JSON.stringify(data), edges = E.edgesFor(data, sensors, []);
 const limits = E.peaks(data, sensors, edges), row = data.values[0];
 assert.deepEqual(new Set(Object.keys(E.locations)), new Set(sensors));
@@ -119,9 +119,10 @@ console.log(JSON.stringify({edges: edges.length, sensors: sensors.length, nodePe
                             input=json.dumps({"data": data, "graph": playground.options()["graph"]}),
                             text=True, encoding="utf-8", capture_output=True, check=True)
     measured = json.loads(result.stdout)
-    assert measured["sensors"] == len(data["summary"]["mean_abs_start"])
+    named = data["summary"].get("sensors") or list(data["summary"]["mean_abs_start"])
+    assert measured["sensors"] == len(named)
     assert measured["nodePeak"] == max(abs(r[f"start_{s}"]) for r in data["values"]
-                                       for s in data["summary"]["mean_abs_start"])
+                                       for s in named)
 
 
 @pytest.mark.parametrize("scope", ["engine", "test"])

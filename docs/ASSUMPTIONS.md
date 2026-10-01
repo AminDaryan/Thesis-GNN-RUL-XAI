@@ -49,10 +49,11 @@ identifier below.
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
 | A-27 | A sensor graph built from the data | Never builds one; its Conclusions claim its own graph goes "beyond data-driven correlations" | The 41 most strongly correlated pairs on the training engines, as many edges as Table 3; **indistinguishable from Table 3 by test RMSE** (+0.096, p = 0.655), 2.0 cycles better on the held-back engines (p = 0.012), but its test predictions run later |
 | A-28 | Each sensor's last reading, average and change as node features | Never considered; Table 4 prints one number per sensor, from the LSTM stage | A stage outside the paper, not the default; **2.910 cycles below the last cycle** (p = 0.00025, engine interval [−5.19, −0.63]), indistinguishable from the recurrent stage on test error |
-| A-29 | Explaining the sensor graph itself | Explains sensor nodes only (Section 2.4), yet says its rankings set "edge weights" and validate its graph (Section 4.4) | Walk shares from GNN-LRP, of the score before the sigmoid, gamma 0 by default and always at the first graph layer; on the default network about half the score is the dense layers' constant (51 ± 4 %), and how much stays within a sensor's group is mostly set by the graph |
-| A-30 | What removing one connection means | Removes the whole graph once and retrains; never one connection | Delete it from the raw graph both ways, rescale, rerun without retraining; on the default network its effect is unrelated to what flowed along it (rank correlation −0.16 ± 0.20, p = 0.158) |
+| A-29 | Explaining the sensor graph itself | Explains sensor nodes only (Section 2.4), yet says its rankings set "edge weights" and validate its graph (Section 4.4) | Walk shares from GNN-LRP, of the score before the sigmoid, with the authors' own setting of gamma (0, 1.5, 0), 0 at the first graph layer; on the default network about half the score is the dense layers' constant (51 ± 4 %), and how much stays within a sensor's group is mostly set by the graph |
+| A-30 | What removing one connection means | Removes the whole graph once and retrains; never one connection | Delete it from the raw graph both ways, rescale, rerun without retraining; on the default network its effect ranks the connections against what flowed along them (rank correlation −0.26 ± 0.14, p = 0.013) |
 | A-31 | Placing explanation nodes on an engine | Table 2 names variables and component regions; Fig. 3 places a separate graph beside a schematic engine | An original schematic cutaway with section anchors, distinct markers for calculated and system quantities, and the stored model's graph overlaid; no claim of exact probe coordinates |
 | A-32 | Learning-rate sensitivity levels | Table 6 gives `0.001` at the start and `0.0001` at the end; it gives no sensitivity study | Test those rates, one tenth of both, and ten times both, keeping the ten-to-one ratio |
+| A-33 | Running the GNN-LRP paper's own check on this network | Not in the paper; the GNN-LRP paper's node flipping never says how a network on a fixed rescaled graph runs with nodes missing | A sensor's row and column of the rescaled graph zeroed, nothing rescaled; 20 random orders; walks beat random orders on every seed of all five configurations |
 
 ---
 
@@ -3148,9 +3149,9 @@ uncommitted code as a patch, and each seed's engine split and scaling.
 
 ---
 
-## A-29 — Walks through the sensor graph are explained with GNN-LRP, on the score before the sigmoid, with gamma = 0 by default
+## A-29 — Walks through the sensor graph are explained with GNN-LRP, on the score before the sigmoid, with the authors' own setting of its rule
 
-**Where:** `explain/walks.py` (`walk_relevance`)
+**Where:** `explain/walks.py` (`walk_relevance`, `paper_gammas`)
 
 **The gap.** Not a gap in a method the paper describes, but a question it raises
 and does not answer. Section 2.4 applies SHAP to the fourteen sensor nodes and
@@ -3160,9 +3161,10 @@ interpretability graph"* (p. 13) and ends by saying the changing patterns
 validate *"the effectiveness of the physics-informed graph structure"* (p. 14).
 No calculation in the paper attributes anything to a connection between two
 sensors: the edge weights of Fig. 10 are derived from node rankings by a rule
-the paper's text does not state. So the paper has no method for asking how much of a
-prediction travelled through its graph, which is what its claims about the
-graph need.
+the paper's text does not state. So the paper has no method for asking how much
+of a prediction travelled through its graph. The explanation added here answers
+that question with a method of its own, applied as its authors define it;
+nothing in it is taken from the paper's SHAP analysis or tuned to its results.
 
 **What we chose.**
 
@@ -3172,15 +3174,22 @@ graph need.
    or PGExplainer (Luo et al., 2020), which learn a mask over the connections.
 2. **The score before the sigmoid** is what is divided, not the prediction in
    cycles.
-3. **gamma = 0** by default. Gamma is GNN-LRP's one setting; a positive value
-   shrinks negative shares while keeping each layer's total. It is always 0 at
-   the first graph layer; from the second layer on a positive value may be
-   passed, one per layer.
+3. **The authors' own setting of the rule's gamma.** Their published code,
+   given no setting, uses `linspace(3, 0, depth)`: 3 at the first graph layer
+   falling in equal steps to 0 at the last; their paper keeps gamma 0 in the
+   layers after the graph. Gamma is 0 at the first graph layer here, because
+   the rule's derivation needs every number entering a layer to be zero or more
+   and this network's first graph layer receives rescaled readings. For three
+   graph layers the setting is 0, 1.5 and 0. Any other setting may be passed,
+   one per layer with 0 first.
 4. **The added constants** of the two dense layers, and of the graph layers
    when they have them, are reported as one number per window, not spread over
    the walks.
 5. **Walks start at the temporal stage's output**, the numbers entering the
    first graph layer, not at the raw readings.
+6. **Sensors the graph cannot tell apart count as one wherever a walk ends**
+   when walks are added up or drawn (finding F-18); the walks themselves are
+   kept unpooled.
 
 **Why.**
 
@@ -3203,27 +3212,29 @@ graph need.
   or a ReLU, the graph layers add no constant (assumption A-12), and the dense
   layers keep each sensor's numbers apart rather than averaging them. With each
   ReLU held on or off as the window set it, the score is a sum of products,
-  one per walk, plus a remainder from the constants. The remainder is computed
-  separately, by carrying the constants forward, so that walks plus remainder
-  equalling the score is a check and not a definition. The remainder changes
-  from window to window with `fc1`'s ReLUs, so the walks add up to the score
-  minus that remainder, not to the score minus the score of some reference
-  engine, which is what Shapley values add up to.
+  one per walk, plus a remainder from the constants; the gamma rule rescales
+  each layer so it still passes on exactly what it computed, so the sum holds
+  at any setting. The remainder is computed separately, by carrying the
+  constants forward, so that walks plus remainder equalling the score is a
+  check and not a definition. It changes from window to window with `fc1`'s
+  ReLUs, so the walks add up to the score minus that remainder, not to the
+  score minus the score of some reference engine.
 - **The score, not cycles.** The sigmoid bends, so shares of the score cannot
   become shares of cycles that still add up. The source explains outputs before
   the final squashing step in its own examples: the difference of two class
   scores before the softmax (its Fig. 7), and a non-linear output made linear
   first (its Section 5.2). It never discusses a sigmoid.
-- **gamma = 0.** It is the one setting at which each share is exactly what the
-  network computes at this window, it needs no value chosen, and no source
-  gives one for this network. At the first graph layer it is also the only
-  setting the source's rule supports: that rule's derivation (its appendix C)
-  assumes the numbers entering a layer are never negative, and this network's
-  first graph layer receives rescaled readings, which are negative below the
-  training average. The cost is stated by the source itself: with gamma = 0
-  GNN-LRP is identical to its own simpler baseline, GNN-GI, which it reports as
-  noisier and less selective than a positive gamma; its experiments use
-  positive values that fall towards the output.
+- **The authors' setting of gamma.** With gamma 0 everywhere the method is the
+  source's own simpler baseline, GNN-GI, which it reports as noisier and less
+  selective (its Section 4); its method proper uses gamma above 0, set per
+  network: 2 then 1 for its GIN, 3 for its sentiment model, 0.5 halving per
+  block and 0 in the classifier for VGG-16, and, in its version 1, 0.25 at
+  every layer. With no single value given, the default of the authors'
+  published implementation is the closest thing to their protocol. The first
+  graph layer is the exception their own derivation forces: its appendix C
+  assumes the numbers entering a layer are never negative, and where a network
+  lacks that structure — a ReLU, then a weighted sum, then a ReLU — the authors
+  use gamma 0 themselves, as for their SchNet model (their Section 4.1).
 - **Walks from the temporal stage's output.** Every implementation by the
   source's authors stops at the input of the first graph layer. Going further
   back through the recurrent stages would need rules for their gates that this
@@ -3232,36 +3243,54 @@ graph need.
 
 **Where the source's section numbers come from.** The arXiv version 3 of the
 paper, since the journal's own text could not be retrieved; the journal version
-may number them differently.
+may number them differently. The default schedule is read from `explain` in
+`xaigraph-synth-code/explainers.py` of the authors' repository
+(git.tu-berlin.de/thomas_schnake/paper_gnn_lrp).
+
+**Correction, 2026-10-01.** From 2026-09-26 the default here was gamma 0 at
+every layer, defended as "the one setting at which each share is exactly what
+the network computes". That is the source's baseline, GNN-GI, under the name of
+GNN-LRP. An audit against the source and its code, asked for by the author,
+found it. It mattered: on the stored default network, seed 42, the walks of the
+held-back engine 5 move by a median of 34 % of their total size between the two
+settings on 184 of its 240 windows, and are unchanged only on the 56 where every
+sensor's input to the first graph layer has the same sign — the one case where
+gamma cancels, since every sensor then leaves that layer holding the same part
+of the same weight row (`notebooks/xai/03_walks_fd001.ipynb`, step 4). The
+tables below were re-measured under the authors' setting and replace the ones
+measured at gamma 0, which had also been corrected once already on 2026-09-26,
+when a walk that only changed member within a group of indistinguishable
+sensors was still counted as leaving its starting sensor.
 
 **How much it matters.** The choice of method is an argument, not a
 measurement. What is measured is, first, the arithmetic, in `tests/test_walks.py`:
 walks plus constant give back the score to within 1e-9 for every temporal stage,
-with and without the graph layers' constants; each sensor's total equals
-PyTorch's own differentiation, at both ends of the walks and for each graph
-entry; and for 30 walks at gamma 0 and at gamma (0, 0.5, 0.25) the shares equal
-the source's own procedure, which runs the network backwards once per walk with
-every other route blocked.
+with and without the graph layers' constants; at gamma 0 each sensor's total
+equals PyTorch's own differentiation, at both ends of the walks and for each
+graph entry; and for 30 walks at gamma 0 and at gamma (0, 0.5, 0.25) the shares
+equal the source's own procedure, which runs the network backwards once per
+walk with every other route blocked. The source's own check of an explanation
+is assumption A-33.
 
-Second, what the walks say about the stored networks, measured on 2026-09-26 by
-`scripts/measure_walks.py` at `14c1d64-dirty`, on the last window of each of the
-100 test engines, for all five saved seeds of five stored runs. Beside each
+Second, what the walks say about the stored networks, measured on 2026-10-01 by
+`scripts/measure_walks.py` at `692d2d4-dirty`, on the last window of each of
+the 100 test engines, for all five saved seeds of five stored runs. Beside each
 trained network the script explains an **untrained** one, built exactly as
 `scripts/train.py` builds that seed's network before training it, so it is the
 trained network's own starting point. A number says something about training
 only where the two differ. Each cell is the mean ± spread over the five seeds of
 each seed's median over the 100 windows:
 
-| Stored run | Network | Walks that stay within their starting sensor's group, share of all walk size | Constant, share of score's size | Walk sizes ÷ size of their sum | Connection ranking, gamma 0 against (0, 0.5, 0.25) |
+| Stored run | Network | Walks that stay within their starting sensor's group, share of all walk size | Constant, share of score's size | Walk sizes ÷ size of their sum | Connection ranking, the authors' setting against gamma 0 |
 |---|---|---|---|---|---|
-| Paper's graph, last cycle (the default) | trained | 5.51 ± 3.04 % | 51 ± 4 % | 8.6 ± 3.5 | 0.902 ± 0.040 |
-|  | untrained | 15.43 ± 3.74 % | 82 ± 14 % | 8.2 ± 5.2 | 0.992 ± 0.007 |
-| Paper's graph, window summary | trained | 13.99 ± 3.55 % | 57 ± 4 % | 4.5 ± 1.5 | 0.966 ± 0.011 |
-|  | untrained | 13.55 ± 2.25 % | 74 ± 32 % | 8.1 ± 3.3 | 0.975 ± 0.015 |
-| Paper's graph, recurrent stage | trained | 15.44 ± 3.23 % | 11 ± 5 % | 2.2 ± 0.3 | 0.992 ± 0.005 |
-|  | untrained | 16.46 ± 6.36 % | 97 ± 4 % | 9.2 ± 4.9 | 0.995 ± 0.011 |
-| Correlation graph, last cycle | trained | 9.65 ± 2.68 % | 36 ± 4 % | 9.9 ± 1.7 | 0.928 ± 0.024 |
-|  | untrained | 7.18 ± 2.65 % | 86 ± 13 % | 11.0 ± 3.7 | 0.935 ± 0.070 |
+| Paper's graph, last cycle (the default) | trained | 6.42 ± 3.20 % | 51 ± 4 % | 7.1 ± 2.6 | 0.901 ± 0.043 |
+|  | untrained | 16.59 ± 3.56 % | 82 ± 14 % | 7.7 ± 5.0 | 0.994 ± 0.006 |
+| Paper's graph, window summary | trained | 18.13 ± 3.54 % | 57 ± 4 % | 2.8 ± 0.6 | 0.966 ± 0.011 |
+|  | untrained | 15.48 ± 3.01 % | 74 ± 32 % | 6.4 ± 2.5 | 0.979 ± 0.013 |
+| Paper's graph, recurrent stage | trained | 15.78 ± 2.86 % | 11 ± 5 % | 2.1 ± 0.3 | 0.994 ± 0.003 |
+|  | untrained | 16.59 ± 6.54 % | 97 ± 4 % | 9.1 ± 4.9 | 0.996 ± 0.010 |
+| Correlation graph, last cycle | trained | 11.96 ± 3.17 % | 36 ± 4 % | 7.5 ± 1.1 | 0.932 ± 0.026 |
+|  | untrained | 8.03 ± 2.87 % | 86 ± 13 % | 10.4 ± 3.7 | 0.942 ± 0.060 |
 | Every sensor joined, last cycle | trained | 100 % | 54 ± 3 % | 3.6 ± 0.0 | 1.000 ± 0.000 |
 |  | untrained | 100 % | 90 ± 7 % | 19.4 ± 19.0 | 1.000 ± 0.000 |
 
@@ -3270,58 +3299,52 @@ starting sensor's group, as a share of all walks' size, where sensors the graph
 cannot tell apart form one group (finding F-18) and every other sensor is a
 group of its own; the size of the dense layers' constant against the constant
 plus the walks' sum; every walk's size added up and divided by the size of the
-walks' sum, so 8.6 means the shares are large and mostly cancel; and Spearman's
-rank correlation, over the connections, between what flowed along each at
-gamma 0 and at gamma (0, 0.5, 0.25), with what arrives at a group at the last
+walks' sum, so 7.1 means the shares are large and mostly cancel; and Spearman's
+rank correlation, over the connections, between what flowed along each under
+the authors' setting and under gamma 0, with what arrives at a group at the last
 graph layer split equally among its members.
-
-**Correction, same day.** The first version of this table counted a walk as
-staying only if it stayed on one sensor, and gave 0.37 ± 0.04 % trained against
-0.46 ± 0.03 % untrained on the default. That split P30 -> P30 -> P30 -> P30
-(staying) from P30 -> P30 -> P30 -> Ps30 (moving), although which of the two a
-share lands on follows `fc1` weights that training never separated (finding
-F-18), so part of that figure was the random start. It was caught by the review
-that planned the playground view, before the figure was used anywhere.
 
 What this shows, and what it does not:
 
 - **How much stays within a group is mostly the graph's doing.** With the window
-  summary, the recurrent stage and the correlation graph, the trained and the
-  untrained networks cannot be told apart (paired p = 0.86, 0.62 and 0.13). On
-  the default, training moved weight away from staying: 5.5 % against 15.4 %,
-  lower on all five seeds (paired p = 0.023). Where everything is joined to
-  everything, every sensor is in one group and every walk stays, by definition.
-  A share of this kind cannot, on its own, show that the network uses its graph.
+  summary and the recurrent stage, the trained and the untrained networks cannot
+  be told apart (paired p = 0.37 and 0.75); with the correlation graph the
+  trained networks keep a little more within groups (p = 0.049). On the default,
+  training moved weight away from staying: 6.4 % against 16.6 %, lower on all
+  five seeds (paired p = 0.021). Where everything is joined to everything, every
+  sensor is in one group and every walk stays, by definition. A share of this
+  kind cannot, on its own, show that the network uses its graph.
 - **About half of the default network's score belongs to no sensor**: the dense
   layers' constant is 51 ± 4 % of the score's size (82 % before training,
-  paired p = 0.0088). With the recurrent stage it is 11 ± 5 %.
-- **The shares cancel heavily and training does not make that worse**: 8.6
-  against 8.2 before training on the default (paired p = 0.85). A list of the
+  paired p = 0.0088). With the recurrent stage it is 11 ± 5 %. The constant does
+  not depend on gamma.
+- **The shares cancel heavily on the default, and training does not make that
+  worse**: 7.1 against 7.7 before training (paired p = 0.75). A list of the
   largest walks, read without that ratio, shows mostly cancellation.
-- **Rankings of connections move little with gamma**: 0.902 ± 0.040 at
-  (0, 0.5, 0.25) and 0.866 ± 0.054 at (0, 1, 1) on the default, above 0.98 with
-  the recurrent stage. Where everything is joined to everything, gamma changes
-  nothing, because every row is the same.
+- **Rankings of connections move little between the authors' setting and the
+  others**: 0.901 ± 0.043 against gamma 0, 0.994 ± 0.004 against
+  (0, 0.5, 0.25) and 0.984 ± 0.009 against (0, 1, 1) on the default; above
+  0.99 with the recurrent stage. Where everything is joined to everything,
+  gamma changes nothing, because every row is the same.
 - **Seeds agree on which connections carry most, except with the recurrent
   stage.** Spearman's rank correlation between every pair of seeds, over the
-  connections they share: 0.71 to 0.96 on the default, 0.86 to 0.99 on the
-  correlation graph, 0.30 to 0.79 with the recurrent stage.
+  connections they share: 0.77 to 0.97 on the default, 0.78 to 0.98 on the
+  correlation graph, 0.27 to 0.77 with the recurrent stage.
 - Nothing here says the paper's graph helps or hurts. That needs networks
   retrained on another graph (assumption A-27), not a reading of one network.
 
 The five stored runs, each measured in its own folder under `walks/`:
 `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`
-(`14c1d64-dirty_20260926T160933Z`),
+(`692d2d4-dirty_20261001T193059Z`),
 `fd001_physics_row_cap_5seed_varsplit_window_summary_cfgba82e3_5602773-dirty_20260914T233435Z`
-(`…T161011Z`),
+(`…T194122Z`),
 `fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`
-(`…T160959Z`, the best pass restored, not the paper's 200-pass procedure),
+(`…T194012Z`, the best pass restored, not the paper's 200-pass procedure),
 `fd001_correlation_row_cap_5seed_varsplit_cfg7fdfce_f386291-dirty_20260914T150213Z`
-(`…T160945Z`) and
+(`…T193241Z`) and
 `fd001_complete_row_cap_5seed_varsplit_cfgf21547_f386291-dirty_20260914T150527Z`
-(`…T161022Z`). Before the correction above, the stored run of the default
-settings at `f386291-dirty` (`…T150004Z`) gave every figure identical to the
-`5602773-dirty` run, as it should: that run reproduced it exactly.
+(`…T194241Z`). The folders measured at gamma 0 on 2026-09-26 are kept beside
+them as the record of what that code computed.
 
 **Reproduce with:**
 
@@ -3371,18 +3394,22 @@ removing it does:
 
 | Stored run | Trained | Untrained | Paired p | Trained against zero, p |
 |---|---|---|---|---|
-| Paper's graph, last cycle (the default) | −0.16 ± 0.20 | 0.42 ± 0.25 | 0.009 | 0.158 |
-| Paper's graph, window summary | 0.34 ± 0.37 | 0.13 ± 0.46 | 0.507 | 0.112 |
-| Paper's graph, recurrent stage | 0.40 ± 0.14 | 0.11 ± 0.29 | 0.159 | 0.003 |
-| Correlation graph, last cycle | 0.63 ± 0.08 | 0.45 ± 0.21 | 0.094 | 0.0001 |
+| Paper's graph, last cycle (the default) | −0.26 ± 0.14 | 0.41 ± 0.26 | 0.003 | 0.013 |
+| Paper's graph, window summary | 0.25 ± 0.35 | 0.06 ± 0.45 | 0.534 | 0.178 |
+| Paper's graph, recurrent stage | 0.37 ± 0.14 | 0.12 ± 0.31 | 0.224 | 0.004 |
+| Correlation graph, last cycle | 0.62 ± 0.05 | 0.39 ± 0.17 | 0.036 | < 0.0001 |
 | Every sensor joined, last cycle | 0.25 ± 0.01 | 0.20 ± 0.12 | 0.344 | < 0.0001 |
 
-What flowed is added up with what arrives at a group of indistinguishable
-sensors at the last graph layer split equally among them (finding F-18).
+What flowed is measured under the authors' setting of gamma (assumption A-29),
+added up with what arrives at a group of indistinguishable sensors at the last
+graph layer split equally among them (finding F-18). These figures replace the
+ones measured at gamma 0 on 2026-09-26, when the default network's trained
+correlation was −0.16 ± 0.20 and could not be told from zero (p = 0.158).
 
-On the default network, **what flowed along a connection says nothing about what
-removing it does**: the rank correlation cannot be told from zero (p = 0.158),
-and training moved it down from 0.42. On the correlation graph and with the
+On the default network, **what flowed along a connection does not predict what
+removing it does; if anything the two rank the connections in opposite
+orders**: the rank correlation is −0.26 ± 0.14, below zero (p = 0.013), and
+training moved it down from 0.41. On the correlation graph and with the
 recurrent stage the two agree moderately. So "the connections that matter most"
 names two different things, and a claim of that kind has to say which.
 
@@ -3595,6 +3622,91 @@ stopping.
 predictions against uncapped test answers raised RMSE from 13.234 ± 0.723 to
 **14.398 ± 0.732**, a paired increase of 1.164 cycles (p = 0.000027). It changes
 the answers used to score the predictions, not the predictions themselves.
+
+---
+
+## A-33 — The GNN-LRP paper's own check is run on this network by cutting a sensor's connections
+
+**Where:** `explain/flipping.py` (`node_flipping`, `subgraph_scores`), `scripts/explain.py`, `scripts/measure_walks.py`
+
+**The gap.** The GNN-LRP paper checks every explanation against the network it
+describes, by node flipping (its Section 4.1): sensors are added to an empty
+graph in the order the explanation rates highest (its Equation 14), or removed
+from the full one in the order it says matters least (its Equation 15), and the
+network's output is followed at each step; the mean of each curve, the area
+under the flipping curve, is set beside the same check with simpler rankings
+and random orders. For walks, the paper rates a set of nodes by every bag of
+edges lying wholly inside it. It does not say how a network built on a fixed,
+rescaled graph is to be run with nodes missing, nor how many random orders make
+its random baseline, and it allows, without requiring it, an occasional coarser
+step that adds the node with the largest share on its own.
+
+**What we chose.**
+
+1. **A sensor is taken out by zeroing its row and its column of the rescaled
+   graph the network was trained with, its link to itself included, and nothing
+   is rescaled again.** Its readings stay in the window, but with no connection
+   left nothing of them reaches the score through the graph layers.
+2. **What is followed is the score before the sigmoid**, the quantity the walks
+   divide (assumption A-29): while adding, the score itself; while removing,
+   its distance from the full graph's score.
+3. **The rankings set beside the walks are the paper's own**: the walks added
+   up by their starting sensor, which the paper says matches the node-level
+   method of Pope et al.; the paper's simpler GNN-GI and its starting sensors;
+   and random orders, here **20**, averaged, each drawn from a generator seeded
+   by the window's position.
+4. **No coarser steps**: every step is the greedy one.
+
+**Why.** The paper feeds its networks the masked connectivity, `f(M * Lambda)`,
+without rescaling, so zeroing entries of the rescaled graph is its procedure
+carried over; rescaling again, as assumption A-30 does to remove one
+connection, would change what every remaining sensor receives, which the
+paper's masking does not. The random count and the absence of coarse steps are
+the plainest readings of what it leaves open.
+
+**How much it matters, measured.** The same runs, seeds, test windows and
+commit as the table in assumption A-29. Mean ± spread over seeds of each seed's
+average over the 100 test windows, trained networks; adding is better higher,
+removing is better lower:
+
+| Stored run | Task | Walks, authors' setting | Their starting sensors | Walks, GNN-GI | Random | Walks against random, paired p (seeds better) | Walks against starting sensors, p | Authors' setting against GNN-GI, p |
+|---|---|---|---|---|---|---|---|---|
+| Paper's graph, last cycle (the default) | adding | 1.408 ± 0.094 | 1.195 ± 0.138 | 1.410 ± 0.096 | 0.982 ± 0.162 | 0.0014 (5/5) | 0.013 | 0.31 |
+|  | removing | 0.645 ± 0.085 | 0.896 ± 0.095 | 0.653 ± 0.092 | 1.053 ± 0.100 | < 0.0001 (5/5) | < 0.0001 | 0.14 |
+| Paper's graph, window summary | adding | 2.156 ± 0.266 | 2.045 ± 0.226 | 2.134 ± 0.254 | 1.551 ± 0.238 | 0.0001 (5/5) | 0.069 | 0.24 |
+|  | removing | 0.679 ± 0.069 | 0.924 ± 0.079 | 0.679 ± 0.079 | 1.320 ± 0.126 | < 0.0001 (5/5) | < 0.0001 | 0.99 |
+| Paper's graph, recurrent stage | adding | 0.886 ± 0.168 | 0.748 ± 0.120 | 0.882 ± 0.167 | 0.438 ± 0.115 | 0.0003 (5/5) | 0.012 | 0.28 |
+|  | removing | 0.824 ± 0.037 | 1.154 ± 0.038 | 0.823 ± 0.037 | 1.343 ± 0.082 | < 0.0001 (5/5) | < 0.0001 | 0.073 |
+| Correlation graph, last cycle | adding | 1.860 ± 0.169 | 1.371 ± 0.076 | 1.869 ± 0.173 | 0.810 ± 0.089 | < 0.0001 (5/5) | 0.0007 | 0.026 |
+|  | removing | 0.352 ± 0.029 | 0.535 ± 0.035 | 0.360 ± 0.025 | 0.993 ± 0.032 | < 0.0001 (5/5) | 0.0005 | 0.16 |
+| Every sensor joined, last cycle | adding | 1.267 ± 0.066 | 1.267 ± 0.066 | 1.267 ± 0.066 | 1.082 ± 0.065 | < 0.0001 (5/5) | 0.0068 | — |
+|  | removing | 0.732 ± 0.024 | 0.880 ± 0.028 | 0.732 ± 0.024 | 0.935 ± 0.031 | < 0.0001 (5/5) | < 0.0001 | — |
+
+- **By the paper's own check, the walks describe every network here better than
+  chance**: on all five configurations and both tasks they beat the random
+  orders on every seed.
+- **The walks beat their own starting sensors** on every configuration's
+  removing task and on four of five adding tasks (the window summary's, at
+  p = 0.069, cannot be told apart), so what the walks add over a node-level
+  ranking is visible in the network's own output, as the paper reports for its
+  networks.
+- **The authors' setting and GNN-GI cannot be told apart** on nine of the ten
+  rows; on the correlation graph's adding task GNN-GI is slightly ahead
+  (1.869 against 1.860, p = 0.026). So on these networks the setting changes
+  the walks (assumption A-29) but not how well they pass this check. Where
+  every sensor is joined to every other the two settings give identical walks,
+  so no test is possible.
+- The check shows that the ranking describes the network; it says nothing about
+  engines, and nothing about whether the paper's graph is useful.
+
+**Reproduce with:**
+
+```bash
+python scripts/measure_walks.py --run <stored run directory>
+```
+
+Each walk explanation the playground or `scripts/explain.py` makes stores the
+same check for every window it explains, in `flipping.csv`.
 
 ---
 

@@ -20,6 +20,7 @@ from ..utils.logging_setup import get_logger
 
 __all__ = [
     "MAX_WALKS_PER_EXAMPLE",
+    "PAPER_GAMMA_START",
     "WalkRelevance",
     "connection_relevance",
     "conservation_error",
@@ -27,6 +28,7 @@ __all__ = [
     "cycle_relevance",
     "indistinguishable_sensors",
     "node_relevance",
+    "paper_gammas",
     "step_relevance",
     "top_walks",
     "walk_relevance",
@@ -37,6 +39,12 @@ logger = get_logger(__name__)
 # Every walk is stored, so a window costs nodes ** (layers + 1) numbers: 38,416
 # for 14 sensors and three graph layers. A fifth layer would cost 7.5 million.
 MAX_WALKS_PER_EXAMPLE: int = 1_000_000
+
+# The gamma the authors' own implementation gives the first graph layer when it
+# is given none, falling in equal steps to 0 at the last: linspace(3, 0, depth)
+# in `explain` of their synthetic-graph code (Schnake et al., 2022). The paper
+# itself sets gamma per network and keeps 0 in the top classifier.
+PAPER_GAMMA_START: float = 3.0
 
 # How far the prediction rebuilt here may sit from the network's own, in cycles,
 # before the network is judged to compute something this file does not model.
@@ -102,12 +110,11 @@ def _rule_forward(
         mixed = adjacency @ hidden
         before = mixed @ weight + (bias if bias is not None else 0.0)
         after = torch.relu(before)
-        # ASSUMPTION A-29: gamma = 0 by default. The rule's weights are then the
-        # layer's own, `ruled` equals `before`, and the factor is 1 where the
-        # ReLU is on and 0 where it is off. A positive gamma adds that multiple
-        # of each positive weight and positive constant (Schnake et al., Table
-        # 1), and the factor rescales so the layer still passes on exactly what
-        # it computed. Written up in docs/ASSUMPTIONS.md.
+        # The LRP-gamma rule of Schnake et al., Table 1: add gamma times each
+        # positive weight and positive constant, then rescale so the layer still
+        # passes on exactly what it computed. With gamma = 0 the factor is 1
+        # where the ReLU is on and 0 where it is off. Which gamma each layer
+        # gets is decided in _gammas, below.
         ruled_weight = weight + gamma * weight.clamp(min=0)
         ruled_bias = bias + gamma * bias.clamp(min=0) if bias is not None else None
         ruled = mixed @ ruled_weight + (ruled_bias if ruled_bias is not None else 0.0)
@@ -188,10 +195,27 @@ def _chunk(
     return walks, constant, score
 
 
-def _gammas(model: ESTGNN, gamma: float | Sequence[float]) -> list[float]:
+def paper_gammas(n_layers: int) -> list[float]:
+    """The authors' default gamma for each graph layer, with 0 where its input can be negative."""
+    if n_layers < 1:
+        raise ValueError(f"n_layers must be at least 1, got {n_layers}.")
+    values = [float(v) for v in np.linspace(PAPER_GAMMA_START, 0.0, n_layers)]
+    # ASSUMPTION A-29: gamma is 0 at the first graph layer. The rule's derivation
+    # needs every number entering the layer to be at least 0 (Schnake et al.,
+    # appendix C), and where a network lacks that ReLU-then-dense-then-ReLU
+    # structure the authors fall back to gamma 0 themselves, as for their
+    # SchNet model. This network's first graph layer receives rescaled
+    # readings, which are negative below their training average.
+    values[0] = 0.0
+    return values
+
+
+def _gammas(model: ESTGNN, gamma: float | Sequence[float] | None) -> list[float]:
     """One gamma per graph layer, the first always 0. README.md says why."""
     n_layers = len(model.graph_layers)
-    if isinstance(gamma, (int, float)):
+    if gamma is None:
+        values = paper_gammas(n_layers)
+    elif isinstance(gamma, (int, float)):
         values = [0.0] + [float(gamma)] * (n_layers - 1)
     else:
         values = [float(value) for value in gamma]
@@ -217,7 +241,7 @@ def walk_relevance(
     model: ESTGNN,
     features: np.ndarray,
     *,
-    gamma: float | Sequence[float] = 0.0,
+    gamma: float | Sequence[float] | None = None,
     batch_size: int = 16,
     device: torch.device | str | None = None,
 ) -> WalkRelevance:
@@ -402,10 +426,12 @@ def cycle_relevance(
     model: ESTGNN,
     features: np.ndarray,
     *,
+    gamma: float | Sequence[float] | None = None,
     device: torch.device | str | None = None,
 ) -> np.ndarray:
-    """Each sensor's walk share at gamma 0, split over the cycles of its window."""
+    """Each sensor's walk share under the same rule, split over the cycles of its window."""
     _check_model(model)
+    gammas = _gammas(model, gamma)
     # Only a stage that is a fixed weighted sum of the readings, with nothing
     # added, hands the graph layers numbers whose shares divide exactly among
     # the cycles they were made from.
@@ -423,11 +449,24 @@ def cycle_relevance(
     model.to(device).eval()
 
     windows = torch.from_numpy(batch.astype(np.float64)).to(device).requires_grad_(True)
-    nodes = model.temporal(windows)
-    _, _, score = _rule_forward(model, nodes, [0.0] * len(model.graph_layers))
-    # A reading times how fast the score changes with it, the ReLUs held as the
-    # window set them: at gamma 0 that is what the walks starting at a sensor
-    # carry, handed back through the stage's fixed weights to each cycle.
+    hidden = model.temporal(windows)
+    adjacency = model.adjacency.double()
+    with torch.no_grad():
+        layers, _, _ = _rule_forward(model, hidden.detach(), gammas)
+    # The authors' own way of running the rule through automatic
+    # differentiation (Schnake et al., Section 3.2.1): each graph layer's output
+    # is rebuilt as its rule-weighted sum times a held factor, which leaves its
+    # value unchanged and makes the derivative follow the rule. Times the
+    # reading, that derivative hands each sensor's share back to its cycles
+    # through the stage's fixed weights.
+    for layer in layers:
+        ruled = adjacency @ hidden @ layer.weight
+        if layer.bias is not None:
+            ruled = ruled + layer.bias
+        hidden = ruled * layer.factor
+    flat = torch.flatten(hidden, start_dim=1)
+    score = torch.relu(flat @ model.fc1.weight.double().T + model.fc1.bias.double())
+    score = score @ model.fc2.weight.double()[0] + model.fc2.bias.double()[0]
     (gradient,) = torch.autograd.grad(score.sum(), windows)
     shares = (gradient * windows).detach().cpu().numpy()
     return shares[0] if single else shares

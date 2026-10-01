@@ -174,7 +174,10 @@
 
   function mount(container, data, opt, state) {
     var walks = data.summary.method === "walks";
-    var sensors = Object.keys(walks ? data.summary.mean_abs_start : data.summary.mean_abs).filter(function (s) { return !!locations[s]; });
+    // A walk explanation names its sensors; one saved before 2026-10-01 named
+    // them only through an average-size ranking.
+    var named = walks ? (data.summary.sensors || Object.keys(data.summary.mean_abs_start || {})) : Object.keys(data.summary.mean_abs);
+    var sensors = named.filter(function (s) { return !!locations[s]; });
     var edges = edgesFor(data, sensors, opt.edges);
     var limit = peaks(data, sensors, edges);
     state.layout = state.layout || "engine";

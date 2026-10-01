@@ -1332,6 +1332,22 @@ the prediction in cycles. It updates with the slider. The distinction between
 explaining a calculation and diagnosing engine damage stays visible even when
 the detailed section is closed.
 
+**A walk explanation shows only the GNN-LRP paper's own views**, since
+2026-10-01: the Engine tab, whose numbers are the walks added up by their
+starting sensor, which that paper says is how its method gives sensor-level
+explanations; the score split into its parts; the connections, the walks added
+up per connection, which that paper also allows; the largest walks; and
+**Authors' check**, the node-flipping curves that paper uses to test its own
+explanations (its Section 4.1), for the selected cycle or engine, with the area
+under each curve averaged over every saved one. Views borrowed from the Shapley
+explanation or from the main paper — the remaining-life chart drawn after the
+main paper's Fig. 7, the sensors ranked by average size, the per-sensor panels
+over time and the heat map across engines — are not offered for walks, and the
+paragraph comparing walks with Shapley values was removed. The calculation
+section names the rule's setting γ the explanation was made with; one made at
+γ 0, before the authors' own setting became the default, says that it is their
+simpler baseline, GNN-GI, and has no stored check.
+
 **Wording correction, 2026-09-27.** The previous introduction began “Each value”
 without saying which values it meant, and mixed chart instructions with
 calculation checks. The revised text points to the visible sensor labels and

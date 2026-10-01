@@ -2146,6 +2146,8 @@ def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
         "values": _read_csv(folder / "values.csv"),
         # Only a walk explanation writes this file; the others get an empty list.
         "top_walks": _read_csv(folder / "top_walks.csv"),
+        # The GNN-LRP paper's own check, stored only with walk explanations.
+        "flipping": _read_csv(folder / "flipping.csv"),
         "graph_edges": (None if summary.get("method") == "walks"
                         else _explanation_edges(path.parent, summary)),
     })
