@@ -114,8 +114,10 @@ def _scores(model: ESTGNN, nodes: torch.Tensor, masks: np.ndarray) -> np.ndarray
     keep = torch.from_numpy(masks.astype(np.float64)).to(nodes.device)
     # ASSUMPTION A-33: a sensor is taken out of the graph by zeroing its row and
     # its column of the rescaled graph the network was trained with, including
-    # its connection to itself, and nothing is rescaled again: the paper feeds
-    # the network the masked connectivity, f(M * Lambda). Its readings stay in
+    # its connection to itself, and nothing is rescaled again. The paper runs
+    # the network on the smaller graph (its Fig. 6) without saying how a graph
+    # that was rescaled loses a node; the authors' code, when it masks a graph,
+    # multiplies the mask into the already rescaled one. Its readings stay in
     # the window; with no connection left, nothing of them reaches the score
     # through the graph layers. Written up in docs/ASSUMPTIONS.md.
     adjacency = model.adjacency.double()[None] * keep[:, :, None] * keep[:, None, :]

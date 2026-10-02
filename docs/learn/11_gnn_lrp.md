@@ -232,8 +232,12 @@ The project's three graph layers use **0, 1.5, 0**. The
 [authors' implementation](https://git.tu-berlin.de/thomas_schnake/paper_gnn_lrp)
 starts at 3 and falls evenly to 0. Here the first value is replaced by 0
 because rescaled readings can be negative, while the rule's derivation
-assumes nonnegative layer inputs. The layers after the graph use 0 too
-(assumption A-29).
+assumes nonnegative layer inputs. When each sensor hands the graph one number,
+as in the default network, every number reaching one first-layer output passes
+through the same multiplier, so gamma's extra weight scales them all alike and
+the rescaling undoes it: the replacement changes nothing there. It matters
+when each sensor hands the graph several numbers. The layers after the graph
+use 0 too (assumption A-29).
 
 This demonstration has only one graph layer, also its first, so its gamma is
 **0**. That is the GNN-GI special case: no extra weighting. It makes every
@@ -430,7 +434,7 @@ Exact accounting alone does not tell us how a ranking behaves when the graph
 changes. A second check adds sensors to an empty graph and removes them from
 the full graph, measuring the network again after every change. The method's
 authors call this **node flipping** and summarize each curve by its mean
-([Section IV-A](https://arxiv.org/html/2006.03589v3)).
+([Section 4.1](https://arxiv.org/html/2006.03589v3)).
 
 > Adding: no sensors → one sensor → two sensors → all sensors.
 >

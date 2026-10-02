@@ -43,7 +43,8 @@ MAX_WALKS_PER_EXAMPLE: int = 1_000_000
 # The gamma the authors' own implementation gives the first graph layer when it
 # is given none, falling in equal steps to 0 at the last: linspace(3, 0, depth)
 # in `explain` of their synthetic-graph code (Schnake et al., 2022). The paper
-# itself sets gamma per network and keeps 0 in the top classifier.
+# itself sets gamma per network, and says what the layers after the graph part
+# get only once: 0 in VGG-16's top-level classifier (its Section 5.3).
 PAPER_GAMMA_START: float = 3.0
 
 # How far the prediction rebuilt here may sit from the network's own, in cycles,
@@ -111,10 +112,12 @@ def _rule_forward(
         before = mixed @ weight + (bias if bias is not None else 0.0)
         after = torch.relu(before)
         # The LRP-gamma rule of Schnake et al., Table 1: add gamma times each
-        # positive weight and positive constant, then rescale so the layer still
-        # passes on exactly what it computed. With gamma = 0 the factor is 1
-        # where the ReLU is on and 0 where it is off. Which gamma each layer
-        # gets is decided in _gammas, below.
+        # positive weight, then rescale so the layer still passes on exactly
+        # what it computed. Table 1 has no constant; a positive constant gets
+        # gamma too, as in the authors' code (`lrpforward` in their
+        # synthetic-graph modules); graph layers have one only with gcn_bias.
+        # With gamma = 0 the factor is 1 where the ReLU is on and 0 where it is
+        # off. Which gamma each layer gets is decided in _gammas, below.
         ruled_weight = weight + gamma * weight.clamp(min=0)
         ruled_bias = bias + gamma * bias.clamp(min=0) if bias is not None else None
         ruled = mixed @ ruled_weight + (ruled_bias if ruled_bias is not None else 0.0)
@@ -205,7 +208,10 @@ def paper_gammas(n_layers: int) -> list[float]:
     # appendix C), and where a network lacks that ReLU-then-dense-then-ReLU
     # structure the authors fall back to gamma 0 themselves, as for their
     # SchNet model. This network's first graph layer receives rescaled
-    # readings, which are negative below their training average.
+    # readings, which are negative below their training average. With one
+    # number per sensor, as from the last cycle, the window average or the
+    # default recurrent stage, gamma there cancels exactly and this changes
+    # nothing; it matters for the three-number summary and the raw window.
     values[0] = 0.0
     return values
 

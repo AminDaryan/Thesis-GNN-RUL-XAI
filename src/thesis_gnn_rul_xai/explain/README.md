@@ -442,8 +442,12 @@ in `walks.py`:
 
 - **Their default schedule.** Their published code, when given no setting,
   uses gamma = 3 at the first graph layer falling in equal steps to 0 at the
-  last (`linspace(3, 0, depth)`), and their paper keeps gamma = 0 in the layers
-  after the graph, which here are `fc1` and `fc2`.
+  last (`linspace(3, 0, depth)`).
+- **Gamma 0 in the layers after the graph**, `fc1` and `fc2`. Their synthetic
+  network has no such layers, and their paper says what such layers get only
+  once, for its image model VGG-16: gamma = 0 in the top-level classifier (its
+  Section 5.3). That one case is followed here; it is a choice, not a rule the
+  paper states for every network.
 - **Gamma 0 at the first graph layer.** The rule's derivation assumes the
   numbers entering a layer are never negative (their appendix C), and where a
   network lacks that structure — a ReLU, then a weighted sum, then a ReLU — the
@@ -452,6 +456,19 @@ in `walks.py`:
   sensor is below its training average; there, a positive gamma pushes a
   negative contribution further the wrong way and can divide by a total of the
   wrong sign. `walk_relevance` refuses a positive gamma at the first layer.
+  **On most networks here this changes nothing.** When the temporal stage hands
+  the graph one number per sensor — the last cycle (the default), the window
+  average, and the recurrent stage at its default size — every unit of the
+  first graph layer receives all its inputs through one and the same weight, so
+  the extra (1 + gamma) multiplies the top and the bottom of each share alike
+  and cancels. On the five stored runs, every seed, the last window of every
+  test engine, giving the first layer the authors' 3 instead of 0 changes no
+  walk at all on the default, correlation-graph, complete-graph and recurrent
+  networks; on the three-number window summary it moves the walks by a median
+  of 103 ± 40 % of their total size (mean and spread over the five seeds of
+  each seed's median). The choice matters only there, and for the raw window
+  (`first_layer_gamma_change` in `scripts/measure_walks.py`; the
+  cancellation is `test_gamma_at_the_first_layer_cancels_with_one_number_per_sensor`).
 
 For three graph layers the setting is therefore 0, 1.5 and 0. It matters: on
 the stored default network, seed 42, the walks of the held-back engine 5 move
@@ -541,8 +558,12 @@ orders, averaged (`RANDOM_ORDERS`, 20).
 
 **How a sensor is taken out** (assumption A-33): its row and its column of the
 rescaled graph are set to zero, its link to itself included, and nothing is
-rescaled again — the paper feeds its networks the masked connectivity. Its
-readings stay in the window, but with no connection left nothing of them
+rescaled again. The paper runs its networks on the smaller graph (its Fig. 6
+compares the output before and after pruning) but never says how a graph that
+was rescaled loses a node, and the authors' published code holds no step that
+runs a network with nodes removed. The one place that code masks a graph, for
+GNNExplainer, it multiplies the mask into the graph it has already rescaled,
+without rescaling again, which is what is done here. Its readings stay in the window, but with no connection left nothing of them
 reaches the score through the graph layers. With no sensor at all, every graph
 layer holds zeros and the score is `score_at_zero`
 (`test_the_full_graph_scores_what_the_walks_split_and_the_empty_graph_its_zero`).

@@ -62,6 +62,12 @@ Each measure:
 ``gamma_agreement_*``
     Spearman's rank correlation, over the 41 connections, between what flowed
     along each at the authors' setting of gamma and at the other setting.
+``first_layer_gamma_change``
+    How much the one change made to the authors' setting moves the walks: their
+    unmodified gamma at the first graph layer (3) against the 0 used here,
+    every later layer as theirs, as every walk's change added up ignoring
+    signs, over every walk's size. Exactly 0 when the temporal stage hands the
+    graph one number per sensor (A-29).
 ``aufc_<task>_<ranking>``
     The GNN-LRP paper's own check of an explanation (its Section 4.1; A-33):
     the mean, over the test windows, of the area under the curve the score
@@ -162,7 +168,10 @@ def _connection_flow(result, raw: np.ndarray, symbols, groups) -> np.ndarray:
 
 def _measures(model, features, prepared) -> tuple[dict[str, float], dict[str, np.ndarray]]:
     """Every measure for one network over the given windows."""
+    import torch
+
     from thesis_gnn_rul_xai.explain import (
+        PAPER_GAMMA_START,
         aufc,
         connection_removal,
         crossing_relevance,
@@ -170,6 +179,7 @@ def _measures(model, features, prepared) -> tuple[dict[str, float], dict[str, np
         node_flipping,
         walk_relevance,
     )
+    from thesis_gnn_rul_xai.explain.walks import _chunk
 
     raw = prepared.adjacency_raw
     symbols = prepared.sensor_symbols
@@ -204,6 +214,16 @@ def _measures(model, features, prepared) -> tuple[dict[str, float], dict[str, np
         if name != "authors":
             row[f"gamma_agreement_{name}"] = _spearman(flows["authors"], flows[name])
     row["score_at_zero"] = result.score_at_zero
+    # The authors' gamma left unmodified at the first graph layer, which
+    # walk_relevance refuses, against the 0 used there (assumption A-29).
+    unmodified = [float(v) for v in np.linspace(PAPER_GAMMA_START, 0.0, len(model.graph_layers))]
+    windows = torch.from_numpy(features.astype(np.float32)).to(next(model.parameters()).device)
+    with torch.no_grad():
+        theirs = _chunk(model, windows, unmodified)[0].cpu().numpy()
+    moved = np.abs(result.relevance - theirs).reshape(len(features), -1).sum(axis=1)
+    change = moved / np.abs(result.relevance).reshape(len(features), -1).sum(axis=1)
+    row["first_layer_gamma_change_median"] = float(np.median(change))
+    row["first_layer_gamma_change_mean"] = float(np.mean(change))
     # The authors' own check (their Section 4.1), against their GNN-GI baseline,
     # node-level rankings and random orders.
     checked = aufc(node_flipping(model, features, {"GNN-LRP": result, "GNN-GI": results["0"]}))

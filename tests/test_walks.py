@@ -306,6 +306,21 @@ def test_gamma_at_the_first_layer_is_refused(model, windows):
         walk_relevance(model, windows[:1], gamma=(0.5, 0.5, 0.5))
 
 
+def test_gamma_at_the_first_layer_cancels_with_one_number_per_sensor(prepared, windows):
+    """Each first-layer unit then takes every input through one weight, so the
+    extra (1 + gamma) sits above and below every share; with three numbers it does not."""
+    from thesis_gnn_rul_xai.explain.walks import _chunk
+
+    x = torch.from_numpy(windows[:4].astype(np.float32))
+    for stage, cancels in (("last_cycle", True), ("mean_window", True), ("window_summary", False)):
+        network = _network(prepared, stage, bias=False)
+        with torch.no_grad():
+            ours = _chunk(network, x, [0.0, 1.5, 0.0])[0]
+            theirs = _chunk(network, x, [3.0, 1.5, 0.0])[0]
+        change = float((ours - theirs).abs().sum() / ours.abs().sum())
+        assert (change < 1e-12) == cancels, (stage, change)
+
+
 def test_a_negative_or_misshapen_gamma_is_refused(model, windows):
     with pytest.raises(ValueError, match="negative"):
         walk_relevance(model, windows[:1], gamma=(0.0, -1.0, 0.0))

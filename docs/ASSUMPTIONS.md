@@ -3207,12 +3207,14 @@ nothing in it is taken from the paper's SHAP analysis or tuned to its results.
    cycles.
 3. **The authors' own setting of the rule's gamma.** Their published code,
    given no setting, uses `linspace(3, 0, depth)`: 3 at the first graph layer
-   falling in equal steps to 0 at the last; their paper keeps gamma 0 in the
-   layers after the graph. Gamma is 0 at the first graph layer here, because
-   the rule's derivation needs every number entering a layer to be zero or more
-   and this network's first graph layer receives rescaled readings. For three
-   graph layers the setting is 0, 1.5 and 0. Any other setting may be passed,
-   one per layer with 0 first.
+   falling in equal steps to 0 at the last. Gamma is 0 at the first graph layer
+   here, because the rule's derivation needs every number entering a layer to
+   be zero or more and this network's first graph layer receives rescaled
+   readings; with one number per sensor that changes nothing, because gamma
+   cancels there. Gamma is 0 in the dense layers after the graph, following the
+   one network for which the paper says what such layers get. For three graph
+   layers the setting is 0, 1.5 and 0. Any other setting may be passed, one per
+   layer with 0 first.
 4. **The added constants** of the two dense layers, and of the graph layers
    when they have them, are reported as one number per window, not spread over
    the walks.
@@ -3265,7 +3267,24 @@ nothing in it is taken from the paper's SHAP analysis or tuned to its results.
   graph layer is the exception their own derivation forces: its appendix C
   assumes the numbers entering a layer are never negative, and where a network
   lacks that structure — a ReLU, then a weighted sum, then a ReLU — the authors
-  use gamma 0 themselves, as for their SchNet model (their Section 4.1).
+  use gamma 0 themselves, as for their SchNet model (their Section 4.1). That
+  exception has an effect only when the temporal stage hands the graph more
+  than one number per sensor. With one, every unit of the first graph layer
+  takes all its inputs through a single weight, so the factor 1 + gamma of
+  their Table 1 sits above and below every share and cancels. Measured on the
+  five stored runs below, every seed, the last window of every test engine:
+  giving the first layer the authors' 3 instead of 0 changes no walk at all on
+  the default, correlation-graph, complete-graph and recurrent networks, and
+  moves the walks of the three-number window summary by a median of
+  103 ± 40 % of their total size (mean and spread over seeds of each seed's
+  median; `first_layer_gamma_change` in `scripts/measure_walks.py`, measured
+  with the code at ce7e305-dirty before that measure was stored in a run
+  folder).
+- **Gamma 0 in the dense layers after the graph.** The paper sets what such
+  layers get for one network only: for its image model, VGG-16, gamma 0 in the
+  top-level classifier (its Section 5.3). Its synthetic-graph code has no
+  layers after the graph part. This is a choice following that one case, not a
+  rule the paper states in general.
 - **Walks from the temporal stage's output.** Every implementation by the
   source's authors stops at the input of the first graph layer. Going further
   back through the recurrent stages would need rules for their gates that this
@@ -3277,6 +3296,18 @@ paper, since the journal's own text could not be retrieved; the journal version
 may number them differently. The default schedule is read from `explain` in
 `xaigraph-synth-code/explainers.py` of the authors' repository
 (git.tu-berlin.de/thomas_schnake/paper_gnn_lrp).
+
+**Correction, 2026-10-02.** Three readings of the source were wrong when this
+entry was rewritten on 2026-10-01, and were found when another session checked
+every citation against a copy of arXiv version 3. It said the paper keeps
+gamma 0 "in the layers after the graph"; the paper says so only for VGG-16's
+top-level classifier. It said the rule of Table 1 also adds gamma to a layer's
+positive constant; Table 1 has no constant, and that treatment comes from the
+authors' code. And it justified gamma 0 at the first graph layer without
+noticing that with one number per sensor gamma cancels there, so on four of
+the five stored runs the choice changes nothing. None of these changes a
+number in this entry: none of the five stored runs it measures has
+graph-layer constants, and the setting stays as it was.
 
 **Correction, 2026-10-01.** From 2026-09-26 the default here was gamma 0 at
 every layer, defended as "the one setting at which each share is exactly what
@@ -3692,12 +3723,27 @@ step that adds the node with the largest share on its own.
    by the window's position.
 4. **No coarser steps**: every step is the greedy one.
 
-**Why.** The paper feeds its networks the masked connectivity, `f(M * Lambda)`,
-without rescaling, so zeroing entries of the rescaled graph is its procedure
-carried over; rescaling again, as assumption A-30 does to remove one
-connection, would change what every remaining sensor receives, which the
-paper's masking does not. The random count and the absence of coarse steps are
-the plainest readings of what it leaves open.
+**Why.** The paper only says the network is run on the smaller graph: its
+Fig. 6 plots the change from the output on "the input graph before pruning".
+Its authors' published code holds no step that runs a network with nodes
+removed; the one place it masks a graph, for GNNExplainer (the paper's
+Section 4, item (c)), it multiplies the mask into the graph it has already
+rescaled and does not rescale again. Zeroing a sensor's entries of the
+rescaled graph does the same here. Rescaling again, as assumption A-30 does to
+remove one connection, would also change what every remaining sensor
+receives, so a sensor's removal would be mixed with a change to all the
+others. The random count and the absence of coarse steps are the plainest
+readings of what it leaves open. The order of flipping follows the paper's
+Equations 14 and 15, not the authors' published code, which instead scores
+randomly drawn orders and, while adding, draws only sensors next to one
+already added.
+
+**Correction, 2026-10-02.** Until this date the reason above said the paper
+"feeds its networks the masked connectivity, `f(M * Lambda)`". That expression
+appears in the paper only where it describes GNNExplainer, not in its
+Section 4.1; another session found it while checking every citation against a
+copy of arXiv version 3. The procedure is unchanged; only its reason was
+wrong.
 
 **How much it matters, measured.** The same runs, seeds, test windows and
 commit as the table in assumption A-29. Mean ± spread over seeds of each seed's

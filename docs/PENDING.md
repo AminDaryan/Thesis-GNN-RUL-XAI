@@ -152,11 +152,15 @@ authors' own setting of gamma the default (it had been gamma 0, their simpler
 baseline) and added their node-flipping check; every walk measurement in the log
 was redone under that setting. What is left:
 
-1. **The measurements are at `692d2d4-dirty`.** Once the walk code is
-   committed, rerun `scripts/measure_walks.py` on the five runs named in A-29,
-   replace the folder names in A-29, A-30 and A-33 if any figure moves, and
-   re-execute `notebooks/xai/03_walks_fd001.ipynb`, which reads the newest
-   folder.
+1. **The measurements are at `692d2d4-dirty`.** The walk code was committed
+   on 2026-10-02 (f1adb1e). Rerun `scripts/measure_walks.py` on the five runs
+   named in A-29 from a committed state, replace the folder names in A-29,
+   A-30 and A-33 if any figure moves, and re-execute
+   `notebooks/xai/03_walks_fd001.ipynb`, which reads the newest folder. The
+   rerun also stores `first_layer_gamma_change`, added on 2026-10-02: A-29
+   quotes it (0 on four runs, 103 ± 40 % on the window summary) from the code
+   at ce7e305-dirty, run outside any run folder, so replace that sentence's
+   source with the new folder.
 2. **Other settings of gamma in the playground.** The Explain tab always uses
    the authors' setting. Offering others would let a reader see what the A-29
    table measures; if added, a positive value must never reach the first graph
@@ -588,19 +592,6 @@ conditions) are unchecked against their sources.
   pages (journal pages 183–184).
 - DVGTformer (Wang et al. 2024) also makes time steps nodes, in its second view.
 
-**The GNN-LRP paper, as read in `explain/README.md`, assumptions A-29 and A-33,
-and `explain/walks.py`.**
-- The masked connectivity f(M ⊙ Λ) appears in arXiv version 3 only in Section 4,
-  item (c), describing GNNExplainer; Section 4.1 does not say how nodes are
-  removed for node flipping. Assumption A-33 cites it as the reason for its
-  procedure; find the true source (perhaps the authors' code) or restate.
-- A γ of 0 after the graph layers is stated only for VGG-16 (Section 5.3), not
-  in general (assumption A-29, `explain/README.md`, `walks.py`).
-- `walks.py` attributes adding γ to a constant to Table 1, which applies γ to
-  the multipliers w_jk only.
-- `docs/learn/11_gnn_lrp.md` calls the flipping section "Section IV-A" (the
-  journal's numbering) where everything else says 4.1 (arXiv version 3).
-
 **Other.**
 - `explain/README.md` (about lines 663–668) says walk-based methods scored
   higher than GNNExplainer and PGExplainer in Yuan et al.'s survey; the survey
@@ -618,14 +609,6 @@ and `explain/walks.py`.**
 **Found while writing the Resources pages (2026-10-02).** Already corrected the
 same day: assumptions A-12 and A-22 said Wen et al. cite Kipf and Welling, and
 they do not (checked in the PDF's text and reference list). Still open:
-- The first graph layer's γ of 0 (assumption A-29, `walks.py` `paper_gammas`,
-  `explain/README.md`, `docs/learn/11_gnn_lrp.md`) is justified by negative
-  rescaled readings, but when the temporal stage hands the graph one number per
-  sensor — the default, the window average, and the recurrent stage at its
-  default size — every first-layer neuron receives all its inputs through one
-  multiplier, so Table 1's factor (1 + γ) cancels and the setting has no effect
-  there. It matters only for the three-number summary, the raw window or a wider
-  recurrent stage. `docs/resources/gnn_lrp.md` shows the cancellation to 1e-15.
 - The recurrent cells' starting values are PyTorch's defaults (every multiplier
   and offset drawn evenly from ±1/√32), which no assumption records; assumption
   A-14 covers the graph and dense layers and A-26 only size, depth and
