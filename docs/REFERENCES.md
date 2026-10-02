@@ -494,7 +494,9 @@ Measurement*, *74*, Article 3538014. https://doi.org/10.1109/TIM.2025.3569885
 > the subsets that have several (FD002 and FD004), scaling to (0, 1) within each
 > condition, and a label ceiling of 125. This is the source of the substituted
 > preprocessing described in assumption A-03, and the supporting evidence for
-> A-01.
+> A-01. Its study of the window length (its page 12, Fig. 14) is cited in
+> `docs/LITERATURE_BASIS.md`, under holding engines out, as consistent with
+> choosing a setting on the test set.
 >
 > Copy: [jin_2025_heterogeneous_dynamic_aware_gnn.pdf](references/jin_2025_heterogeneous_dynamic_aware_gnn.pdf),
 > the publisher's version (licensed download). Through a university library.

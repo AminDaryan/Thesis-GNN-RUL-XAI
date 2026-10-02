@@ -524,14 +524,57 @@ same window:
 
 ```
   two neighbouring windows of engine 1 share 29 of their 30 cycles
-  their labels: 162 and 161 - one cycle apart
+  their labels before the ceiling: 162 and 161 - one cycle apart
+  their labels with the default ceiling of 125: 125 and 125 - not apart at all
 ```
+
+The ceiling is the most remaining life a label may show: by default every
+label above 125 cycles is replaced by 125 before the windows are cut
+(assumption A-01). Engine 1 flew 192 cycles, so its first two windows, which
+end at cycles 30 and 31, would carry 162 and 161 without it, and both carry
+125 with it. The other examples in this file use the labels before the
+ceiling. Either way the two windows are near-copies of each other.
 
 Split *windows* at random and near-identical pairs land on both sides of the
 split. The held-back set would then contain windows the model has effectively
-already seen, and its error would be an optimistic measurement of nothing.
-Splitting by **engine** makes that impossible: a held-back engine contributes
-none of its windows to training.
+already seen, and its error would stop measuring the one thing it is there to
+measure: how the model does on engines it never learned from. That is
+**leakage**, information reaching the model by a route nobody intended, and
+Kapoor and Narayanan's survey of it lists this very case: training and test
+examples taken from the same units (their 2022 preprint, the copy in
+`docs/references/`, PDF page 5, Section 2.4, item L3.2; the preprint prints no
+page numbers). The usual result is an error lower than the model would score
+on unseen engines, because part of it is earned on near-copies of training
+windows, and the same authors write that leakage "usually leads to inflated
+estimates" (PDF page 4, Section 2.1). Usually is not always: a window-level
+split would also hold back different windows and train a different network on
+what is left, and nothing in the arithmetic says which way that moves the
+figure. This project has never built such a split, so neither the size nor the
+direction of the effect has been measured.
+
+Splitting by **engine** makes it impossible for near-copies to land on both
+sides: a held-back engine contributes none of its windows to training. That
+sentence is certain, not usual. Windows are cut one engine at a time, so no
+window holds cycles of two engines, and the two lists of engine numbers never
+share an entry (`run_preprocessing`, the function that runs every preparation
+step in order, also checks this after the windows are assigned, and stops if
+any engine has windows on both sides).
+
+**Correction, 2026-10-02:** this section previously said the held-back error
+would be "an optimistic measurement of nothing". That stated the usual
+direction of this leak as certain, and "of nothing" overstated it: the error
+would still measure something, only not how the model does on unseen engines.
+Found by the search for claims of this kind after the review of the
+playground's information cards on 2026-09-26 and the corrections it led to on
+2026-10-02 (assumption A-25).
+
+**Correction, 2026-10-02:** the illustration above gave the two labels only as
+162 and 161, "one cycle apart", without saying that these are the labels
+before the ceiling. With the default ceiling both windows carry 125, so they
+are not apart at all. Found on 2026-10-02 by a review of the correction above,
+which compared this section with the preprocessing notebook's window-split
+cell, where the same point had already been corrected; confirmed by printing
+the labels the default preparation gives engine 1's first two windows.
 
 ### The input
 
@@ -574,7 +617,10 @@ INFO | Split 100 engines into 80 for training and 20 for validation (seed=42).
 ```
 
 A fraction of 0 holds nothing back and returns an empty second array.
-That was the project's default until 2026-09-02; it is now 0.2 (A-06).
+That was the project's default from 2026-08-29 until 2026-09-08; it is now
+0.2 (A-06). (Corrected 2026-10-02: this said until 2026-09-02, a day on which
+the held-back setting did not change; the record of when holding engines back
+returned is in the log's entry on it, assumption A-06.)
 
 ---
 
@@ -692,11 +738,22 @@ ValueError: validation_fraction must be in [0, 1), got -0.1.
 ValueError: validation_fraction would leave no engines for training (2 of 2 selected).
 ```
 
-**The silent one**, as always, is the dangerous one: splitting by window instead
-of by engine raises nothing, trains fine, and reports a held-back error that is
-meaningless. Nothing in the code can detect it — it is prevented by
-`split_units_by_id` taking **engine numbers** as its input and never seeing a
-window at all.
+**The silent one**, as always, is the dangerous one: code that splits the
+windows themselves instead of the engines gets no error from this file, trains
+fine, and reports a held-back error that no longer measures how the model does
+on engines it has never seen. `split_units_by_id` cannot detect that, because
+it never sees a window; it prevents it by taking **engine numbers** as its
+input. Inside `run_preprocessing`, the check after the windows are assigned
+would stop such a split, but code that splits windows anywhere else has no
+such check.
+
+**Correction, 2026-10-02:** this paragraph previously called the held-back
+error "meaningless" and said nothing in the code could detect a split by
+window. The error would still measure something, only not performance on
+unseen engines, and `run_preprocessing` does check, after the windows are
+assigned, that no engine has windows on both sides. Found on 2026-10-02 by a
+review of the correction to the section on why the split must be by engine,
+which had come to say both things and so contradicted this paragraph.
 
 ---
 

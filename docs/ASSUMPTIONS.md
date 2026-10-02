@@ -27,7 +27,7 @@ identifier below.
 | A-03 | Input rescaling | Not described at all | **`zscore`** — the largest measured assumption in the project (3.83 cycles, F-10); selected under A-22 |
 | A-04 | Smoothing strength | Self-contradictory sentence in Section 3.2.3 | Read as `alpha = 0.5` |
 | A-05 | Window stride | Not in the text; **Fig. 1 indicates one time step** | 1 cycle |
-| A-06 | Validation split | None; trains for a fixed 200 epochs | **20 % of the engines**, reinstated 2026-09-02 after the A-22 removal; worth 0.32 cycles, which five seeds cannot distinguish from zero (p = 0.234) |
+| A-06 | Validation split | None; trains for a fixed 200 epochs | **20 % of the engines**, reinstated 2026-09-08 after the A-22 removal (date corrected 2026-10-02 from 2026-09-02; see A-06); worth 0.32 cycles, which five seeds cannot distinguish from zero (p = 0.234) |
 | A-07 | Node feature content | Table 4 **prints** one number per sensor (`W(1) in R^(1x32)`), produced by an LSTM that is never specified | The last cycle of the window, keeping Table 4's shape |
 | ~~A-08~~ | Order: smoothing and scaling | **Fig. 1 specifies it**: smoothing then normalisation | Withdrawn as an assumption; the paper's order is followed |
 | A-09 | Smoothing formula variant | Gives the recursive form as Equation 18 | Recursive form (`adjust=False` in pandas) |
@@ -39,7 +39,7 @@ identifier below.
 | A-15 | Sign of the score function | Equations 20 and 21 contradict each other | The NASA convention the paper's own text describes |
 | A-16 | R-squared denominator | Equation 23 uses the predicted values | The standard definition, using the observed ones |
 | A-17 | Learning-rate schedule | Both endpoints given, mechanism not | **One drop of x0.1 at the halfway epoch**, so only the two printed rates are used; indistinguishable from exponential (p = 0.39) |
-| A-18 | Early stopping | None; trains a fixed 200 epochs | **On**, since the split returned on 2026-09-02; fires between epochs 8 and 55 of a nominal 200 |
+| A-18 | Early stopping | None; trains a fixed 200 epochs | **On**, since the split returned on 2026-09-08 (date corrected 2026-10-02 from 2026-09-02; see A-06); fires between epochs 8 and 55 of a nominal 200 |
 | A-19 | What "without physics prior" removes | Names the ablation, never defines it | Replace the graph with a fully connected one |
 | A-20 | What "a sensor not considered" means | Equation 15 needs `f(S)`, but a network cannot take 13 inputs | Replace the sensor with its average training window |
 | A-21 | Adjacency normalisation formula | Says only "normalized ... incorporating self-loops"; never prints it | **Row `D^(-1)(A+I)`** — 0.25 cycles closer *with nothing held back* under the step schedule (p = 0.068, **no longer significant**), selected under A-22 |
@@ -133,6 +133,24 @@ This code reports 20.35 with the cap; without it, 21.66. Whichever is quoted,
 the cap must be quoted with it. (Under the removed `window` mode the same
 measurement gave +1.762 cycles; the effect is configuration-dependent, so it
 must be re-measured whenever the architecture changes.)
+
+**Re-measured on the default since 2026-09-08 (added 2026-10-02).** Z-score
+input scaling, the graph rescaled by rows, a fifth of the training engines
+held back with early stopping, and the single drop in learning rate
+(assumptions A-03, A-21, A-06 and A-17). Stored runs
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_9856794-dirty_20260908T135935Z`
+(capped) and
+`fd001_physics_row_uncap_5seed_varsplit_cfge49671_9856794-dirty_20260908T141351Z`
+(uncapped), both at `9856794-dirty`; their best passes (51, 55, 8, 18, 35) and
+held-back errors agree on every seed, so they are the same trained networks
+scored two ways. RMSE **16.496 ± 0.415** capped against **18.005 ± 0.438**
+uncapped; per-seed penalty `[1.605, 1.356, 1.467, 1.596, 1.516]`, mean
+**+1.508 ± 0.102 cycles**, paired **t = 32.97, p = 5.0e-06**. So on today's
+default the number to quote is 16.50 with the cap and 18.01 without it. Added
+because the figure above was the only one this entry gave, on a configuration
+superseded since 2026-09-08; the audit of 2026-09-08 had flagged it (its D-9),
+and it was set beside the current default on 2026-10-02 while the label cap's
+comment in `config/fd001_uncapped.yaml` was being corrected.
 
 **Correction, 2026-10-02.** "Capping can only help", as the paragraph above
 said until this date, is true of two of the four measures and was written as
@@ -308,7 +326,7 @@ fixed amount of data.
 
 ## A-06 — Twenty percent of the training engines are held out
 
-**Reinstated 2026-09-02, reversing the removal of 2026-08-29.**
+**Reinstated 2026-09-08, reversing the removal of 2026-08-29.**
 `config/fd001.yaml` holds out 20 % of the training engines again, so a run
 restores the weights that scored best on them and may stop early.
 
@@ -319,8 +337,8 @@ initialisation, so the spread is what a real repetition would show.
 
 | Configuration | RMSE | closer to 14.93 by | paired two-sided p |
 |---|---|---|---|
-| `validation_fraction: 0.2` — the default since 2026-09-02 | **16.496 ± 0.415** | 0.321 | 0.234 |
-| `validation_fraction: 0.0` — the default from 2026-08-29 to 2026-09-02 | 16.818 ± 0.157 | — | — |
+| `validation_fraction: 0.2` — the default since 2026-09-08 | **16.496 ± 0.415** | 0.321 | 0.234 |
+| `validation_fraction: 0.0` — the default from 2026-08-29 to 2026-09-08 | 16.818 ± 0.157 | — | — |
 
 **The difference does not survive the spread, and that is the finding.**
 Holding engines out lands 0.32 cycles closer to the paper's figure, but two
@@ -344,16 +362,64 @@ speaks. The reversal overrides that choice for the default configuration;
 A-22's own headline figure of 16.818 ± 0.157 was measured under the removed
 arrangement and is labelled there accordingly.
 
+**Correction, 2026-10-02.** Until this date this entry gave 2026-09-02 as the
+day the split came back: in its first line, in both rows of the table above,
+in the heading below and in that section's last sentence. Nothing about
+holding engines back changed that day. What the history shows, every time in
+UTC (git prints these commits in the author's local time, two hours ahead):
+
+- **2026-08-29, 12:37.** The split was removed, in commit `6a7af8c`.
+- **2026-09-02.** The one commit of that day, `e3bfd23`, still sets
+  `validation_fraction: 0.0` and documents holding nothing back as the default.
+- **2026-09-08.** The only record of a reason is an independent audit dated
+  that day (`docs/AUDIT_2026-09-08_scientific_validity.md`, added to the
+  repository on 2026-09-14). Its section D-3 objects that every comparison
+  between configurations since 2026-08-29 had been decided on the test
+  engines, because nothing was held back to decide it on; its section D-9,
+  that the cost of capping the test labels had not been re-measured on the
+  current configuration and that no stored run used
+  `config/fd001_uncapped.yaml`. It asks for those comparisons to be re-run
+  holding engines back, and does not itself propose changing the default.
+  Its statement that
+  no run since 2026-08-28 had used `config/fd001_validated.yaml` stops being
+  true at 13:59 that day, which fits its date.
+- **2026-09-08, 12:30.** Commit `9856794` still sets 0.0, in both
+  `config/fd001.yaml` and `config/fd001_uncapped.yaml`.
+- **2026-09-08, 14:13.** A stored run of `config/fd001_uncapped.yaml` holds
+  engines back. Its settings match that file as `ee26e88` later committed it
+  (0.2), not as `9856794` had it (0.0), and no command-line option of the
+  training script changes the fraction held back, so the edit was already in
+  the working tree. The run that held engines back at 13:59 does not show the
+  change: its settings are those of `config/fd001_validated.yaml`, a separate
+  file that held 20 % back throughout the removal.
+- **2026-09-08, 22:29** (00:29 on 2026-09-09 in local time). The change was
+  committed as `ee26e88`, whose message says its edits "were already in the
+  working tree". The comments it adds say 2026-09-08.
+- **2026-09-09, 07:15.** This entry was brought up to date in `8ef7b4c`, whose
+  message names `ee26e88` and 2026-09-02 together; the same commit wrote that
+  date into this log, and from here it spread to the code comments, the
+  READMEs and the tables added on 2026-09-14.
+
+So 2026-09-08 is the date of the only recorded reason, of the change in the
+working tree and, in UTC, of the commit; only in local time does the commit
+fall on 2026-09-09. No record of the decision itself was found apart from the
+change. Found on 2026-10-02 while the quotation of assumption A-21's figure
+in `config/fd001.yaml` was being corrected, which set that file's 2026-09-08
+beside this entry's date. The heading below
+now names the arrangement it describes, holding nothing back from 2026-08-29
+to 2026-09-08, rather than the time its text stood in this log, which ran to
+`8ef7b4c` on 2026-09-09.
+
 ---
 
-### What this entry said between 2026-08-29 and 2026-09-02
+### What this entry said while nothing was held back (2026-08-29 to 2026-09-08)
 
 **Superseded 2026-08-29 by A-22.** This entry originally held out 20 % of the
 training engines unconditionally. Table 6 states 200 epochs, and holding
 engines out in order to restore the best-validation checkpoint is
 validation-based model selection, which the paper never describes; under A-22's
 rule the paper wins. `config/fd001.yaml` therefore held nothing out, until
-the reversal recorded above put the split back on 2026-09-02.
+the reversal recorded above put the split back on 2026-09-08.
 
 **The split has not been abandoned, only moved.** `config/fd001_validated.yaml`
 keeps it, and **every comparison between configurations must use that file** —
@@ -384,8 +450,16 @@ training or to compare settings; those decisions would have to be made by
 looking at the test set, which invalidates the test set as a measure of
 performance. The split is made by engine because consecutive windows from one
 engine overlap by 29 of their 30 cycles, so splitting windows at random would
-place nearly identical examples on both sides and give a falsely low validation
-error.
+place nearly identical examples on both sides, and the validation error would
+stop measuring performance on engines the model never saw. The usual effect of
+leakage of this kind is a lower, flattering error, but nothing guarantees that
+direction, and this project has never built a window-level split to measure
+it. (Until 2026-10-02 the sentence ended "give a falsely low validation
+error", stating the usual direction as certain: the same kind of claim the
+correction to A-25 removed. Found by the search for claims of this kind after
+the review of the playground's information cards on 2026-09-26.
+`src/thesis_gnn_rul_xai/data/windowing/README.md` gives the argument and its
+source.)
 
 **Honesty note.** This is a deliberate **improvement** on the source, not a
 reconstruction. It should be described as such in the thesis.
@@ -1019,7 +1093,7 @@ Both tables below carry a row for each schedule.
 
 ## A-18 — Early stopping ends training when the held-out error stops improving
 
-**Live again since 2026-09-02, with the split of A-06.** Early stopping was
+**Live again since 2026-09-08, with the split of A-06.** Early stopping was
 never switched off in code — `training/config.py` has held
 `early_stopping_patience = 20` throughout — so it was disabled only in the
 sense that `validation_fraction: 0.0` left it nothing to measure. With 20 %
@@ -1028,9 +1102,16 @@ under A-06 it fired at epochs 51, 55, 8, 18 and 35 of a nominal 200.
 **Table 6's "200 epochs" is therefore not what the default configuration
 runs**, and any number produced by it must be described that way.
 
+**Correction, 2026-10-02.** Until this date the first line above and the
+heading below gave 2026-09-02; the split, and with it early stopping, came
+back on 2026-09-08. The correction under A-06 sets out the history and how the
+wrong date was found. The heading below now names the arrangement it
+describes rather than the time its text stood in this log, which ran to
+2026-09-09.
+
 ---
 
-### What this entry said between 2026-08-29 and 2026-09-02
+### What this entry said while nothing was held back (2026-08-29 to 2026-09-08)
 
 **Superseded 2026-08-29 by A-22.** Table 6 states 200 epochs. Early stopping
 contradicts that, so the reproduction runs the full 200.
@@ -1136,7 +1217,7 @@ from the preprocessing, not from every setting the paper leaves open.
 | Configuration | physics | fully connected | cost of removing it | p |
 |---|---|---|---|---|
 | **current default** — z-score, row, **20 % held back**, step schedule (`f386291-dirty`, 2026-09-14) | **16.496 ± 0.415** | 19.281 ± 0.432 | **+2.784** | **0.00046** |
-| z-score, row, nothing held back, **step** schedule (`bc20edd-dirty`) — the default until 2026-09-02 | 16.818 ± 0.157 | 19.214 ± 0.056 | +2.396 | 0.000002 |
+| z-score, row, nothing held back, **step** schedule (`bc20edd-dirty`) — the default until 2026-09-08 (date corrected 2026-10-02 from 2026-09-02; see A-06) | 16.818 ± 0.157 | 19.214 ± 0.056 | +2.396 | 0.000002 |
 | the same under the superseded **exponential** schedule (`9548104`) | 16.694 ± 0.331 | 19.213 ± 0.056 | +2.520 | 0.000057 |
 | min-max, symmetric, 20 % held back (`cdcc827-dirty`) | 20.353 ± 0.752 | 20.397 ± 0.395 | +0.044 | 0.913 |
 | superseded `window` mode (`cdcc827`) | 13.45 ± 0.20 | 19.17 ± 0.45 | +5.7 | — |
@@ -1690,7 +1771,7 @@ seeds of each form, everything else identical, paired by seed on test RMSE:
 
 | Configuration | row | symmetric | better | paired t | p (two-sided) |
 |---|---|---|---|---|---|
-| z-score, **nothing held back**, **step** schedule — the default until 2026-09-02 | **16.818 ± 0.157** | 17.071 ± 0.325 | **row by 0.253** | −2.478 | 0.068 |
+| z-score, **nothing held back**, **step** schedule — the default until 2026-09-08 (date corrected 2026-10-02 from 2026-09-02; see A-06) | **16.818 ± 0.157** | 17.071 ± 0.325 | **row by 0.253** | −2.478 | 0.068 |
 | the same under the superseded **exponential** schedule | 16.694 ± 0.331 | 17.045 ± 0.201 | row by 0.352 | −2.830 | 0.047 |
 | z-score, 20 % held back, early stopping | 16.616 ± 0.289 | 16.524 ± 0.339 | symmetric by 0.091 | +0.550 | 0.611 |
 | z-score, 20 % held back, no early stopping | 16.616 ± 0.289 | 16.599 ± 0.275 | symmetric by 0.017 | +0.094 | 0.930 |
@@ -1777,17 +1858,20 @@ paper regardless.* Applied assumption by assumption:
 |---|---|---|
 | A-03 input scaling | nothing at all | silent → **`zscore`**, 3.83 cycles closer than min-max |
 | A-21 adjacency normalisation | "normalized … incorporating self-loops"; no formula | silent → **`row`**, 0.35 closer with nothing held back (p = 0.047) under the exponential schedule then in force; 0.25 (p = 0.068) under the step schedule since 2026-09-01 (A-21's table; schedules named here 2026-10-02) |
-| A-06 validation split | describes none | contradicts Table 6's 200 epochs → removed, then **reinstated 2026-09-02**; worth 0.32 cycles, p = 0.234 |
-| A-18 early stopping | Table 6: 200 epochs | contradicts → removed, then **live again 2026-09-02** with A-06 |
+| A-06 validation split | describes none | contradicts Table 6's 200 epochs → removed, then **reinstated 2026-09-08** (date corrected 2026-10-02 from 2026-09-02; see A-06); worth 0.32 cycles, p = 0.234 |
+| A-18 early stopping | Table 6: 200 epochs | contradicts → removed, then **live again 2026-09-08** with A-06 (date corrected 2026-10-02 from 2026-09-02) |
 | A-04 smoothing | Eq. 18 defines it | stated → kept, and removing it is worse anyway |
 | A-01 label ceiling | Eq. 19; value inferred from Fig. 7 | evidence-backed → kept at 125 |
 | A-17 LR schedule | Table 6: 1e-3 → 1e-4 | mechanism silent → **one x0.1 step**, the only form any C-MAPSS paper uses |
 
 Result: **16.818 ± 0.157** on FD001 against the paper's 14.93, from
 20.353 ± 0.752 under the previous defaults. **That figure was measured with
-nothing held back.** Since the A-06 reversal of 2026-09-02 the default holds
+nothing held back.** Since the A-06 reversal of 2026-09-08 the default holds
 out 20 % of the engines and gives **16.496 ± 0.415**, a difference the seeds
-cannot distinguish from zero (p = 0.234; the table under A-06).
+cannot distinguish from zero (p = 0.234; the table under A-06). (Corrected
+2026-10-02: this paragraph and the table above gave the reversal as
+2026-09-02, a day on which the held-back setting did not change; the
+correction under A-06 has the history.)
 
 **Why this is recorded as an assumption and not as a result.** Three reasons,
 all of which bear on how the number may be described.
@@ -2219,7 +2303,7 @@ count below; the thirteenth is the source paper itself.
 | Paper | Node is | What the node carries into the graph layers | Page |
 |---|---|---|---|
 | GLSTGN (ESWA 2025) | sensor | output of a gated temporal convolution | 1, 3 |
-| IMTSO-GCN (QRE 2025) | sensor | raw values over a sliding window whose length is tuned between 10 and 31: 20 cycles on FD002, 25 on FD004 (Table 4) | PDF 7, 9–12 (journal 180, 182–185) |
+| IMTSO-GCN (QRE 2025) | a column of the data table, not only a sensor: of the 28 columns its graph is built over on FD002 (Fig. 6), the 19 its filtering leaves connected are 14 sensors, two operating settings, the engine number, the cycle count and the remaining life (RUL) | raw values over a sliding window whose length is tuned between 10 and 31: 20 cycles on FD002, 25 on FD004 (Table 4) | PDF 5, 7, 9–12 (journal 178, 180, 182–185) |
 | DVGTformer (MSSP 2024) | two views of one graph: sensor or operating setting (spatial view), time step (temporal view) | the window `Xw in R^(Tw x N)`, 30 x 17 on FD002, mixed by a learned linear map along each axis: a sensor node carries a column, 31 numbers, a time-step node a row, 18 numbers (in each, the one number beyond the window's 30 or 17 belongs to the extra learned node that the other view adds and joins to all its nodes) | 6, 7, 9, 12, 15 |
 | Zheng et al. (Adv. Eng. Inf. 2026) | sensor | per-sensor LSTM output, `R^(1 x F)`, **F = 30** | 4, 7 |
 | HAGCN (RESS 2021) | sensor | the raw 30-cycle window | 5, 6 |
@@ -2265,6 +2349,38 @@ cited papers were collected into `docs/references/` and checked against the
 places that cite them. The finding itself stands: no paper here gives a node
 one number.
 
+**Correction, 2026-10-02.** Until this date the table gave IMTSO-GCN's node as
+"sensor". The paper does say its nodes "are organized by the sensors of the
+engine" (PDF page 5, journal page 178), but it later feeds "all raw measured
+parameters" of FD002 and FD004 into the graph as node features (PDF page 11,
+journal page 184), and the matrix its graph is built from, drawn for FD002 in
+Fig. 6 (PDF page 12, journal page 185), has 28 rows and columns: the three
+operating settings, the 21 sensors, the engine number (`id`), the cycle count
+(`cycle`), and two columns that are not among the 26 of NASA's files
+(`docs/references/nasa_2008_cmapss_readme.txt`), `fault` and `RUL`, the
+second being the remaining life the model predicts. Each cell of that matrix
+holds the mutual information of two columns: a number measuring how much
+knowing one column's values tells you about the other's, which is zero when
+the two are unrelated. The paper uses each value as the weight of the
+connection between the two columns (PDF page 11, journal page 184), so a cell
+at zero is no connection. Its filtering
+step removes connections according to their mutual information, by a setting
+the tuning chooses (`Thr`, 0.2 on FD002 in Table 4 on the same page; the step
+is described on PDF pages 6 and 7, journal pages 179 and 180). In Fig. 6B, the
+matrix after filtering, 19 of the 28 keep at least one connection:
+`setting_1`, `setting_2`, the fourteen sensors that HAGCN, AGCTE and the
+survey keep (the table further down; so `P15`, sensor 6, is among those cut
+off), `id`, `cycle` and `RUL`, which stays connected to nine sensors. The other
+nine, `setting_3`, sensors 1, 5, 6, 10, 16, 18 and 19, and `fault`, are left
+with no connection at all, not even to themselves; the text names six of them
+as "redundant connected information" the filtering removes. The paper does not
+say whether a column cut off in this way also leaves the input, or whether
+`RUL` was ever an input. Fig. 6B was rendered at eight times its printed size
+and the colour of every cell compared with the zero end of its colour bar.
+Found when the cited papers were collected into `docs/references/` and checked
+against the places that cite them. The finding itself stands: a sensor node
+there still carries a window, not one number.
+
 **Nobody uses the last reading, and nobody uses the mean.** All thirteen texts
 were searched for every phrasing of both — "last time step", "final time step",
 "mean over", "average over time", "single value", "one value per", "current
@@ -2291,9 +2407,17 @@ to invent, and this is direct evidence that it is an unusual thing to ask of an
 LSTM rather than a routine one.
 
 **Three independent sources choose a different fourteen, and the one sensor
-they swap is P15.** Every C-MAPSS study reduces the 21 sensors to 14 by
-dropping seven that do not vary. Three of the sources here name their seven,
-and all three agree with each other and disagree with the source paper:
+they swap is P15.** Reducing the 21 sensors to 14 by dropping seven that do
+not vary is a common step in C-MAPSS studies; the survey takes it "Following
+previous studies" (page 19). It is not universal. IMTSO-GCN builds its graph
+over all 21 sensors and seven other columns, and only its tuned filtering
+leaves fourteen sensors connected; they are the fourteen of the first three
+rows below, an outcome of the tuning rather than a choice the paper states
+(see the correction about IMTSO-GCN above). Jin et al. (2025), outside this
+corpus, drop the five sensors that fail their two tests, being related to the
+other sensors and trending over time, and keep sixteen (PDF page 7), `P15`
+and `NRc` among them. Three of the sources here name their seven, and all
+three agree with each other and disagree with the source paper:
 
 | Source | Page | The fourteen kept |
 |---|---|---|
@@ -2303,8 +2427,22 @@ and all three agree with each other and disagree with the source paper:
 | **ESTGNN (the source)**, Table 3 | 5 | 2, 3, 4, **6**, 7, 8, 9, 11, 12, 13, 15, 17, 20, 21 |
 
 Thirteen sensors are shared by all four. The disagreement is a single swap:
-the field keeps `NRc` (column 14) and discards `P15` (column 6) as
+these three keep `NRc` (column 14) and discard `P15` (column 6) as
 constant-valued; the source paper does the exact opposite.
+
+**Correction, 2026-10-02.** Until this date this passage said "Every C-MAPSS
+study reduces the 21 sensors to 14 by dropping seven that do not vary", and
+the paragraph above said "the field" keeps `NRc` and discards `P15`. Two
+studies this project holds do otherwise. IMTSO-GCN, in this corpus, builds its
+graph over all 21 sensors (its Fig. 6, PDF page 12, journal page 185, rendered
+at eight times its printed size). Jin et al. (2025) keep sixteen sensors,
+`P15` and `NRc` both among them: their five dropped sensors are named by
+symbol on PDF page 7 and were matched to sensor numbers through the table of
+all 21 in `src/thesis_gnn_rul_xai/data/sensors/__init__.py`. Found when the
+cited papers were collected into `docs/references/` and checked against the
+places that cite them. The finding itself stands: the three sources in the
+table name the same seven, and they differ from the source paper by the one
+swap of `P15` for `NRc`.
 
 The survey's wording is the pointed part — it removes column 6 among "sensors
 with constant values". **F-01** measured `P15` in FD001 and found it takes two

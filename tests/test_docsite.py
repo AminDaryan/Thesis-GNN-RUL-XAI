@@ -417,7 +417,9 @@ def test_an_entry_superseded_in_its_body_is_picked_up(tmp_path: Path):
     """A status can sit in an entry's body rather than its title, and must count.
 
     A-06 and A-18 used that form while A-22 had removed the validation split.
-    Both went active again on 2026-09-02, so no entry in the log exercises the
+    Both became active again on 2026-09-09, when the log caught up with the
+    split's return on 2026-09-08 (this said 2026-09-02 until corrected on
+    2026-10-02, see A-06), so no entry in the log exercises the
     branch any more, and it is checked here against a log written in the test
     rather than left uncovered until some future entry needs it.
     """
@@ -448,8 +450,9 @@ def test_only_the_entries_that_say_so_are_retired(root: Path):
         for entry in results.load_entries(root)
         if entry.status != "active"
     }
-    # A-06 and A-18 were here until 2026-09-02, when the validation split they
-    # describe came back and both entries became current again.
+    # A-06 and A-18 were here until 2026-09-09, when the log caught up with
+    # the validation split's return on 2026-09-08 and both entries became
+    # active again (this said 2026-09-02 until corrected 2026-10-02).
     assert retired == {"A-08"}
 
 

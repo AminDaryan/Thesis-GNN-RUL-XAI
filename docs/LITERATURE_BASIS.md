@@ -405,6 +405,37 @@ test set, and neither paper says so. Found when the cited papers were
 collected into `docs/references/` and checked against the places that cite
 them.
 
+**A paper outside this corpus shows the same pattern.** Jin et al. (2025),
+whose scaling of each operating condition to the range 0 to 1 this project
+followed until 2026-08-29 (assumption A-03), are not among the twelve papers
+above, but this project cites them and holds a copy. They describe each
+sub-dataset as divided into a training set and a testing set and nothing else
+(PDF page 6), define both of their error measures over the test samples
+(Eqs. 23 and 24, PDF page 7), and train for a fixed 100 passes over the
+training data (Table II, PDF page 8), so they describe neither held-out
+engines nor a rule for when to stop. Their study of the window length
+(Section III-C5 and Fig. 14, PDF page 12) tries windows of 10, 30, 50 and 70
+cycles on all four sub-datasets and concludes that FD001 and FD003 "achieved
+optimal results" with 30 and FD002 and FD004 with 50, the windows the paper
+then uses (Table II). It never says which data Fig. 14 was measured on. At
+those four windows, though, the figure prints exactly the test results the
+paper sets beside twelve published methods in its Tables III and IV (PDF
+page 9): an RMSE of 12.25, 19.06, 12.56 and 18.27 and a NASA score of 243.91,
+1343.24, 306.91 and 1214.81 on FD001 to FD004 (its Tables V and VII print
+FD002's score as 1314.24 instead). And on every sub-dataset the window it
+adopts has both the lowest RMSE and the lowest score of the four it tried. So
+the study's numbers at the adopted windows are the paper's test results, and
+the adopted windows are the best of the study: consistent with choosing the
+window on the test set, which the paper does not say it did. Jin et al.'s
+pages carry the article number 3538014 and no page numbers, so the pages
+given are the PDF's; Fig. 14 was read rendered at eight times its printed
+size.
+
+**Added 2026-10-02.** Jin et al. were not in this passage until this date.
+The lead came up when the cited papers were collected into
+`docs/references/` and checked against the places that cite them; the
+paper's experimental setup and results were then read in full in the copy.
+
 ---
 
 ## Where the rest of the list stands

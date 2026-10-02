@@ -559,10 +559,15 @@ when it is given only one.
 | the same, every sensor joined to every other | 19.28 ± 0.43 | 796 ± 79 | 0.768 ± 0.010 | 13.76 ± 0.49 |
 | the same, the 41 most strongly correlated sensor pairs | 16.59 ± 0.35 | 1033 ± 292 | 0.829 ± 0.007 | 9.87 ± 0.15 |
 | the same graph as the default, each sensor carrying its last reading, average and change over the window — **not in the paper** | 13.59 ± 0.68 | 375 ± 71 | 0.885 ± 0.012 | 8.64 ± 0.56 |
-| z-score, row, **nothing held back** — the default until 2026-09-02 | 16.82 ± 0.16 | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
+| z-score, row, **nothing held back** — the default until 2026-09-08 | 16.82 ± 0.16 | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
 | the same, every sensor joined to every other | 19.21 ± 0.06 | 782 ± 9 | 0.770 ± 0.001 | 13.94 ± 0.15 |
 | **min-max** scaling, symmetric rescaling, 20 % held back — the default until 2026-08-29 | 20.35 ± 0.75 | 827 ± 85 | 0.742 ± 0.019 | 15.67 ± 2.05 |
 | the same, every sensor joined to every other | 20.40 ± 0.40 | 896 ± 113 | 0.741 ± 0.010 | 14.96 ± 1.65 |
+
+(Corrected 2026-10-02: the fifth row said the default held nothing back
+until 2026-09-02, a day on which the held-back setting did not change.
+Holding engines back returned on 2026-09-08; the log's entry on the held-back
+engines gives the dates from the project's history (assumption A-06).)
 
 **What the paper's sensor graph is worth depends on what it is replaced
 with.** Joining every sensor to every other costs 2.78 cycles under the current

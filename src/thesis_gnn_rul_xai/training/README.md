@@ -206,9 +206,11 @@ how the rate travels between them. `lr_schedule` offers four ways:
   three it reacts to a measurement rather than to the epoch number, so it needs
   something to measure. **With nothing held back it never fires at all**, and
   the run finishes at its starting rate of 1e-3 instead of the 1e-4 Table 6
-  gives. The default configuration held nothing back until 2026-09-02, and
-  the loop still warns when you ask for this combination rather than
-  letting the run look normal.
+  gives. The default configuration held nothing back from 2026-08-29 until
+  2026-09-08, and the loop still warns when you ask for this combination
+  rather than letting the run look normal. (Corrected 2026-10-02: this said
+  until 2026-09-02, a day on which the held-back setting did not change; the
+  log's entry on holding engines back has the history (assumption A-06).)
 - `"constant"` — never change it. Included so the effect of the schedule can be
   measured.
 

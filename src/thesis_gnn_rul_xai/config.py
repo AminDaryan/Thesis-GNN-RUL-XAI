@@ -98,7 +98,7 @@ class PreprocessingConfig:
     graph: SensorGraph = "physics"
     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
     # formula and two forms fit what it says. With nothing held back --
-    # the default until 2026-09-02, and no longer what this file sets --
+    # the default until 2026-09-08, and no longer what this file sets --
     # rows measured 0.25 cycles closer than the alternative over five seeds
     # under the learning-rate schedule in use now, one drop at the halfway
     # pass (paired p = 0.068, not significant), and 0.35 closer (p = 0.047)
@@ -107,8 +107,12 @@ class PreprocessingConfig:
     # is a fact about this configuration only. Corrected 2026-10-02: this
     # comment gave 0.35 and p = 0.047 as the current figure, which belongs to
     # the superseded schedule; found by setting it beside A-21's table, which
-    # holds both figures with their schedules. Written up as A-21 in
-    # docs/ASSUMPTIONS.md, with the table of every comparison.
+    # holds both figures with their schedules. Also corrected 2026-10-02: it
+    # said "until 2026-09-02", a day on which the held-back setting did not
+    # change; the split came back on 2026-09-08, as the comment on
+    # validation_fraction below says.
+    # Written up as A-21 in docs/ASSUMPTIONS.md, with the table of every
+    # comparison.
     adjacency_normalization: AdjacencyNormalization = "row"
 
     # --- Holding engines back ------------------------------------------------

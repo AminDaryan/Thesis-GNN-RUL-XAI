@@ -534,68 +534,25 @@ and Young (the uniqueness conditions) are unchecked against their sources.
   with more than the preprint's sentence says; check it against the 2023
   article once held.
 
-**Two leads, not yet checked in the copies.**
-- Jin et al. (2025), p. 12, choose windows of 30 and 50 because FD002 and
-  FD004 "achieved optimal results" with 50, without saying on which data; it
-  may be a choice made on the test set. Jin et al. are not in F-12's corpus.
-- F-12's row for IMTSO-GCN (Yuan et al. 2025) says its nodes are sensors. The
-  paper says its nodes are organised by the engine's sensors (PDF page 5,
-  journal page 178), but its Fig. 6 (PDF page 12) puts the operating settings
-  and other columns into the mutual-information matrix its graph is built
-  from, so some of its nodes may not be sensors.
+**Three leads about IMTSO-GCN (Yuan et al. 2025), raised on 2026-10-02 and not
+yet pursued.** Checking the two earlier leads (both confirmed and written into
+`docs/LITERATURE_BASIS.md` and finding F-12 that day) turned up these:
+- Its Fig. 6B (PDF page 12, journal page 185) keeps a column named RUL, the
+  quantity it predicts, joined to nine sensors in the graph it learns, and its
+  text says all raw parameters are node features (PDF page 11, journal page
+  184). It never says whether RUL was an input. If it was, its FD002 RMSE of
+  2.8577 would rest on the answer. Whether this deserves a finding of its own
+  is the author's decision.
+- Its swarm search over window length, learning rate, depth and the edge
+  threshold scores each candidate by R-squared against "the real results"
+  (PDF page 7, journal page 180) without saying on which data, and the paper
+  names only a training set and a testing set (PDF pages 8 and 9).
+- Its Tables 9 and 10 (PDF page 13, journal page 186) print identical rows for
+  two other methods on FD002 and FD004, and in Table 10 its own FD004 result
+  is worse than both, against what its text says.
 
 **What finishing looks like:** the missing works obtained and added to
 `manifest.json` and `docs/REFERENCES.md` (or the claims resting on them marked
-as unchecked), the Kapoor sentence checked, both leads confirmed or rejected in
-the copies, and this entry deleted.
-
----
-
-## P-29 — Small errors found on 2026-10-02 while correcting guarantees and citations
-
-The agents that corrected the overstated guarantees, the citations and the
-figure module on 2026-10-02 found these outside what they were asked to change.
-
-1. **`CLAUDE.md`, and `AGENTS.md`, which repeats it, state three things that
-   are no longer true.** They are the author's files, so nothing was changed.
-   - Line 941 (`AGENTS.md` 882), under the settled decisions: capping the test
-     labels "can only move reported numbers favourably". Since the correction
-     to assumption A-02 that holds for RMSE and the NASA score only; R-squared
-     and ASUE have no such guarantee, and A-02 gives counterexamples on the
-     real FD001 labels.
-   - Line 926 (`AGENTS.md` 867): the files in `data/raw/` are "verified
-     against the published row and engine counts". No held source prints the
-     row counts, and NASA's readme prints FD004's two engine counts swapped;
-     `data/loading/__init__.py` now says which source each number follows.
-   - Line 119 (both files): rule 4's example comment describes the
-     learning-rate schedule replaced on 2026-09-01 (shrinking by the same
-     factor every pass); the default is now one drop by ten at the halfway
-     pass (assumption A-17).
-2. **Two more statements of which way leakage moves a score.**
-   `src/thesis_gnn_rul_xai/data/windowing/README.md` line 532 ("an optimistic
-   measurement of nothing") and notebook 01's window-split cell ("far too
-   optimistic") give a direction for leakage through near-duplicate windows.
-   It is the usual direction, not a guaranteed one: the same kind of claim
-   the correction to assumption A-25 removed.
-3. **`notebooks/xai/02_occlusion_fd001.ipynb`, cell `b6708f66`,** says
-   occlusion is "the last row alone" of the table of arrival orders; for a
-   given sensor it is every order in which that sensor arrives last, two of
-   the six when there are three sensors.
-4. **`config/fd001_uncapped.yaml` line 8** calls the label cap "the single
-   largest uncontrolled difference" between this code's numbers and the
-   paper's. Check it against the input rescaling's measured 3.83 cycles
-   (assumption A-03) and the other measured differences.
-5. **Two dates for bringing back the held-back engines.** `config/fd001.yaml`
-   line 44 says 2026-09-08; A-06, A-18, A-21's table and A-22 say 2026-09-02.
-   The commit that set `validation_fraction` back to 0.2 (`ee26e88`) was made
-   at 00:29 on 2026-09-09 local time, and the first stored runs of that
-   setting are dated 2026-09-08. Establish which is right and correct the
-   others.
-6. **Two notebook-rendering tests fail under `.venv`.** nbconvert there cannot
-   find its `basic` template, so `tests/test_docsite.py`'s tests that render
-   notebook 01 fail with `.venv\Scripts\python.exe` and pass with the system
-   Python. An environment problem, not a code one.
-
-**What finishing looks like:** items 2 to 5 corrected with dated notes, item 1
-put to the author, item 6 fixed in the environment or recorded beside the
-suite's instructions, and this entry deleted.
+as unchecked), the Kapoor sentence checked, the IMTSO-GCN leads confirmed in
+the copy and either written into finding F-12 or answered in writing, and this
+entry deleted.

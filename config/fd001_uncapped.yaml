@@ -4,12 +4,29 @@
 # output cannot exceed it, so an uncapped label would charge the model for an
 # error its own architecture forbids. Eleven of the 100 FD001 test labels
 # exceed 125 (finding F-02), and capping them can never raise the reported
-# RMSE or NASA score; R-squared and ASUE have no such guarantee -- so this is
-# the single largest uncontrolled difference between a number from this code
-# and a published one. (Corrected 2026-10-02: this said capping can only
-# lower "the reported error", naming no measure; found by the search for that
-# claim after the review of the playground's information cards on 2026-09-26.
-# A-02 in docs/ASSUMPTIONS.md has the argument.)
+# RMSE or NASA score; R-squared and ASUE have no such guarantee. Because the
+# paper never says whether its own test labels were capped (A-02), this is a
+# difference between a number from this code and a published one that no
+# comparison can hold fixed. It is not the largest one measured. Five seeds
+# each, paired by seed, the difference in RMSE with its spread across seeds:
+#   - Under the default since 2026-09-08 (z-score scaling, row rescaling of
+#     the graph, 20 % of engines held back; stored runs of that day at commit
+#     9856794-dirty): capping lowers RMSE by 1.508 +- 0.102 cycles (p =
+#     0.000005), and min-max scaling in place of the z-score raises it by
+#     3.527 +- 0.425 (p = 0.00005). The input rescaling is the one the paper
+#     never describes (A-03).
+#   - Under the min-max, symmetric configuration that was the default until
+#     2026-08-29: 1.311 +- 0.132 for capping (A-02) and 3.828 +- 0.814 for the
+#     rescaling (A-03, F-10), both against the same baseline of 20.353.
+# Across all 49 FD001 prediction files stored in reports/ on 2026-10-02,
+# capping lowers RMSE by 0.80 to 1.96. (Corrected 2026-10-02: this said
+# capping can only lower "the reported error", naming no measure; found by the
+# search for that claim after the review of the playground's information cards
+# on 2026-09-26. A-02 in docs/ASSUMPTIONS.md has the argument. Corrected again
+# the same day: this called the cap "the single largest uncontrolled
+# difference", written on 2026-08-28 before the rescaling was measured later
+# that day; found while the correction above was being made, which rewrote
+# this sentence and left its second half unchecked.)
 #
 # This configuration exists so that difference can be measured rather than
 # asserted. Everything else is identical to fd001.yaml.

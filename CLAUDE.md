@@ -115,10 +115,10 @@ Then put the identifier in the code at the point of use, as a comment beginning
 `ASSUMPTION A-xx`. The header of that file promises this; keep it true.
 
 That comment must say **what the choice was, in words**, not just cite its
-number. `# ASSUMPTION A-17` tells a reader nothing; `# ASSUMPTION A-17: shrink
-the learning rate by the same factor every epoch. The paper gives the first and
-last rate but never how it gets between them.` tells them everything they need
-without leaving the file.
+number. `# ASSUMPTION A-17` tells a reader nothing; `# ASSUMPTION A-17: drop
+the learning rate once, by a single factor, at the halfway point. The paper
+gives the first and last rate but never how it gets between them.` tells them
+everything they need without leaving the file.
 
 Observations *about the paper* established from data are findings (`F-xx`), not
 assumptions. Keep the two apart: assumptions are our choices, findings are
@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 536 tests; must all pass
+pytest                # 570 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -858,9 +858,12 @@ more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
 With everything present — the data, PyTorch, the stored runs and the cited
-papers in `docs/references/` — 536 were collected later on 2026-10-02, after a
-test that gamma at the first graph layer cancels with one number per sensor,
-and 535 passed, the one failure again the stored sensitivity run below. Before
+papers in `docs/references/` — 570 were collected in the evening of
+2026-10-02, after the tests added with the corrections to the overstated
+guarantees, the citations and the figure module, and 569 passed, the one
+failure again the stored sensitivity run below. Before that, 536 were
+collected earlier on 2026-10-02, after a test that gamma at the first graph
+layer cancels with one number per sensor, and 535 passed. Before
 that, 535 were collected on 2026-10-02, after the
 Resources pages and the reference checks were added, and 534 passed; the one
 failure was the same stored sensitivity run as below. Before that, 520 were
@@ -922,8 +925,16 @@ python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd00
 - Python 3.10+; the package is importable only after `pip install -e .`
   (the `src/` layout is deliberate — see README section 9).
 - PyTorch is optional and only `models/`, `training/` and `explain/` need it.
-- All four C-MAPSS sub-datasets are in `data/raw/`, verified against the
-  published row and engine counts.
+- All four C-MAPSS sub-datasets are in `data/raw/`, verified against the row
+  and engine counts of NASA's files (`EXPECTED_SHAPES` in `data/loading/`).
+  No source this project holds prints the row counts; Wen et al.'s Table 5
+  prints the same engine counts, and NASA's readme prints FD004's two the
+  other way round.
+- `.venv` reuses the system Python's packages, so its nbconvert is the system
+  one but looks for its templates only under `.venv`. The tests that render
+  notebook 01 then fail with "No template sub-directory with name 'basic'".
+  Set `JUPYTER_PATH` to the system Python's `share\jupyter` folder, or run
+  the suite and `nbconvert` with the system Python.
 - Long training runs belong in the background; a 5-seed run takes about
   8 minutes on CPU.
 
@@ -938,7 +949,9 @@ python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd00
   paper does not describe (F-16), so never quote its benefit without naming
   whether the best checkpoint was restored.
 - Test labels are capped at 125 (A-02) because the sigmoid output makes higher
-  predictions impossible. This can only move reported numbers favourably, and
-  that must be stated whenever they are compared with published ones.
+  predictions impossible. This can never raise the reported RMSE or NASA
+  score, so it can only flatter those two, and that must be stated whenever
+  they are compared with published ones. R-squared and ASUE have no such
+  guarantee: A-02 gives a counterexample for each on the real FD001 labels.
 - Validation error and test error are not comparable (A-06). Never present one
   as the other, and never read anything into the gap.
