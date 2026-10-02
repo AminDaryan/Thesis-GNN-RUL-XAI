@@ -8,6 +8,7 @@ project directory.
 from __future__ import annotations
 
 import contextlib
+import html
 import ipaddress
 import json
 import socket
@@ -83,6 +84,10 @@ _SOURCE_LANGUAGE = {
 }
 
 _ASSETS = Path(__file__).parent / "assets"
+
+# The folder holding a copy of every paper the project cites. The paper route
+# serves PDFs from here and nowhere else.
+_PAPERS = "docs/references"
 
 _CONTENT_TYPES = {
     ".css": "text/css; charset=utf-8",
@@ -239,6 +244,8 @@ class DocsHandler(BaseHTTPRequestHandler):
                 self._serve_source(one("path"))
             elif route == "/api/notebook":
                 self._serve_notebook(one("path"))
+            elif route == "/api/paper":
+                self._serve_paper(one("path"))
             elif route == "/api/figure":
                 self._send(
                     render_figure(one("name")).encode("utf-8"),
@@ -434,6 +441,22 @@ class DocsHandler(BaseHTTPRequestHandler):
                 "lines": text.count("\n") + 1,
             }
         )
+
+    def _serve_paper(self, path: str) -> None:
+        """Send one cited paper's PDF from docs/references/, or say how to fetch it."""
+        target = self._safe_path(path)
+        if target.suffix.lower() != ".pdf" or not target.is_relative_to((self.root / _PAPERS).resolve()):
+            raise ValueError(f"{path!r} is not a paper in {_PAPERS}/.")
+        if not target.is_file():
+            message = (
+                f"<p>{html.escape(path)} is not on this computer. The cited papers are not "
+                "stored in the repository; <code>python scripts/fetch_references.py</code> "
+                "downloads the ones that are free to download, and "
+                "<code>docs/REFERENCES.md</code> says where to obtain the rest.</p>"
+            )
+            self._send(message.encode("utf-8"), "text/html; charset=utf-8", HTTPStatus.NOT_FOUND)
+            return
+        self._send(target.read_bytes(), "application/pdf")
 
     def _serve_notebook(self, path: str) -> None:
         """Convert one notebook to HTML, with the outputs it was saved with."""

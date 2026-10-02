@@ -180,6 +180,18 @@ def test_an_external_link_is_left_alone():
     assert 'href="https://www.nasa.gov/"' in rendered.html
 
 
+def test_a_link_to_a_paper_opens_its_pdf_at_the_cited_page_in_a_new_tab():
+    rendered = markup.render_markdown(
+        "[Kipf and Welling](../references/kipf_2017_graph_convolutional_networks.pdf#page=3)",
+        source_path="docs/resources/gcn.md",
+    )
+    assert (
+        'href="/api/paper?path=docs/references/kipf_2017_graph_convolutional_networks.pdf#page=3"'
+        in rendered.html
+    )
+    assert 'target="_blank" rel="noopener"' in rendered.html
+
+
 def test_an_identifier_in_prose_becomes_a_link_to_its_entry():
     rendered = markup.render_markdown("This follows A-07, unlike F-11.")
     assert 'href="#/entry/A-07"' in rendered.html
@@ -303,7 +315,7 @@ def test_the_catalog_lists_every_per_file_page_under_data(
     assert on_disk == listed
 
 
-def test_the_menu_has_the_playground_and_four_sections(site_catalog: catalog.Catalog):
+def test_the_menu_has_the_playground_and_five_sections(site_catalog: catalog.Catalog):
     assert site_catalog.primary is not None
     assert site_catalog.primary.path == "explore/playground"
     assert [section.title for section in site_catalog.sections] == [
@@ -311,7 +323,12 @@ def test_the_menu_has_the_playground_and_four_sections(site_catalog: catalog.Cat
         "Notebooks",
         "Code",
         "Choices and checks",
+        "Resources",
     ]
+    # The reading list is listed once, at the end of the section that explains the papers.
+    resources = next(s for s in site_catalog.sections if s.key == "resources")
+    assert resources.documents[-1].path == "docs/REFERENCES.md"
+    assert [doc.path for doc in site_catalog.by_path.values()].count("docs/REFERENCES.md") == 1
     # The playground is the one page drawn here rather than read from a file.
     explore = [doc.path for doc in site_catalog.by_path.values() if doc.kind == "explore"]
     assert explore == ["explore/playground"]
@@ -945,6 +962,32 @@ def test_a_source_file_is_named_by_its_path_and_shown_without_a_language_badge(
     assert file["title"] == path
     assert "code-language" not in file["html"]
     assert '<span class="k">' in file["html"]  # still coloured
+
+
+def test_the_paper_route_serves_only_pdfs_from_the_references_folder(live_site: str, root: Path):
+    import urllib.error
+    import urllib.request
+
+    def fetch(path: str) -> tuple[int, str, bytes]:
+        try:
+            with urllib.request.urlopen(f"{live_site}/api/paper?path={path}", timeout=60) as response:
+                return response.status, response.headers["Content-Type"], response.read()
+        except urllib.error.HTTPError as refused:
+            return refused.code, refused.headers["Content-Type"], refused.read()
+
+    # Anything outside docs/references/, or not a PDF, is refused.
+    for path in ("README.md", "docs/references/manifest.json", "../outside.pdf"):
+        assert fetch(path)[0] == 404, path
+    # A paper that is not on this computer is a page saying how to get it.
+    status, kind, body = fetch("docs/references/not_a_cited_paper.pdf")
+    assert status == 404 and kind.startswith("text/html")
+    assert b"fetch_references.py" in body
+    held = sorted((root / "docs" / "references").glob("*.pdf"))
+    if not held:
+        pytest.skip("No paper here; python scripts/fetch_references.py downloads them.")
+    status, kind, body = fetch(f"docs/references/{held[0].name}")
+    assert (status, kind) == (200, "application/pdf")
+    assert body == held[0].read_bytes()
 
 
 def test_the_routes_only_the_removed_pages_used_are_gone(live_site: str):

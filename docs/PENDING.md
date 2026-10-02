@@ -540,3 +540,122 @@ make grouped runs visible in the website's Run History; report the mean and
 seed-to-seed spread of every measure; record the resulting cross-dataset
 finding in `docs/ASSUMPTIONS.md`; run the relevant tests; and delete this
 entry.
+
+---
+
+## P-27 — Readings and citations to correct, found while collecting the cited papers
+
+On 2026-10-01 and 2026-10-02 every cited paper was located, copied into
+`docs/references/` and checked by a second agent against the places this
+repository cites it (`docs/REFERENCES.md` says which version each copy is).
+The checks turned up the problems below. Each was found by **one** agent
+reading the copy, so confirm it in the PDF before correcting anything (rule 1),
+then correct it plainly with a dated note (rule 6). Already corrected the same
+day, and not repeated here: the bibliographic errors in `docs/REFERENCES.md`,
+the links to NASA's earlier draft of the dataset paper, and the reasons given in
+assumptions A-14 and A-15 (finding F-20).
+
+**Works cited but not held.** Heimes (2008) and Li, Ding and Sun (2018) are
+IEEE and Elsevier papers; Shi et al. (2024) is Elsevier; Shapley (1953) is a
+book chapter; Kapoor and Narayanan's 2023 article is held only as its 2022
+preprint (cell.com refuses scripted downloads); Holdijk et al. (2021) is free
+on Zenodo, which refused this network. Until they are obtained, the claims
+attributed to Heimes (the 120–130 ceiling, assumption A-01), Holdijk et al.
+(PGExplainer's sensitivity, assumption A-29) and Shapley (the uniqueness
+conditions) are unchecked against their sources.
+
+**Readings of the corpus in `docs/LITERATURE_BASIS.md` and finding F-12.**
+- THGNN (Wen et al. 2025): the quotation at `docs/ASSUMPTIONS.md` around line
+  2200 joins the caption of Fig. 1 (p. 2) to wording from the abstract (p. 1)
+  without marking the join.
+- GLSTGN (Zhang et al. 2025): the sentence cited as "Section 4.2, p. 11" is on
+  p. 9 of the copy, and it describes a sensitivity study on test results rather
+  than stating that settings were chosen from them.
+- HAGCN (Li et al. 2021): the p. 6 sentence continues "the average of the last
+  10 epochs", a fixed window rather than selecting the best epoch on the test
+  set, as the file's paraphrase implies.
+- MAGF-SPA (Li and Dong 2026) uses only N-CMAPSS, so assumption A-17's "three
+  C-MAPSS papers that state a schedule" counts it wrongly; its "p10" is the
+  copy's PDF page, journal page 407.
+- The survey of Wang et al. (2025): its p. 8 "fully-connected graphs" are graphs
+  weighted by similarity between sensors, not the uniform graph assumption A-19
+  uses; its p. 20 maximum of 88 describes N-CMAPSS DS02, not C-MAPSS
+  (assumption A-13).
+- Zheng et al. (2026): turbine No. 15 is the set the results are reported on,
+  a test set in this project's terms, not a separate validation split.
+- IMTSO-GCN (Yuan et al. 2025): its Table 4 (p. 12) gives windows of 20 for
+  FD002 and 25 for FD004, and it runs only FD002 and FD004; "pp. 10, 11" are PDF
+  pages (journal pages 183–184).
+- DVGTformer (Wang et al. 2024) also makes time steps nodes, in its second view.
+
+**The GNN-LRP paper, as read in `explain/README.md`, assumptions A-29 and A-33,
+and `explain/walks.py`.**
+- The masked connectivity f(M ⊙ Λ) appears in arXiv version 3 only in Section 4,
+  item (c), describing GNNExplainer; Section 4.1 does not say how nodes are
+  removed for node flipping. Assumption A-33 cites it as the reason for its
+  procedure; find the true source (perhaps the authors' code) or restate.
+- A γ of 0 after the graph layers is stated only for VGG-16 (Section 5.3), not
+  in general (assumption A-29, `explain/README.md`, `walks.py`).
+- `walks.py` attributes adding γ to a constant to Table 1, which applies γ to
+  the multipliers w_jk only.
+- `docs/learn/11_gnn_lrp.md` calls the flipping section "Section IV-A" (the
+  journal's numbering) where everything else says 4.1 (arXiv version 3).
+
+**Other.**
+- `explain/README.md` (about lines 663–668) says walk-based methods scored
+  higher than GNNExplainer and PGExplainer in Yuan et al.'s survey; the survey
+  says they "generally" do, and its Tables 3 and 4 have GNN-LRP behind
+  PGExplainer on several datasets. The same passage leans on "every other
+  comparison found" without naming them; name them, with copies here, or drop
+  the claim. `docs/REFERENCES.md` no longer repeats it.
+- Notebook 01 credits the assign-and-recompute loop of k-means to MacQueen
+  (1967), who names k-means and describes that loop on p. 294 as Forgy's and
+  Jennrich's; its reference list also lacks MacQueen's editors and pages and
+  Jin et al.'s article number.
+- `README.md` around lines 146–147 credits Kapoor and Narayanan with more than
+  the preprint's sentence says; check it against the 2023 article once held.
+
+**Found while writing the Resources pages (2026-10-02).** Already corrected the
+same day: assumptions A-12 and A-22 said Wen et al. cite Kipf and Welling, and
+they do not (checked in the PDF's text and reference list). Still open:
+- The first graph layer's γ of 0 (assumption A-29, `walks.py` `paper_gammas`,
+  `explain/README.md`, `docs/learn/11_gnn_lrp.md`) is justified by negative
+  rescaled readings, but when the temporal stage hands the graph one number per
+  sensor — the default, the window average, and the recurrent stage at its
+  default size — every first-layer neuron receives all its inputs through one
+  multiplier, so Table 1's factor (1 + γ) cancels and the setting has no effect
+  there. It matters only for the three-number summary, the raw window or a wider
+  recurrent stage. `docs/resources/gnn_lrp.md` shows the cancellation to 1e-15.
+- The recurrent cells' starting values are PyTorch's defaults (every multiplier
+  and offset drawn evenly from ±1/√32), which no assumption records; assumption
+  A-14 covers the graph and dense layers and A-26 only size, depth and
+  projection. Gers et al. (2000, Sections 3.1 and 4.2) start the forget gate's
+  offset positive; `docs/resources/lstm.md` measures where PyTorch's start.
+  Rule 4 calls for an entry and an `ASSUMPTION` comment.
+- `src/thesis_gnn_rul_xai/models/temporal/README.md` (about lines 191–192) has a
+  worked example on invented readings (`[[1, 2, 3, 4], [10, 20, 30, 40]]`),
+  which rules 7 and 9 forbid.
+- `src/thesis_gnn_rul_xai/models/README.md` (about lines 360–370) describes
+  Glorot's rule without the ReLU caveat now in assumption A-14.
+- `README.md` (about lines 133–141) credits Shapley (1953) with the uniqueness
+  result Lundberg and Lee credit to Young (1985), and says SHAP values add up to
+  the prediction minus the average prediction, which is the paper's base value,
+  not this project's (assumption A-24).
+- `data/loading/__init__.py` (comment above `EXPECTED_SHAPES`, and its log
+  text) says the shapes are "published"; for FD004 they match the files and Wen
+  et al.'s Table 5, while NASA's readme prints the two FD004 counts swapped
+  (248 training, 249 test). Say which source the numbers follow.
+- `data/normalization/__init__.py` rounds all three operating settings to whole
+  numbers to count conditions, which merges Mach 0.62, 0.70 and 0.84; the count
+  of six on FD002 and FD004 is right because altitude alone separates the six
+  conditions, which `docs/resources/cmapss.md` measures. Say so where the
+  rounding is chosen.
+- `config/fd001.yaml` and `config.py` quote the row rescaling as 0.35 cycles
+  closer (p = 0.047) under "the default until 2026-09-02", where A-21's table
+  gives that default 0.253 (p = 0.068); possibly the same disagreement as P-03.
+
+**What finishing looks like:** each item confirmed or rejected in the copy in
+`docs/references/`, the confirmed ones corrected where they stand with a dated
+note, the six missing works obtained and added to `manifest.json` and
+`docs/REFERENCES.md` (or the claims resting on them marked as unchecked), the
+notebooks re-executed if their text changed, and this entry deleted.

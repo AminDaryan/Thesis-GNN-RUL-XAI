@@ -343,13 +343,13 @@ def test_example_design_graph_tutorial(loaded, monkeypatch):
     assert namespace["raw_graph"].shape == namespace["scaled_output"].shape == (14, 15)
 
 
-def _check_design_tutorial(filename, monkeypatch, minimum_tables=10):
+def _check_design_tutorial(filename, monkeypatch, minimum_tables=10, folder="learn"):
     """Execute the page in order and compare its named samples with every printed cell."""
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     monkeypatch.chdir(root)
-    document = (root / "docs" / "learn" / filename).read_text(encoding="utf-8")
+    document = (root / "docs" / folder / filename).read_text(encoding="utf-8")
     namespace = {}
     blocks = re.findall(r"```python\n(.*?)\n```", document, flags=re.DOTALL)
     assert blocks
@@ -561,3 +561,77 @@ def test_example_pairs_beyond_reach():
     ]
     assert pairs_beyond_reach(matrix, symbols, n_layers=4) == []
 
+
+
+# --- docs/resources/: the papers the project builds on ---------------
+
+
+def test_example_resources_cmapss(raw_dir, monkeypatch):
+    """The C-MAPSS Resources page reproduces every printed cell from all four subsets."""
+    from thesis_gnn_rul_xai.data.loading import EXPECTED_SHAPES
+
+    names = [f"{kind}_{subset}.txt" for subset in ("FD001", "FD002", "FD003", "FD004")
+             for kind in ("train", "test", "RUL")]
+    missing = [name for name in names if not (raw_dir / name).is_file()]
+    if missing:
+        pytest.skip(f"The C-MAPSS page reads all four subsets; missing from {raw_dir}: {missing}")
+    namespace = _check_design_tutorial("cmapss.md", monkeypatch, minimum_tables=12, folder="resources")
+    counts = namespace["subset_counts"].set_index("subset")
+    for subset, expected in EXPECTED_SHAPES.items():
+        assert counts.loc[subset, "training engines (files)"] == expected["train_units"]
+        assert counts.loc[subset, "test engines (files)"] == expected["test_units"]
+    assert (counts.loc["FD004", "training engines (readme)"],
+            counts.loc["FD004", "test engines (readme)"]) == (248, 249)
+    conditions = namespace["flight_conditions"]
+    assert len(conditions) == 6
+    assert (conditions["sensor 18 in every row"] == conditions["guide fan speed"]).all()
+    totals = namespace["score_totals"].set_index("engines")
+    assert totals.loc["all 100", "this project (nasa_score)"] < totals.loc["all 100", "Eq. (11) as printed"]
+    assert totals.loc["the other 99", "this project (nasa_score)"] > totals.loc["the other 99", "Eq. (11) as printed"]
+    at_fifty = namespace["at_fifty"].set_index("error d")
+    assert at_fifty.loc[50, "late ÷ 10, early ÷ 13"] == pytest.approx(np.expm1(5.0))
+    assert at_fifty.loc[-50, "late ÷ 10, early ÷ 13"] == pytest.approx(np.expm1(50 / 13))
+
+
+def test_example_gcn_resource(loaded, monkeypatch):
+    """The GCN page reproduces every table and its stability argument on the Physics graph."""
+    namespace = _check_design_tutorial("gcn.md", monkeypatch, minimum_tables=8, folder="resources")
+    eigenvalues = namespace["eigenvalues"]
+    # Kipf and Welling, Section 2.2: the matrix of Eq. 7 has eigenvalues in [0, 2].
+    assert eigenvalues["Before the trick"].max() == pytest.approx(2.0)
+    assert eigenvalues["Before the trick"].min() >= 0
+    # After the renormalisation trick they lie in (-1, 1].
+    assert eigenvalues["After the trick"].max() == pytest.approx(1.0)
+    assert eigenvalues["After the trick"].min() > -1
+    sizes = namespace["sizes"].set_index("Applications")
+    assert sizes.loc[10, "Before the trick"] > 100 * sizes.loc[0, "Before the trick"]
+    assert (sizes["After the trick"].diff().dropna() < 0).all()
+    stretch = namespace["stretch"].set_index("Applications")
+    assert (stretch["After the trick"] <= 1 + 1e-12).all()
+    # The row form shares the eigenvalues but is not symmetric, so it can lengthen some lists.
+    assert (stretch["Row form"] > 1).all()
+    assert namespace["growth"].max() < 1
+    assert namespace["pieces"]["Eigenvectors"].sum() == 14
+
+
+def test_example_resource_shap(loaded, monkeypatch):
+    """The SHAP resource page: exact, kernel-regression and Linear SHAP values agree on engine 5."""
+    namespace = _check_design_tutorial("shap.md", monkeypatch, minimum_tables=23, folder="resources")
+    f, x, readings = namespace["f"], namespace["x"], namespace["readings"]
+    phi_mean, phi_line = namespace["phi_mean"], namespace["phi_line"]
+    # Local accuracy under both rules for a missing reading: the values add to f(x) - E[f(X)].
+    assert phi_mean.sum() == pytest.approx(f(x) - f(readings).mean(), abs=1e-9)
+    assert phi_line.sum() == pytest.approx(f(x) - f(readings).mean(), abs=1e-9)
+    # Theorem 2 and Corollary 1 on real FD001 numbers.
+    np.testing.assert_allclose(namespace["kernel_line"]["Regression, Shapley kernel"], phi_line, atol=1e-9)
+    np.testing.assert_allclose(namespace["linear_shap"]["w (x - E[x])"], phi_mean, atol=1e-9)
+    # A one-switch weighted least-squares slope is T50's Shapley value (difference of two weighted means).
+    assert namespace["one_switch"][1] == pytest.approx(phi_line[namespace["t50"]], abs=1e-9)
+    # Equal weights break consistency by exactly 1/16 cycle; the Shapley kernel does not move.
+    change = namespace["consistency"].set_index("Method")["Change"]
+    assert change["Regression, equal weights"] == pytest.approx(-0.0625, abs=1e-9)
+    assert abs(change["Regression, Shapley kernel"]) < 1e-9
+    # Leave one out misses local accuracy under the line fill.
+    assert sum(namespace["leave_one_out"]) != pytest.approx(phi_line.sum(), abs=1e-3)
+    # Figure 4 of Lundberg and Lee, worked exactly with Eq. 4.
+    assert namespace["figure_4"]["Shapley value"].tolist() == pytest.approx([1, 1, 0, 3, 2, 0])

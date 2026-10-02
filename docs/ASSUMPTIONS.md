@@ -730,6 +730,13 @@ layers, which reads as a deliberate distinction rather than a shorthand. It is
 also the convention of the layer the paper is citing: Kipf and Welling (2017)
 define the propagation rule without a bias.
 
+**Correction, 2026-10-02.** Wen et al. do not cite Kipf and Welling: the name
+appears nowhere in the paper's text, and its reference list (pages 14–16 of
+the copy in `docs/references/`) has no entry for them. Found while writing the
+GCN page under Resources. Kipf and Welling's rule (their Eq. 2) does have no
+bias, so it remains a precedent for the reading above, but it is not "the layer
+the paper is citing"; the reading rests on Wen et al.'s own Equations 8–10.
+
 **How much it matters.** Small. A bias per output channel would add 128
 parameters to a network of about 62 000. `GraphConvolution` takes `bias=True`
 so the difference can be measured rather than argued about.
@@ -781,6 +788,19 @@ three stacked layers, which is what makes a deep stack trainable; an
 initialisation that is too large or too small makes the first epochs behave
 very differently even when everything else is identical.
 
+**Correction, 2026-10-02.** The second sentence above claims more than Glorot
+and Bengio derived. Their argument assumes activation functions that behave
+linearly near zero, and these graph layers apply ReLU, which sets every
+negative value to zero. He et al. (2015, page 1029 of the copy in
+`docs/references/`) say of exactly this derivation that its linearity
+assumption "is invalid for ReLU and PReLU", and derive a larger starting spread
+for ReLU layers. The choice stands, because it is the one the GCN paper names
+for this layer (their Section 5.2), but the reason it keeps the activations'
+spread constant through three ReLU layers is not established. Found while
+collecting the cited papers. PyTorch's own default for the dense layers, kept
+above, is also not He et al.'s distribution despite its name: PyTorch's source
+states it equals drawing evenly from ±1/√(number of inputs).
+
 **How much it matters.** Moderate for a single run and small on average.
 Initialisation is one of the reasons a single seed is not evidence, which is
 why this project reports results across several seeds (see `utils/seeding.py`).
@@ -816,6 +836,14 @@ this dataset, including the paper's own comparison table.
 **How much it matters.** Large for the score, nothing for the other three
 measures. Getting it backwards would reward exactly the behaviour the metric
 exists to punish.
+
+**Correction, 2026-10-02.** The sentence above saying the challenge's published
+function "also says the opposite" is wrong about its printed equation. The
+dataset paper's Eq. (11) prints `a1 = 10` for early and `a2 = 13` for late,
+which agrees with Wen et al.'s equations read literally. Only that paper's
+sentence and its Figure 9 support the convention chosen here (finding F-20).
+The choice stands; the evidence for it is the two papers' words and one figure,
+against two printed equations.
 
 ---
 
@@ -1664,7 +1692,10 @@ number produced by it.
 originally chosen on other grounds: A-03 (input scaling) followed Jin et al.
 (2025) because they describe their procedure explicitly; A-21 (adjacency
 normalisation) followed Kipf and Welling (2017) because the paper cites that
-layer. Neither choice was made by looking at an error figure.
+layer. Neither choice was made by looking at an error figure. (Corrected
+2026-10-02: Wen et al. do not cite Kipf and Welling, as the correction under
+assumption A-12 records; A-21's first choice followed the paper that introduced
+that layer's rescaling, not one Wen et al. point to.)
 
 **What we chose, and on whose instruction.** On 2026-08-29 the author directed
 a different rule: *where the paper is silent, choose the option that brings the
@@ -3489,9 +3520,13 @@ enter any model calculation.
 
 **Sources and existing implementations checked.**
 
-- Saxena et al. (2008), [NASA report 20090029214](https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf),
+- Saxena et al. (2008), [the dataset paper](references/saxena_2008_damage_propagation_modeling.pdf),
   Figure 1 and Figure 2 supply the component and flow-path arrangement; Table 2
   supplies the dataset variable definitions. These are the placement authority.
+  (Corrected 2026-10-02: this line linked NASA report 20090029214, which turned
+  out, when the cited papers were collected, to be an earlier draft with a
+  different title and numbering. Figures 1 and 2 and Table 2 carry the same
+  numbers in both versions, so the choice above is unaffected.)
 - NASA's [Engine Parameter Interactive, EngineSimU](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/enginesimu/)
   already implements selecting engine components on a schematic. NASA publishes
   its source in [nasa/BGA](https://github.com/nasa/BGA). It is an educational engine
@@ -3707,6 +3742,38 @@ python scripts/measure_walks.py --run <stored run directory>
 
 Each walk explanation the playground or `scripts/explain.py` makes stores the
 same check for every window it explains, in `flipping.csv`.
+
+---
+
+### F-20 — The dataset paper's scoring equation prints its two constants the other way round from its own text and figure
+
+**Established from.** Saxena et al. (2008), the copy in `docs/references/`
+(`saxena_2008_damage_propagation_modeling.pdf`, SHA-256 beginning `e7aaef80`),
+page 7 rendered at eight times its size and read, and Figure 9 on page 8
+rendered at eight times and measured against its own axis labels, on
+2026-10-02.
+
+**What the paper prints.** Its Eq. (11), with
+`d = estimated RUL - true RUL`, scores `d < 0` with `exp(-d/a1) - 1` and
+`d >= 0` with `exp(d/a2) - 1`, and states `a1 = 10, a2 = 13`. As printed, a
+prediction 50 cycles late scores `exp(50/13) - 1 = 45.8` and one 50 cycles
+early scores `exp(50/10) - 1 = 147.4`: late predictions cost **less**.
+
+**What the same paper says otherwise.** The sentence directly above the
+equation says late predictions were penalised more heavily than early ones.
+Figure 9 agrees with the sentence: the x-axis lies at pixel row 1189 and the
+label 150 is centred at row 537, so one unit of score is 4.35 pixels; the curve
+ends at 45.5 at an error of -50 and at 147.2 at +50. The steep side is the late
+side, so the figure divides late errors by 10 and early ones by 13.
+
+**What this changes.** Substituted the same way, the printed Eq. (11) gives
+exactly what Wen et al.'s Equations 20 and 21 give when read literally: the
+gentler 13 to late predictions. Assumption A-15 said the challenge's published
+function "also says the opposite" of Wen et al.'s equations; its printed
+equation does not. What supports the convention this project implements is the
+words of both papers and the dataset paper's Figure 9, against both papers'
+printed equations. The convention is unchanged; its support is narrower than
+A-15 stated.
 
 ---
 

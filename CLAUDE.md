@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 520 tests; must all pass
+pytest                # 535 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -857,7 +857,10 @@ if one disagrees with what is written. `--fast` takes seconds; without it, two
 more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
-With everything present — the data, PyTorch and the stored runs — 520 were
+With everything present — the data, PyTorch, the stored runs and the cited
+papers in `docs/references/` — 535 were collected on 2026-10-02, after the
+Resources pages and the reference checks were added, and 534 passed; the one
+failure was the same stored sensitivity run as below. Before that, 520 were
 collected late on 2026-10-01 and 519 passed. The one failure is a stored
 sensitivity run whose folder name and recorded commit disagree, because the
 study writing it picks up the working tree as it changes; it is written up in

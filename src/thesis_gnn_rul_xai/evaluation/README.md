@@ -46,8 +46,9 @@ paper's own definition into the paper's own formula hands the gentler divisor
 (13) to over-prediction and the harsher divisor (10) to under-prediction — the
 reverse of what the text beside the equations says in words ("the penalty for
 over-prediction is relatively large ... over-prediction introduces security
-risks"), and the reverse of the scoring function published for the 2008 NASA PHM
-Data Challenge that the paper cites.
+risks"). The dataset paper that published the 2008 NASA PHM Data Challenge's
+scoring function prints the same swap in its Eq. (11), while its own text and
+its Figure 9 give the harsher divisor, 10, to late predictions (finding F-20).
 
 The two printed equations are inconsistent with each other. We implement the
 intent the paper states in words, which is also the standard function every

@@ -640,10 +640,14 @@ Thesis GNN RUL XAI/
 │
 ├── docs/
 │   ├── ASSUMPTIONS.md            Every choice not taken from the paper
-│   ├── REFERENCES.md             Full citations
+│   ├── REFERENCES.md             Full citations, each linked to its copy
 │   ├── AUDIT_*.md                The paper checked against the code
 │   ├── REVIEW_*.md               Outside reviews of this repository
-│   └── learn/                    Eight taught pages, for a reader new to this
+│   ├── learn/                    The taught pages, for a reader new to this
+│   ├── resources/                The dataset, LSTM, GCN, SHAP and GNN-LRP,
+│   │                             each explained from its original paper
+│   └── references/               A copy of every cited paper (not in git;
+│                                 scripts/fetch_references.py gets them)
 │
 ├── notebooks/
 │   ├── README.md                 What every notebook shares; read it first
@@ -662,6 +666,7 @@ Thesis GNN RUL XAI/
 │   ├── measure_walks.py          Measure walk explanations over every seed of a stored run
 │   ├── verify_claims.py          Recompute the figures the assumptions log quotes
 │   ├── check_prose.py            Catch unexplained jargon and codes used as words
+│   ├── fetch_references.py       Download the cited papers that are free
 │   └── docs_ui.py                Open all of this in a browser
 │
 ├── src/
@@ -1038,15 +1043,17 @@ A-14). Each would take one run of `scripts/train.py --seeds 5`.
 
 ## 13. References
 
-Full citations, with a note on what each is used for, are in
-[`docs/REFERENCES.md`](docs/REFERENCES.md). The works cited above are:
+Full citations, with a note on what each is used for and a link to its copy
+in `docs/references/`, are in [`docs/REFERENCES.md`](docs/REFERENCES.md). The
+copies are not committed; `python scripts/fetch_references.py` downloads the
+ones that are free. The works cited above are:
 
 - Corso et al. (2024), *Nature Reviews Methods Primers* — graph neural networks
 - Hochreiter & Schmidhuber (1997), *Neural Computation* — LSTM
 - Kapoor & Narayanan (2023), *Patterns* — data leakage
 - Kipf & Welling (2017), *ICLR* — graph convolutional networks
 - Li et al. (2018), *Reliability Engineering & System Safety* — CNN baseline
-- Lundberg & Lee (2017), *NeurIPS* — SHAP
+- Lundberg & Lee (2017), *NIPS* — SHAP
 - Saxena et al. (2008), *PHM* — the C-MAPSS dataset
 - Shapley (1953), *Contributions to the Theory of Games* — the Shapley value
 - Wen et al. (2026), *Aerospace Science and Technology* — the paper re-implemented

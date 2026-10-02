@@ -143,6 +143,7 @@ def documents(root: Path) -> list[Path]:
     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/README.md"))
     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/*.py"))
     found += sorted(root.glob("docs/learn/*.md"))
+    found += sorted(root.glob("docs/resources/*.md"))
     found += sorted(root.glob("notebooks/**/README.md"))
     found += sorted(root.glob("scripts/*.py"))
     return [p for p in found if "__pycache__" not in p.parts]
@@ -153,6 +154,7 @@ def reader_documents(root: Path) -> list[Path]:
     found: list[Path] = [root / "README.md"]
     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/README.md"))
     found += sorted(root.glob("docs/learn/*.md"))
+    found += sorted(root.glob("docs/resources/*.md"))
     found += sorted(root.glob("notebooks/**/README.md"))
     found += sorted(root.glob("notebooks/**/*.ipynb"))
     return [

@@ -46,9 +46,11 @@ the number of test engines, so it compares only runs on the same sub-dataset.
 Lower is better, and the $- 1$ makes an exact prediction cost $e^{0} - 1 = 0$.
 
 > The paper's Equations 20 and 21, taken together, give the *gentler* penalty
-> to late predictions: the opposite of what the paper's own text and the NASA
-> challenge it cites both say. This project follows the NASA convention
-> (assumption A-15).
+> to late predictions: the opposite of what the paper's own text says. The NASA
+> dataset paper behind the challenge has the same mismatch: its printed
+> equation also gives late predictions the gentler 13, while its text and its
+> Figure 9 divide late errors by 10 (finding F-20). This project follows what
+> both papers say in words (assumption A-15).
 
 ### R² — coefficient of determination
 

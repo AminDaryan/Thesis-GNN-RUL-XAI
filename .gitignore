@@ -6,6 +6,14 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
+# The cited papers. Each one is kept on this computer in docs/references/, but
+# many are publishers' copies that may not be passed on, so none is committed.
+# docs/references/manifest.json records where each file came from and its
+# checksum, and scripts/fetch_references.py downloads the free ones again.
+docs/references/*
+!docs/references/README.md
+!docs/references/manifest.json
+
 # --- Generated outputs --------------------------------------------------
 # Training writes one directory per run under reports/, so these accumulate.
 # The numbers that belong in the thesis are quoted in docs/ASSUMPTIONS.md and

@@ -794,3 +794,61 @@ def test_example_node_flipping_by_hand_on_the_same_three_sensors(raw_dir):
     curve = [round(float(adding[f"step_{k}"]), 4) for k in range(4)]
     assert curve == [0.5, 0.5382, 0.5, 0.2202]
     assert round(float(adding["aufc"]), 4) == 0.4396
+
+
+# --- docs/resources/: the papers the project builds on ---------------
+
+
+def test_example_lstm_resource_page(raw_dir, monkeypatch):
+    """The LSTM page reproduces every printed cell; its hand-written cells match the papers' rules and nn.LSTM."""
+    from test_examples import _check_design_tutorial
+
+    page = _check_design_tutorial("lstm.md", monkeypatch, minimum_tables=11, folder="resources")
+    # Eq. 2 on real readings: every product shrinks with q; the carousel's stays exactly 1.
+    weak = page["products"](page["weak"])
+    assert np.all(np.diff(weak) < 0) and weak[-1] < 1e-30
+    np.testing.assert_array_equal(page["carousel"], np.ones(len(page["steps"])))
+    # The 1997 cell keeps its whole state: s(192) = s(191) + input gate x squashed cell input.
+    trace = page["trace_1997"].set_index("Quantity")
+    assert trace.loc["Internal state s", "Cycle 192"] == pytest.approx(
+        trace.loc["Internal state s", "Cycle 191"]
+        + trace.loc["Input gate", "Cycle 192"] * trace.loc["Squashed cell input g", "Cycle 192"])
+    # The 1997 rule (Eqs. 23, 27, 28) is automatic differentiation with the previous output detached.
+    assert page["w_cell"].grad.item() == pytest.approx(page["rule_1997"].iloc[1, -1], abs=1e-12)
+    # Gers et al.'s Eq. 15 equals the cut derivative, and the full derivative differs from both.
+    values = page["derivatives"].iloc[:, 1].to_numpy()
+    assert values[0] == pytest.approx(values[1], abs=1e-8)
+    assert values[2] == pytest.approx(values[3], abs=1e-12) and values[1] - values[2] > 0.005
+    # Without a forget gate the state rises at every engine boundary shown; with one it stays bounded.
+    assert np.all(np.diff(page["stream_table"]["Internal state, no forget gate"]) > 0)
+    assert np.abs(page["with_forget"]).max() < page["largest_add"] / (1 - page["keep"].max())
+    # PyTorch's starting forget gates sit near 0.5, below Gers et al.'s first-block 0.62.
+    start = page["starting"].set_index("Quantity")["Value"]
+    assert 0.41 < start.iloc[2] < 0.5 < start.iloc[3] < 0.59 < start.iloc[4]
+
+
+def test_reference_gnn_lrp_page_reproduces_every_walk_and_the_papers_procedure(raw_dir, monkeypatch):
+    """The GNN-LRP resource page: the hand split, the paper's masked backward passes and the
+    project's walk_relevance agree on every walk of a real FD001 window."""
+    from test_examples import _check_design_tutorial
+
+    page = _check_design_tutorial("gnn_lrp.md", monkeypatch, minimum_tables=16, folder="resources")
+    assert page["end_cycle"] == 88
+    assert len(page["walk_table"]) == 17
+    assert page["along_connections"] == 5178
+    # Gradient x entry per connection counts every walk once per layer: twice the score.
+    assert page["edge_scores"]["Slope × entry"].sum() == pytest.approx(2 * page["score"], abs=1e-8)  # noqa: RUF001
+    # Eq. 6 bag term equals the sum of its two walks (Proposition 2).
+    assert page["bag_table"]["Value"].iloc[3] == pytest.approx(page["bag_table"]["Value"].iloc[6], abs=1e-8)
+    assert page["project_check"]["Largest gap from the hand split"].max() < 1e-6
+    np.testing.assert_allclose(page["gi"].sum(), page["score"], atol=1e-12)
+    np.testing.assert_allclose(page["lrp"].sum(), page["score"], atol=1e-12)
+    # At gamma 0 the walk estimate is the rerun network wherever no switch flips.
+    table = page["subset_table"]
+    no_flip = ~table["Sensors connected"].isin(["T50", "T30, T50"])
+    np.testing.assert_allclose(
+        table.loc[no_flip, "Walk estimate, GNN-GI"], table.loc[no_flip, "Network's score"], atol=1e-12
+    )
+    # Table 1's weight-sign gamma enlarges a negative share when the input is negative.
+    two = page["two_numbers"]
+    assert two["Share, Table 1's form"].iloc[3] < two["Contribution"].iloc[3] < 0

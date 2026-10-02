@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 import mistune
 from mistune.renderers.html import HTMLRenderer
@@ -201,6 +202,9 @@ def rewrite_link(url: str, source_path: str) -> str:
 
     suffix = f"#{fragment}" if fragment else ""
     lowered = resolved.lower()
+    if lowered.endswith(".pdf"):
+        # A fragment such as "#page=6" is kept: the browser's PDF viewer opens there.
+        return f"/api/paper?path={quote(resolved)}{suffix}"
     if lowered.endswith(".ipynb"):
         return f"#/notebook/{resolved}{suffix}"
     if lowered.endswith(".md"):
@@ -249,7 +253,11 @@ class _SiteRenderer(HTMLRenderer):
         return code_block(code, language) + "\n"
 
     def link(self, text: str, url: str, title: str | None = None) -> str:
-        return super().link(text, rewrite_link(url, self.source_path), title)
+        target = rewrite_link(url, self.source_path)
+        if target.startswith("/api/paper?"):
+            # A paper opens in the browser's own PDF viewer, beside the page that cites it.
+            return f'<a href="{html.escape(target)}" target="_blank" rel="noopener">{text}</a>'
+        return super().link(text, target, title)
 
     def image(self, text: str, url: str, title: str | None = None) -> str:
         return super().image(text, rewrite_link(url, self.source_path), title)

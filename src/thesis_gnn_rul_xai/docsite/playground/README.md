@@ -1144,7 +1144,7 @@ incorrectly started at the ceiling and was not an uncapped curve.
 
 Explain predictions opens with an engine cutaway drawn by `engine-view.js`.
 Its layout follows the engine modules in Figures 1 and 2 of
-[NASA's dataset paper](https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf).
+[NASA's dataset paper](../../../../docs/references/saxena_2008_damage_propagation_modeling.pdf).
 The same paper's Table 2 gives the variables' meanings. The section anchors
 are documented; exact probe positions, blade counts, dimensions and detailed
 cooling routes are not. Our drawing choices are recorded as the engine-overlay

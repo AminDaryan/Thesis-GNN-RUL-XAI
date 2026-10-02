@@ -100,8 +100,19 @@ _CHECKS_BEFORE: tuple[_Entry, ...] = (
     ("docs/DESIGN_swappable_stages.md", "Design of the swappable stages", "reference", 0),
 )
 _CHECKS_AFTER: tuple[_Entry, ...] = (
-    ("docs/REFERENCES.md", "References", "reference", 0),
     ("CLAUDE.md", "Working rules", "reference", 0),
+)
+
+# One page per method or dataset the project builds on, each explained from its
+# original paper, then the list of every work cited with a link to its PDF. The
+# year names the paper, and keeps "GNN-LRP" apart from the taught page of that name.
+_RESOURCES: tuple[_Entry, ...] = (
+    ("docs/resources/cmapss.md", "C-MAPSS dataset (2008)", "reference", 0),
+    ("docs/resources/lstm.md", "LSTM (1997)", "reference", 0),
+    ("docs/resources/gcn.md", "GCN (2017)", "reference", 0),
+    ("docs/resources/shap.md", "SHAP (2017)", "reference", 0),
+    ("docs/resources/gnn_lrp.md", "GNN-LRP (2022)", "reference", 0),
+    ("docs/REFERENCES.md", "References", "reference", 0),
 )
 
 # A REVIEW_ file is an outside review *of this repository*; an AUDIT_ file is a
@@ -228,6 +239,7 @@ def build_catalog(root: Path | None = None) -> Catalog:
             "Choices and checks",
             collect([*_CHECKS_BEFORE, *_dated(root), *_CHECKS_AFTER]),
         ),
+        Section("resources", "Resources", collect(_RESOURCES)),
     )
 
     catalog = Catalog(sections=sections, primary=_describe(root, _PRIMARY))

@@ -20,7 +20,8 @@
     W32: { at: [915, 170], anchor: [898, 311], part: "lpt", kind: "system", name: "Low-pressure turbine coolant bleed", note: "The cooling-air flow associated with the low-pressure turbine, following the dataset paper's Table 2. Its exact extraction and measuring points are not specified." }
   };
   var kinds = { station: "Measurement region", shaft: "Shaft quantity", derived: "Calculated quantity", system: "System quantity" };
-  var source = "https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf";
+  // NASA's copy of the dataset paper as cited; its Technical Reports Server file is an earlier draft.
+  var source = "https://c3.ndc.nasa.gov/dashlink/static/media/publication/2008_IEEEPHM_CMAPPSDamagePropagation.pdf";
 
   function esc(value) { return String(value).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function number(value) { return typeof value === "number" && isFinite(value); }

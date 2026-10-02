@@ -5,7 +5,9 @@ playground, where a run of the network is designed, trained, set beside the
 paper and explained. Its menu holds everything written here that a reader
 needs: taught pages ordered as Data, Preprocessing, Temporal algorithm, GNN and
 XAI (with Dynamic SHAP and GNN-LRP beneath it), the notebooks,
-one page per folder of the code, the assumptions log, the audits and reviews.
+one page per folder of the code, the assumptions log, the audits and reviews,
+and, under Resources, the dataset, the LSTM, the GCN, SHAP and GNN-LRP each
+explained from its original paper, ending with the reading list.
 It runs on your own machine, reads the files from disk as you ask for them,
 and publishes nothing.
 
@@ -170,6 +172,14 @@ found in. A link to `../README.md` inside `src/thesis_gnn_rul_xai/data/README.md
 becomes `#/doc/src/thesis_gnn_rul_xai/README.md`. Links to `.ipynb` files go to
 the notebook viewer, links to `.py` files to the source viewer, and links
 starting `http` are left exactly as they are.
+
+A link to a `.pdf` — a cited paper in `docs/references/` — becomes
+`/api/paper?path=docs/references/...` and opens in a new tab, in the browser's
+own PDF viewer, beside the page that cites it. A fragment such as `#page=7` is
+kept, and PDF viewers open the file at that page, so a sentence can link to the
+exact page it cites:
+`[Saxena et al.](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)`
+opens the dataset paper at its scoring function.
 
 ### The anchors have to match the ones already written down
 
@@ -460,7 +470,7 @@ is a reader for your own files, not a way to publish them, and it is worth
 being clear about the difference because the project directory contains a
 paper's worth of unpublished work.
 
-Five rules keep it that way:
+Six rules keep it that way:
 
 - **Every path is resolved and checked to be inside the project directory.**
   `../../../etc/passwd` is refused, and so is anything else that climbs out.
@@ -471,6 +481,11 @@ Five rules keep it that way:
 - **Files above 400 kB are refused** by the source viewer. Every source file in
   the project is far below that; the raw NASA files are far above it, and a
   3.5 MB table of numbers is not something to read in a browser.
+- **The paper address, `/api/paper`, sends PDFs from `docs/references/` and
+  nothing else**, whatever their size. A cited paper that is not on this
+  computer — the copies are not committed — gets a short page saying that
+  `scripts/fetch_references.py` downloads the free ones and
+  `docs/REFERENCES.md` says where to obtain the rest. Both are tested.
 - **Only the addresses that start work accept a POST**, the kind of request a
   browser sends to ask for something to be done rather than read: the one that
   starts JupyterLab, and the playground's five, which preview a network, start
