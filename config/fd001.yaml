@@ -23,9 +23,15 @@ smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
 # --- The sensor graph -----------------------------------------------------
 # ASSUMPTION A-21: the paper never prints the normalisation formula. With
 # nothing held back -- which was the default until 2026-09-02, but is not
-# what this file now sets -- row is 0.35 cycles closer than symmetric over
-# five seeds (paired p = 0.047, two-sided). That advantage does NOT survive
-# holding engines out -- see A-21's table before quoting it more widely.
+# what this file now sets -- row is 0.25 cycles closer than symmetric over
+# five seeds under the current learning-rate schedule, one drop at the
+# halfway pass (paired p = 0.068, two-sided, not significant), and was 0.35
+# closer (p = 0.047) under the schedule used until 2026-09-01, which shrank
+# the rate after every pass. That advantage does NOT survive holding engines
+# out -- see A-21's table before quoting it more widely. Corrected
+# 2026-10-02: this comment gave 0.35 and p = 0.047 as the current figure,
+# which belongs to the superseded schedule; found by setting it beside
+# A-21's table, which holds both figures with their schedules.
 adjacency_normalization: row
 
 # --- Data splitting -------------------------------------------------------

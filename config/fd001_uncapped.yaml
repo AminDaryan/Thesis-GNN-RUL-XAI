@@ -3,9 +3,13 @@
 # A-02 caps the official test labels at rul_max because the model's sigmoid
 # output cannot exceed it, so an uncapped label would charge the model for an
 # error its own architecture forbids. Eleven of the 100 FD001 test labels
-# exceed 125 (finding F-02), and capping them can only lower the reported
-# error -- so this is the single largest uncontrolled difference between a
-# number from this code and a published one.
+# exceed 125 (finding F-02), and capping them can never raise the reported
+# RMSE or NASA score; R-squared and ASUE have no such guarantee -- so this is
+# the single largest uncontrolled difference between a number from this code
+# and a published one. (Corrected 2026-10-02: this said capping can only
+# lower "the reported error", naming no measure; found by the search for that
+# claim after the review of the playground's information cards on 2026-09-26.
+# A-02 in docs/ASSUMPTIONS.md has the argument.)
 #
 # This configuration exists so that difference can be measured rather than
 # asserted. Everything else is identical to fd001.yaml.

@@ -54,6 +54,7 @@ identifier below.
 | A-31 | Placing explanation nodes on an engine | Table 2 names variables and component regions; Fig. 3 places a separate graph beside a schematic engine | An original schematic cutaway with section anchors, distinct markers for calculated and system quantities, and the stored model's graph overlaid; no claim of exact probe coordinates |
 | A-32 | Learning-rate sensitivity levels | Table 6 gives `0.001` at the start and `0.0001` at the end; it gives no sensitivity study | Test those rates, one tenth of both, and ten times both, keeping the ten-to-one ratio |
 | A-33 | Running the GNN-LRP paper's own check on this network | Not in the paper; the GNN-LRP paper's node flipping never says how a network on a fixed rescaled graph runs with nodes missing | A sensor's row and column of the rescaled graph zeroed, nothing rescaled; 20 random orders; walks beat random orders on every seed of all five configurations |
+| A-34 | Starting values of the recurrent stage | Prints the gate equations with one offset each (Equations 1, 2, 3 and 5); never says what any number starts from | PyTorch's default, every number drawn evenly from ±1/√32, so each forget gate starts between 0.412521 and 0.587479 at a zero reading; Gers et al. (2000) start it above one half, at 0.622459 and 0.731059 for their first two blocks; effect not measured |
 
 ---
 
@@ -122,14 +123,69 @@ difference), commit `cdcc827-dirty`, 2026-08-28:
 | uncapped (`fd001_uncapped.yaml`) | 21.664 ± 0.818 | 914 ± 78 | 0.728 | 18.03 |
 
 Per-seed penalty `[1.356, 1.333, 1.167, 1.204, 1.496]`; mean **+1.311 cycles**,
-paired **t = 22.30, p = 0.00002**. Highly significant and one-directional:
-capping can only help, and it helps by about 1.3 cycles.
+paired **t = 22.30, p = 0.00002**. Highly significant, and in the only
+direction RMSE can move under capping: it fell by about 1.3 cycles. (Until
+2026-10-02 this sentence said "capping can only help", naming no measure; the
+correction below says which measures that holds for.)
 
 **Therefore the gap to the paper's 14.93 is wider than the headline says.**
 This code reports 20.35 with the cap; without it, 21.66. Whichever is quoted,
 the cap must be quoted with it. (Under the removed `window` mode the same
 measurement gave +1.762 cycles; the effect is configuration-dependent, so it
 must be re-measured whenever the architecture changes.)
+
+**Correction, 2026-10-02.** "Capping can only help", as the paragraph above
+said until this date, is true of two of the four measures and was written as
+though it held for all four; the table above cannot show the difference,
+because there all four happened to improve. The
+review of the playground's information cards on 2026-09-26 found it and
+corrected the cards, but not this entry. The argument, for one engine with
+true remaining life `y`, ceiling `c = 125` and a prediction `p` that the
+sigmoid keeps at or below 125:
+
+- If `y` is 125 or less, capping changes nothing.
+- If `y` is above 125, then `p ≤ 125 < y`, so the error `p − y` is negative
+  before capping: the prediction was early. After capping the error is
+  `p − 125`, still negative or zero, and smaller in size by exactly `y − 125`.
+  Engine 25, labelled 145, is charged 20 cycles less whatever the model
+  predicted for it.
+
+So every engine's error keeps its direction and can only shrink. That
+guarantees two of the measures. **RMSE** is built from squared errors, none of
+which grows, so it cannot rise. **The NASA score** charges an early error of
+size `s` the amount `exp(s/13) − 1` (assumption A-15), which grows with `s`;
+the error stays early and shrinks, so its charge falls.
+
+It guarantees neither of the other two:
+
+- **ASUE** averages the shortfall over the engines predicted below their
+  label. While every prediction is below 125, the same engines stay in that
+  average with smaller shortfalls, so it cannot rise. But exactly 125 is
+  reachable: in 32-bit arithmetic PyTorch's sigmoid returns exactly 1 once its
+  input reaches about 16.64. An engine above the ceiling predicted at exactly
+  125 has no shortfall after capping and leaves the average. At the same
+  moment every other engine above the ceiling loses its own `y − 125` from its
+  shortfall, so the average can rise or fall. With the real labels of FD001
+  test engines and predictions chosen to show the arithmetic: engine 74
+  (labelled 126) predicted 125 and engine 1 (labelled 112) predicted 100 give
+  an ASUE of (1 + 12) / 2 = 6.5 uncapped and 12 capped, a rise, because
+  engine 1 is below the ceiling and keeps its shortfall of 12. Put engine 25
+  (labelled 145) predicted 123.5 in engine 1's place and the ASUE is
+  (1 + 21.5) / 2 = 11.25 uncapped and 1.5 capped, a fall, because engine 25's
+  shortfall shrinks by 20 while engine 74 leaves.
+- **R-squared** is 1 minus the squared errors divided by the labels' squared
+  distances from their own mean (assumption A-16), and capping shrinks both
+  parts. On the 100 FD001 test labels the second part falls from 172,686.96
+  to 160,586.75. Predicting 75.52, the mean uncapped label, for every engine
+  scores exactly 0 against the uncapped labels and −0.000713 against the
+  capped ones, so capping made it worse.
+
+`tests/test_examples.py` reproduces these examples from `RUL_FD001.txt`, and
+checks every stored FD001 prediction file in `reports/` from a run whose
+ceiling is 125 against the two guarantees. For RMSE the direction never needed the t-test above, since it
+follows from the argument; what the five seeds measured is its size. The
+R-squared and ASUE improvements in the table are outcomes measured on that
+configuration, not properties of capping.
 
 ---
 
@@ -452,9 +508,12 @@ filtering A-11 declines to invent.
 **Where this choice sits in its field — and it does not sit comfortably.**
 **F-12** read the twelve other papers filed alongside the source. Not one of
 them puts a single number on a graph node: every one either hands the graph the
-raw window or runs a temporal encoder first and passes its **output vector**,
-the smallest of which is thirty numbers wide. Neither the last reading nor the
-mean appears anywhere in that corpus. So the choice made here is not the
+raw window or runs a temporal encoder first and passes its **output vector**.
+At least two put fewer than thirty numbers on a node: 18 on a DVGTformer node
+standing for one time step, and a raw window of 20 cycles in IMTSO-GCN, both on
+FD002. (Until 2026-10-02 this sentence said the smallest was thirty numbers
+wide; F-12 records the correction.) Neither the last reading nor the mean
+appears anywhere in that corpus. So the choice made here is not the
 field's default — it is a consequence of refusing to depart from the shape
 Table 4 prints, and the honest way to describe it is "unusual, and adopted for
 a stated reason", not "natural". The nearest comparable design, HAGCN, gives
@@ -893,12 +952,24 @@ run at values the paper never mentions. Reading the paper as stepping requires
 it to have omitted *when* the step happens. Reading it as decaying smoothly
 requires it to have omitted the mechanism entirely.
 
-And no paper on this benchmark decays it exponentially. Of three C-MAPSS papers
-that state a schedule at all, two step at fixed epochs and one reduces when the
-loss stops falling; all three are quoted with page numbers in
+And no paper on this benchmark decays it exponentially. Of the three papers the
+literature search found that state a schedule at all, two work on C-MAPSS and
+both step at fixed epochs; the third, Li and Dong (2026), reduces the rate when
+the loss stops falling, but it works on N-CMAPSS, a newer and larger simulated
+engine dataset, and on nothing else. All three are quoted with page numbers in
 `docs/LITERATURE_BASIS.md`. Li, Zhao, Sun, Yan and Chen (2021) write on their
 page 6 that "learning rate decay is adopted, which decreases the learning rate
 by **multiplying 0.1 in epochs 120 and 160**".
+
+**Correction, 2026-10-02.** Until this date the paragraph above said "three
+C-MAPSS papers" state a schedule. Li and Dong (2026) say they chose N-CMAPSS as
+their data (PDF page 3, journal page 400; the copy in `docs/references/` has a
+publisher's cover sheet in front, so its PDF page numbers are not the
+journal's) and report results on no other, so only two of the three are on
+this benchmark, and both of those step. Found when the cited papers were
+collected into `docs/references/` and checked against the places that cite
+them. The argument for a step is unchanged; the only precedent found for a
+reduction on a plateau is on a different dataset.
 
 Where the step falls is still ours to choose, and the paper says nothing about
 it. The halfway point gives equal time to each of the two rates the paper does
@@ -1705,7 +1776,7 @@ paper regardless.* Applied assumption by assumption:
 | Assumption | What the paper says | Outcome under the rule |
 |---|---|---|
 | A-03 input scaling | nothing at all | silent → **`zscore`**, 3.83 cycles closer than min-max |
-| A-21 adjacency normalisation | "normalized … incorporating self-loops"; no formula | silent → **`row`**, 0.35 closer with nothing held back (p = 0.047) |
+| A-21 adjacency normalisation | "normalized … incorporating self-loops"; no formula | silent → **`row`**, 0.35 closer with nothing held back (p = 0.047) under the exponential schedule then in force; 0.25 (p = 0.068) under the step schedule since 2026-09-01 (A-21's table; schedules named here 2026-10-02) |
 | A-06 validation split | describes none | contradicts Table 6's 200 epochs → removed, then **reinstated 2026-09-02**; worth 0.32 cycles, p = 0.234 |
 | A-18 early stopping | Table 6: 200 epochs | contradicts → removed, then **live again 2026-09-02** with A-06 |
 | A-04 smoothing | Eq. 18 defines it | stated → kept, and removing it is worse anyway |
@@ -2138,17 +2209,18 @@ else put on a node?**
 Every PDF in that folder was read — full text extracted from all thirteen, and
 the deciding tables and figures rendered and read as images.
 
-**The corpus.** Ten method papers report on C-MAPSS FD001–FD004; one is a 2025
-survey; one (`MAGF-SPA`) uses only N-CMAPSS and is excluded from every count
-below; the thirteenth is the source paper itself.
+**The corpus.** Ten method papers report on C-MAPSS, not all of them on all
+four sub-datasets FD001–FD004 (IMTSO-GCN runs only FD002 and FD004); one is a
+2025 survey; one (`MAGF-SPA`) uses only N-CMAPSS and is excluded from every
+count below; the thirteenth is the source paper itself.
 
 **What each one puts on a node:**
 
 | Paper | Node is | What the node carries into the graph layers | Page |
 |---|---|---|---|
 | GLSTGN (ESWA 2025) | sensor | output of a gated temporal convolution | 1, 3 |
-| IMTSO-GCN (QRE 2025) | sensor | raw values over a sliding window; size tuned, 20 in the reported run | 10, 11 |
-| DVGTformer (MSSP 2024) | sensor | the sensor's whole window, `Xw in R^(Tw x N)` | 6 |
+| IMTSO-GCN (QRE 2025) | sensor | raw values over a sliding window whose length is tuned between 10 and 31: 20 cycles on FD002, 25 on FD004 (Table 4) | PDF 7, 9–12 (journal 180, 182–185) |
+| DVGTformer (MSSP 2024) | two views of one graph: sensor or operating setting (spatial view), time step (temporal view) | the window `Xw in R^(Tw x N)`, 30 x 17 on FD002, mixed by a learned linear map along each axis: a sensor node carries a column, 31 numbers, a time-step node a row, 18 numbers (in each, the one number beyond the window's 30 or 17 belongs to the extra learned node that the other view adds and joins to all its nodes) | 6, 7, 9, 12, 15 |
 | Zheng et al. (Adv. Eng. Inf. 2026) | sensor | per-sensor LSTM output, `R^(1 x F)`, **F = 30** | 4, 7 |
 | HAGCN (RESS 2021) | sensor | the raw 30-cycle window | 5, 6 |
 | HierCorrPool (IEEE) | sensor | 1-D CNN output over sub-windows | 3 |
@@ -2160,7 +2232,38 @@ below; the thirteenth is the source paper itself.
 
 Two families, and no third. Either the raw window goes straight in, or a
 temporal encoder runs first and its **output vector** becomes the node feature.
-The smallest node feature found anywhere in the corpus is 30 numbers.
+DVGTformer belongs to the second family, though its encoder is only a learned
+linear map: its input layer mixes the window along each of its two axes and
+keeps its shape. It then puts the result in either way round, a column on each
+sensor or operating-setting node and, in its second view, a row on each
+time-step node. At least two papers put fewer than 30 numbers on a node. A
+DVGTformer time-step node starts as the 17 readings taken at that time step on
+FD002 and reaches the graph layers as 18 numbers: the mixing makes each of the
+17 depend on every reading in the window, and the input layer then adds an
+18th number for the extra learned node that the spatial view joins to every
+sensor and operating-setting node. An IMTSO-GCN sensor node carries a window
+of 20 cycles on FD002 and 25 on FD004. Neither is one number.
+
+**Correction, 2026-10-02.** Until this date the corpus paragraph said the ten
+method papers "report on C-MAPSS FD001–FD004", the table gave DVGTformer's
+node as "sensor" only, carrying "the sensor's whole window", which placed it
+among the papers that pass the raw window in although its input layer mixes
+the window first, and gave IMTSO-GCN's window as "20 in the reported run" on
+pages "10, 11", and this paragraph said "The smallest node feature found
+anywhere in the corpus is 30 numbers". DVGTformer's Fig. 4 (page 6) and its
+text on page 7 make each time step a node of a second, temporal graph; its
+Table 4 (page 15) gives the window as 30 time steps by 17 channels on FD002,
+which are the 14 sensors and the 3 operating settings (page 12), and 31 by 18
+once its input layer (Equations 21 to 24, page 9) has mixed the window along
+both axes and added one extra learned node to each view; in that copy the PDF and printed page
+numbers are the same. IMTSO-GCN's Table 4 (PDF page 12, journal page 185)
+gives a window of 20 on FD002 and 25 on FD004, the only two sub-datasets the
+paper runs (PDF page 9, journal page 182); the pages cited were the PDF's,
+whose page 1 is the journal's page 174, so the old "10, 11" are the journal's
+183 and 184. Both tables were rendered and read as images. Found when the
+cited papers were collected into `docs/references/` and checked against the
+places that cite them. The finding itself stands: no paper here gives a node
+one number.
 
 **Nobody uses the last reading, and nobody uses the mean.** All thirteen texts
 were searched for every phrasing of both — "last time step", "final time step",
@@ -2228,10 +2331,26 @@ graph was always reading the window directly.
 
 The survey also defines node features loosely (page 3) — they "could be the raw
 signals themselves or features extracted through some preprocessing or feature
-engineering methods" — and THGNN (page 2) argues *against* what the source
-does, criticising methods that compress "MTS data from a time window into a
-single 'flat' graph, often leading to the loss of critical temporal
-information".
+engineering methods" — and THGNN argues *against* what the source does. The
+caption of its Fig. 1 (PDF page 2, journal page 19749) says that earlier
+snapshot-based methods compress "MTS data from a time window into a single
+'flat' graph", which it says often loses "critical fine-grained temporal
+details"; MTS is the paper's short form for multivariate time series, several
+sensors recorded over the same cycles. Its abstract (PDF page 1, journal page
+19748) calls capturing such snapshots a coarse-grained approach that "leads to
+a loss of temporal information".
+
+**Correction, 2026-10-02.** Until this date the THGNN passage above was printed
+as a single quotation from page 2 ending "often leading to the loss of critical
+temporal information". The paper has no such sentence. In the caption of
+Fig. 1 on page 2 that clause ends "critical fine-grained temporal details",
+and the caption then runs on for several more lines. The quotation had also
+dropped, without marking the gap, a parenthesis the caption has between
+"graph" and "often". The ending "loss of temporal information" is the wording
+of the abstract on page 1 (and of the body text beside the figure on page 2).
+The two are now separate quotations, each with its page. Found when the cited
+papers were collected into `docs/references/` and checked against the places
+that cite them. What the paragraph argues is unchanged.
 
 **What this does and does not settle.** It does not overturn A-07. The
 reasoning there — keep the architecture Table 4 prints, delete only the named
@@ -2367,13 +2486,62 @@ RMSE, so it is not a rounding matter.
 
 Two things are worth reading off that table. The paper's `E[y]` and the usual
 `E[f(x)]` agree to 0.4 cycles, because the trained model is nearly unbiased on
-average; the outlier is the third row, and the reason is that the network is
+average; the outlier is the first row, and the reason is that the network is
 not linear, so the prediction at the average input is not the average
-prediction. And because every attribution is measured from `phi_0`, the whole
-table this project produces is offset from the paper's definition by that
-constant — **rankings by magnitude are unaffected, individual values are not.**
+prediction. And because every attribution is measured from `phi_0`, the values
+this project produces cannot be turned into values measured from the paper's
+`phi_0` by a shift that keeps their order by size; the correction below works
+through each way of making that change.
 
 Reproduce with the script recorded in this entry's commit message.
+
+**Correction, 2026-10-02.** Until this date the paragraph above ended with a
+claim in bold: that the whole table is "offset from the paper's definition by
+that constant", so that "rankings by magnitude are unaffected, individual
+values are not". That is wrong under each of the three things measuring from a
+different `phi_0` could mean. The review of the playground's information cards
+on 2026-09-26 found it. The same paragraph also called the outlier "the third
+row"; it is the first, `f(average training window)` at 91.357, and that slip
+was found while correcting the claim.
+
+- **Changing only the constant.** Write the mean label where `f(baseline)`
+  stood and keep the fourteen values. No value moves, so nothing about them is
+  offset, but Equation 14 stops adding up: at every window, the mean label
+  plus the fourteen values falls short of the prediction by the same amount,
+  `f(baseline) − E[y]`, which for the model in the table above is the 10.719
+  cycles.
+- **Shifting every value by the same amount**, the most literal reading of
+  "offset by that constant". Spreading `f(baseline) − E[y]` evenly, adding a
+  fourteenth of it to each value, makes Equation 14 add up from the mean label
+  again. Every value moves by the same signed amount, so the order from most
+  positive to most negative is kept, but the order by size is not: a shift
+  upwards makes a positive value larger and a negative one smaller in size. On
+  the stored explanation of held-back engine 5 by the seed-42 network of run
+  `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`
+  (explanation `shap_engine_unit5_seed42_c2bf7d4-dirty_20260916T070850Z`,
+  240 windows), `f(baseline)` is 91.885 and the mean label over the 17 731
+  training windows is 80.638, so each value moves up by 0.803 cycles. The
+  order by size changes in 236 of the 240 windows, and so does the order of
+  the sizes averaged over the engine's life: W31 and T30 swap second and third
+  place, and BPR and Nf swap twelfth and thirteenth.
+- **Changing what stands in for an absent sensor.** A different stand-in
+  changes every prediction in which some sensor is absent, which is every
+  prediction the calculation is built from except `f(x)` itself, so each
+  sensor's value is recomputed by its own amount, and nothing keeps the order
+  of their sizes. The SHAP page under Resources shows this on real FD001
+  readings, with a straight line fitted to four sensors and its values
+  computed against two stand-ins: the average of all training rows, and the average of the rows at
+  the 125-cycle ceiling. T24 moves from 5.984611 to 1.883631 cycles and P30
+  from −0.863789 to −6.969030, and the order by size changes from T50, T24,
+  P30, T30 to T50, P30, T30, T24.
+
+So the choice recorded here is not a uniform shift that leaves rankings alone.
+The rankings this project reports belong to its stand-in (assumption A-20),
+and would have to be recomputed, not shifted, under any other.
+`tests/test_examples.py` checks all three points on real data: the first on
+every stored Shapley explanation in `reports/`, the second on those from runs
+whose data were prepared by `config/fd001.yaml` (with the counts above on the
+one named), skipping when there are none, and the third from the FD001 files.
 
 ---
 
@@ -2398,8 +2566,10 @@ to the held-back and test engines.
 
 **Why.** A statistic computed over engines that will later be scored is
 information from those engines reaching the model, which is the ordinary
-definition of leakage. It flatters the reported figures and cannot be detected
-by looking at them. Two tests hold the line —
+definition of leakage. It moves the reported figures, by an amount and in a
+direction that cannot be detected by looking at them. (Until 2026-10-02 this
+said it "flatters" them; see the correction at the end of this entry.) Two
+tests hold the line —
 `test_normalization.py::test_test_data_never_influences_the_scaling` and
 `test_pipeline.py::test_validation_engines_never_influence_the_scaling` — and
 working rule 1 of `README.md` section 11 states it.
@@ -2413,12 +2583,33 @@ difference was overlooked.
 
 **How much it matters.** Unmeasured, and deliberately so: measuring it would
 mean building the leaking variant and reporting a number from it, which is not
-a number this project wants in its history. The direction is not in doubt —
-fitting on the test engines can only improve the reported figures — so the
-comparison would tell us the size of an advantage this project declines to
-take. A-08 covers the *other* ordering question in Fig. 1, between smoothing
-and scaling, and is withdrawn because there the paper's order is the one
-followed here.
+a number this project wants in its history. Its direction is not known either:
+leakage usually inflates measured performance, but nothing guarantees that
+here, so the comparison would tell us the size and the sign of an effect this
+project declines to introduce. (Until 2026-10-02 this said "the direction is
+not in doubt", and that fitting on the test engines "can only improve the
+reported figures"; see the correction below.) A-08 covers the *other*
+ordering question in Fig. 1, between smoothing and scaling, and is withdrawn
+because there the paper's order is the one followed here.
+
+**Correction, 2026-10-02.** Until this date two sentences above promised a
+direction that nothing guarantees: that the leak "flatters the reported
+figures", and that fitting on the test engines "can only improve" them. The
+review of the playground's information cards on 2026-09-26 found the second,
+and the first was found while correcting it. Fitting the scaling on the test
+engines changes the numbers every training reading is turned into
+(the normalisation folder's README shows every sensor's mean moving), so the
+network trained on them is a different network, and nothing in the arithmetic
+of training says whether that network then does better or worse on the test
+engines. What is certain is the reason for refusing it: the reported figure
+would stop measuring performance on engines the preparation never saw, and
+nothing in the figure would say in which direction, or by how much, it had
+moved. Studies of leakage find that it usually inflates measured performance
+(Kapoor and Narayanan's 2022 preprint, the copy in `docs/references/`, PDF
+page 4, Section 2.1: leakage "usually leads to inflated estimates"), which is
+a tendency across published work, not a guarantee for this pipeline. The
+decision not to build the leaking variant stands, for the first reason given
+above, and its effect stays unmeasured in both size and direction.
 
 ---
 
@@ -3820,6 +4011,159 @@ equation does not. What supports the convention this project implements is the
 words of both papers and the dataset paper's Figure 9, against both papers'
 printed equations. The convention is unchanged; its support is narrower than
 A-15 stated.
+
+---
+
+## A-34 — The recurrent stage starts from PyTorch's own default values, so its forget gates start near one half
+
+**Where:** `models/temporal/LSTMStage` (its recurrent cells and its `project` layer); the seed is set by `scripts/train.py` just before `build_model`
+
+**The gap.** The paper prints the recurrent cell's equations and never the
+values its numbers start from. Its Section 2.2 (page 4; in this copy the PDF
+page and the printed page are the same) writes the forget gate as Equation 1,
+`f_t = σ(W_f·[h_{t−1}, x_t] + b_f)`, and says of `b_f` only that it
+"represents the bias vector": an offset, a number added before the sigmoid
+squashes the result into the range 0 to 1. Equations 2, 3 and 5 give the input
+gate, the candidate values and the output gate one offset each in the same way,
+and Fig. 2 draws the cell with no values on it. Section 3.4 and Table 6
+(page 9) list the learning rate, 200 passes over the training data, batches of
+32, 30 time steps, Adam and the mean squared error, and nothing about starting
+values. Searching the copy's text for "initial", "Xavier", "Glorot", "Kaiming",
+"uniform" and "random" finds no sentence on the subject. "Xavier", "Glorot",
+"Kaiming" and "uniform" do not occur. "Random" occurs once, of test records
+that end at random points before failure (page 7). "Initial" occurs six times:
+once of the node features the first graph layer receives (page 6), and five
+times of the early part of an engine's life or of its wear (twice on page 9,
+once on page 11, twice on page 13).
+Assumption A-14 records how the graph layers and the two dense layers after
+them start, and assumption A-26 the stage's width, depth and projection; until
+this entry nothing recorded how the recurrent cells start.
+
+The paper the forget gate comes from does say. Gers, Schmidhuber and Cummins
+(2000), in the copy in `docs/references/` (the authors' manuscript, which has no
+text layer, so its pages were rendered at three times their size and read on
+2026-10-02):
+
+- **Section 3.1** (PDF page 6, the manuscript's page 5): the offsets of the
+  input and output gates start negative and those of the forget gates
+  positive, so that at the start of training the forget gate is close to 1 and
+  the cell behaves like the 1997 cell, which keeps its whole memory, "until it
+  has learned to forget".
+- **Section 4.2** (PDF page 12, the manuscript's page 11): the values used.
+  The input and output gates of successive blocks of cells start at −0.5,
+  −1.0, −1.5 and so on; the forget gates at +0.5 for the first block, +1 for
+  the second, and so on; every other weight is drawn from −0.2 to +0.2. The
+  same paragraph says the exact starting offsets are not critical and other
+  values work as well.
+- **Section 4.5** (PDF page 16, the manuscript's page 15): on a task where the
+  network is reset after every sequence, forget gates starting at +5.0 learned
+  as fast as the 1997 cell, and gates starting at +1.0 took about three times
+  as long on average, because the network first had to learn not to forget.
+
+**What we chose.** Nothing in the code sets a starting value in the stage, so
+PyTorch's own rule applies:
+
+1. **Every number in each recurrent cell**, LSTM or GRU, is drawn evenly from
+   −1/√h to +1/√h, where h is the hidden size: from −0.176777 to +0.176777 at
+   the default h = 32 (assumption A-26). That is the whole of the cells'
+   `reset_parameters` in both versions of PyTorch this project's stored runs
+   record: 2.13.0, in the five runs stored directly under `reports/` since late
+   on 2026-09-14, three of them five-seed runs of the recurrent stage, and
+   2.5.1, in all 64 runs the sensitivity study (finding F-19), whose reference
+   uses the recurrent stage, had stored by 2026-10-02. Earlier runs record no
+   version, among them those behind finding F-16 and the recurrent-stage run
+   assumption A-28 is compared with. The table below comes out the same,
+   number for number, under both versions.
+2. **Each gate has two offsets** where Equation 1 prints one: one added to the
+   reading's term and one to the previous hidden state's (`bias_ih` and
+   `bias_hh`). Both are drawn the same way, so a gate's total offset starts
+   between −2/√h and +2/√h, centred on zero, and the forget gate gets no
+   positive start. The GRU cell has no forget gate; its update gate, which
+   sets how much of the previous memory is kept, starts in the same range.
+3. **The projection** from the last hidden state to the one number per sensor
+   (assumption A-26) is a PyTorch linear layer and keeps that library's
+   default for one: its multipliers and its offset drawn evenly from
+   ±1/√(number of inputs), the same ±0.176777 for 32 inputs. Assumption A-14
+   states this default for the two dense layers after the graph layers; it
+   does not name the projection.
+4. **The draws follow the run's seed.** `scripts/train.py` sets it just before
+   it builds the network, and the stage is built before the graph layers, so
+   its numbers are drawn first.
+
+**Why.** The paper gives no starting values, so any choice here is this
+project's, and keeping the library's default adds no number that neither Wen et
+al. nor anyone reproducing them could know. Gers et al.'s values were not
+carried over. They are set per block of cells and grow with the block's
+position, while PyTorch gives each of the 32 cells its own gates, so "the first
+block" has no counterpart here; taken literally, +0.5 per block would start the
+32nd cell's forget gate at +16. Their own Section 4.2 calls the exact values not
+critical. This is not a claim that the default is the better start: their
+Section 4.5 is evidence the other way for a network reset after every sequence,
+and this stage starts every 30-cycle window from an empty memory.
+
+**How much it matters.** Not measured. The table measures the starting values
+only; what they do to training and to the test error is an argument.
+
+Measured on the default stage, built the way `scripts/train.py` builds it, for
+the five seeds of a five-seed run (42 to 46). Fourteen sensors with 32 cells
+each give 448 forget gates per seed. "At a zero reading" is the gate's value at
+the first cycle of a window, where the previous hidden state is zero, for a
+rescaled reading of zero, the sensor's training average: the sigmoid of the two
+summed offsets.
+
+| Seed | Largest starting number in the cells | Summed forget offsets, lowest to highest | Positive, of 448 | Forget gate at a zero reading: lowest, average, highest |
+|---|---|---|---|---|
+| 42 | 0.176776 | −0.319376 to +0.328242 | 211 | 0.420828, 0.499410, 0.581332 |
+| 43 | 0.176775 | −0.339548 to +0.330730 | 219 | 0.415919, 0.498105, 0.581937 |
+| 44 | 0.176776 | −0.303028 to +0.341626 | 231 | 0.424818, 0.499787, 0.584586 |
+| 45 | 0.176775 | −0.345936 to +0.338435 | 197 | 0.414368, 0.494837, 0.583810 |
+| 46 | 0.176776 | −0.300566 to +0.324980 | 253 | 0.425419, 0.504403, 0.580537 |
+
+Every forget gate on every seed starts between 0.414368 and 0.584586, inside
+the bounds the rule allows, 0.412521 and 0.587479, which
+`docs/resources/lstm.md` computes the same way. Gers et al.'s offsets would
+start their first two blocks at 0.622459 and 0.731059.
+
+The argument: at the start of training a cell multiplies its memory by its
+forget gate at every cycle, and with that gate near one half, what the first
+cycles of a window put into the memory has largely faded by the 30th until
+training raises the gates. The gate also depends on the reading and on
+the previous hidden state, through multipliers drawn from the same small range,
+so this is a description of the start, not a calculation of it. Whether the
+stage learns more slowly for it, or ends at a different test error, has not
+been measured, and every number this log gives for the recurrent stage
+(findings F-16 and F-19, assumption A-28) was produced with PyTorch's default
+starting values, as far as the record shows: no committed version of the stage
+has set its own.
+Measuring it needs an option that sets the forget offsets, which the code does
+not have, and five seeds with and without it under the configuration of the
+day.
+
+**Reproduce with:**
+
+```python
+import torch
+from thesis_gnn_rul_xai.graph.adjacency import build_physics_adjacency, normalize_adjacency
+from thesis_gnn_rul_xai.models.config import ModelConfig, build_model
+
+graph = normalize_adjacency(build_physics_adjacency()[0], method="row")
+h = 32
+for seed in range(42, 47):
+    torch.manual_seed(seed)                       # as scripts/train.py does
+    stage = build_model(graph, ModelConfig(temporal="lstm"), window_size=30, rul_max=125).temporal
+    largest = max(p.abs().max().item() for p in stage.cells.parameters())
+    forget = torch.stack([c.bias_ih_l0[h:2 * h] + c.bias_hh_l0[h:2 * h] for c in stage.cells]).detach()
+    gate = torch.sigmoid(forget)
+    print(seed, round(largest, 6), round(forget.min().item(), 6), round(forget.max().item(), 6),
+          int((forget > 0).sum()), round(gate.min().item(), 6), round(gate.mean().item(), 6),
+          round(gate.max().item(), 6))
+```
+
+PyTorch orders each cell's gates input, forget, cell, output, so rows 32 to 63
+of an offset vector belong to the forget gate.
+`python scripts/verify_claims.py --only starts` recomputes the table, the
+lowest and highest gate over all five seeds and the two bounds, and fails if
+one disagrees with what is written here.
 
 ---
 

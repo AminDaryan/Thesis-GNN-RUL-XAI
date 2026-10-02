@@ -184,9 +184,12 @@ def run_preprocessing(
     # engines the statistics are fitted on. This happens BEFORE anything is
     # measured from the data: if it happened later, the held-back engines
     # would help decide the mean, the standard deviation and so on, and their
-    # error would then look better than it really is -- the same problem that
-    # keeping the test engines separate exists to avoid. Written up in
-    # docs/ASSUMPTIONS.md.
+    # error would no longer be a fair measure of unseen engines (usually it
+    # looks better, but nothing guarantees the direction) -- the same problem
+    # that keeping the test engines separate exists to avoid. Corrected
+    # 2026-10-02: this said their error would look better than it really is;
+    # found by the search for that claim after the review of the playground's
+    # information cards on 2026-09-26. Written up in docs/ASSUMPTIONS.md.
     train_units, validation_units = split_units_by_id(
         np.unique(train[UNIT_COL].to_numpy()),
         validation_fraction=config.validation_fraction,

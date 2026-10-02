@@ -26,9 +26,15 @@ rather than redistribute a copy that may drift out of date.
    ```
 
    This reports which files are present, which are missing, and whether the
-   ones present have the row and engine counts published for the official
-   release (20 631 training rows over 100 engines, and 100 test engines, for
-   FD001).
+   ones present have the row and engine counts of the files NASA distributes
+   (20 631 training rows over 100 engines, and 100 test engines, for FD001).
+   The paper's Table 5 (Wen et al., 2026, page 7) prints the same engine
+   counts. NASA's own readme prints FD004's two the other way round (248
+   training engines, 249 test engines, where the files hold 249 and 248), and
+   none of the papers held in `docs/references/` prints the row counts.
+   (Corrected 2026-10-02: this called the counts "published for the official
+   release"; found when the cited papers were collected into
+   `docs/references/` and checked against the places that cite them.)
 
 All four sub-datasets (FD001 to FD004) can live here together. Only the three
 files for the sub-dataset named in the configuration are read on any one run.

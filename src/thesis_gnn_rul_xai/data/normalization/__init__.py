@@ -42,6 +42,14 @@ class OperatingConditionEncoder:
 
     n_conditions: int | None = None
     setting_columns: Sequence[str] = tuple(OP_SETTING_COLS)
+    # Rounding to whole numbers is used only to count the conditions; k-means
+    # then groups the rows by their unrounded settings. It merges the Mach
+    # numbers (0 and 0.25 become 0; 0.62, 0.70 and 0.84 become 1), and the
+    # throttle angle has only 100 and 60, so those two settings rounded give
+    # three combinations. The count of six on FD002 and FD004 is right only
+    # because altitude alone, rounded to 0, 10, 20, 25, 35 and 42, separates the
+    # six conditions. Measured 2026-10-02 on all four FD002 and FD004 files; the
+    # README in this folder shows it.
     round_decimals: int = 0
     seed: int = 42
 

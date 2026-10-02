@@ -852,3 +852,60 @@ def test_reference_gnn_lrp_page_reproduces_every_walk_and_the_papers_procedure(r
     # Table 1's weight-sign gamma enlarges a negative share when the input is negative.
     two = page["two_numbers"]
     assert two["Share, Table 1's form"].iloc[3] < two["Contribution"].iloc[3] < 0
+
+
+# --- models/temporal/README.md: the worked example ---------------------------
+
+
+def test_example_temporal_readme_on_two_real_sensors(raw_dir, playground_temporal_example):
+    """T24 and T50 of FD001 engine 1, cycles 1 to 4: every number the README prints, by hand."""
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    prepared = run_preprocessing(PreprocessingConfig(seed=42, window_size=4), data_dir=raw_dir)
+    row = int(np.flatnonzero(prepared.train.units == 1)[0])
+    assert prepared.train.end_cycles[row] == 4
+    names = list(prepared.sensor_symbols)
+    pair = [names.index("T24"), names.index("T50")]
+    assert pair == [0, 2]
+    windows = torch.from_numpy(prepared.train.features[row:row + 1, pair])
+    assert tuple(windows.shape) == (1, 2, 4)
+    readings = [[round(float(x), 6) for x in sensor] for sensor in windows[0]]
+    assert readings == [[-1.987346, -1.6039, -1.179785, -0.967728],
+                        [-0.99521, -0.8415, -0.700499, -0.770999]]
+    # The same four readings open engine 1's thirty-cycle window.
+    thirty, _ = playground_temporal_example
+    torch.testing.assert_close(windows, thirty[:, pair, :4], atol=0.0, rtol=0.0)
+
+    last = LastCycle(4)(windows)
+    assert tuple(last.shape) == (1, 2, 1)
+    assert [round(float(x), 6) for x in last[0, :, 0]] == [-0.967728, -0.770999]
+    assert [round(float(x), 4) for x in last[0, :, 0]] == [-0.9677, -0.771]
+
+    totals = [round(sum(sensor), 6) for sensor in readings]
+    assert totals == [-5.738759, -3.308208]
+    assert [round(total / 4, 6) for total in totals] == [-1.43469, -0.827052]
+    mean = MeanWindow(4)(windows)
+    assert tuple(mean.shape) == (1, 2, 1)
+    assert [round(float(x), 6) for x in mean[0, :, 0]] == [-1.43469, -0.827052]
+    assert [round(float(x), 4) for x in mean[0, :, 0]] == [-1.4347, -0.8271]
+    # T24 rises through all four cycles; T50 peaks at cycle 3.
+    assert readings[0] == sorted(readings[0])
+    assert max(readings[1]) == readings[1][2]
+
+    stage = LSTMStage(window_size=4, n_nodes=2, hidden_size=8)
+    assert len(stage.cells) == 2
+    assert tuple(stage(windows).shape) == (1, 2, 1)
+
+    # Seed 42 keeps 80 of the 100 training engines; another seed keeps a
+    # different 80, so the rescaled readings move, and under seeds 44 and 46
+    # engine 1 is held back and the README's code finds no window for it.
+    kept, held = np.unique(prepared.train.units), np.unique(prepared.validation.units)
+    assert (len(kept), len(held), len(np.union1d(kept, held))) == (80, 20, 100)
+    for seed, first in ((43, -2.032225), (44, None), (46, None)):
+        other = run_preprocessing(PreprocessingConfig(seed=seed, window_size=4), data_dir=raw_dir)
+        rows = np.flatnonzero(other.train.units == 1)
+        if first is None:
+            assert rows.size == 0 and 1 in other.validation.units
+        else:
+            assert round(float(other.train.features[rows[0], pair[0], 0]), 6) == first

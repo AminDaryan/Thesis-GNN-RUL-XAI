@@ -66,9 +66,13 @@ class PreprocessingConfig:
     # ASSUMPTION A-02: put the same ceiling on the test labels. The paper does
     # not say whether it does. The network's last layer cannot produce a number
     # above the ceiling, so leaving the test labels uncapped would charge it for
-    # an error it is built to be unable to avoid. This can only move our
-    # reported numbers in our favour, so it must be stated whenever they are
-    # set beside published ones. Written up in docs/ASSUMPTIONS.md.
+    # an error it is built to be unable to avoid. It can never raise the
+    # reported RMSE or NASA score (R-squared and ASUE have no such guarantee),
+    # so it must be stated whenever they are set beside published ones.
+    # Corrected 2026-10-02: this said capping can only move our reported
+    # numbers in our favour; found by the search for that claim after the
+    # review of the playground's information cards on 2026-09-26. Written up
+    # in docs/ASSUMPTIONS.md.
     clip_test_labels: bool = True
 
     # --- Preparing the sensor readings --------------------------------------
@@ -95,10 +99,16 @@ class PreprocessingConfig:
     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
     # formula and two forms fit what it says. With nothing held back --
     # the default until 2026-09-02, and no longer what this file sets --
-    # rows measured 0.35 cycles closer than the alternative over five seeds
-    # (paired p = 0.047). That advantage does not survive holding engines out,
-    # so it is a fact about this configuration only. Written up as A-21 in
-    # docs/ASSUMPTIONS.md, with the table of all four comparisons.
+    # rows measured 0.25 cycles closer than the alternative over five seeds
+    # under the learning-rate schedule in use now, one drop at the halfway
+    # pass (paired p = 0.068, not significant), and 0.35 closer (p = 0.047)
+    # under the schedule used until 2026-09-01, which shrank the rate after
+    # every pass. That advantage does not survive holding engines out, so it
+    # is a fact about this configuration only. Corrected 2026-10-02: this
+    # comment gave 0.35 and p = 0.047 as the current figure, which belongs to
+    # the superseded schedule; found by setting it beside A-21's table, which
+    # holds both figures with their schedules. Written up as A-21 in
+    # docs/ASSUMPTIONS.md, with the table of every comparison.
     adjacency_normalization: AdjacencyNormalization = "row"
 
     # --- Holding engines back ------------------------------------------------

@@ -189,9 +189,18 @@ Even that comparison carries three warnings:
    settings used before that rule give 20.35 ± 0.75 instead of the default's
    result above, and the paper specifies none of the settings that differ, so
    it gives no reason to prefer either number (assumption A-22).
-2. **Capping the test labels at 125 can only lower the error**, for the reason
-   page 4 gives. In an earlier configuration it lowered the RMSE by 1.31
-   cycles, so measured without it the gap to 14.93 would be wider (assumption
-   A-02).
+2. **Capping the test labels at 125 can only lower the RMSE.** No prediction
+   exceeds 125, so for an engine whose true remaining life is above 125 the
+   prediction was early, and capping the label shrinks that early error
+   without changing its direction: engine 25, with 145 cycles left, is
+   charged exactly 20 cycles less whatever the model predicted. The NASA
+   score can only fall for the same reason, but R-squared and ASUE are not
+   guaranteed to improve; page 4 notes in general that capping does not
+   guarantee every measure improves. In an earlier configuration capping
+   lowered the RMSE by 1.31 cycles, so measured without it the gap to 14.93
+   would be wider (assumption A-02). (Corrected 2026-10-02: this said capping
+   can only lower "the error", for a reason page 4 does not give; found by the
+   search for that claim after the review of the playground's information
+   cards on 2026-09-26.)
 3. **The paper gives its numbers with no spread** and never mentions seeds or
    repeated runs, so they have an unknown spread of their own.

@@ -183,6 +183,60 @@ def check_graph() -> list[Claim]:
     ]
 
 
+def check_starts() -> list[Claim]:
+    """A-34's table: where the recurrent stage's forget gates start, for seeds 42 to 46."""
+    try:
+        import torch
+    except ImportError:
+        return [Claim("A-34", "starting values", None, "PyTorch is not installed")]
+
+    from thesis_gnn_rul_xai.models.config import ModelConfig, build_model
+
+    # Largest number in the cells; summed forget offsets, lowest and highest;
+    # how many of the 448 are positive; forget gate at a zero reading, lowest,
+    # average and highest.
+    recorded = {
+        42: (0.176776, -0.319376, 0.328242, 211, 0.420828, 0.499410, 0.581332),
+        43: (0.176775, -0.339548, 0.330730, 219, 0.415919, 0.498105, 0.581937),
+        44: (0.176776, -0.303028, 0.341626, 231, 0.424818, 0.499787, 0.584586),
+        45: (0.176775, -0.345936, 0.338435, 197, 0.414368, 0.494837, 0.583810),
+        46: (0.176776, -0.300566, 0.324980, 253, 0.425419, 0.504403, 0.580537),
+    }
+    graph = normalize_adjacency(build_physics_adjacency()[0], method="row")
+    h = 32
+    claims: list[Claim] = []
+    gates = []
+    for seed, row in recorded.items():
+        torch.manual_seed(seed)  # as scripts/train.py does, just before build_model
+        stage = build_model(graph, ModelConfig(temporal="lstm"),
+                            window_size=30, rul_max=125).temporal
+        largest = max(p.abs().max().item() for p in stage.cells.parameters())
+        # PyTorch orders a cell's gates input, forget, cell, output.
+        forget = torch.stack([c.bias_ih_l0[h:2 * h] + c.bias_hh_l0[h:2 * h]
+                              for c in stage.cells]).detach()
+        gate = torch.sigmoid(forget)
+        gates.append(gate)
+        measured = (round(largest, 6), round(forget.min().item(), 6),
+                    round(forget.max().item(), 6), int((forget > 0).sum()),
+                    round(gate.min().item(), 6), round(gate.mean().item(), 6),
+                    round(gate.max().item(), 6))
+        claims.append(Claim("A-34", f"seed {seed}: the table's row", str(row), str(measured)))
+    every = torch.cat(gates)
+    bound = 2.0 / np.sqrt(h)
+    claims += [
+        Claim("A-34", "forget gates per seed", 448, int(gates[0].numel())),
+        Claim("A-34", "lowest forget gate, every seed", 0.414368,
+              round(every.min().item(), 6)),
+        Claim("A-34", "highest forget gate, every seed", 0.584586,
+              round(every.max().item(), 6)),
+        Claim("A-34", "lowest the rule allows", 0.412521,
+              round(float(1.0 / (1.0 + np.exp(bound))), 6)),
+        Claim("A-34", "highest the rule allows", 0.587479,
+              round(float(1.0 / (1.0 + np.exp(-bound))), 6)),
+    ]
+    return claims
+
+
 # --- the checks that need the NASA files ---------------------------------
 
 
@@ -515,6 +569,7 @@ def check_p15(config: PreprocessingConfig) -> list[Claim]:
 CHECKS = [
     Check("graph", "F-07", False, False, check_graph),
     Check("same_rows", "F-18", False, False, check_same_rows),
+    Check("starts", "A-34", False, False, check_starts),
     Check("sensors", "F-01, A-10", True, False, check_sensors),
     Check("labels", "F-02, F-03", True, False, check_labels),
     Check("windows", "A-23", True, False, check_windows),

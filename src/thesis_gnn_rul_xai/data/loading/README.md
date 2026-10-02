@@ -78,7 +78,7 @@ The names come from [`sensors`](../sensors/README.md), which holds the list
 | `read_rul_file(path)` | Reads one `RUL_FD00X.txt` label file. | A Series of one number per engine, labelled by engine number |
 | `attach_rul(frame, rul_at_last_cycle=None)` | Adds the `rul` column. | A **new** DataFrame; the one passed in is not changed |
 | `CMAPSSData` | Holds one loaded sub-dataset. | An object with `.subset`, `.train`, `.test`, `.test_rul` and a `.summary()` |
-| `EXPECTED_SHAPES` | How many rows and engines each sub-dataset should have, from the published descriptions. | A dictionary, used for a warning |
+| `EXPECTED_SHAPES` | How many rows and engines each sub-dataset should have: the counts of NASA's files, whose engine counts the re-implemented paper's Table 5 repeats (where they come from is under `load_subset` below). | A dictionary, used for a warning |
 | `DOWNLOAD_URL` | Where the NASA files come from. | A string, quoted inside the missing-file error |
 
 ---
@@ -498,7 +498,7 @@ test  = attach_rul(test, rul_at_last_cycle=test_rul)   # label file needed
 ```
 
 Then a check that the files are the ones they claim to be. `EXPECTED_SHAPES`
-holds the published row and engine counts:
+holds the row and engine counts of the files NASA distributes:
 
 ```python
 EXPECTED_SHAPES = {
@@ -507,6 +507,18 @@ EXPECTED_SHAPES = {
     ...
 }
 ```
+
+Where those numbers come from matters, because the sources disagree. The
+engine counts match Table 5 of the paper (Wen et al., 2026, page 7). NASA's
+own readme, which comes with the files, prints FD004's two engine counts the
+other way round: 248 training engines and 249 test engines, where the files
+hold 249 and 248 (and `RUL_FD004.txt` has 248 lines, one per test engine). The
+row counts were counted from the files, because neither source prints them.
+
+**Correction, 2026-10-02.** This section and the code's comment called all of
+these counts "published", which hid both points. Found when the cited papers
+were collected into `docs/references/` and checked against the places that
+cite them.
 
 The measured counts are compared against those, and any difference is
 **warned** about rather than raised. Warning rather than stopping is a
@@ -518,7 +530,7 @@ files would look perfectly normal.
 
 ```
 INFO    | thesis_gnn_rul_xai.data.loading | Loading FD001 from data\raw
-INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the published shape of the official release.
+INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the expected counts, those of NASA's files (Wen et al.'s Table 5 prints the same engine counts).
 INFO    | thesis_gnn_rul_xai.data.loading | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
 
 repr: CMAPSSData(subset='FD001', train_rows=20631, train_units=100, test_rows=13096, test_units=100)
@@ -528,10 +540,11 @@ And with 100 rows cut off the end of the training file, the check fires:
 
 ```
 WARNING | thesis_gnn_rul_xai.data.loading | Loaded FD001 does not match the
-published shape of the official release. Differences (expected, actual):
-{'train_rows': (20631, 20531)}. The files may be a different version,
-truncated, or modified. Investigate this before reporting any result computed
-from them.
+expected counts, which are those of NASA's files (Wen et al.'s Table 5 prints
+the same engine counts; NASA's readme swaps FD004's two). Differences
+(expected, actual): {'train_rows': (20631, 20531)}. The files may be a
+different version, truncated, or modified. Investigate this before reporting
+any result computed from them.
 ```
 
 ---
@@ -630,7 +643,7 @@ numbers are assigned **by line position**, a label file with one line missing
 would otherwise shift every label by one engine and produce a table that looks
 entirely reasonable and is entirely wrong.
 
-**The files do not match the published shape** — a warning, not an error, shown
+**The files do not match the expected counts** — a warning, not an error, shown
 above.
 
 ---

@@ -56,8 +56,18 @@ Cooperative game theory gives an answer. Imagine building the group of sensors
 one at a time, in some order. Each time a sensor joins, the prediction changes
 by some amount, and that change is what the sensor contributed *in that order*.
 Do that for every possible order and average. That average is the sensor's
-**Shapley value** (Shapley, 1953). It is the only way of splitting the credit
-that satisfies a short list of fairness conditions at once.
+**Shapley value** (Shapley, 1953). Lundberg and Lee (2017, page 4) state that
+it is the only way of splitting the credit that meets three conditions at once,
+two of them close to these: the shares add up exactly, and a sensor whose
+contribution grows never receives a smaller share. They cite Shapley (1953) for
+the value itself, but credit that proof of uniqueness to Young (1985), their
+reference [10]. Neither original is held in `docs/references/`, so this is
+Lundberg and Lee's account, not one checked against those originals.
+
+**Correction, 2026-10-02.** This paragraph stated that uniqueness with
+Shapley (1953) as its only source, without naming the conditions. Found when
+the cited papers were collected into `docs/references/` and checked against
+the places that cite them.
 
 Written out, for sensor `i`:
 
@@ -202,17 +212,35 @@ where the Shapley values need 16,384. It is not in the paper.
 **It is one term of the Shapley sum.** In Equation 15 the group `S` holding all
 thirteen other sensors gives `f(S + {i}) − f(S)`, which is exactly the
 occlusion value, and the sum weights that term by `13! 0! / 14! = 1/14`.
-Occlusion keeps that one term at full weight and drops the rest. The two agree
-only for a sensor that adds the same amount whichever others are present.
+Occlusion keeps that one term at full weight and drops the rest. So the two
+agree exactly when that one term equals the weighted average of all of them.
+A sensor that adds the same amount whichever others are present always
+satisfies this, but it is not the only way. With three inputs,
+`h(a, b, c) = a + b + c + 2ab + 2ac + 2bc − 3abc`, input `(1, 1, 1)` and
+baseline `(0, 0, 0)`, input `a` adds 1 when it arrives first, 3 when it
+arrives after `b` alone or after `c` alone, and 2 when it arrives last. Those
+amounts differ, so `a` does interact with the others. Equation 15 weights the
+four groups `a` can find on arrival — nobody, `b` alone, `c` alone, both — by
+1/3, 1/6, 1/6 and 1/3, so its Shapley value is
+`1/3 × 1 + 1/6 × 3 + 1/6 × 3 + 1/3 × 2 = 2`, and its occlusion value, the
+last amount alone, is also 2. By symmetry the same holds for `b` and `c`.
+Agreement between the two methods therefore does not show that the sensors
+act independently. (Corrected 2026-10-02: this said the two agree only for a
+sensor that adds the same amount whichever others are present. The review of
+the playground's information cards on 2026-09-26 found the overstatement;
+`tests/test_examples.py` checks the example.)
 
 Two consequences follow, and neither is about this project's network in
 particular:
 
-- **The fourteen occlusion values do not add up** to the prediction minus the
-  prediction at the baseline. With `f(a, b) = 2a + 3b + 4ab`, input `(1, 1)` and
-  baseline `(0, 0)`, occlusion gives `a` 6 and `b` 7, which sum to 13 where the
-  whole change is 9: each is measured with the other present, so each is
-  credited with the whole `4ab` term.
+- **The fourteen occlusion values need not add up** to the prediction minus
+  the prediction at the baseline. With `f(a, b) = 2a + 3b + 4ab`, input
+  `(1, 1)` and baseline `(0, 0)`, occlusion gives `a` 6 and `b` 7, which sum to
+  13 where the whole change is 9: each is measured with the other present, so
+  each is credited with the whole `4ab` term. In `h` above they happen to add
+  up, 2 + 2 + 2 = 6 = `h(1, 1, 1) − h(0, 0, 0)`. (Corrected 2026-10-02: this
+  said the values do not add up, and the `h` example above is a case where
+  they do; found by the review of this section after that example was added.)
 - **Two sensors carrying the same information can both look worthless.** With
   `g(a, b) = 10 × max(a, b)`, replacing either input alone leaves the other to
   keep the output at 10, so both get 0, where the Shapley values are 5 each.
@@ -682,19 +710,72 @@ The mask it returns is also a different kind of answer: a number between 0 and
 1 per connection, with no unit, that does not add up to anything.
 
 The evidence on which method explains graph networks best is thin and does not
-cover this task. Of the independent comparisons, only a survey by Yuan et al.
-(2022) ran GNN-LRP, where walk-based methods scored higher on its main measure
-of faithfulness than GNNExplainer and PGExplainer; others that left GNN-LRP out
+cover this task. The only comparison this project found that includes GNN-LRP
+and was not run by the authors of GNN-LRP, GNNExplainer or PGExplainer is a
+survey by Yuan et al. (2023). It is not free of an interest of its own: three
+of its four authors wrote SubgraphX (the survey's reference [48], page 18),
+another method it compares, which comes first in ten of the twelve columns of
+the two tables described below. It tests classification only: of whole graphs
+(sentences turned into graphs, molecules, and synthetic graphs built around
+known shapes) and of single nodes in a synthetic graph (pages 10 and 11).
+
+Its two measures are defined on pages 11 and 12; it calls them Fidelity+ and
+Fidelity−. The first removes the parts of each graph that an explanation marks
+as most important (connections, or nodes) and records how far the network's
+probability for the category it originally predicted falls; a larger fall is
+better. The reverse measure keeps only the marked parts, and there a smaller
+fall is better. Its main comparison (Section 8.1) plots both against the share
+of each graph marked important, from about a fifth to a half (its Figs. 6 and
+7, page 13). Its text on page 14 says the two walk-based methods — it calls
+them flow-based: GNN-LRP and its simpler form GNN-GI — "generally" score higher
+on the first measure than GNNExplainer and PGExplainer, and, after SubgraphX,
+do better than the rest on the reverse measure too.
+
+The survey's own numbers bear that out for GNN-GI and not for GNN-LRP. Its
+Tables 3 and 4 (page 14) belong to a separate check against connections given
+random scores (Section 8.2, page 15), at one fixed share marked important:
+30 %, or 40 % on BA-Shapes. On the four datasets that are not synthetic —
+three sets of sentences and the molecule set BBBP — GNN-GI is ahead of both
+GNNExplainer and PGExplainer on both measures. GNN-LRP is behind PGExplainer
+on the first measure on Graph-SST2 (0.1363 against 0.1889), Graph-SST5 (0.1813
+against 0.1854) and BBBP (0.0860 against 0.1464), and behind GNNExplainer on
+BBBP (0.1057); its BBBP score is also below the random scoring's 0.1212, which
+the table marks with a star. On the reverse measure it is behind PGExplainer on
+five of the six datasets, by 0.0563 to 0.4087, all four that are not synthetic
+among them, and behind GNNExplainer on two; Fig. 7 shows GNN-LRP behind
+PGExplainer at every plotted share on the same five. It is ahead of both on
+both measures only on BA-Shapes, the one task of classifying single nodes. The
+survey's advice (pages 14 and 15) is SubgraphX in every case, GNNExplainer and
+PGExplainer only for classifying single nodes, and "GNN-GI and GNN-LRP" only
+for real-world datasets, although on the reverse measure its numbers put
+GNN-LRP behind PGExplainer on every one of those. The copy in
+`docs/references/` is the arXiv preprint, whose page numbers match the PDF's
+but not the journal's; the journal version is not held. None of it tests a
+regression on a sensor graph.
+
+Until 2026-10-02 this paragraph called the survey independent, which it is not
+where SubgraphX is concerned; dropped its "generally" and let the walk-based
+methods' result stand for GNN-LRP, which the survey's own tables do not bear
+out; dated it 2022; and added that other comparisons, which it did not name,
 found GNNExplainer the strongest on classifying single nodes and PGExplainer
-weak. All of them test classification. None tests a regression on a sensor
-graph.
+weak. None of those comparisons is held here to check, so that sentence is
+withdrawn. The errors were found when the cited papers were collected into
+`docs/references/` and checked against the places that cite them.
 
 What GNN-LRP gives up in exchange: it is specific to networks it has rules for,
 its cost grows as the number of sensors raised to the number of layers plus
 one (38,416 per window here, which is small only because there are 14 sensors
 and three layers), it explains the score before the sigmoid rather than the
-prediction in cycles, and at the default setting it is the variant its authors
-found noisier than their recommended one.
+prediction in cycles, and its shares depend on a setting of the rule, gamma:
+the default here follows the authors' own (assumption A-29), and at gamma 0
+everywhere the method becomes the simpler GNN-GI, which they report as
+noisier.
+
+(Corrected 2026-10-02: the last clause said that at the default setting the
+method is the noisier variant. That was true while the default was gamma 0,
+and stopped being true when the default became the authors' own setting of 0,
+1.5 and 0. Found on 2026-10-02 by the review of the survey paragraph above,
+while reading the text around it.)
 
 ### Trap: sensors the graph cannot tell apart
 
@@ -873,11 +954,15 @@ F-08, also in `docs/ASSUMPTIONS.md`).
   GNNExplainer: Generating explanations for graph neural networks. *Advances in
   Neural Information Processing Systems 32 (NeurIPS)*.
   https://arxiv.org/abs/1903.03894
-- Yuan, H., Yu, H., Gui, S., & Ji, S. (2022). Explainability in graph neural
+- Yuan, H., Yu, H., Gui, S., & Ji, S. (2023). Explainability in graph neural
   networks: A taxonomic survey. *IEEE Transactions on Pattern Analysis and
-  Machine Intelligence*. https://doi.org/10.1109/TPAMI.2022.3204236 — the
-  benchmark described above was read in the arXiv version,
-  https://arxiv.org/abs/2012.15445 (version 3).
+  Machine Intelligence*, 45(5), 5782-5799.
+  https://doi.org/10.1109/TPAMI.2022.3204236 — the benchmark described above
+  was read in the arXiv version, https://arxiv.org/abs/2012.15445 (version 3),
+  the copy held in `docs/references/`. This entry gave the year as 2022, with
+  no volume or pages, until 2026-10-02: that was the early-access record. It
+  was found when the cited papers were collected into `docs/references/` and
+  checked against the places that cite them.
 
 ## What each name means
 

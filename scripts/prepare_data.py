@@ -7,8 +7,9 @@ A small command-line tool with two jobs:
 
 ``--check``
     Report which raw C-MAPSS files are present, which are missing, and whether
-    the ones present have the number of rows and engines published for the
-    official release.
+    the ones present have the number of rows and engines of the files NASA
+    distributes (the engine counts are also in Wen et al.'s Table 5; NASA's
+    readme swaps FD004's two).
 
 ``--run``
     Execute the full preprocessing pipeline and save the result.
@@ -78,7 +79,7 @@ def check_raw_data(subset: str, directory: Path | None = None) -> int:
         )
         return 1
 
-    print("\nAll files present. Checking their size against the published release:")
+    print("\nAll files present. Checking their size against the counts of NASA's files:")
     train = read_cmapss_frame(directory / f"train_{subset}.txt")
     test = read_cmapss_frame(directory / f"test_{subset}.txt")
     expected = EXPECTED_SHAPES.get(subset, {})
@@ -96,11 +97,11 @@ def check_raw_data(subset: str, directory: Path | None = None) -> int:
         print(f"  {status:8s} {key:14s} expected {expected_value:>6}, found {actual[key]:>6}")
 
     if all_match:
-        print("\nThe files match the official release.")
+        print("\nThe files match the expected counts.")
         return 0
 
     print(
-        "\nThe files do not match the published counts. They may be a different "
+        "\nThe files do not match the expected counts. They may be a different "
         "version or may have been modified. Investigate before using them for "
         "any reported result."
     )

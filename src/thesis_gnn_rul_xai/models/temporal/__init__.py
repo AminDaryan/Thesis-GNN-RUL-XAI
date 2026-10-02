@@ -182,6 +182,12 @@ class LSTMStage(TemporalStage):
         # what the paper describes, so it is a citation and not a choice.
         # shared_across_sensors=True is a cheaper departure from it, and a
         # number produced with it must say so.
+        # ASSUMPTION A-34: set no starting values here, so PyTorch's own apply:
+        # every multiplier and offset of the cells and of the projection below
+        # is drawn evenly from -1/sqrt(hidden_size) to +1/sqrt(hidden_size), and
+        # each forget gate starts near one half; Gers et al. (2000) start theirs
+        # above one half (0.62 and 0.73 for their first two blocks). The paper
+        # gives no starting values. Written up in docs/ASSUMPTIONS.md.
         maker = nn.LSTM if cell == "lstm" else nn.GRU
         count = 1 if self.shared_across_sensors else self.n_nodes
         self.cells = nn.ModuleList(

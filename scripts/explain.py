@@ -18,8 +18,15 @@ Three methods are available, and only the first is the paper's:
     Not in the paper. Each sensor in turn is replaced by the same baseline
     while the other 13 stay, and the change in the prediction is recorded:
     15 evaluations per window instead of 16,384. It is the one term of the
-    Shapley average in which the sensor arrives last, so the two agree only
-    when the sensors do not interact.
+    Shapley average in which the sensor arrives last; the Shapley value
+    averages what the sensor adds over every point at which it could arrive.
+    The two agree whenever that last amount equals the average: always for a
+    sensor that adds the same amount wherever it arrives, and also for one
+    whose amounts differ but happen to average to the last one. Agreement
+    therefore does not show that a sensor acts independently of the others.
+    (Until 2026-10-02 this said the two agree only when the sensors do not
+    interact. That guarantees agreement, but is not the only way to get it.
+    Found by the review of the playground's information cards on 2026-09-26.)
 ``walks``
     Not in the paper. GNN-LRP (Schnake et al., 2022; A-29): the network's
     weights are read and each window's score before the sigmoid -- the number

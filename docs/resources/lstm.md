@@ -1501,8 +1501,9 @@ the papers on this page it inherits:
   gate is present; what it contributes to this project's stage has not been
   measured.
 - **PyTorch's default starting values, not those of either paper.** Wen et al.
-  state no starting values for the stage, and the project keeps PyTorch's:
-  every multiplier and offset is drawn evenly from $\pm 1/\sqrt{32}$. Each gate
+  state no starting values for the stage, and the project keeps PyTorch's
+  (assumption A-34): every multiplier and offset is drawn evenly from
+  $\pm 1/\sqrt{32}$. Each gate
   has two offsets, so their sum lies within $\pm 2/\sqrt{32}$. At the first
   cycle of a window, where the previous hidden state is zero, a reading of zero
   therefore gives a forget gate between 0.412521 and 0.587479. Gers et al.'s

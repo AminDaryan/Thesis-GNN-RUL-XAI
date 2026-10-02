@@ -100,7 +100,7 @@ settings:
 
 ```
 INFO    | ...data.loading       | Loading FD001 from D:\...\data\raw
-INFO    | ...data.loading       | FD001 matches the published shape of the official release.
+INFO    | ...data.loading       | FD001 matches the expected counts, those of NASA's files (Wen et al.'s Table 5 prints the same engine counts).
 INFO    | ...data.loading       | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
 WARNING | ...data.pipeline      | The paper keeps sensor(s) ['P15'], but in this data they carry no
                                   usable variation. They are kept anyway, because the adjacency matrix
@@ -175,8 +175,17 @@ That is a real argument, not a hand-wave: `apply_piecewise_rul` writes only
 Two operations that touch disjoint columns commute.
 
 Note also that the test labels are capped only `if config.clip_test_labels` —
-capping them at all is this project's choice (assumption A-02), and it can only
-move reported error favourably.
+capping them at all is this project's choice (assumption A-02), and it can
+never raise two of the four reported measures: the root mean squared error
+(RMSE, the square root of the average squared miss, in cycles) and the NASA
+score (a sum of penalties that grow exponentially with each miss). The other
+two can move either way: R-squared, the share of the labels' spread around
+their average that the predictions account for, and ASUE, the average
+shortfall over the engines predicted too low.
+[`labeling`](../labeling/README.md) works both through with the real test
+labels. (Corrected 2026-10-02: this said
+capping can only move reported error favourably; found by the search for that
+claim after the review of the playground's information cards on 2026-09-26.)
 
 ### Step 6 — the split happens *before* anything is measured
 
@@ -197,7 +206,13 @@ Deciding the split first is this project's choice (assumption A-25), and the
 reason is the one from
 [`normalization`](../normalization/README.md): if the split happened after
 fitting, the held-back engines would have helped decide the mean and the spread,
-and their error would then look better than it really is.
+and their error would no longer measure how the model does on engines the
+preparation never saw. Nothing guarantees which way it would move; the usual
+finding is that it looks better than it really is. (Corrected 2026-10-02: this
+said it would look better, which is the usual direction but not a certain one;
+found by the search for that claim after the review of the playground's
+information cards on 2026-09-26. Assumption A-25 in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md) has the argument.)
 
 ### Step 7 — fit on training engines only, apply to everything
 
@@ -268,7 +283,11 @@ run could store one graph and train on another, and nothing would say so."*
 could leak.** It is measured only on the rows of the training engines, after
 smoothing and rescaling, for the reason step 6 fits the rescaling on them: had
 the held-back engines helped decide which sensors are joined, their error would
-look better than it is. Because each seed holds back different engines, each
+no longer be a fair measure of engines the model never saw, usually looking
+better than it is, though nothing guarantees that direction. (Corrected
+2026-10-02: this said their error would look better than it is; found by the
+search for that claim after the review of the playground's information cards
+on 2026-09-26.) Because each seed holds back different engines, each
 seed can get a slightly different graph. `graph/README.md` explains why it
 keeps exactly as many edges as the paper's graph (assumption A-27), and
 `tests/test_pipeline.py` checks it is built from the training rows alone.

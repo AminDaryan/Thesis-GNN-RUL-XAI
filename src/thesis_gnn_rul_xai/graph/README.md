@@ -231,7 +231,11 @@ All three are recorded in full in `docs/ASSUMPTIONS.md`.
   aggregation across different node degrees". The formula itself is never
   printed, and both the symmetric and the row form fit that description. The
   default of `normalize_adjacency` is the symmetric form, because it is the one
-  defined by the layer the paper cites. The project's own configuration default
+  Kipf and Welling (2017) define for this kind of layer. (Corrected
+  2026-10-02: this said "the layer the paper cites"; Wen et al. do not cite
+  Kipf and Welling, as assumption A-12 records. Found when the cited papers
+  were collected into `docs/references/` and checked against the places that
+  cite them.) The project's own configuration default
   is the row form, set in `config.py`, not here; read the entry before quoting
   either, because it has been re-measured since (assumption A-21).
 

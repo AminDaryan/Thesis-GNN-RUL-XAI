@@ -635,3 +635,243 @@ def test_example_resource_shap(loaded, monkeypatch):
     assert sum(namespace["leave_one_out"]) != pytest.approx(phi_line.sum(), abs=1e-3)
     # Figure 4 of Lundberg and Lee, worked exactly with Eq. 4.
     assert namespace["figure_4"]["Shapley value"].tolist() == pytest.approx([1, 1, 0, 3, 2, 0])
+
+
+# --- data/normalization/README.md: counting the operating conditions -------
+
+
+def test_example_condition_count_rests_on_altitude(raw_dir):
+    """Rounding merges the Mach numbers; altitude alone keeps FD002's and FD004's six conditions apart."""
+    from thesis_gnn_rul_xai.data.loading import read_cmapss_frame
+    from thesis_gnn_rul_xai.data.normalization import OperatingConditionEncoder
+    from thesis_gnn_rul_xai.data.sensors import OP_SETTING_COLS
+
+    names = [f"{kind}_{subset}.txt" for subset in ("FD002", "FD004") for kind in ("train", "test")]
+    missing = [name for name in names if not (raw_dir / name).is_file()]
+    if missing:
+        pytest.skip(f"Needs the FD002 and FD004 files; missing from {raw_dir}: {missing}")
+    for name in names:
+        frame = read_cmapss_frame(raw_dir / name)
+        settings = frame[list(OP_SETTING_COLS)].to_numpy(dtype=float)
+        # The README's table: altitude rounded, Mach to two decimals, throttle angle.
+        conditions = np.unique(
+            np.column_stack([np.round(settings[:, 0]), np.round(settings[:, 1], 2), settings[:, 2]]),
+            axis=0,
+        )
+        np.testing.assert_allclose(
+            conditions,
+            [[0, 0, 100], [10, 0.25, 100], [20, 0.7, 100], [25, 0.62, 60], [35, 0.84, 100], [42, 0.84, 100]],
+        )
+        # What the encoder counts: all three rounded, which leaves the Mach number only 0 and 1.
+        decimals = OperatingConditionEncoder().round_decimals
+        assert decimals == 0
+        rounded = np.unique(np.round(settings, decimals), axis=0)
+        assert rounded.tolist() == [[0, 0, 100], [10, 0, 100], [20, 1, 100],
+                                    [25, 1, 60], [35, 1, 100], [42, 1, 100]]
+        # Mach number and throttle angle, rounded, give three combinations; altitude alone gives six.
+        assert np.unique(np.round(settings[:, 1:], decimals), axis=0).tolist() == [[0, 100], [1, 60], [1, 100]]
+        assert np.unique(np.round(settings[:, 0], decimals)).tolist() == [0, 10, 20, 25, 35, 42]
+        if name.startswith("train"):
+            assert OperatingConditionEncoder().fit(frame).n_detected == 6
+
+
+# --- what the measures and the explanations do and do not guarantee --------
+
+
+def test_example_capping_guarantees_only_rmse_and_the_score(raw_dir):
+    """Capping the FD001 test labels cannot raise RMSE or the NASA score; R-squared and ASUE can worsen."""
+    # Assumption A-02 in docs/ASSUMPTIONS.md, corrected 2026-10-02.
+    labels = np.loadtxt(raw_dir / "RUL_FD001.txt")
+    capped = np.minimum(labels, 125)
+    assert int((labels > 125).sum()) == 11
+
+    # Engine 25 has 145 cycles left. Any prediction p <= 125 is early, and
+    # capping takes exactly 20 cycles off that early error.
+    assert labels[24] == 145
+    for p in (0.0, 110.0, 125.0):
+        before = prediction_error([labels[24]], [p])[0]
+        after = prediction_error([capped[24]], [p])[0]
+        assert before < 0 and after <= 0 and abs(before) - abs(after) == 20
+
+    # R-squared: predicting the mean uncapped label for every engine scores 0
+    # uncapped and below 0 capped, because capping shrinks the labels' spread.
+    constant = np.full(100, labels.mean())
+    assert labels.mean() == pytest.approx(75.52)
+    assert np.sum((labels - labels.mean()) ** 2) == pytest.approx(172686.96)
+    assert np.sum((capped - capped.mean()) ** 2) == pytest.approx(160586.75)
+    assert r_squared(labels, constant) == pytest.approx(0.0, abs=1e-12)
+    assert r_squared(capped, constant) == pytest.approx(-0.000713, abs=5e-7)
+    assert rmse(capped, constant) < rmse(labels, constant)
+    assert nasa_score(capped, constant) < nasa_score(labels, constant)
+
+    # ASUE: engine 74 (126 cycles) predicted exactly 125 and engine 1 (112)
+    # predicted 100. Capped, engine 74 has no shortfall and leaves the average,
+    # and engine 1, below the ceiling, keeps its shortfall: the average rises.
+    pair = labels[[73, 0]]
+    assert pair.tolist() == [126.0, 112.0]
+    assert asue(pair, [125.0, 100.0]) == 6.5
+    assert asue(np.minimum(pair, 125), [125.0, 100.0]) == 12.0
+    # Engine 25 (145) predicted 123.5 in engine 1's place: its shortfall
+    # shrinks by 20 while engine 74 leaves, and the average falls.
+    pair = labels[[73, 24]]
+    assert pair.tolist() == [126.0, 145.0]
+    assert asue(pair, [125.0, 123.5]) == 11.25
+    assert asue(np.minimum(pair, 125), [125.0, 123.5]) == 1.5
+
+
+def test_example_stored_predictions_obey_the_two_capping_guarantees(raw_dir):
+    """Stored FD001 predictions under a ceiling of 125: capping never raises RMSE or the score."""
+    # ASUE cannot rise either while no prediction reaches 125 (assumption A-02).
+    import yaml
+
+    from thesis_gnn_rul_xai.utils.paths import reports_dir
+
+    root = reports_dir()
+    files = sorted(root.glob("fd001_*/seed_*/test_predictions.csv")) if root.is_dir() else []
+    labels = np.loadtxt(raw_dir / "RUL_FD001.txt")
+    capped = np.minimum(labels, 125)
+    checked = 0
+    for file in files:
+        settings_file = file.parents[1] / "preprocessing_config.yaml"
+        if not settings_file.is_file():
+            continue
+        settings = yaml.safe_load(settings_file.read_text(encoding="utf-8")) or {}
+        if settings.get("rul_max") != 125:
+            continue
+        saved = pd.read_csv(file)
+        if saved["unit"].tolist() != list(range(1, 101)):
+            continue
+        guess = saved["predicted"].to_numpy(dtype=float)
+        assert guess.max() <= 125, file
+        assert rmse(capped, guess) <= rmse(labels, guess), file
+        assert nasa_score(capped, guess) <= nasa_score(labels, guess), file
+        if guess.max() < 125:
+            assert asue(capped, guess) <= asue(labels, guess), file
+        checked += 1
+    if not checked:
+        pytest.skip("no stored FD001 test predictions in reports/")
+
+
+def test_example_a_different_constant_breaks_the_adding_up_or_the_order(loaded):
+    """Measuring stored Shapley values from the mean label breaks either the adding-up or the order by size."""
+    # Assumption A-24 in docs/ASSUMPTIONS.md, corrected 2026-10-02.
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.config import load_config
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.utils.paths import reports_dir
+
+    root = Path(__file__).resolve().parents[1]
+    config = load_config(root / "config" / "fd001.yaml")
+    prepared = run_preprocessing(config)
+    labels = np.concatenate([prepared.train.targets, prepared.validation.targets])
+    assert len(labels) == 17731
+    mean_label = float(labels.mean())
+    assert mean_label == pytest.approx(80.638, abs=5e-4)
+    # The run-name digest scripts/train.py writes; runs carrying it share these labels.
+    digest = hashlib.sha256(
+        json.dumps(config.to_dict(), sort_keys=True, default=str).encode()
+    ).hexdigest()[:6]
+    named = ("fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z",
+             "shap_engine_unit5_seed42_c2bf7d4-dirty_20260916T070850Z")
+
+    folder = reports_dir()
+    tables = sorted(folder.glob("fd001_*/explanations/shap_*/values.csv")) if folder.is_dir() else []
+    checked = 0
+    for path in tables:
+        summary_file = path.parent / "summary.json"
+        if not summary_file.is_file():
+            continue
+        summary = json.loads(summary_file.read_text(encoding="utf-8"))
+        if summary.get("method") != "shap":
+            continue
+        table = pd.read_csv(path)
+        values = table[list(summary["mean_abs"])].to_numpy()
+        total = values.sum(axis=1)
+        gap = table["predicted"].to_numpy() - table["baseline"].to_numpy()
+        np.testing.assert_allclose(total, gap, atol=1e-3)
+        # Reading 1: the mean label replaces the reference prediction, the values stay.
+        miss = table["predicted"].to_numpy() - (mean_label + total)
+        assert np.ptp(miss) < 1e-3
+        assert miss[0] == pytest.approx(table["baseline"].iloc[0] - mean_label, abs=1e-3)
+        checked += 1
+        if f"_cfg{digest}_" not in path.parents[2].name:
+            continue
+        # Reading 2: a fourteenth of the gap added to every value adds up again,
+        # but values of both signs change size in opposite directions.
+        shift = (table["baseline"].iloc[0] - mean_label) / values.shape[1]
+        shifted = values + shift
+        np.testing.assert_allclose(mean_label + shifted.sum(axis=1), table["predicted"], atol=1e-3)
+        before = np.argsort(-np.abs(values), axis=1, kind="stable")
+        after = np.argsort(-np.abs(shifted), axis=1, kind="stable")
+        reordered = int((before != after).any(axis=1).sum())
+        assert reordered > 0, path
+        if (path.parents[2].name, path.parent.name) == named:
+            names = list(summary["mean_abs"])
+            life = [names[i] for i in np.argsort(-np.abs(values).mean(axis=0))]
+            life_shifted = [names[i] for i in np.argsort(-np.abs(shifted).mean(axis=0))]
+            assert table["baseline"].iloc[0] == pytest.approx(91.885, abs=5e-4)
+            assert shift == pytest.approx(0.803, abs=5e-4)
+            assert (reordered, len(table)) == (236, 240)
+            assert life[1:3] == ["W31", "T30"] and life_shifted[1:3] == ["T30", "W31"]
+            assert life[11:13] == ["BPR", "Nf"] and life_shifted[11:13] == ["Nf", "BPR"]
+            assert life[:1] + life[3:11] + life[13:] == life_shifted[:1] + life_shifted[3:11] + life_shifted[13:]
+    if not checked:
+        pytest.skip("no stored Shapley explanation of an FD001 run in reports/")
+
+
+def test_example_a_different_stand_in_recomputes_and_reorders_the_values(loaded):
+    """Two stand-ins for a straight line on real FD001 readings move each value differently and reorder them."""
+    # The SHAP resource page's example; assumption A-24, corrected 2026-10-02.
+    from thesis_gnn_rul_xai.data.sensors import symbol_to_column
+
+    names = ["T24", "T30", "T50", "P30"]
+    columns = [symbol_to_column(name) for name in names]
+    train = apply_piecewise_rul(loaded.train, rul_max=125)
+    readings = train[columns].to_numpy(dtype=np.float64)
+    labels = train["rul"].to_numpy(dtype=np.float64)
+    design = np.column_stack([readings, np.ones(len(readings))])
+    w = np.linalg.lstsq(design, labels, rcond=None)[0][:4]
+    x = loaded.test[loaded.test["unit"] == 5][columns].to_numpy(dtype=np.float64)[-1]
+
+    # For a straight line, a sensor's Shapley value against a stand-in r is
+    # its multiplier times (reading - stand-in).
+    everyone = w * (x - readings.mean(axis=0))
+    at_ceiling = w * (x - readings[labels == 125].mean(axis=0))
+    np.testing.assert_allclose(everyone, [5.984611, 0.667847, -15.962813, -0.863789], atol=5e-6)
+    np.testing.assert_allclose(at_ceiling, [1.883631, -3.150836, -24.780595, -6.969030], atol=5e-6)
+
+    def by_size(values):
+        return [names[i] for i in np.argsort(-np.abs(values))]
+
+    assert by_size(everyone) == ["T50", "T24", "P30", "T30"]
+    assert by_size(at_ceiling) == ["T50", "P30", "T30", "T24"]
+    assert np.ptp(at_ceiling - everyone) > 1
+
+
+def test_example_occlusion_can_equal_the_shapley_value_despite_interactions():
+    """In explain/README.md's h(a, b, c) every input interacts, yet occlusion equals the Shapley value."""
+    from itertools import permutations
+
+    def h(a, b, c):
+        return a + b + c + 2 * a * b + 2 * a * c + 2 * b * c - 3 * a * b * c
+
+    def value(present):
+        return h(*(1.0 if k in present else 0.0 for k in range(3)))
+
+    # a's amounts by the group it finds on arrival: nobody, b alone, c alone, both.
+    assert [value({0}) - value(set()), value({0, 1}) - value({1}),
+            value({0, 2}) - value({2}), value({0, 1, 2}) - value({1, 2})] == [1, 3, 3, 2]
+    for k in range(3):
+        added = []
+        for order in permutations(range(3)):
+            before = set(order[: order.index(k)])
+            added.append(value(before | {k}) - value(before))
+        assert len(set(added)) > 1
+        shapley = sum(added) / len(added)
+        occlusion = value({0, 1, 2}) - value({0, 1, 2} - {k})
+        assert shapley == occlusion == 2.0
+    # So here the three occlusion values happen to add up to the whole change.
+    assert 3 * 2.0 == value({0, 1, 2}) - value(set()) == 6.0

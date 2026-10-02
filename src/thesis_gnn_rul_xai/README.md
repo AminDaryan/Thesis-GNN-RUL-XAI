@@ -123,8 +123,18 @@ training data into validation. `data/windowing/README.md` explains this.
 sigmoid, so the model can never predict a value above the label ceiling
 `rul_max`. Leaving the test labels uncapped would charge the model for an error
 it is structurally unable to avoid. This is a real effect on the reported
-numbers and can only move them in the model's favour, so it must be stated
-whenever those numbers are compared with published ones.
+numbers. It can never raise two of the four measures: the root mean squared
+error (RMSE, the square root of the average squared miss, in cycles) and the
+NASA score (a sum of penalties that grow exponentially with each miss, faster
+for a late prediction than an early one). The other two can move either way:
+R-squared, the share of the labels' spread around their average that the
+predictions account for, and ASUE, the average shortfall over the engines
+predicted too low. `data/labeling/README.md` works both through with the real
+test labels. So it must be stated
+whenever those numbers are compared with published ones. (Corrected
+2026-10-02: this said capping can only move all the reported numbers in the
+model's favour; found by the search for that claim after the review of the
+playground's information cards on 2026-09-26.)
 
 **`graph` and `adjacency_normalization` describe the model, not the data**, and
 still live in the preprocessing configuration. That is on purpose: this is the
@@ -195,10 +205,22 @@ independent of the figure they are compared with.
 
 - **The adjacency matrix is row-normalised.** The paper describes normalising
   the matrix with self-loops added but never prints the formula, and two forms
-  fit its description. Row normalisation measured 0.35 cycles closer than the
-  symmetric form (p = 0.047) with no engines held back, and was selected by the
-  nearest-to-the-paper rule; with engines held back the two cannot be told
+  fit its description. With no engines held back, row normalisation measured
+  0.25 cycles closer than the symmetric form under the learning-rate schedule
+  the project uses now, a single drop at the halfway point (p = 0.068: if the
+  two forms were equally good, five seeds, each trained once with each form,
+  would show a gap at least this large against its seed-to-seed spread, in one
+  direction or the other, 6.8 times in 100, more often than the usual 1-in-20
+  threshold), and 0.35
+  closer (p = 0.047) under the schedule used until 2026-09-01, which shrank the
+  rate a little after every pass over the training data. It was selected by
+  the nearest-to-the-paper rule; with engines held back the two cannot be told
   apart (assumption A-21).
+
+  **Correction, 2026-10-02.** This paragraph gave 0.35 cycles at p = 0.047 as
+  the current figure; that figure was measured under the superseded schedule.
+  Found by setting it beside the table in the record of this choice, which
+  holds both figures with their schedules (assumption A-21).
 
 - **Twenty percent of the training engines are held back, and training stops
   early on them.** As above: the paper's Table 6 states 200 passes over the

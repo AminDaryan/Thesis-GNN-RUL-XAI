@@ -176,11 +176,44 @@ settings are rounded to whole numbers (`round_decimals=0`) and the distinct
 combinations counted. `np.unique(..., axis=0)` means "distinct **rows**", not
 distinct numbers.
 
-The rounding is deliberate: FD001's settings wobble in the fourth decimal
-place, so without it every row would look like its own condition. The
+The rounding is deliberate: FD001's settings wobble in the third and fourth
+decimal places (the first setting between −0.0087 and 0.0087, the second
+between −0.0006 and 0.0006, the third fixed at 100), so without it almost
+every row would look like its own condition. (Corrected 2026-10-02: this said
+"the fourth decimal place"; the first setting's wobble reaches the third.
+Found while checking this folder's rounding passage against the FD001 file.) The
 `np.clip(detected, 1, 6)` then holds the answer between 1 and 6 — 6 being the
 number the dataset documentation describes — so measurement noise cannot invent
 a seventh.
+
+**Whole numbers are coarser than the settings.** The three settings are the
+altitude in thousands of feet, the Mach number (speed as a fraction of the
+speed of sound) and the throttle angle in degrees; the
+[C-MAPSS resources page](../../../../docs/resources/cmapss.md) shows how that
+reading was established. Rounding to whole numbers merges the Mach numbers:
+0 and 0.25 both become 0, and 0.62, 0.70 and 0.84 all become 1. It does not
+merge any condition in these files. On FD002 and FD004, the two sub-datasets
+with six conditions, all four files (training and test of each) give the same
+six combinations, all still distinct, measured on 2026-10-02:
+
+| Altitude, rounded | Mach number, to two decimals | Throttle angle | Mach number, rounded |
+|---|---|---|---|
+| 0 | 0.00 | 100 | 0 |
+| 10 | 0.25 | 100 | 0 |
+| 20 | 0.70 | 100 | 1 |
+| 25 | 0.62 | 60 | 1 |
+| 35 | 0.84 | 100 | 1 |
+| 42 | 0.84 | 100 | 1 |
+
+Rounded, the Mach number keeps only 0 and 1, and the throttle angle has only
+100 and 60, so the two together give only three combinations: (0, 100),
+(1, 100) and (1, 60). Neither tells the six conditions apart. The count still comes
+out at six because altitude alone does: its six rounded values all differ. Two
+conditions at one altitude whose Mach numbers round to the same whole number
+(0.62 and 0.84 both become 1) would be counted as one; two at one altitude
+with Mach numbers 0.25 and 0.84 would still be counted as two, because those
+round to 0 and 1. Rounding touches only the count: k-means then places its
+centres using the unrounded settings.
 
 ```python
 if detected <= 1:
@@ -410,8 +443,15 @@ This is the most important idea on the page.
 included in that computation, those numbers would carry information about the
 test engines — and every training example would then be rescaled using a
 quantity that depended on data the model is supposed never to have seen. The
-reported error would be optimistic, and there would be no way to tell by how
-much.
+reported error would no longer measure how the model does on unseen engines,
+and there would be no way to tell from it by how much, or even in which
+direction, it had moved. Studies of leakage find that it usually makes results
+look better than they are, but the arithmetic does not guarantee that here:
+the network trained on differently rescaled inputs is a different network, and
+it could do better or worse. (Corrected 2026-10-02: this said the reported
+error would be optimistic, which is the usual direction but not a certain one;
+found by the search for that claim after the review of the playground's
+information cards on 2026-09-26; assumption A-25.)
 
 This is called **leakage**: information crossing from the held-back data into
 the training process by a route nobody intended.

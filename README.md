@@ -131,21 +131,48 @@ it. It is the theoretical basis of the next two terms.
 among players (Shapley, 1953). It asks: for each player, how much does the
 group's result change when that player joins, averaged over every possible
 order in which the group could have been assembled? That average is the
-player's fair share. It is the only way of dividing credit that satisfies a
-small set of natural fairness conditions at the same time.
+player's fair share. Lundberg and Lee (2017, page 4) state that it is the only
+division meeting three conditions at once, two of them close to properties
+SHAP is built on: that the shares add up exactly to the result, and that a
+player whose contribution grows never receives a smaller share. They cite
+Shapley (1953) for the value itself, but credit that proof of uniqueness to
+Young (1985), their reference [10]. Neither Shapley's chapter nor Young's
+article is held in `docs/references/`, so this is Lundberg and Lee's account,
+not one checked against those originals.
 
 **SHAP — SHapley Additive exPlanations.** The application of the Shapley value
 to machine learning (Lundberg & Lee, 2017). The "players" become the model's
 input features and the "result" becomes its prediction. Each feature receives a
 number saying how much it pushed the prediction up or down, and those numbers
-add up exactly to the difference between this prediction and the average
-prediction. In this project the players will be the 14 sensors.
+add up exactly to the difference between this prediction and a starting value.
+Lundberg and Lee's starting value is the model's average prediction (their
+Figure 1, page 5). This project's is the model's prediction for one average
+training window: each sensor's reading at each of the window's 30 positions,
+averaged over the windows of the engines the model trained on. That average
+window is what stands in for a sensor left out of a group, so it is also where
+the adding-up has to start (assumptions A-20 and A-24). The two starting values
+are different numbers, because the average of a network's outputs is in general
+not its output for the average input. In this project the players are the 14
+sensors.
+
+**Correction, 2026-10-02.** The first of these two entries stated the Shapley
+value's uniqueness with Shapley (1953) as its only source, without naming the
+conditions; the second said that SHAP values add up to the prediction minus the
+average prediction. Lundberg and Lee credit the uniqueness they rely on to
+Young (1985), and the average prediction is their starting value, not this
+project's. Found when the cited papers were collected into `docs/references/`
+and checked against the places that cite them.
 
 **Data leakage.** When information that should be unavailable at prediction
-time reaches the model during training. It makes results look better than they
-are and is a leading cause of published findings that cannot be reproduced
+time reaches the model during training. It usually makes results look better
+than they are, though nothing guarantees that direction in a given case, and
+is a leading cause of published findings that cannot be reproduced
 (Kapoor & Narayanan, 2023). Two rules in [section 11](#11-rules-this-project-follows)
-exist to prevent it.
+exist to prevent it. (Corrected 2026-10-02: this said leakage makes results
+look better, without "usually"; the authors' preprint, the copy held in
+`docs/references/`, says on PDF page 4 that it "usually leads to inflated
+estimates". Found by the search for that claim after the review of the
+playground's information cards on 2026-09-26.)
 
 **Normalisation (rescaling).** Putting different measurements onto a comparable
 numerical scale, so that a temperature near 1400 does not dominate a ratio near
@@ -421,9 +448,15 @@ entry point for a reader who wants to understand what happens and why.
 
 > Every notebook is shipped with its outputs already filled in, so it can
 > be read without running anything. Those outputs were produced on the **real
-> FD001 files**, verified against the published release (20 631 training rows,
-> 100 training engines, 100 test engines). The data files themselves are not in
-> this repository; see [section 5](#5-getting-the-data).
+> FD001 files**, checked against the counts of the files NASA distributes
+> (20 631 training rows, 100 training engines, 100 test engines; the paper's
+> Table 5 prints the same engine counts, and no held source prints the row
+> count). The data files themselves are not in this repository; see
+> [section 5](#5-getting-the-data). (Corrected 2026-10-02: this said "verified
+> against the published release", but the row count is published nowhere this
+> project holds, and NASA's readme prints FD004's two engine counts swapped;
+> found when the cited papers were collected into `docs/references/` and
+> checked against the places that cite them.)
 
 ### From the command line
 
@@ -1034,10 +1067,21 @@ learning-rate schedule and early stopping (finding F-10), the held-back engines
 the paper's graph (assumptions A-19 and A-27), and the stand-in for a removed
 sensor (assumption A-20). But each was varied under the configuration of its
 day, and this project's comparisons have reversed when that configuration
-changed, so none of them is settled for every configuration. Three have not
-been varied at all: the window stride (assumption A-05), the bias in the graph
-layers (assumption A-12) and the starting values of the weights (assumption
-A-14). Each would take one run of `scripts/train.py --seeds 5`.
+changed, so none of them is settled for every configuration. The bias in the
+graph layers (assumption A-12) has been varied once, in a study that changed one
+choice at a time around the network with the paper's recurrent stage rather than
+the default, five seeds each: adding the bias raised the test error by 0.282
+cycles, which five seeds cannot distinguish from zero (p = 0.648; finding F-19).
+Three choices have not been varied at all: the window stride (assumption A-05),
+the starting values of the graph and dense layers (assumption A-14), and the
+starting values of the recurrent stage (assumption A-34). The stride would take
+one five-seed run of `scripts/train.py` with a copy of `config/fd001.yaml` that
+changes `window_stride`; the starting values first need an option that sets
+them, which the code does not have. (Corrected 2026-10-02: this said the bias
+in the graph layers had not been varied, which stopped being true when that
+study ran, and that each choice it listed would take one run of
+`scripts/train.py --seeds 5`, which has no option for starting values. Found
+while the recurrent stage's starting values were written up.)
 
 ---
 

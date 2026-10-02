@@ -192,7 +192,13 @@ Continual prediction with LSTM. *Neural Computation*, *12*(10), 2451–2471.
 https://doi.org/10.1162/089976600300015015
 
 > Added the forget gate to the 1997 LSTM. The LSTM that PyTorch computes, and
-> so the one this project runs, has it.
+> so the one this project runs, has it. Its Sections 3.1 and 4.2 start the
+> forget gate's offset positive, so the gate begins above one half. Section
+> 3.1 calls the starting gate "almost 1.0"; the offsets Section 4.2 uses,
+> +0.5 for the first block of cells and +1 for the second, rising with each
+> later block, give 0.622459 and 0.731059 at a zero input. This project keeps
+> PyTorch's starting values instead, which put it near one half (assumption
+> A-34).
 >
 > Copy: [gers_2000_learning_to_forget.pdf](references/gers_2000_learning_to_forget.pdf),
 > the authors' accepted manuscript from IDSIA, free. Its text cannot be
@@ -425,9 +431,16 @@ Machine Intelligence*, *45*(5), 5782–5799.
 https://doi.org/10.1109/TPAMI.2022.3204236
 
 > A survey that also compares graph explanation methods on shared tests, the
-> only independent comparison found that includes GNN-LRP (its Section 8.1).
-> Its comparison covers classification only. This entry gave the year as 2022
-> with no volume until 2026-10-02: that was the early-access record.
+> only comparison found that includes GNN-LRP and was not run by the authors
+> of GNN-LRP, GNNExplainer or PGExplainer (its Sections 8.1 and 8.2). Three of
+> its four authors wrote SubgraphX, another method it compares (its reference
+> [48]). Its comparison covers classification only. Cited by the explanation
+> folder's README for that comparison. This entry gave the year as 2022 with
+> no volume until 2026-10-02: that was the early-access record. Until the same
+> date it also called the survey the only independent comparison, which it is
+> not where SubgraphX is concerned. Both were found when the cited papers were
+> collected into `docs/references/` and checked against the places that cite
+> them.
 >
 > Copy: [yuan_2023_gnn_explainability_survey.pdf](references/yuan_2023_gnn_explainability_survey.pdf),
 > arXiv version 3 (https://arxiv.org/abs/2012.15445v3), free, the version the

@@ -35,8 +35,12 @@ def test_the_filter_only_looks_backwards(loaded):
     """Changing a future reading must not change any earlier smoothed value.
 
     This is the property that keeps the experiment honest. A filter that used
-    future readings would leak information about the future into the present
-    and make the model look better than it is.
+    future readings would leak information about the future into the present,
+    and the scores would stop measuring what the model can do with the readings
+    available at the time: usually they would look better than they should, but
+    nothing guarantees the direction. Corrected 2026-10-02 from "make the model
+    look better than it is", found by the search for that kind of claim after
+    the review of the playground's information cards on 2026-09-26.
     """
     columns = list(PAPER_SENSOR_COLUMNS)
     original = loaded.train.copy()

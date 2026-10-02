@@ -73,8 +73,11 @@ def test_test_data_never_influences_the_scaling(loaded):
     """Corrupting the test set must not change how training data is scaled.
 
     If this test ever fails, the pipeline has data leakage: information from
-    the test engines is reaching the training process, and every reported
-    error would be too optimistic.
+    the test engines is reaching the training process, and no reported error
+    could be trusted to measure unseen engines (usually it would look too good,
+    but nothing guarantees the direction). Corrected 2026-10-02 from "would be
+    too optimistic", found by the search for that claim after the review of the
+    playground's information cards on 2026-09-26.
     """
     encoder = OperatingConditionEncoder().fit(loaded.train)
     train = encoder.transform(loaded.train)

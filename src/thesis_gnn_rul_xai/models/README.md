@@ -364,11 +364,30 @@ code given in parentheses.
   and leave each layer. Its point is to keep the numbers flowing through the
   network at a steady size: start them too large and they grow layer after
   layer until they overflow, too small and they shrink towards nothing and the
-  network learns nothing. The paper never says how it starts. Glorot is what
-  Kipf and Welling (2017) use for this exact layer, so it is what is used here.
-  PyTorch calls the same rule `xavier_uniform_`, after Xavier Glorot who
-  proposed it — the two names refer to one method, not two. The dense layers
-  keep PyTorch's own default instead (assumption A-14).
+  network learns nothing. That is the rule's aim; for these layers it is not a
+  guarantee. Each layer adds up its inputs, each multiplied by a weight, and
+  passes the total through a function. Glorot and Bengio (2010, printed page
+  253, the fifth page of the copy in `docs/references/`) work out the range by
+  assuming that this function, at the start, passes numbers near zero on
+  unchanged: its slope at zero is 1, as it is for the hyperbolic tangent
+  (`math.tanh` in Python), one of the S-shaped functions they test. These graph
+  layers instead apply ReLU, which keeps a positive number and replaces a
+  negative one with zero, so its slope is 1 for positive numbers and 0 for
+  negative ones. He et al. (2015, printed page 1029, the copy's fourth page)
+  state that Glorot's assumption does not hold for ReLU.
+  The [GCN resource page](../../../docs/resources/gcn.md#starting-values-glorot-initialisation-and-the-relu-caveat)
+  works both through on these three layers; whether the difference matters to
+  training here has not been measured. Wen et al. never say how their weights
+  start. Glorot is what Kipf and Welling (2017) use for this exact layer, so it
+  is what is used here. PyTorch calls the same
+  rule `xavier_uniform_`, after Xavier Glorot who proposed it — the two names
+  refer to one method, not two. The dense layers keep PyTorch's own default
+  instead (assumption A-14).
+
+  **Correction, 2026-10-02.** Until this date the paragraph presented the
+  steady size as something the rule delivers here, without the caveat about
+  ReLU. Found when the cited papers were collected into `docs/references/` and
+  checked against the places that cite them.
 - **The LSTM stage is off by default** (assumption A-11), and when it is off
   **each node carries the last cycle of its window** (assumption A-07) — both
   explained above. Its size, when it is on, is a choice too (assumption A-26).
@@ -379,6 +398,17 @@ code given in parentheses.
   sigmoid defined here.
 
 ## References
+
+Glorot, X., & Bengio, Y. (2010). Understanding the difficulty of training deep
+feedforward neural networks. In Y. W. Teh & M. Titterington (Eds.),
+*Proceedings of the Thirteenth International Conference on Artificial
+Intelligence and Statistics* (Vol. 9, pp. 249–256). PMLR.
+https://proceedings.mlr.press/v9/glorot10a.html
+
+He, K., Zhang, X., Ren, S., & Sun, J. (2015). Delving deep into rectifiers:
+Surpassing human-level performance on ImageNet classification. In
+*Proceedings of the IEEE International Conference on Computer Vision (ICCV)*
+(pp. 1026–1034). https://doi.org/10.1109/ICCV.2015.123
 
 Kipf, T. N., & Welling, M. (2017). Semi-supervised classification with graph
 convolutional networks. *International Conference on Learning Representations

@@ -355,12 +355,45 @@ range — scaled to the ceiling, so it **cannot** predict a value above 125 in
 the first place. Leaving a test label at 180 would score the model against a
 number it is structurally incapable of producing.
 
-**How much it matters, and why it must always be stated.** Capping the test
-labels can only move the reported error **favourably**: it removes exactly the
-cases the model was going to be furthest from. So any number from this project
-compared against a published one must carry that caveat. This is settled and
-not up for re-litigation (assumption A-02 in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md)).
+**How much it matters, and why it must always be stated.** Capping changes the
+score only for engines whose true remaining life is above 125, and for each of
+them it shrinks the error without changing its direction. Engine 25 of the
+FD001 test set has 145 cycles left. Whatever the model predicts for it, call
+it `p`, is at most 125, so the prediction is early: by `145 − p` cycles against
+the uncapped label and by `125 − p` against the capped one, exactly 20 cycles
+less.
+
+Because every engine's error keeps its direction and only shrinks, two of the
+four measures can never get worse: the root mean squared error (RMSE), which is
+built from squared errors, and the NASA score, which charges an early error
+more the larger it is. The other two have no such guarantee:
+
+- **R-squared** divides the squared errors by how spread out the labels are
+  around their average, and capping shrinks that spread too: on the 100 FD001
+  test labels, the sum of squared distances from the average falls from
+  172,686.96 to 160,586.75. So it can move either way. Predicting 75.52, the
+  average uncapped label, for every engine scores exactly 0 against the
+  uncapped labels and −0.000713 against the capped ones.
+- **ASUE**, the average shortfall over the engines predicted too low, cannot
+  rise while every prediction is below 125. An engine predicted at exactly
+  125, which the network's arithmetic can produce, has no shortfall once its
+  label is capped and leaves that average, while every other engine above the
+  ceiling has its shortfall cut at the same time, so the average can go either
+  way. With real FD001 test labels and predictions chosen to show the
+  arithmetic: engine 74 (126 cycles left) predicted 125 and engine 1 (112)
+  predicted 100 average (1 + 12) / 2 = 6.5 uncapped and 12 capped, a rise.
+  With engine 25 (145) predicted 123.5 in engine 1's place they average
+  (1 + 21.5) / 2 = 11.25 uncapped and 1.5 capped, a fall.
+
+So any number from this project compared against a published one must carry
+that caveat, naming which measure it is. This is settled and not up for
+re-litigation (assumption A-02 in
+[the assumptions log](../../../../docs/ASSUMPTIONS.md), which holds the
+measured effect and the full argument). (Corrected 2026-10-02: this said
+capping can only move the reported error favourably because it removes the
+cases the model was going to be furthest from. It removes no engine, and the
+guarantee covers RMSE and the NASA score only. Found by the search for that
+claim after the review of the playground's information cards on 2026-09-26.)
 
 **Do not confuse** these two. The first is *where* the ceiling sits (assumption
 A-01). The second is *who it is applied to* (assumption A-02). They are

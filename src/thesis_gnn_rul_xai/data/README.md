@@ -164,7 +164,7 @@ and each is explained in plain terms on the page of the file it lives in.
 | ID | The choice | Where it lives |
 |---|---|---|
 | **A-01** | The label ceiling is 125 cycles. Equation 19 gives the formula; the number is never printed. | [labeling](labeling/README.md) |
-| **A-02** | The ceiling is applied to the test labels too. This can only move reported error favourably, and must be stated whenever a number from here is compared with a published one. | [labeling](labeling/README.md) |
+| **A-02** | The ceiling is applied to the test labels too. This can never raise the reported root mean squared error (the square root of the average squared miss) or NASA score (a sum of penalties that grow exponentially with each miss), though R-squared (the share of the labels' spread the predictions account for) and ASUE (the average shortfall over the engines predicted too low) carry no such guarantee, and it must be stated whenever a number from here is compared with a published one. (Corrected 2026-10-02 from "can only move reported error favourably"; found by the search for that claim after the review of the playground's information cards on 2026-09-26.) | [labeling](labeling/README.md) |
 | **A-03** | How the sensors are rescaled. The paper describes no scaling at all. **The largest measured effect in the project.** | [normalization](normalization/README.md) |
 | **A-04** | The smoothing strength is 0.5. Section 3.2.3 contradicts itself. | [smoothing](smoothing/README.md) |
 | **A-05** | Windows are taken one cycle apart. Table 6 gives the size, never a stride. | [windowing](windowing/README.md) |
@@ -193,7 +193,10 @@ into `data/raw/`. When a file is missing, the error quotes the download link, so
 the fix arrives with the problem — see
 [`loading`](loading/README.md).
 
-`load_subset` also compares the row and engine counts against the published
-figures for the official release and **warns** on a mismatch rather than
-stopping, because a legitimate variant should not halt the work while a silent
-mismatch would be far worse.
+`load_subset` also compares the row and engine counts against those of the
+files NASA distributes and **warns** on a mismatch rather than stopping,
+because a legitimate variant should not halt the work while a silent mismatch
+would be far worse. The paper's Table 5 prints the same engine counts, while
+NASA's own readme swaps FD004's two (corrected 2026-10-02: this paragraph
+called them "the published figures"; [`loading`](loading/README.md) has the
+details).

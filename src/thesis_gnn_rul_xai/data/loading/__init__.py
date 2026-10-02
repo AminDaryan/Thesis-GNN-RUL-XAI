@@ -32,10 +32,17 @@ DOWNLOAD_URL = (
     "discovery-and-systems-health/pcoe/pcoe-data-set-repository/"
 )
 
-# How many rows and engines each subset should have, according to the
-# published descriptions. Checked when files are loaded; a mismatch means the
-# files are cut short, changed, or not the official ones. It warns rather than
-# stopping, because a legitimate variant should not halt the work.
+# How many rows and engines each subset should have: the counts of the NASA
+# files held in data/raw/, counted from the files themselves. Wen et al.'s
+# Table 5 (page 7) prints the same engine counts; NASA's own readme
+# (docs/references/nasa_2008_cmapss_readme.txt) swaps FD004's two (248
+# training, 249 test) where the files and Table 5 have 249 and 248. No source
+# held in docs/references/ prints the row counts.
+# (Corrected 2026-10-02: this called every count "published"; found when the
+# cited papers were collected into docs/references/ and checked against the
+# places that cite them.) Checked when files are loaded; a mismatch means the
+# files are cut short, changed, or not the ones NASA distributes. It warns
+# rather than stopping, because a legitimate variant should not halt the work.
 EXPECTED_SHAPES: dict[str, dict[str, int]] = {
     "FD001": {"train_rows": 20631, "train_units": 100, "test_units": 100},
     "FD002": {"train_rows": 53759, "train_units": 260, "test_units": 259},
@@ -204,15 +211,21 @@ def load_subset(
         }
         if differences:
             logger.warning(
-                "Loaded %s does not match the published shape of the official "
-                "release. Differences (expected, actual): %s. The files may be "
-                "a different version, truncated, or modified. Investigate this "
-                "before reporting any result computed from them.",
+                "Loaded %s does not match the expected counts, which are those "
+                "of NASA's files (Wen et al.'s Table 5 prints the same engine "
+                "counts; NASA's readme swaps FD004's two). Differences "
+                "(expected, actual): %s. The files may be a different version, "
+                "truncated, or modified. Investigate this before reporting any "
+                "result computed from them.",
                 subset,
                 differences,
             )
         else:
-            logger.info("%s matches the published shape of the official release.", subset)
+            logger.info(
+                "%s matches the expected counts, those of NASA's files "
+                "(Wen et al.'s Table 5 prints the same engine counts).",
+                subset,
+            )
 
     logger.info(
         "Loaded %s: %d training rows over %d engines, %d test rows over %d engines.",

@@ -87,6 +87,13 @@ lists the learning rate, 200 epochs, batch size 32, thirty time steps, Adam and
 MSE loss. There is no hidden size, no depth, and no projection. Those three are
 this project's choices (assumption A-26).
 
+Nor does the paper give the numbers the stage starts from before training. The
+stage sets none, so PyTorch's own apply: every multiplier and offset in a cell
+is drawn evenly from −1/√32 to +1/√32, about ±0.177. That starts each cell's
+forget gate, the part that decides how much of the cell's memory is kept from
+one cycle to the next, near one half; Gers et al. (2000), who added that gate
+to the LSTM, start theirs above one half (assumption A-34).
+
 ### `window_summary` — three numbers a person could read off a plot
 
 Not in the paper (assumption A-28). For each sensor it hands on the last
@@ -185,29 +192,111 @@ goes from roughly 0.8 s to roughly 10.4 s.
 
 ## Worked example
 
+Real readings, few enough to check by hand: FD001 training engine 1, its first
+four cycles, and two of its fourteen sensors, T24 (the temperature at the outlet
+of the low-pressure compressor) and T50 (the temperature at the outlet of the
+low-pressure turbine). Four cycles rather than thirty so that every reading can
+be written out. The pipeline builds a four-cycle window when asked for one, and
+its four readings are exactly the first four of engine 1's usual thirty-cycle
+window.
+
+The readings have been smoothed (assumption A-04) and rescaled: each sensor's
+average over the training engines is subtracted, and the result is divided by
+that sensor's standard deviation there, the typical size of its departures from
+that average (assumption A-03). So −1.0 means one standard deviation below the
+training average, not a temperature.
+
+The training engines are the 80 of FD001's 100 that the seed, 42 here, does not
+hold back for checking the model during training (assumption A-06), and the
+averages and standard deviations are measured on those 80 alone (assumption
+A-25). Another seed holds back a different fifth and gives slightly different
+numbers: under seed 43, T24's first reading below is −2.032225 rather than
+−1.987346. Under seeds 44 and 46 engine 1 is one of those held back, and the
+code below fails, because it finds no window of engine 1 among the training
+windows.
+
 ```python
+import numpy as np
 import torch
+from thesis_gnn_rul_xai.config import PreprocessingConfig
+from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
 from thesis_gnn_rul_xai.models.temporal import LastCycle, MeanWindow, LSTMStage
 
-windows = torch.tensor([[[1.0, 2.0, 3.0, 4.0],      # sensor 0, four cycles
-                         [10.0, 20.0, 30.0, 40.0]]])  # sensor 1
+prepared = run_preprocessing(PreprocessingConfig(seed=42, window_size=4))
+row = int(np.flatnonzero(prepared.train.units == 1)[0])   # engine 1's first window: cycles 1 to 4
+names = list(prepared.sensor_symbols)
+pair = [names.index("T24"), names.index("T50")]           # [0, 2]
+windows = torch.from_numpy(prepared.train.features[row:row + 1, pair])
+windows.shape
+# torch.Size([1, 2, 4])          one window, two sensors, four cycles
+```
 
+`windows` is a PyTorch tensor, an array like a NumPy array that the network's
+code works on, of shape `(1, 2, 4)`. Its eight numbers:
+
+| Sensor | Cycle 1 | Cycle 2 | Cycle 3 | Cycle 4 |
+|---|---|---|---|---|
+| T24 | −1.987346 | −1.603900 | −1.179785 | −0.967728 |
+| T50 | −0.995210 | −0.841500 | −0.700499 | −0.770999 |
+
+**`LastCycle` keeps the last column and drops the rest.**
+
+```python
 LastCycle(4)(windows)
-# tensor([[[ 4.], [40.]]])       the last cycle of each sensor
+# tensor([[[-0.9677],
+#          [-0.7710]]])          shape (1, 2, 1): cycle 4 of each sensor
+```
 
+PyTorch prints four decimal places; the values are T24's −0.967728 and T50's
+−0.770999, the last column of the table.
+
+**`MeanWindow` adds up each row and divides by four.**
+
+```python
 MeanWindow(4)(windows)
-# tensor([[[ 2.5], [25.0]]])     (1+2+3+4)/4 and (10+20+30+40)/4
+# tensor([[[-1.4347],
+#          [-0.8271]]])          shape (1, 2, 1): the average of each sensor
+```
 
+```
+T24:  (−1.987346 − 1.603900 − 1.179785 − 0.967728) / 4  =  −5.738759 / 4  =  −1.434690
+T50:  (−0.995210 − 0.841500 − 0.700499 − 0.770999) / 4  =  −3.308208 / 4  =  −0.827052
+```
+
+The two stages hand the graph different numbers from the same window. T24 rises
+through all four cycles, so its last reading, −0.967728, sits well above its
+average, −1.434690. T50 peaks at cycle 3 and falls back, so its last reading,
+−0.770999, is closer to its average, −0.827052. Which of the two a sensor node
+carries is therefore a real choice, and this project's (assumption A-07).
+
+**`LSTMStage` learns its own reduction.**
+
+```python
 stage = LSTMStage(window_size=4, n_nodes=2, hidden_size=8)
 stage(windows).shape
 # torch.Size([1, 2, 1])          one number per sensor, from its own network
 ```
 
+Two recurrent networks, one per sensor, each read their sensor's four readings
+in order. `hidden_size=8` keeps the example small (the stage's default is 32,
+assumption A-26). The numbers they hand on depend on their random starting
+values (assumption A-34) and mean nothing until the stage has been trained, so
+only the shape is shown.
+
 The shape is the same in all three cases, and that is the point: whatever the
 stage does, the graph layers behind it see one number per sensor unless the
 stage says otherwise, and they are told how many by the stage.
 
-`tests/test_examples_torch.py` runs this against the real FD001 windows.
+`tests/test_examples_torch.py` runs this example and checks every number above
+(`test_example_temporal_readme_on_two_real_sensors`).
+
+**Correction, 2026-10-02.** Until this date this example ran on invented
+readings, `[[1, 2, 3, 4], [10, 20, 30, 40]]`, which this project does not allow
+in a worked example, and the sentence under it said the test file ran it
+against the real FD001 windows. No test ran this example: the file's tests use
+these stages on real windows elsewhere, but none checked the numbers printed
+here. Found while the Resources pages were written and the cited papers checked
+against the places that cite them.
 
 ---
 

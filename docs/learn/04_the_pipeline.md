@@ -388,6 +388,20 @@ All the kept FD001 rows give that same rounded combination, so one group
 is enough. Label it 0 and assign each row to it. The original operating
 settings stay unchanged; rounding was only used to count the groups.
 
+Whole numbers are coarser than the settings of FD002 and FD004, the two
+sub-datasets flown in six conditions. The three settings are the altitude in
+thousands of feet, the Mach number (the speed as a fraction of the speed of
+sound) and the throttle angle in degrees. Rounded, the Mach numbers 0, 0.25,
+0.62, 0.70 and 0.84 become only 0 and 1, and with the throttle angle's two
+values, 100 and 60, they make just three combinations. The count still comes
+out at six because the altitudes round to six different values: 0, 10, 20, 25,
+35 and 42. That holds in the training and the test file of both
+sub-datasets, so no condition is merged. Two conditions at one altitude whose
+Mach numbers round to the same whole number (0.62 and 0.84 both become 1)
+would be counted as one; none of these files has such a pair. The
+[C-MAPSS resource page](../resources/cmapss.md#which-flight-conditions-the-settings-are)
+shows how the three settings were identified.
+
 When there are several groups, their centres are found from the unrounded
 training settings. Each row joins the nearest centre, then each centre moves
 to the average of its members; repeating these steps forms clusters of similar

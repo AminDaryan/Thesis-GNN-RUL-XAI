@@ -453,64 +453,24 @@ headings and table identifier columns exempt.
 
 ---
 
-## P-03 — Two of A-21's quoted figures do not agree with each other
+## P-03 — One of A-21's quoted rows names no commit
 
-The "current default" labels this entry used to track were corrected on
-2026-09-14 in `README.md`, `docs/learn/02_graphs.md`, F-04 and A-21's table, and
-F-04 gained the row for the current default. What remains is in A-21:
+The quotations of 0.35 cycles at p = 0.047 as the current figure, in
+`config.py`, `config/fd001.yaml` and the package README, were corrected on
+2026-10-02: each now names its schedule, 0.25 cycles at p = 0.068 under the
+current single step and 0.35 at p = 0.047 under the schedule used until
+2026-09-01, both re-derived that day from the stored runs. What remains:
 
-- The **summary table** at the top of the log says row rescaling came 0.25
-  cycles closer with nothing held back, p = 0.068. `config.py`'s comment,
-  `config/fd001.yaml` and the package README all quote 0.35 and p = 0.047.
-  A-21's own table holds both: 0.253 under the step schedule, 0.352 under the
-  superseded exponential one. So those three quote the superseded schedule's
-  figure as though it were current. The taught pages no longer do: the one on
-  graphs quotes 0.25 at p = 0.068, and the one on reading a result gives both
-  figures, each with its schedule (checked 2026-09-17).
 - A-21's row "z-score, 20 % held back, early stopping" gives row rescaling
   16.616 ± 0.289, while the stored run of the current default — the same
   settings — gives 16.496 ± 0.415 at `f386291-dirty`. The row names no commit,
   so it cannot be told which schedule or code produced it.
+  `docs/learn/06_reading_results.md`'s "no difference survives under either"
+  schedule with engines held back rests on these rows.
 
-**How to check:** `grep -rn "0.35 cycles\|0.047" config src docs/learn README.md`.
-**What finishing looks like:** every quotation names the schedule it was
-measured under, and the 20 %-held-back rows of A-21 re-run at one commit.
-
----
-
-## P-22 — Some longer explanations still make guarantees the definitions do not support
-
-The playground information-card review on 2026-09-26 corrected these claims
-in the cards and their directly associated cautions. Related prose elsewhere
-still needs a separate review:
-
-- `docs/ASSUMPTIONS.md`, A-02, says capping test answers can only make the
-  metrics look better. With predictions bounded by the same ceiling,
-  squared error and the NASA score cannot increase. R-squared also changes
-  its denominator, and ASUE averages over only underpredicted examples,
-  whose membership can change. Neither has the same general guarantee.
-- `scripts/explain.py` says occlusion and Shapley values agree *only* when
-  sensors do not interact. No interactions is sufficient for agreement,
-  but not necessary: contributions from interactions can cancel. Describe
-  the methods' different calculations without this equivalence claim.
-- `docs/ASSUMPTIONS.md`, A-24, describes changing the explanatory constant as
-  a uniform offset that preserves magnitude rankings. Changing only that
-  constant breaks the adding-up identity; changing the replacement input
-  changes the calculation itself and need not preserve rankings.
-- `docs/ASSUMPTIONS.md`, A-25, says fitting scaling on test engines can only
-  improve reported figures. It violates the intended separation of training
-  and test data, but that violation does not mathematically guarantee the
-  direction of the score change.
-
-**How to check:** read the formulas in `evaluation/metrics.py`, the replacement
-and averaging operations in `explain/shap.py` and `explain/occlusion.py`, and
-the fitting boundary in `data/pipeline/`. Search the corresponding READMEs
-and taught pages for the same claims.
-
-**What finishing looks like:** correct each statement with a dated note,
-retain legitimate methodological cautions, and add any numerical examples
-using real FD001 inputs to the existing example tests. Do not present a
-mathematical guarantee where only a possible outcome is established.
+**What finishing looks like:** the 20 %-held-back rows of A-21 re-run at one
+commit, under both schedules, and the row and the taught page's sentence
+replaced with the result.
 
 ---
 
@@ -532,7 +492,10 @@ uses the code in the working tree as it stands when that process starts, not
 the code the study started with. Its first 34 runs record `fd65a3b-dirty`.
 `runs/FD003/scaling_minmax_global`, finished at 22:59 on 2026-10-01, records
 `692d2d4-dirty`: a commit made that evening, plus whatever several sessions had
-uncommitted at that moment. Each run's own `code_state` keeps that run
+uncommitted at that moment. Counted again at 16:57 on 2026-10-02, 46 of its 54
+runs had finished, and 12 of them record a later state than the folder's name:
+`692d2d4-dirty` 3, `148f260-dirty` 1, `ce7e305-dirty` 6, `bbc6618` 2. Each
+run's own `code_state` keeps that run
 reproducible, but the folder name no longer describes everything inside it, and
 `test_the_directory_name_of_every_run_carries_its_commit` fails because of it.
 Either restart the remaining scenarios from a committed tree in a folder of
@@ -547,98 +510,92 @@ entry.
 
 ---
 
-## P-27 — Readings and citations to correct, found while collecting the cited papers
+## P-27 — Citations still to check, found while collecting the cited papers
 
 On 2026-10-01 and 2026-10-02 every cited paper was located, copied into
-`docs/references/` and checked by a second agent against the places this
-repository cites it (`docs/REFERENCES.md` says which version each copy is).
-The checks turned up the problems below. Each was found by **one** agent
-reading the copy, so confirm it in the PDF before correcting anything (rule 1),
-then correct it plainly with a dated note (rule 6). Already corrected the same
-day, and not repeated here: the bibliographic errors in `docs/REFERENCES.md`,
-the links to NASA's earlier draft of the dataset paper, and the reasons given in
-assumptions A-14 and A-15 (finding F-20).
+`docs/references/` and checked against the places this repository cites it
+(`docs/REFERENCES.md` says which version each copy is). The readings that check
+turned up in `docs/LITERATURE_BASIS.md`, finding F-12, assumptions A-13, A-17
+and A-19, the folder READMEs, notebook 01 and the Resources pages were
+confirmed in the copies and corrected on 2026-10-02, each with a dated note;
+the recurrent cells' starting values became assumption A-34. What is left:
 
 **Works cited but not held.** Heimes (2008) and Li, Ding and Sun (2018) are
 IEEE and Elsevier papers; Shi et al. (2024) is Elsevier; Shapley (1953) is a
-book chapter; Kapoor and Narayanan's 2023 article is held only as its 2022
-preprint (cell.com refuses scripted downloads); Holdijk et al. (2021) is free
-on Zenodo, which refused this network. Until they are obtained, the claims
-attributed to Heimes (the 120–130 ceiling, assumption A-01), Holdijk et al.
-(PGExplainer's sensitivity, assumption A-29) and Shapley (the uniqueness
-conditions) are unchecked against their sources.
+book chapter; Young (1985), to whom Lundberg and Lee credit the uniqueness of
+the Shapley value, is a journal article; Kapoor and Narayanan's 2023 article is
+held only as its 2022 preprint (cell.com refuses scripted downloads); Holdijk
+et al. (2021) is free on Zenodo, which refused this network. Until they are
+obtained, the claims attributed to Heimes (the 120–130 ceiling, assumption
+A-01), Holdijk et al. (PGExplainer's sensitivity, assumption A-29), and Shapley
+and Young (the uniqueness conditions) are unchecked against their sources.
 
-**Readings of the corpus in `docs/LITERATURE_BASIS.md` and finding F-12.**
-- THGNN (Wen et al. 2025): the quotation at `docs/ASSUMPTIONS.md` around line
-  2200 joins the caption of Fig. 1 (p. 2) to wording from the abstract (p. 1)
-  without marking the join.
-- GLSTGN (Zhang et al. 2025): the sentence cited as "Section 4.2, p. 11" is on
-  p. 9 of the copy, and it describes a sensitivity study on test results rather
-  than stating that settings were chosen from them.
-- HAGCN (Li et al. 2021): the p. 6 sentence continues "the average of the last
-  10 epochs", a fixed window rather than selecting the best epoch on the test
-  set, as the file's paraphrase implies.
-- MAGF-SPA (Li and Dong 2026) uses only N-CMAPSS, so assumption A-17's "three
-  C-MAPSS papers that state a schedule" counts it wrongly; its "p10" is the
-  copy's PDF page, journal page 407.
-- The survey of Wang et al. (2025): its p. 8 "fully-connected graphs" are graphs
-  weighted by similarity between sensors, not the uniform graph assumption A-19
-  uses; its p. 20 maximum of 88 describes N-CMAPSS DS02, not C-MAPSS
-  (assumption A-13).
-- Zheng et al. (2026): turbine No. 15 is the set the results are reported on,
-  a test set in this project's terms, not a separate validation split.
-- IMTSO-GCN (Yuan et al. 2025): its Table 4 (p. 12) gives windows of 20 for
-  FD002 and 25 for FD004, and it runs only FD002 and FD004; "pp. 10, 11" are PDF
-  pages (journal pages 183–184).
-- DVGTformer (Wang et al. 2024) also makes time steps nodes, in its second view.
+- `README.md`'s glossary entry on data leakage credits Kapoor and Narayanan
+  with more than the preprint's sentence says; check it against the 2023
+  article once held.
 
-**Other.**
-- `explain/README.md` (about lines 663–668) says walk-based methods scored
-  higher than GNNExplainer and PGExplainer in Yuan et al.'s survey; the survey
-  says they "generally" do, and its Tables 3 and 4 have GNN-LRP behind
-  PGExplainer on several datasets. The same passage leans on "every other
-  comparison found" without naming them; name them, with copies here, or drop
-  the claim. `docs/REFERENCES.md` no longer repeats it.
-- Notebook 01 credits the assign-and-recompute loop of k-means to MacQueen
-  (1967), who names k-means and describes that loop on p. 294 as Forgy's and
-  Jennrich's; its reference list also lacks MacQueen's editors and pages and
-  Jin et al.'s article number.
-- `README.md` around lines 146–147 credits Kapoor and Narayanan with more than
-  the preprint's sentence says; check it against the 2023 article once held.
+**Two leads, not yet checked in the copies.**
+- Jin et al. (2025), p. 12, choose windows of 30 and 50 because FD002 and
+  FD004 "achieved optimal results" with 50, without saying on which data; it
+  may be a choice made on the test set. Jin et al. are not in F-12's corpus.
+- F-12's row for IMTSO-GCN (Yuan et al. 2025) says its nodes are sensors. The
+  paper says its nodes are organised by the engine's sensors (PDF page 5,
+  journal page 178), but its Fig. 6 (PDF page 12) puts the operating settings
+  and other columns into the mutual-information matrix its graph is built
+  from, so some of its nodes may not be sensors.
 
-**Found while writing the Resources pages (2026-10-02).** Already corrected the
-same day: assumptions A-12 and A-22 said Wen et al. cite Kipf and Welling, and
-they do not (checked in the PDF's text and reference list). Still open:
-- The recurrent cells' starting values are PyTorch's defaults (every multiplier
-  and offset drawn evenly from ±1/√32), which no assumption records; assumption
-  A-14 covers the graph and dense layers and A-26 only size, depth and
-  projection. Gers et al. (2000, Sections 3.1 and 4.2) start the forget gate's
-  offset positive; `docs/resources/lstm.md` measures where PyTorch's start.
-  Rule 4 calls for an entry and an `ASSUMPTION` comment.
-- `src/thesis_gnn_rul_xai/models/temporal/README.md` (about lines 191–192) has a
-  worked example on invented readings (`[[1, 2, 3, 4], [10, 20, 30, 40]]`),
-  which rules 7 and 9 forbid.
-- `src/thesis_gnn_rul_xai/models/README.md` (about lines 360–370) describes
-  Glorot's rule without the ReLU caveat now in assumption A-14.
-- `README.md` (about lines 133–141) credits Shapley (1953) with the uniqueness
-  result Lundberg and Lee credit to Young (1985), and says SHAP values add up to
-  the prediction minus the average prediction, which is the paper's base value,
-  not this project's (assumption A-24).
-- `data/loading/__init__.py` (comment above `EXPECTED_SHAPES`, and its log
-  text) says the shapes are "published"; for FD004 they match the files and Wen
-  et al.'s Table 5, while NASA's readme prints the two FD004 counts swapped
-  (248 training, 249 test). Say which source the numbers follow.
-- `data/normalization/__init__.py` rounds all three operating settings to whole
-  numbers to count conditions, which merges Mach 0.62, 0.70 and 0.84; the count
-  of six on FD002 and FD004 is right because altitude alone separates the six
-  conditions, which `docs/resources/cmapss.md` measures. Say so where the
-  rounding is chosen.
-- `config/fd001.yaml` and `config.py` quote the row rescaling as 0.35 cycles
-  closer (p = 0.047) under "the default until 2026-09-02", where A-21's table
-  gives that default 0.253 (p = 0.068); possibly the same disagreement as P-03.
+**What finishing looks like:** the missing works obtained and added to
+`manifest.json` and `docs/REFERENCES.md` (or the claims resting on them marked
+as unchecked), the Kapoor sentence checked, both leads confirmed or rejected in
+the copies, and this entry deleted.
 
-**What finishing looks like:** each item confirmed or rejected in the copy in
-`docs/references/`, the confirmed ones corrected where they stand with a dated
-note, the six missing works obtained and added to `manifest.json` and
-`docs/REFERENCES.md` (or the claims resting on them marked as unchecked), the
-notebooks re-executed if their text changed, and this entry deleted.
+---
+
+## P-29 — Small errors found on 2026-10-02 while correcting guarantees and citations
+
+The agents that corrected the overstated guarantees, the citations and the
+figure module on 2026-10-02 found these outside what they were asked to change.
+
+1. **`CLAUDE.md`, and `AGENTS.md`, which repeats it, state three things that
+   are no longer true.** They are the author's files, so nothing was changed.
+   - Line 941 (`AGENTS.md` 882), under the settled decisions: capping the test
+     labels "can only move reported numbers favourably". Since the correction
+     to assumption A-02 that holds for RMSE and the NASA score only; R-squared
+     and ASUE have no such guarantee, and A-02 gives counterexamples on the
+     real FD001 labels.
+   - Line 926 (`AGENTS.md` 867): the files in `data/raw/` are "verified
+     against the published row and engine counts". No held source prints the
+     row counts, and NASA's readme prints FD004's two engine counts swapped;
+     `data/loading/__init__.py` now says which source each number follows.
+   - Line 119 (both files): rule 4's example comment describes the
+     learning-rate schedule replaced on 2026-09-01 (shrinking by the same
+     factor every pass); the default is now one drop by ten at the halfway
+     pass (assumption A-17).
+2. **Two more statements of which way leakage moves a score.**
+   `src/thesis_gnn_rul_xai/data/windowing/README.md` line 532 ("an optimistic
+   measurement of nothing") and notebook 01's window-split cell ("far too
+   optimistic") give a direction for leakage through near-duplicate windows.
+   It is the usual direction, not a guaranteed one: the same kind of claim
+   the correction to assumption A-25 removed.
+3. **`notebooks/xai/02_occlusion_fd001.ipynb`, cell `b6708f66`,** says
+   occlusion is "the last row alone" of the table of arrival orders; for a
+   given sensor it is every order in which that sensor arrives last, two of
+   the six when there are three sensors.
+4. **`config/fd001_uncapped.yaml` line 8** calls the label cap "the single
+   largest uncontrolled difference" between this code's numbers and the
+   paper's. Check it against the input rescaling's measured 3.83 cycles
+   (assumption A-03) and the other measured differences.
+5. **Two dates for bringing back the held-back engines.** `config/fd001.yaml`
+   line 44 says 2026-09-08; A-06, A-18, A-21's table and A-22 say 2026-09-02.
+   The commit that set `validation_fraction` back to 0.2 (`ee26e88`) was made
+   at 00:29 on 2026-09-09 local time, and the first stored runs of that
+   setting are dated 2026-09-08. Establish which is right and correct the
+   others.
+6. **Two notebook-rendering tests fail under `.venv`.** nbconvert there cannot
+   find its `basic` template, so `tests/test_docsite.py`'s tests that render
+   notebook 01 fail with `.venv\Scripts\python.exe` and pass with the system
+   Python. An environment problem, not a code one.
+
+**What finishing looks like:** items 2 to 5 corrected with dated notes, item 1
+put to the author, item 6 fixed in the environment or recorded beside the
+suite's instructions, and this entry deleted.
