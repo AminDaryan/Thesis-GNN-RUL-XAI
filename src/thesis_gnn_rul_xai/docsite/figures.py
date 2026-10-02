@@ -25,7 +25,7 @@ from ..graph.adjacency import (
     pairs_beyond_reach,
     to_networkx,
 )
-from ..utils.paths import project_root, raw_data_dir
+from ..utils.paths import raw_data_dir
 from .worked_example import draw as draw_worked_example
 
 __all__ = [
@@ -52,14 +52,21 @@ class Figure:
 
 
 # The drawing area every figure is laid out in, before the browser scales it.
+# _graph_layout scales the sensor positions to it, so the playground, which
+# draws its own sensor graph from those positions, imports these two as well.
 _WIDTH = 860.0
 _HEIGHT = 520.0
 
-# The colour of each part of the engine, used by the engine drawing and the
-# sensor graph, with the words the graph's key prints for it. Which part a
-# sensor belongs to is read from the station field of the sensor table in
-# data/sensors/, never invented here; stations that share a colour share a
-# group, so the key has one entry per colour.
+# The colour of each part of the engine, used only by the engine drawing.
+# Stations in one group share a colour: HPT cooling and LPT cooling are both
+# "turbine cooling". draw_engine reads which sensors sit at a station from the
+# station field of the sensor table in data/sensors/. It chooses by hand only
+# where each station is drawn, and types the footnote naming the kept sensors
+# it leaves out, which a test in tests/test_docsite.py holds to the table.
+# Corrected 2026-10-02, when this file was checked against its own code: the
+# comment said the sensor graph used these colours too, untrue from the day it
+# was written (2026-09-18, in the change that removed that graph), and that no
+# station was typed here, while draw_engine typed all seven with their sensors.
 _GROUP_HUE: dict[str, str] = {
     "fan and bypass": "var(--fig-fan, #2f7fd1)",
     "LPC outlet": "var(--fig-lpc, #6b4fbb)",
@@ -321,6 +328,59 @@ def draw_adjacency_matrix() -> str:
         )
 
     return _open(880, top + 14 * cell + 20) + "".join(panels) + "</svg>"
+
+
+def draw_reach() -> str:
+    """How far apart every pair of sensors is, measured against what three graph layers reach."""
+    matrix, symbols = build_physics_adjacency()
+    report = adjacency_report(matrix, symbols)
+    histogram: dict[int, int] = dict(report["distance_histogram"])  # type: ignore[arg-type]
+    layers = 3
+    beyond = pairs_beyond_reach(matrix, symbols, layers)
+
+    total = sum(histogram.values())
+    left, base, height = 180.0, 280.0, 200.0
+    bar_w, gap = 92.0, 40.0
+
+    bars = []
+    for index, (distance, count) in enumerate(sorted(histogram.items())):
+        x = left + index * (bar_w + gap)
+        bar_h = height * count / max(histogram.values())
+        reachable = distance <= layers
+        colour = (
+            "var(--fig-accent, #2f7fd1)" if reachable
+            else "var(--fig-warn, #c2521f)"
+        )
+        bars.append(
+            f'<rect x="{x:.1f}" y="{base - bar_h:.1f}" width="{bar_w:g}" '
+            f'height="{bar_h:.1f}" rx="5" fill="{colour}" fill-opacity="0.82" />'
+            + _mono(x + bar_w / 2, base - bar_h - 10, str(count), size=14,
+                    weight="600")
+            + _text(x + bar_w / 2, base + 22,
+                    f"{distance} edge" + ("s" if distance != 1 else ""), size=12)
+            + _text(x + bar_w / 2, base + 40,
+                    f"{100 * count / total:.0f} % of pairs", size=10, opacity=0.55)
+            + _text(x + bar_w / 2, base + 60,
+                    f"{'within' if reachable else 'beyond'} {_word(layers)} layers",
+                    size=10, weight="600", fill=colour)
+        )
+
+    names = ", ".join(f"{a} and {b}" for a, b, _ in beyond)
+    return (
+        _open(_WIDTH, base + 116)
+        + _text(_WIDTH / 2, 40, f"How far apart the {total} sensor pairs are", size=16,
+                weight="600")
+        + "".join(bars)
+        + (
+            _text(_WIDTH / 2, base + 96,
+                  f"The {_word(len(beyond))} pair{'s' if len(beyond) != 1 else ''} "
+                  f"beyond {_word(layers)} layers: {names}.",
+                  size=12, opacity=0.72)
+            if beyond
+            else ""
+        )
+        + "</svg>"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -826,17 +886,31 @@ def draw_shapley() -> str:
     )
 
 
+# --------------------------------------------------------------------------
+# The engine and its sensors: where each sits, and which columns are kept
+# --------------------------------------------------------------------------
+
+
 def draw_engine() -> str:
     """A turbofan drawn to place the sensors, with each station named."""
-    stations: tuple[tuple[float, str, tuple[str, ...]], ...] = (
-        (120, "Fan inlet", ("T2", "P2")),
-        (232, "LPC outlet", ("T24",)),
-        (348, "HPC outlet", ("T30", "P30", "Ps30")),
-        (452, "Combustor", ("phi", "farB")),
-        (556, "HPT cooling", ("W31",)),
-        (664, "LPT outlet", ("T50",)),
-        (760, "LPT cooling", ("W32",)),
+    # Where each station sits along the flow path is chosen here; which
+    # sensors sit at it is read from the station field of the sensor table.
+    along_the_flow: tuple[tuple[float, str], ...] = (
+        (120, "Fan inlet"),
+        (232, "LPC outlet"),
+        (348, "HPC outlet"),
+        (452, "Combustor"),
+        (556, "HPT cooling"),
+        (664, "LPT outlet"),
+        (760, "LPT cooling"),
     )
+    stations = [
+        (x, name, tuple(sensor.symbol for sensor in SENSORS if sensor.station == name))
+        for x, name in along_the_flow
+    ]
+    empty = [name for _, name, symbols in stations if not symbols]
+    if empty:
+        raise ValueError(f"No sensor in the sensor table sits at the station(s) {empty}.")
     axis_y = 232.0
     body = (
         f'<path d="M100 {axis_y - 86} L200 {axis_y - 62} L720 {axis_y - 40} '
@@ -911,6 +985,41 @@ def draw_engine() -> str:
     )
 
 
+def draw_sensor_selection() -> str:
+    """Move the real selected column names into a second schematic table."""
+    width, step, left = 940, 42, 26
+    column_height = 124
+    out = (_open(width, 400).replace('class="figure-svg"', 'class="figure-svg sensor-selection"', 1)
+           + '<title>Selecting sensor columns</title><desc>Twenty-one raw sensor columns above; '
+           'the fourteen model input columns move below, retaining their height, every five seconds. '
+           'Cells are empty schematic rows, not generated readings.</desc>'
+           + _text(left, 25, "Raw sensor table: all 21 sensor columns", anchor="start", size=15)
+           + _text(left, 237, "Model input table: selected columns, same row order", anchor="start", size=15))
+    kept = set(PAPER_SENSOR_SYMBOLS)
+    for index, sensor in enumerate(SENSORS):
+        x = left + index * step
+        colour = 'var(--fig-accent)' if sensor.symbol in kept else 'var(--fig-axis)'
+        out += f'<g class="select-source {"is-kept" if sensor.symbol in kept else "is-excluded"}">'
+        out += f'<rect x="{x}" y="44" width="{step - 2}" height="{column_height}" rx="3" fill="{colour}" fill-opacity=".08" stroke="{colour}"/>'
+        out += f'<text transform="translate({x + 24},106) rotate(-90)" fill="{colour}" font-size="11">{sensor.symbol}</text>'
+        for y in (116, 133, 150):
+            out += f'<path d="M{x} {y}h{step - 2}" stroke="{colour}" stroke-opacity=".3"/>'
+        out += '</g>'
+        if sensor.symbol not in kept:
+            continue
+        target = left + PAPER_SENSOR_SYMBOLS.index(sensor.symbol) * 63
+        out += f'<g class="select-picked" style="--from-x:{x}px;--to-x:{target}px">'
+        out += f'<rect width="{step - 2}" height="{column_height}" rx="3" fill="var(--fig-bg)" stroke="var(--fig-accent)"/>'
+        out += f'<text transform="translate(24,62) rotate(-90)" fill="var(--fig-accent)" font-size="11">{sensor.symbol}</text>'
+        out += '<path d="M0 72h40M0 89h40M0 106h40" stroke="var(--fig-accent)" stroke-opacity=".3"/></g>'
+    return out + '</svg>'
+
+
+# --------------------------------------------------------------------------
+# The preprocessing steps, and notebook 01 that runs them end to end
+# --------------------------------------------------------------------------
+
+
 def draw_pipeline() -> str:
     """The eight preprocessing steps and the shape the data has after each."""
     # Each note is two short lines: on one line, neighbouring notes ran into
@@ -975,64 +1084,6 @@ def draw_pipeline() -> str:
                 fill="var(--fig-warn, #c2521f)")
         + "</svg>"
     )
-
-
-def draw_reach() -> str:
-    """How far apart every pair of sensors is, measured against what three graph layers reach."""
-    matrix, symbols = build_physics_adjacency()
-    report = adjacency_report(matrix, symbols)
-    histogram: dict[int, int] = dict(report["distance_histogram"])  # type: ignore[arg-type]
-    layers = 3
-    beyond = pairs_beyond_reach(matrix, symbols, layers)
-
-    total = sum(histogram.values())
-    left, base, height = 180.0, 280.0, 200.0
-    bar_w, gap = 92.0, 40.0
-
-    bars = []
-    for index, (distance, count) in enumerate(sorted(histogram.items())):
-        x = left + index * (bar_w + gap)
-        bar_h = height * count / max(histogram.values())
-        reachable = distance <= layers
-        colour = (
-            "var(--fig-accent, #2f7fd1)" if reachable
-            else "var(--fig-warn, #c2521f)"
-        )
-        bars.append(
-            f'<rect x="{x:.1f}" y="{base - bar_h:.1f}" width="{bar_w:g}" '
-            f'height="{bar_h:.1f}" rx="5" fill="{colour}" fill-opacity="0.82" />'
-            + _mono(x + bar_w / 2, base - bar_h - 10, str(count), size=14,
-                    weight="600")
-            + _text(x + bar_w / 2, base + 22,
-                    f"{distance} edge" + ("s" if distance != 1 else ""), size=12)
-            + _text(x + bar_w / 2, base + 40,
-                    f"{100 * count / total:.0f} % of pairs", size=10, opacity=0.55)
-            + _text(x + bar_w / 2, base + 60,
-                    f"{'within' if reachable else 'beyond'} {_word(layers)} layers",
-                    size=10, weight="600", fill=colour)
-        )
-
-    names = ", ".join(f"{a} and {b}" for a, b, _ in beyond)
-    return (
-        _open(_WIDTH, base + 116)
-        + _text(_WIDTH / 2, 40, f"How far apart the {total} sensor pairs are", size=16,
-                weight="600")
-        + "".join(bars)
-        + (
-            _text(_WIDTH / 2, base + 96,
-                  f"The {_word(len(beyond))} pair{'s' if len(beyond) != 1 else ''} "
-                  f"beyond {_word(layers)} layers: {names}.",
-                  size=12, opacity=0.72)
-            if beyond
-            else ""
-        )
-        + "</svg>"
-    )
-
-
-# --------------------------------------------------------------------------
-# The preprocessing notebook, end to end
-# --------------------------------------------------------------------------
 
 
 def _spaced(value: int) -> str:
@@ -1309,6 +1360,12 @@ def draw_notebook_map() -> str:
     return _open(_WIDTH, height, defs) + header + "".join(body) + "</svg>"
 
 
+# --------------------------------------------------------------------------
+# Two of the paper's own figures, drawn again: Fig. 5 recomputed from the
+# FD001 training file, and Fig. 2's LSTM cell redrawn
+# --------------------------------------------------------------------------
+
+
 def correlation_table() -> tuple[list[str], np.ndarray]:
     """The correlation between every pair of columns of FD001's training file, laid out as the paper's Fig. 5."""
     from ..data.loading import load_subset
@@ -1477,34 +1534,9 @@ def draw_lstm_cell() -> str:
     return out + "</svg>"
 
 
-def draw_sensor_selection() -> str:
-    """Move the real selected column names into a second schematic table."""
-    width, step, left = 940, 42, 26
-    column_height = 124
-    out = (_open(width, 400).replace('class="figure-svg"', 'class="figure-svg sensor-selection"', 1)
-           + '<title>Selecting sensor columns</title><desc>Twenty-one raw sensor columns above; '
-           'the fourteen model input columns move below, retaining their height, every five seconds. '
-           'Cells are empty schematic rows, not generated readings.</desc>'
-           + _text(left, 25, "Raw sensor table: all 21 sensor columns", anchor="start", size=15)
-           + _text(left, 237, "Model input table: selected columns, same row order", anchor="start", size=15))
-    kept = set(PAPER_SENSOR_SYMBOLS)
-    for index, sensor in enumerate(SENSORS):
-        x = left + index * step
-        colour = 'var(--fig-accent)' if sensor.symbol in kept else 'var(--fig-axis)'
-        out += f'<g class="select-source {"is-kept" if sensor.symbol in kept else "is-excluded"}">'
-        out += f'<rect x="{x}" y="44" width="{step - 2}" height="{column_height}" rx="3" fill="{colour}" fill-opacity=".08" stroke="{colour}"/>'
-        out += f'<text transform="translate({x + 24},106) rotate(-90)" fill="{colour}" font-size="11">{sensor.symbol}</text>'
-        for y in (116, 133, 150):
-            out += f'<path d="M{x} {y}h{step - 2}" stroke="{colour}" stroke-opacity=".3"/>'
-        out += '</g>'
-        if sensor.symbol not in kept:
-            continue
-        target = left + PAPER_SENSOR_SYMBOLS.index(sensor.symbol) * 63
-        out += f'<g class="select-picked" style="--from-x:{x}px;--to-x:{target}px">'
-        out += f'<rect width="{step - 2}" height="{column_height}" rx="3" fill="var(--fig-bg)" stroke="var(--fig-accent)"/>'
-        out += f'<text transform="translate(24,62) rotate(-90)" fill="var(--fig-accent)" font-size="11">{sensor.symbol}</text>'
-        out += '<path d="M0 72h40M0 89h40M0 106h40" stroke="var(--fig-accent)" stroke-opacity=".3"/></g>'
-    return out + '</svg>'
+# --------------------------------------------------------------------------
+# Every figure by name, and drawing one for a page or a notebook
+# --------------------------------------------------------------------------
 
 
 FIGURES: tuple[Figure, ...] = (
@@ -1542,6 +1574,21 @@ def _notice(kind: str, title: str, body: str) -> str:
     )
 
 
+def _torch_is_missing(error: ImportError) -> bool:
+    """Whether the import that failed was of PyTorch or one of its parts."""
+    name = error.name or ""
+    return name == "torch" or name.startswith("torch.")
+
+
+def _failed(error: Exception) -> str:
+    """The notice for a figure that broke, naming the error rather than guessing a cause."""
+    return _notice(
+        "error",
+        "This figure could not be drawn",
+        f"{error.__class__.__name__}: {error}",
+    )
+
+
 def render_figure(name: str) -> str:
     """Draw one figure by name, or explain why it cannot be drawn."""
     figure = _BY_NAME.get(name)
@@ -1555,23 +1602,21 @@ def render_figure(name: str) -> str:
         return figure.draw()
     except DataMissing as missing:
         return _notice("data", "The NASA files are needed for this figure", str(missing))
-    except ImportError:
+    except ImportError as error:
+        # PyTorch is the only optional library a figure imports, so a failed
+        # import of PyTorch gets the notice saying what to install. The check
+        # reads only the name of the module that failed, so an installed
+        # PyTorch asked for a name it does not have gets that notice too. Any
+        # other failed import, such as a module of this repository renamed
+        # without the figure that imports it, is shown as the error it is.
+        if not _torch_is_missing(error):
+            return _failed(error)
         return _notice(
             "torch",
             "PyTorch is needed for this figure",
-            "This figure builds the real network to read its layer shapes and "
-            "parameter counts, which needs PyTorch. Install it with "
-            "'pip install torch' and reload this page. Nothing else on this "
-            "site needs it.",
+            "This figure builds or loads the project's network, which is "
+            "written with PyTorch, and reads real numbers off it. Install it "
+            "with 'pip install torch' and reload this page.",
         )
     except Exception as error:  # pragma: no cover - defensive
-        return _notice(
-            "error",
-            "This figure could not be drawn",
-            f"{error.__class__.__name__}: {error}",
-        )
-
-
-def figure_root() -> Path:
-    """The project directory these figures read their data from."""
-    return project_root()
+        return _failed(error)

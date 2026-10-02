@@ -1042,3 +1042,142 @@ def test_the_site_notices_when_its_own_code_changed_after_it_started():
 
     assert code_changed_since(0.0) is True
     assert code_changed_since(time.time() + 3600) is False
+
+
+# -- every figure drawn, and what a failed import is reported as ------------
+
+
+@pytest.mark.parametrize("name", figures.figure_names())
+def test_every_figure_draws_when_what_it_reads_is_present(
+    name: str, request: pytest.FixtureRequest
+):
+    """Each figure is drawn for real, skipping only when the files, PyTorch or the stored run it reads are absent."""
+    from thesis_gnn_rul_xai.docsite import worked_example
+
+    figure = next(figure for figure in figures.FIGURES if figure.name == name)
+    if figure.needs_data:
+        request.getfixturevalue("raw_dir")  # skips, pointing at the download
+    if figure.needs_torch:
+        pytest.importorskip("torch")
+    stored = project_root() / "reports" / worked_example.RUN
+    if figure.draw is worked_example.draw and not stored.is_dir():
+        pytest.skip(f"The worked example reads the stored run {stored.name}, which is absent.")
+    drawn = figures.render_figure(name)
+    assert "figure-notice" not in drawn, drawn[:400]
+    assert drawn.startswith(("<svg", "<div")), drawn[:80]
+
+
+@pytest.mark.parametrize("name", ["architecture", "worked-example"])
+def test_a_missing_pytorch_is_reported_as_missing_pytorch(
+    name: str, monkeypatch: pytest.MonkeyPatch
+):
+    """A figure that imports PyTorch, with PyTorch unimportable, asks for PyTorch."""
+    import sys
+
+    from thesis_gnn_rul_xai.docsite import worked_example
+
+    # A None entry makes Python refuse that import as if the library were not
+    # installed; removing the network's module makes the architecture figure
+    # import it, and with it PyTorch, again. Both are put back after the test.
+    # The worked example keeps its last trace, so that is emptied to make it
+    # import PyTorch again; it is recomputed the next time it is asked for.
+    monkeypatch.setitem(sys.modules, "torch", None)
+    monkeypatch.delitem(sys.modules, "thesis_gnn_rul_xai.models.estgnn", raising=False)
+    worked_example.trace.cache_clear()
+    drawn = figures.render_figure(name)
+    assert "figure-notice--torch" in drawn, drawn[:400]
+    assert "PyTorch is needed" in drawn
+
+
+@pytest.mark.parametrize("name", ["smoothing", "worked-example"])
+def test_a_failed_import_of_anything_else_is_not_blamed_on_pytorch(
+    name: str, monkeypatch: pytest.MonkeyPatch,
+):
+    """A module of this repository that cannot be imported is named, not reported as missing PyTorch or missing files."""
+    import sys
+
+    from thesis_gnn_rul_xai.docsite import worked_example
+
+    if name == "worked-example":
+        # It imports PyTorch before the smoothing module, so without PyTorch
+        # it would rightly stop there and never reach the renamed module.
+        pytest.importorskip("torch")
+    # As if data/smoothing/ had been renamed and the figures that use it not told.
+    monkeypatch.setitem(sys.modules, "thesis_gnn_rul_xai.data.smoothing", None)
+    worked_example.trace.cache_clear()
+    drawn = figures.render_figure(name)
+    assert "figure-notice--error" in drawn, drawn[:400]
+    assert "thesis_gnn_rul_xai.data.smoothing" in drawn
+    assert "PyTorch" not in drawn
+    assert "FD001 files" not in drawn
+
+
+@pytest.mark.parametrize("module, is_pytorch", [
+    ("torch", True),
+    ("torch.nn", True),
+    ("torchvision", False),
+    ("thesis_gnn_rul_xai.models.estgnn", False),
+])
+def test_only_pytorch_and_its_parts_count_as_missing_pytorch(
+    module: str, is_pytorch: bool, monkeypatch: pytest.MonkeyPatch
+):
+    """The check reads the name of the module that failed, so a name merely starting with torch does not count."""
+
+    def draw() -> str:
+        raise ModuleNotFoundError(f"No module named {module!r}", name=module)
+
+    monkeypatch.setitem(figures._BY_NAME, "broken", figures.Figure("broken", draw))
+    drawn = figures.render_figure("broken")
+    assert ("figure-notice--torch" in drawn) is is_pytorch
+    assert ("figure-notice--error" in drawn) is not is_pytorch
+
+
+def test_the_engine_drawing_takes_each_stations_sensors_from_the_sensor_table():
+    """Each sensor named at a station sits there in the table, and the footnote names exactly the kept sensors left out."""
+    import re
+    import xml.etree.ElementTree as ET
+
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS, SENSORS
+
+    station_of = {sensor.symbol: sensor.station for sensor in SENSORS}
+    stations = set(station_of.values())
+    svg = ET.fromstring(figures.render_figure("engine"))
+    texts = [text.text or "" for text in svg.iter("{http://www.w3.org/2000/svg}text")]
+    # A station's name is followed by its kept sensors, then its dropped ones.
+    drawn = {
+        text: (texts[index + 1].split(), texts[index + 2].split())
+        for index, text in enumerate(texts)
+        if text in stations
+    }
+    assert drawn, "the engine drawing names no station of the sensor table"
+    for station, (kept, dropped) in drawn.items():
+        assert set(kept) | set(dropped) == {s for s, at in station_of.items() if at == station}
+        assert set(kept) <= set(PAPER_SENSOR_SYMBOLS)
+        assert not set(dropped) & set(PAPER_SENSOR_SYMBOLS)
+
+    shown = {symbol for kept, _ in drawn.values() for symbol in kept}
+    left_out = {symbol for symbol in PAPER_SENSOR_SYMBOLS if symbol not in shown}
+    footnote = next(text for text in texts if "are not drawn" in text)
+    count = figures._word(len(left_out)).capitalize()
+    assert footnote.startswith(f"{count} of the {len(PAPER_SENSOR_SYMBOLS)} "), footnote
+    groups = re.findall(r"the ([a-z ]+?) \(([^)]*)\)", footnote)
+    assert {s for _, names in groups for s in names.split(", ")} == left_out
+    # Each group's words share one with the station of every sensor in it.
+    for words, names in groups:
+        for symbol in names.split(", "):
+            assert set(words.split()) & set(station_of[symbol].lower().split()), symbol
+
+
+@pytest.mark.parametrize("area", [(figures._WIDTH, figures._HEIGHT), (1000.0, 600.0)])
+def test_the_playground_graph_is_handed_the_area_its_positions_were_scaled_to(
+    area: tuple[float, float], monkeypatch: pytest.MonkeyPatch
+):
+    """The playground draws the sensor graph from the figures' positions, so it takes their drawing area from them too."""
+    # A second area proves the playground reads the figures' two numbers
+    # rather than keeping a copy that happens to agree with them today.
+    monkeypatch.setattr(figures, "_WIDTH", area[0])
+    monkeypatch.setattr(figures, "_HEIGHT", area[1])
+    graph = playground.options()["graph"]
+    assert (graph["width"], graph["height"]) == area
+    for x, y in graph["positions"].values():
+        assert 0 <= x <= graph["width"] and 0 <= y <= graph["height"]

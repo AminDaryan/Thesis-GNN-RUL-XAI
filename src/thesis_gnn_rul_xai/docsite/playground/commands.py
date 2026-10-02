@@ -134,7 +134,9 @@ def _dataset_schema() -> dict[str, Any]:
 
 def options() -> dict[str, Any]:
     """Everything the page needs to draw its form, before anything is chosen."""
-    from ..figures import _graph_layout
+    # The positions are scaled to the figures' drawing area, so the page is
+    # handed that area too rather than a copy of its two numbers.
+    from ..figures import _HEIGHT, _WIDTH, _graph_layout
 
     graph, positions = _graph_layout()[:2]
     return {
@@ -154,8 +156,8 @@ def options() -> dict[str, Any]:
         "graph": {
             "positions": {node: [round(x, 1), round(y, 1)] for node, (x, y) in positions.items()},
             "edges": [list(edge) for edge in graph.edges()],
-            "width": 860,
-            "height": 520,
+            "width": _WIDTH,
+            "height": _HEIGHT,
         },
         "table12": {
             "graphs": list(SHAP_TABLE_12_GRAPHS),

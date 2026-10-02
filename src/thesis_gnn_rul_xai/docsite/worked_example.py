@@ -129,7 +129,9 @@ def draw() -> str:
     """Render the live trace with explicit inputs, operations and outputs."""
     try:
         example = trace()
-    except (FileNotFoundError, ImportError, ValueError) as error:
+    # A failed import is left to render_figure, which names a missing PyTorch
+    # as such and shows any other failed import as the error it is.
+    except (FileNotFoundError, ValueError) as error:
         return '<p class="figure-notice">The worked example requires the real FD001 files and saved run ' + escape(RUN) + ': ' + escape(str(error)) + '</p>'
     fmt = lambda values: ", ".join(f"{x:.6f}" for x in values)  # noqa: E731
     out = '<div class="worked-trace"><p><strong>Live example, not an accuracy result.</strong> Training-file engine 1, cycles ' + str(example["start"]) + '-' + str(example["end"]) + '. This seed assigns it to ' + example["group"] + '.</p><p>Saved run: <code>' + RUN + '</code>; seed ' + str(example["seed"]) + '.</p>'

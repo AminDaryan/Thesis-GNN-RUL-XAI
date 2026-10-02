@@ -231,21 +231,33 @@ failing. That was measured on nbconvert 7.17.1 against its `basic`, `lab` and
 `tests/test_docsite.py` renders notebook 01 as the site does and requires the
 map to be in the page.
 
-Five of them read the **real NASA files**: `rul-curve`, `correlation`,
-`smoothing`, `windowing` and `notebook-map`. If those files are not in
-`data/raw/`, the figure is replaced by a note saying so and pointing at the
-download. It does **not** draw an invented signal that happens to have the right
-shape. That is the same rule the rest of the project follows, applied to
-pictures: show the thing, or say you cannot.
+Six of them read the **real NASA files**: `rul-curve`, `worked-example`,
+`correlation`, `smoothing`, `windowing` and `notebook-map`. If those files are
+not in `data/raw/`, the figure is replaced by a note saying so and pointing at
+the download. `worked-example` also needs the saved training run it follows,
+and its note names that run. A figure does **not** draw an invented signal that
+happens to have the right shape. That is the same rule the rest of the project
+follows, applied to pictures: show the thing, or say you cannot.
 
 `notebook-map` is the one that answers "what does the preprocessing notebook
 actually do?" in a single picture. It runs the pipeline while the page loads
 and prints the count the data really has at every step, so it cannot drift away
 from the notebook it describes the way a hand-drawn diagram would.
 
-`architecture` needs PyTorch, because it builds a real model to read the layer
-shapes off it. Without PyTorch it says so, and nothing else on the site is
-affected.
+Three figures need PyTorch, the library the network is written in.
+`architecture` and `architecture-overview` build the default network to read
+its layer sizes and its counts of learned numbers off it, and `worked-example`
+loads a saved network and runs one real window through it. Without PyTorch
+each of the three is replaced by a note saying so, and the other figures are
+drawn as usual. The playground's training needs PyTorch too.
+
+**Correction, 2026-10-02.** Until this date the paragraph on the NASA files
+said that five figures read them, and the paragraph above said that only
+`architecture` needed PyTorch, with nothing else on the site affected; the note
+shown in place of a figure without PyTorch said the same.
+`worked-example` reads the files and needs PyTorch, and `architecture-overview`
+needs PyTorch. This was found when a review of the figure fixes compared these
+paragraphs with what each figure in `FIGURES` says it needs.
 
 `architecture-overview` uses the same default model for the Architecture and
 training page. Each graph has the same sensor nodes and actual connections.
@@ -694,8 +706,19 @@ repeats; pass nothing to get the plain form.
 ### `render_figure(name)`
 
 One diagram as a piece of SVG, or — if the NASA files or PyTorch are missing —
-a block of HTML explaining what is absent and how to get it. It never raises,
-because a missing figure should not take the page down with it.
+a block of HTML explaining what is absent and how to get it. Python records, on
+a failed import, the name of the module it was importing, and only when that
+name is `torch`, or one of its parts such as `torch.nn`, does the page say
+PyTorch is missing. Any other failed import is shown as the error it is, with
+the module's name in it. Until 2026-10-02 every failed import that reached
+`render_figure` got the PyTorch notice, so a module of this repository renamed
+without the figure that imports it being updated would have sent the reader to
+install a library that was not the problem. The worked example's failed imports
+never reached it: `worked_example.py` caught them itself and reported each one,
+a missing PyTorch included, as the FD001 files or its saved run being absent.
+Since that date it leaves a failed import to `render_figure`, so the same rule
+covers every figure. It never raises, because a missing figure should not take
+the page down with it.
 
 ### `load_entries(root)` and `latest_verification(root)`
 
