@@ -261,6 +261,20 @@ parentheses.
   departure, since the paper has none (assumption A-06), and it is the reason
   validation error and test error must be kept apart, as described above.
 
+- **Nothing added to keep the weights small.** A network trained long enough
+  can fit the noise of its own training engines and do worse on engines it has
+  not seen; *regularisation* is anything added to training to discourage that.
+  The paper names none, so none is added: Adam keeps PyTorch's weight decay of
+  0 (a penalty that shrinks every weight a little at each step), the network
+  has no dropout (setting a random share of a layer's numbers to zero while
+  training), and `gradient_clip` (a cap on the size of one step) is off. Early
+  stopping on the held-back engines is the only guard. Over 200 passes with a
+  fifth of the engines held back, the default network's held-back error rises
+  by 0.411 ± 0.398 cycles after its best pass and the recurrent stage's by
+  3.574 ± 0.721, so the choice is unlikely to matter much for the first and may
+  matter a great deal for the second, which is an argument, not a measurement
+  (assumption A-40).
+
 ## Reference
 
 Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
@@ -286,7 +300,7 @@ the paper does not state them.
 | `lr_schedule` | How the rate travels between the first value and the last, one of the options above (assumption A-17). |
 | `early_stopping_patience` | Stop when the held-out error has not improved for this many epochs, and go back to the best epoch's weights. `None` runs every epoch (assumption A-18). |
 | `min_improvement` | How far the held-out error has to fall, in cycles, before it counts as an improvement worth restarting the count for. |
-| `gradient_clip` | A limit on how large one adjustment may be, or `None` to leave them alone. The paper never mentions it, so it is `None` by default and the run matches. |
+| `gradient_clip` | A limit on how large one adjustment may be, or `None` to leave them alone. The paper never mentions it, so it is `None` by default and the run matches (assumption A-40, which covers everything else that could hold the weights back). |
 | `seed` | Fixes the starting weights and the order the examples are shuffled into. |
 | `device` | `"auto"` uses a graphics card if there is one, otherwise the processor. `"cpu"` and `"cuda"` force it. |
 | `notes` | Free text saved with the settings. |
@@ -338,12 +352,16 @@ run saved beside itself, replaces the seed unless the run held the split fixed,
 runs the pipeline, builds the network those settings describe on the graph that
 pipeline produced, and loads the weights into it. Rebuilding with any other seed
 would hand back engines the network learned from under the name "held back".
+A run that held nothing back is rebuilt under each seed too, unless it recorded
+`"fixed"`, because the seed still matters to its data;
+[The split part of a run folder's name](#the-split-part-of-a-run-folders-name-and-its-change-of-2026-10-03)
+below explains how.
 
 | Name | What it does |
 |---|---|
 | `find_runs(preprocessing=None, seeds=None, with_weights=False, root=None, **summary_fields)` | Every run in `reports/` (or `root`) whose saved settings match, oldest first. `preprocessing` compares every setting except `notes`; `seeds` the number of seeds; any other keyword a field of the run's `summary.json`, such as `temporal_stage="last_cycle"`; `with_weights=True` keeps only runs that saved a network for every seed. A folder that is not a finished run, or whose settings file no longer loads, is skipped. |
 | `read_run(path)` | One run, as a `StoredRun`: its folder, its `summary.json`, its preprocessing and model settings, and its per-seed results table. Refuses a folder missing any of those files. |
-| `load_seed(run, seed, data_dir=None)` | The trained network of one seed, switched to evaluation, and the `PreparedData` rebuilt as that network saw it. Refuses a seed the run never trained, or a run from before weights were saved. |
+| `load_seed(run, seed, data_dir=None)` | The trained network of one seed, switched to evaluation, and the `PreparedData` rebuilt as that network saw it. Refuses a seed the run never trained, a run from before weights were saved, and, since 2026-10-03, a rebuilt sensor graph that is not the one the network was trained on ([below](#the-graph-a-reload-rebuilds-must-be-the-one-the-network-was-trained-on)). |
 | `StoredRun` | What `read_run` returns. `seeds` lists the seeds in training order, `weights(seed)` is where one seed's weights live, and `has_weights()` says whether every seed saved them. |
 
 #### Everything a run folder holds
@@ -353,8 +371,8 @@ older runs lack it, and nothing reads it as required.
 
 | File | What it records |
 |---|---|
-| `summary.json` | The commit, the settings' digest, when it finished, the mean and spread of the four measures, and every setting that changes the number. |
-| `results.csv` | One row per seed: the four measures, the best pass, the held-back error, how many passes ran. |
+| `summary.json` | The commit, the settings' digest, when it finished, the mean and spread of the four measures, and every setting that changes the number. Since 2026-10-03 also the mean and spread of `n_early`, and `null` for a mean or spread that is undefined, such as an ASUE when a seed predicted no engine early (assumption A-39). |
+| `results.csv` | One row per seed: the four measures, the best pass, the held-back error, how many passes ran, how many test engines were predicted late (`n_late`) and, since 2026-10-03, early (`n_early`, the count ASUE averages over; for an older run it is `n_engines` minus `n_late`). |
 | `preprocessing_config.yaml`, `model_config.yaml` | The data and network settings in full. |
 | `seed_N/model.pt` | That seed's trained weights. |
 | `seed_N/training_history.csv`, `seed_N/training_config.yaml` | The error after every pass, and the training settings. |
@@ -365,6 +383,8 @@ older runs lack it, and nothing reads it as required.
 | `summary.json` → `uncommitted_code`, and `code_state/` | Which code files differed from the commit, and the differences themselves as a patch. |
 | `seed_N/split.json` | The engine numbers this seed trained on, held back and was scored on. |
 | `seed_N/scaling.csv` | The average, spread, lowest and highest value the scaling measured for each sensor on this seed's training engines. |
+| `seed_N/graph.json` | Since 2026-10-03: the sensor graph this seed was given, as its kind, the seed it was drawn from (`null` unless it is a random or rewired graph, assumption A-41) and every connection as a pair of sensor names. |
+| `summary.json` → `graph_seeds` | Since 2026-10-03: for a random or rewired graph, the seed each seed folder's graph was drawn from, in the order of `seed_folders`; `null` for the other graphs. |
 
 #### The `cfg` code in a run folder's name, and its change of 2026-10-03
 
@@ -372,7 +392,8 @@ A run folder's name reads like
 `fd001_physics_row_cap_5seed_varsplit_cfg818b40_<commit>_<time>`: the
 sub-dataset, the sensor graph, how the graph is rescaled, whether the test
 labels are capped, the number of seeds, whether the held-back engines change
-with the seed, a mark for each network or training choice away from its
+with the seed (`varsplit`, `fixedsplit` or, since 2026-10-03, `nosplit`; the
+next section), a mark for each network or training choice away from its
 default (such as `_lstm32` for the recurrent stage of hidden size 32), then
 `cfg` and six characters, then the commit and the time it finished. The six
 characters are the digest of the preprocessing settings, a short code that
@@ -410,6 +431,173 @@ way to collect every run of one configuration across the change.
 `tests/test_run_records.py` checks that every stored name carries the code of
 the settings saved beside it, under one rule or the other.
 
+#### The split part of a run folder's name, and its change of 2026-10-03
+
+The *split* is which of the training engines are held back — a fifth of them
+by default — to decide when training stops and which pass is kept. Each seed
+draws its own unless `--fixed-split` is given. A run records what happened in
+two places, its folder name and the `split` field of its `summary.json`:
+
+| In the name | `split` in `summary.json` | What happened |
+|---|---|---|
+| `varsplit` | `"varies_with_seed"` | Engines were held back, and each seed drew its own (the default). |
+| `fixedsplit` | `"fixed"` | Engines were held back, the same ones for every seed (`--fixed-split`): the data was prepared once, under the first seed, and `load_seed` rebuilds it that way. |
+| `nosplit` | `"none"` | No engine was held back (`validation_fraction: 0.0`, the paper's own arrangement), so there was no split to vary or to fix. Every seed's data was prepared under that seed, even when `--fixed-split` was given, and `load_seed` rebuilds it that way. |
+
+**Before 2026-10-03 both came from the `--fixed-split` option alone**, so a run
+that held nothing back was still named `varsplit` and recorded
+`"varies_with_seed"`, describing a split that never happened (the audit of
+2026-09-08, its item D-4). Since then `split_record` in `scripts/train.py`
+derives both from the engines each seed actually held back. Stored runs keep
+what they recorded, because a results file is never edited. Counted on
+2026-10-03, 17 of the 136 stored runs held nothing back, every one of them
+recorded as `"varies_with_seed"`, the latest
+`fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`;
+no stored run recorded `"fixed"`.
+
+So for a run of either age, `validation_fraction` in its
+`preprocessing_config.yaml` is the field to trust: 0.0 means nothing was held
+back, whatever `split` says. The readers of the field handle both ages. The
+playground's run list shows such a run's split as none held back, with the
+recorded value beside it on the run's own page; `scripts/baselines.py` compares
+the `split` of two runs only when they held engines back; and
+`find_runs(split=...)` matches the field as written, so
+`find_runs(split="none")` finds only runs made since the change — to collect
+both ages, select on `validation_fraction` through the `preprocessing`
+argument instead.
+
+**How a run that held nothing back is prepared, and rebuilt.** `load_seed`
+goes by the recorded `split`: `"fixed"` is rebuilt once, under the first seed,
+and anything else under each seed. That is how each was prepared.
+`scripts/train.py` prepares every seed of a run that holds nothing back under
+that seed, even when given `--fixed-split`, since there is no split to hold;
+such a run records `"none"`. Before 2026-10-03 such a run recorded
+`"varies_with_seed"` and was prepared under each seed too, or `"fixed"` under
+`--fixed-split` and was prepared once; no stored run is of the last kind.
+
+How a seed was prepared and how it is rebuilt have to agree even with nothing
+held back, because the seed still decides two things. A graph drawn at random, or the paper's graph rewired at
+random, is drawn from it (assumption A-41), which is why `scripts/train.py`
+refuses `--fixed-split` for those graphs when nothing is held back. And under
+min-max scaling per operating condition — the flight conditions of altitude,
+speed and throttle, six of them in FD002 and FD004 — the conditions are found
+by a clustering method that groups the rows by their three settings starting
+from positions picked with the seed, so each seed can number the same six
+groups differently. On 2026-10-03, with the code at `6733d77`, nothing held
+back and seeds 43 to 46 each set against seed 42, the training windows, labels
+and test windows came out the same to the last digit on all four
+sub-datasets, under each of the three ways of rescaling the readings
+(subtracting each sensor's average and dividing by its spread; one range per
+sensor over all conditions; one range per sensor and condition) and, under the
+first, with the graph built from correlations; so did the graph and the scaling
+table, except
+the table under the per-condition ranges on FD002 and FD004. There
+the condition numbered 0 covers 13,458 training rows under seed 42 and 8,122
+under seed 43 on FD002, and 15,395 and 9,224 on FD004: the same scaled numbers,
+filed under different condition numbers. A table saved under one seed is
+therefore not the one a reload under another seed rebuilds, and the checks
+that compare the two would fail.
+
+(Corrected 2026-10-03: the first version of this paragraph said that with
+nothing held back the seed decides no number the preprocessing hands on, and
+`scripts/train.py` then still prepared the data once under `--fixed-split`
+while recording `"none"`. An independent review of the change found the
+scaling tables above the same day.)
+
+`tests/test_examples_torch.py` works both cases through: the FD001 one, where
+seeds 42 and 43 agree to the scaling table, and the FD002 one, where they do
+not; and checks that `--fixed-split` shares one preparation only when engines
+are held back. `tests/test_run_records.py` reloads one stored run of each age
+and a copy that records `"none"`, and checks that each gives back its saved
+predictions.
+
+#### The graph a reload rebuilds must be the one the network was trained on
+
+The *sensor graph* says which sensors pass numbers to which in the graph
+layers. A trained network keeps its own copy of it: the graph, rescaled — each
+connection, and each sensor's own reading, turned into the share of that
+sensor's incoming numbers it carries, shares which by default add up to one for
+every sensor — is saved in `model.pt`
+together with the learned numbers, as a fixed table named `adjacency` that
+training never changes. `load_seed` builds the graph a second time, with the
+data, and hands that one back inside the `PreparedData`, the rebuilt data.
+
+The two copies can disagree without any error, and the network's predictions
+would not show it. Loading the weights copies the saved table into the network
+over whatever was rebuilt, so the network runs on the graph it was trained on,
+while the data handed back beside it carries the other one. Anything that reads
+the graph from the data then describes connections the network never used:
+`scripts/measure_walks.py`, for one, names every connection from the rebuilt
+graph and builds its untrained comparison network on it.
+
+They can disagree because a graph can depend on more than the settings a run
+saves. A graph drawn at random, or the paper's graph rewired at random
+(assumption A-41), depends on the seed it is drawn from and on settings that
+live in the code, such as how many swaps the rewiring proposes, 4,000. Measured
+on 2026-10-03:
+
+```
+rewire from seed 42 with 4,000 proposals, then with 5,000   →  22 of the 41 connections in common
+build the network on the 5,000 graph, load weights saved on the 4,000 one
+                                                            →  no error; the network now holds the
+                                                               4,000 graph, the rebuilt data the 5,000 one
+```
+
+The graph built from correlations depends on the training engines and so on
+the NASA files as well.
+
+So since 2026-10-03 `load_seed` compares the two before it loads the weights,
+and refuses to go on when they differ:
+
+1. **Against `seed_N/graph.json`**, where the seed folder has one (runs made
+   since 2026-10-03): the rebuilt graph must be of the same kind, drawn from
+   the same seed, and join the same pairs of sensors, compared by name.
+2. **Against the table saved in `model.pt`**, for every run, with or without
+   `graph.json`: the rebuilt graph must join the same pairs of sensors, and its
+   rescaled numbers must agree with the saved ones to within 0.000001
+   (`GRAPH_TOLERANCE` in `stored.py`), since both are the same arithmetic on
+   the same graph.
+
+The refusal says how many connections differ and names up to three of each
+kind. With the rewiring above changed to 5,000 proposals after a run was
+trained with 4,000, the 41 − 22 = 19 connections lost are counted, and so are
+the 19 that replaced them:
+
+> ..., seed 42: the sensor graph rebuilt for this seed is not the one recorded
+> in seed_42/graph.json: 19 of its 41 connections are missing from the rebuild
+> (T24-Ps30, T24-htBleed, T24-W32, ...), which joins 19 other pair(s) instead
+> (T24-NRf, T24-BPR, T24-W31, ...). Something that decides this graph has
+> changed since the run was made: the code, the run's settings file or the
+> NASA files. The data handed back would not be the data the network was
+> trained on, so rebuild it from a checkout of the run's commit, ..., or train
+> the configuration again.
+
+`tests/test_stored.py` writes such a run from the real FD001 files, with and
+without its `graph.json`, and checks both refusals; it also checks that a
+`graph.json` naming another kind of graph, or another seed, is refused. It
+then checks the two refusals only the second comparison can make, since
+`graph.json` names pairs and nothing else. One is the same pairs rescaled by
+the other formula the settings allow (assumption A-21), which does not make
+every sensor's shares add up to one: on that run's graph it moves some of the
+rescaled numbers by up to 0.0509, and the refusal names that gap. The other is
+a table saved for 13 sensors when the rebuild has 14. Last, a `graph.json` one
+connection short is refused with the pair the rebuild adds named.
+
+Every stored run passes. Measured on 2026-10-03 over every network then in
+`reports/`, 469 networks in 95 run folders (counting the runs kept inside the
+sensitivity studies' folders), on the paper's graph, the complete graph and the
+graph built from correlations: the comparison `load_seed` makes refused none
+of them, each rebuilt graph joined exactly the pairs saved with its network,
+and its rescaled numbers differed from the saved ones by 0.0 at most. None of
+them has a `graph.json` yet, since `scripts/train.py` began writing one that
+day, so for now the second comparison is the one that runs.
+
+(Corrected on 2026-10-03, the day it was written: this paragraph first said
+464 networks in 94 run folders. That count was taken just before one more
+five-network run was written to `reports/`, so it left out a run the count of
+25 runs in the next section includes. A reviewer found the difference by
+counting the folders again; the comparison was then run again over all 469.)
+
 #### A stored run must still reproduce
 
 A number in the documents is quoted from a stored run, and a stored run is a
@@ -423,7 +611,11 @@ where the run recorded them, the same engine split, the same scaling statistics
 and the same data files.
 
 On 2026-09-15 it passed for all eight stored runs with saved networks, 34
-networks in all.
+networks in all. On 2026-10-03, reloading through the graph comparison of the
+previous section, it passed for all 25 runs then at the top level of
+`reports/` that list their seed folders and saved each seed's network and
+predictions, 119 networks in all; the test does not look inside the
+sensitivity studies' folders.
 
 When it fails, the run no longer describes the code. Either the change was a
 mistake, or it was intended and the run has to be trained again before anything

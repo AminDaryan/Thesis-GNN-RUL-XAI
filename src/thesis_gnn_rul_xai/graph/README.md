@@ -12,11 +12,15 @@ sensors the model may exchange information between directly.
 ## Files
 
 - `__init__.py` — makes the folder a package. No logic.
-- `adjacency.py` — everything else: the transcribed matrix from the paper, two
+- `adjacency.py` — the transcribed matrix from the paper, two
   alternative graphs to compare it against (every sensor joined to every
   other, and the sensors joined by how strongly their readings move together),
   the normalisation the network applies before using it, and a report
   describing the graph's shape.
+- `controls.py` — two more graphs to compare it against, both drawn at random
+  with the paper's 41 connections: one that keeps only that count, and one
+  that also keeps every sensor's number of connections. See
+  [Two graphs drawn at random](#two-graphs-drawn-at-random-with-the-papers-41-connections).
 
 ## The vocabulary, in one place
 
@@ -38,8 +42,14 @@ sensors the model may exchange information between directly.
 
 ## Where this graph comes from
 
-Most published work on this dataset builds the graph from the data, usually by
-connecting sensors whose readings are strongly correlated. Wen et al. (2026)
+A survey of graph networks for this task (Wang et al., 2025, its page 8)
+reports that most works build the graph from the data: they join every pair of
+sensors and make each connection as strong as the two sensors' readings are
+alike, measured by one of six measures, Pearson correlation among them.
+(Corrected 2026-10-03: this said most published work builds the graph "usually
+by connecting sensors whose readings are strongly correlated", with no source;
+the survey describes every pair joined, with strengths from the data. Found by
+a review of 2026-10-03 that flagged the sentence as uncited.) Wen et al. (2026)
 instead design the graph by hand from engineering knowledge of how a turbofan
 engine works, and print the finished matrix as their Table 3. Their five stated
 rules are:
@@ -149,8 +159,15 @@ purpose of counting distance.
 ## The graph built from the data instead
 
 The paper claims, in its Conclusions, that its hand-designed graph captures
-sensor relationships beyond what correlations in the data would show. It never
-builds a correlation graph to check. `build_correlation_adjacency` builds one,
+"authentic sensor relationships beyond data-driven correlations". It describes
+no graph built from correlations to check that against, and never says what
+replaced its graph in the "without physics prior" experiment (below). The only
+graphs it draws from data are the pictures of its explanation in Figs. 9 and
+10: their colours and line weights come from how much each sensor moved the
+prediction, and the network never uses them. (Corrected 2026-10-03: this said the paper never builds a
+correlation graph, which is more than its text can show. Found by a review that
+day that flagged the sentence as unsupported.)
+`build_correlation_adjacency` builds one,
 so that claim can be measured: the configuration setting `graph: correlation`
 trains the same network on it.
 
@@ -200,6 +217,162 @@ rescaling, and `tests/test_pipeline.py` checks that the graph it hands over is
 exactly the one built from those rows. Because each seed holds back different
 engines, each seed can be given a slightly different graph.
 
+## Two graphs drawn at random, with the paper's 41 connections
+
+**The question they answer.** The paper's "without physics prior" experiment
+takes the engineering knowledge out to see what it was worth. This project's
+stand-in for it, every sensor joined to every other, takes out more than that:
+after the rescaling every sensor receives the same average of all fourteen, so
+the network is handed one number where Table 3 hands it eight (assumption
+A-19). The correlation graph above keeps the count of 41 but lets the data
+choose the pairs, so it puts another kind of knowledge in place of the
+engineer's rather than none. The audit of 2026-09-08 asked for the control
+between the two: a graph with Table 3's 41 connections whose pairs carry no
+information at all. `controls.py` builds two such graphs, and the settings
+`graph: random` and `graph: rewired` train the same network on them. Neither
+has been trained yet; the commands that will train them, and in time their
+results, are in the log's entry on these two graphs (assumption A-41).
+
+**One word first.** A sensor's **degree** is its number of connections. In
+Table 3:
+
+| T24 | T30 | T50 | P15 | P30 | Nf | Nc | Ps30 | phi | NRf | BPR | htBleed | W31 | W32 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 7 | 8 | 4 | 4 | 7 | 4 | 8 | 7 | 6 | 4 | 4 | 7 | 8 | 4 |
+
+They add up to 82, twice 41, because every connection is counted once at each
+of its two ends.
+
+### `build_random_adjacency`: only the count is kept
+
+Fourteen sensors can be paired in 14 × 13 / 2 = 91 ways. The function picks 41
+of those 91 pairs, every set of 41 as likely as any other, and joins them.
+Nothing else is held: on seed 42, `P30` gets 11 connections where Table 3
+gives it 7. Each picked pair is one of Table 3's with chance 41/91, so on
+average 41 × 41 / 91 = 18.5 of the 41 coincide with the engineer's; on seeds
+42 to 46 it is 16 to 20.
+
+### `build_rewired_adjacency`: every sensor's degree is kept too
+
+It starts from Table 3 and repeats one step, a **swap**: take two connections
+and exchange their second ends. With two real connections of Table 3:
+
+```
+before   P15–Nf    T50–W32        P15 4   Nf 4   T50 4   W32 4
+after    P15–W32   T50–Nf         P15 4   Nf 4   T50 4   W32 4
+```
+
+Each of the four sensors loses one connection and gains one, so every degree
+stays what it was, and so does the count of 41. A swap is refused when it would
+join a sensor to itself, or join a pair that is joined already: `T24–T30` with
+`T50–W32` would give `T24–W32` and `T30–T50`, and `T30–T50` is in Table 3.
+`swap_ends` is that one step; which two connections to try, and which end goes
+where, are drawn at random, every choice as likely as any other.
+
+After the 4,000 proposed swaps of seed 42, every degree is still Table 3's and
+19 of the 41 connections are ones the engineer drew. `Nf–NRf`, a fan speed and
+the corrected speed computed from it, is not among them.
+
+**Why a refused swap still counts as a step.** The aim is that every graph with
+Table 3's degrees is equally likely to come out. Counted this way, a step from
+a graph G to a graph H is exactly as likely as the step from H back to G. A
+step makes one of 41 × 41 × 2 equally likely choices: a first connection, a
+second (picking the same one twice is allowed, and changes nothing), and which
+way to cross them. Either way exactly two of those choices make the step: the
+same two connections, taken in either order, crossed the one way that gives
+the other graph. A process with that
+property, run long enough, spends the same share of its time in every graph it
+can reach. Retrying a refused proposal until one is accepted would break the
+balance: a graph from which few swaps are allowed would hand each of them a
+large chance and a graph from which many are allowed a small one, and the
+process would end up in graphs in proportion to how many swaps they allow.
+That every graph with these degrees can be reached by swaps at all is a
+standard property of this kind of swap; this project has not checked it against
+a source.
+
+**How many proposals are enough** is a matter of measurement, because the equal
+chances hold only in the long run. Two counts that start far from where a
+random graph sits were followed over seeds 0 to 2,999: how many connections
+the graph shares with Table 3, which starts at 41, and how many **triangles**
+it has, sets of three sensors each joined to the other two, which starts at
+Table 3's 56. Means over the 3,000 seeds, with the uncertainty of each mean in
+brackets:
+
+| Proposed swaps | Shared with Table 3 | Triangles |
+|---|---|---|
+| 100 | 23.527 (0.041) | 32.490 (0.044) |
+| 200 | 22.184 (0.039) | 32.173 (0.044) |
+| 400 | 22.055 (0.039) | 32.091 (0.044) |
+| 800 | 22.041 (0.039) | 32.117 (0.044) |
+| 1,600 | 22.082 (0.039) | 32.190 (0.044) |
+| 4,000 | 22.074 (0.039) | 32.228 (0.044) |
+| 16,000 | 22.099 (0.039) | 32.188 (0.044) |
+
+The uncertainty in brackets is how far a mean of 3,000 draws typically lands
+from the long-run value. From 400 proposals on, no row differs from the next by
+more than 0.08, about what two means each uncertain by 0.04 differ by through
+chance alone. The rewiring proposes ten times that, 4,000
+(`REWIRING_PROPOSALS`); on seeds 42 to 46 between 858 and 930 of them are
+accepted. Each accepted swap replaces two of the 41 connections, so on average
+each connection is replaced 42 to 45 times (2 × 858 / 41 = 41.9 and
+2 × 930 / 41 = 45.4).
+
+### Both are kept in one piece
+
+Table 3 joins all fourteen sensors into one piece, so that every sensor can
+reach every other along connections (checked when `adjacency.py` is imported).
+A control should differ from it in which pairs are joined, not also in whether
+some sensors can never exchange anything, so a random draw that falls into more
+than one piece is thrown away and drawn again, and a rewiring that does is
+carried on for another 4,000 proposals.
+
+It rarely happens. With four sensors and three connections there are
+C(6, 3) = 20 graphs; 4 of them are triangles that leave the fourth sensor
+alone, so one draw in five falls apart. With fourteen sensors and 41
+connections, counting every one of the C(91, 41) graphs, 0.259 % fall apart,
+about one draw in 386, and in nearly all of them (99.96 %) one sensor is joined
+to nothing. Drawn 100,000 times with nothing redrawn, 254 fell apart, every one
+of them by leaving a sensor alone; of seeds 0, 1, 2, … the first is 254, with
+`W31` alone. Of 20,000 rewirings, none fell apart.
+
+### One graph per seed
+
+Both graphs are drawn from the seed the data is prepared under. By default
+every seed holds back its own engines, so each of a five-seed run's seeds gets
+its own graph; with `--fixed-split` one graph serves every seed. The graph does
+not take the seed's random numbers straight from the seed: NumPy's generator is
+started from the pair (seed, 1), because the seed alone already starts the
+generator that picks the held-back engines, and sharing it would make the
+graph and the split two readings of the same numbers.
+
+One graph per seed is the default because graphs drawn the same way differ from
+one another, so a single draw would answer a question about that draw alone —
+the reason one seed is not a result either. Paired by seed with Table 3, each
+seed then sets the engineer's graph beside a fresh draw, and the spread over
+the five seeds includes how much the draws differ. Each seed folder of a run
+records its graph in `graph.json`, connection by connection, with the seed it
+was drawn from.
+
+### What else changes when the knowledge goes
+
+On the five seeds a run trains, against Table 3:
+
+| Graph | Shared with Table 3 | Fewest and most connections | Largest distance | Pairs out of reach of three layers | Independent rows after rescaling |
+|---|---|---|---|---|---|
+| Table 3 | 41 | 4 to 8 | 4 | 4 | 8 |
+| random, seeds 42 to 46 | 16 to 20 | 2 to 11 | 2 or 3 | 0 | 14 |
+| rewired, seeds 42 to 46 | 19 to 25 | 4 to 8 | 3 | 0 | 14 |
+
+"Independent rows" counts the rows of the rescaled table that cannot be built
+by adding up multiples of the others. Table 3's 8 come from its groups of
+sensors with exactly the same connections, which the network cannot tell apart
+(finding F-18); every graph drawn here has 14, and brings every pair of
+sensors within reach of the paper's three graph layers. Those limits are part
+of the engineer's design — sensors at one place in the engine share their
+connections — so taking the knowledge out takes them out too. A difference
+between Table 3 and either control therefore cannot say which of the three
+made it: the particular pairs, the groups, or the reach.
+
 ## Traps
 - **The transcription is checked when the module is imported.** The bottom of
   `adjacency.py` asserts that the matrix is 14-by-14, symmetric, zero on the
@@ -209,10 +382,20 @@ engines, each seed can be given a slightly different graph.
 - **`normalize_adjacency` rejects an asymmetric matrix.** An asymmetric matrix
   would mean sensor i is a neighbour of j but not the other way round, which the
   symmetric normalisation formula does not support.
+- **A random or rewired graph follows the seed the data is prepared under, not
+  the seed the network is trained under.** The two are the same unless
+  `--fixed-split` is given, which holds one graph for every seed. That needs
+  engines held back: with none, `scripts/train.py` prepares every seed under
+  its own seed whatever `--fixed-split` says, so the one graph the option asks
+  for could not be given, and each seed would get a graph of its own. The
+  script therefore refuses `--fixed-split` with these two graphs when nothing
+  is held back, rather than quietly ignoring the option. Such a run, had it been
+  allowed, could still be reloaded: the reload rebuilds each seed under its own
+  seed too, so it draws the same graphs.
 
 ## Judgement calls made in this folder
 
-All three are recorded in full in `docs/ASSUMPTIONS.md`.
+All four are recorded in full in `docs/ASSUMPTIONS.md`.
 
 - **What the "without physics prior" experiment replaces the graph with.** The
   paper names that experiment — an ablation, meaning a run with one part
@@ -222,9 +405,16 @@ All three are recorded in full in `docs/ASSUMPTIONS.md`.
   sensors' exchange of information itself, which the paper already reports
   separately as "without GCN", so `build_fully_connected_adjacency` uses a
   complete graph instead: every sensor joined to every other (assumption A-19).
-- **How the data-driven graph is built.** The paper never builds one, so the
-  rule — the 41 most strongly correlated pairs on the training engines — is a
-  choice, argued above (assumption A-27).
+- **How the data-driven graph is built.** The paper describes none for its
+  network, so the rule — the 41 most strongly correlated pairs on the training
+  engines — is a choice, argued above (assumption A-27). (Corrected 2026-10-03:
+  this said the paper never builds one. Found by a review that day that flagged
+  the sentence as unsupported.)
+- **How the two random graphs are drawn.** The paper describes neither. One graph
+  per seed, from a generator of its own; every set of 41 pairs equally likely,
+  or every graph with Table 3's degrees equally likely in the long run, reached
+  by 4,000 proposed swaps with refused ones counted; and drawn again when the
+  sensors fall into more than one piece. Argued above (assumption A-41).
 - **Which normalisation formula to use.** The paper's Equation 8 says only that
   "A denotes the normalized adjacency matrix incorporating self-loops" and that
   the normalisation "ensures stable gradient propagation and balanced feature
@@ -254,7 +444,7 @@ All three are recorded in full in `docs/ASSUMPTIONS.md`.
 
 ## What each name means
 
-Everything `adjacency.py` offers.
+Everything `adjacency.py` and `controls.py` offer.
 
 | Name | What it is |
 |---|---|
@@ -269,6 +459,11 @@ Everything `adjacency.py` offers.
 | `to_networkx(matrix, symbols)` | Hands the graph to the `networkx` library, with the sensors named. Self-loops are ignored. |
 | `PHYSICS_ADJACENCY_ROWS` | Table 3 of the paper, copied out row by row. The row order matches `PAPER_SENSOR_SYMBOLS` and must not change. |
 | `AdjacencyNormalization` | The two allowed values of `method`: `"symmetric"` and `"row"`. |
+| `build_random_adjacency(seed, n_edges=None, n_nodes=14, connected=True)` | In `controls.py`. Joins `n_edges` pairs picked at random, by default Table 3's 41, every set equally likely; drawn again until every sensor can reach every other, unless `connected=False`. The same seed always gives the same graph. Same pair of return values. |
+| `build_rewired_adjacency(seed, adjacency=None, proposals=4000, connected=True)` | In `controls.py`. Rewires `adjacency`, by default Table 3, by proposing that many swaps, so every sensor keeps its number of connections; carries on for another round of proposals while the sensors are in more than one piece, unless `connected=False`, and gives up after 1,000 rounds. Rejects a matrix that is not symmetric or joins a sensor to itself, and, unless `connected=False`, one that no rewiring could join into one piece: a sensor with no connection, or fewer connections than one less than the number of sensors. Same pair of return values. |
+| `swap_ends(first, second)` | In `controls.py`. One swap: connections `(a, b)` and `(c, d)` become `(a, d)` and `(c, b)`, each with its lower position first. It does not check whether the result is allowed; the rewiring does. |
+| `graph_generator(seed)` | In `controls.py`. The NumPy random number generator both graphs are drawn from, started from the pair (seed, `GRAPH_DRAW_TAG`), which is (seed, 1). |
+| `REWIRING_PROPOSALS` | In `controls.py`. 4,000, the number of swaps a rewiring proposes, measured above. |
 
-The first three all return the same pair — the grid of numbers, then the sensor
-names in row order — so they can be swapped for one another anywhere.
+The graph builders all return the same pair — the grid of numbers, then the
+sensor names in row order — so they can be swapped for one another anywhere.

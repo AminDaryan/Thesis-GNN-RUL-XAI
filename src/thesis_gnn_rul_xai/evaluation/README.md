@@ -3,8 +3,14 @@
 This folder computes the four numbers the paper we are re-implementing (Wen et
 al., 2026) reports for every experiment. RUL means "remaining useful life": how
 many more flight cycles an engine has before it fails. Every function here takes
-two equal-length arrays — the true RUL and the predicted RUL, one value per
-engine — and returns a number.
+two equal-length arrays — the RUL to score against and the predicted RUL, one
+value per engine — and returns a number. Every reported score uses the test
+label as the first: the remaining life NASA publishes for each test engine,
+capped at 125 cycles when the run caps its test labels, as the default does
+(assumption A-02). (Corrected 2026-10-03: this called the first array "the true
+RUL", which the capped label is not for the 11 FD001 test engines with more
+than 125 cycles left. Found by a review of the wording around the capped
+label.)
 
 > **The `.py` files here carry one line of description each, and nothing more.**
 > All of the explanation lives in this file.
@@ -34,8 +40,9 @@ below.
 ## The sign convention, and why it is not the paper's
 
 Every measure here is built from the difference between a prediction and the
-truth, so the direction of that subtraction decides everything. This folder
-uses:
+label it is scored against, so the direction of that subtraction decides
+everything. (Corrected 2026-10-03: this said "the truth", for the reason given
+at the top of this file.) This folder uses:
 
 ```
 d = predicted - actual
@@ -108,25 +115,52 @@ because the denominator is then zero and the measure is undefined.
 
 ### `asue` — Average Safe Underestimation Error (the paper's Equation 24)
 
-If the model never underestimated anything, `asue` returns `0.0`. That is the
-**best possible value** of this measure, not a missing result. Because a bare
-`0.0` is easy to misread as "no data", the function logs an informational
-message whenever it takes that path.
+ASUE averages the shortfall over the engines predicted *early* — given less
+remaining life than they had — and over no others. Equation 24 divides the sum
+of those shortfalls by `N_under`, the number of early engines. When no engine
+is predicted early, both are 0, and 0 / 0 has no value. `asue` then returns
+"not a number" (`nan`) and raises a `RuntimeWarning` that says why
+(assumption A-39).
+
+A real case, on the 100 FD001 test labels capped at 125: a model that predicts
+125 cycles for every engine is below no label, so it has no early engine; it is
+late on all 100, by 50.55 cycles on average. The same model at 124 cycles is
+early, by exactly one cycle, on the 11 engines whose labels were capped down
+from above 125, so its ASUE is 11 / 11 = 1.0.
+
+```text
+evaluate(labels, [125.0] * 100)  ->  asue nan (with a warning)   n_early 0    n_late 100
+evaluate(labels, [124.0] * 100)  ->  asue 1.0                    n_early 11   n_late 89
+```
+
+**Correction, 2026-10-03.** Until this date `asue` returned `0.0` in that case,
+and this section called it "the best possible value" of the measure. In the
+case above that ranks the model that is late on every engine — the behaviour
+the NASA score punishes hardest — ahead of the one that is a cycle early on
+eleven. The audit of 2026-09-08 raised it (its item D-11). No stored result
+came from that case: the fewest early engines in any stored file of test
+predictions is 25 of 100 (assumption A-39 has the count).
 
 ## `evaluate` — all four at once
 
 `evaluate(actual, predicted)` returns a dictionary with `"rmse"`, `"score"`,
-`"r2"`, `"asue"`, `"n_engines"`, and two extras that make a result easier to
+`"r2"`, `"asue"`, `"n_engines"`, and three extras that make a result easier to
 read at a glance:
 
 - `"mean_error"` — the average of `predicted - actual`. Positive means the model
   is optimistic overall.
 - `"n_late"` — how many engines the model was optimistic about, which is the
   count that matters for safety.
+- `"n_early"` — how many engines the model predicted early, the `N_under` that
+  ASUE divides by. An ASUE means nothing without it, so since 2026-10-03 every
+  script that writes an ASUE into a results file writes this count beside it,
+  and when it is 0 it says why ASUE is `nan`. Files stored before that day do
+  not have it; for them it is the number of engines minus `n_late`.
 
 `n_late` counts engines with `d >= 0`, so an exactly-correct prediction is
 counted as late. That looks odd, but it is the same boundary `nasa_score` uses;
-counting only `d > 0` would make the two disagree on a zero error.
+counting only `d > 0` would make the two disagree on a zero error. `n_early`
+counts the rest, `d < 0`, so the two always add up to `n_engines`.
 
 ## Input validation
 
@@ -269,7 +303,10 @@ graph network. It reads networks already trained and saved by
 `scripts/train.py`, and fits a fixed list of ordinary models — the *ladder*,
 from a constant up to models given a summary of the whole window — on exactly
 the engines each of those networks was trained on, then scores everything on
-the same 100 test engines with `evaluate` from this folder.
+the same 100 test engines with `evaluate` from this folder. What its record
+run found, set beside the default network and the network with the paper's
+recurrent stage, is written up in `docs/ASSUMPTIONS.md` (finding F-22) and
+summarised in the top-level `README.md`, section 8.
 
 ### What a stored run holds, and why the data is rebuilt for every seed
 
@@ -505,6 +542,13 @@ Each model gets the four measures on each seed. Then, for each stored network
 set against each model, `results.csv` gives:
 
 - the model's RMSE averaged over the seeds, with its standard deviation;
+- its NASA score, R² and ASUE averaged over the seeds (`score_mean`, `r2_mean`,
+  `asue_mean`) and, since 2026-10-03, beside the ASUE the number of engines it
+  predicted early, the count ASUE averages over, averaged the same way
+  (`n_early_mean`); a seed with no early engine leaves `asue_mean` "not a
+  number" (assumption A-39). The comparison stored on 2026-10-03 was made
+  before this column existed, from a clean `6733d77`; its `per_seed.csv` has
+  `n_late`, and 100 minus that is each seed's early count;
 - the network's RMSE minus the model's, averaged over the seeds, so a negative
   number means the network is better;
 - on how many seeds the network has the lower RMSE;
@@ -617,7 +661,7 @@ which are recorded inside instead:
 |---|---|
 | `results.csv` | one row per stored network and model, with every column listed above and each seed's RMSE |
 | `table.md` | the same as tables to read, one per stored network |
-| `per_seed.csv` | the four measures of every model on every seed, how long each took to fit, how many of its predictions the clip to between 0 and 125 moved (`n_clipped`), and its RMSE without that clip (`rmse_unclipped`) |
+| `per_seed.csv` | the four measures of every model on every seed, how many engines it predicted late (`n_late`) and early (`n_early`, the count ASUE averages over; written since 2026-10-03), how long each took to fit, how many of its predictions the clip to between 0 and 125 moved (`n_clipped`), and its RMSE without that clip (`rmse_unclipped`) |
 | `predictions.csv` | every model's prediction for every test engine on every seed, so that any figure can be recomputed |
 | `summary.json` | the commit and its `-dirty` mark, the time, the command, every library's version, fingerprints of the three NASA files, the stored runs it read, each model's exact scikit-learn settings, how the resampling was done, the largest gap found when the networks were reloaded, and any warning a model gave |
 | `code_state.zip` | the uncommitted changes to the code, when there are any |
@@ -662,8 +706,8 @@ decide the rescaling is a different question, answered where the split is made
 ## Judgement calls made in this folder
 
 The first two are cases where the paper contradicts itself and we had to pick
-a side; the last two fill gaps where the paper says nothing. Full write-ups are
-in `docs/ASSUMPTIONS.md`.
+a side; the last three fill gaps where the paper says nothing. Full write-ups
+are in `docs/ASSUMPTIONS.md`.
 
 - **The sign of the score function.** The paper's Equation 20 and Equation 21
   imply the opposite penalty direction from the one its own prose and the cited
@@ -672,6 +716,11 @@ in `docs/ASSUMPTIONS.md`.
 - **The denominator of R-squared.** The paper's Equation 23 puts the predicted
   values in the denominator, which is not the coefficient of determination. We
   use the standard formula, with the observed values (assumption A-16).
+- **ASUE when no engine is predicted early.** Equation 24 divides by the number
+  of early engines and never says what happens when there are none. `asue`
+  returns "not a number" with a warning, and since 2026-10-03 the count of
+  early engines is written beside every ASUE in a results file (assumption
+  A-39).
 - **Which window a graph of Table 12 is.** The paper numbers the columns of
   Table 12, and the small graphs of Fig. 10, from 1 to 191 without saying which
   cycle of the engine each one is. `published.py` reads graph *g* as the

@@ -97,6 +97,12 @@ them:
   builds this graph; it exists to test the paper's claim that its own graph
   captures more than correlations do. `graph/README.md` explains how it is
   built and why a fixed number of edges rather than a cut-off.
+- `"random"` joins 41 pairs of sensors picked at random, and `"rewired"`
+  shuffles the paper's own edges so that every sensor keeps its number of
+  connections but which sensors are joined is left to chance. Both keep the
+  paper's count of edges and none of its engineering knowledge, and both are
+  drawn from `seed`, so a run whose seed varies gets a different graph on every
+  seed (assumption A-41). `graph/README.md` explains how they are drawn.
 
 **`adjacency_normalization`** — how the adjacency matrix is rescaled before the
 graph layers use it. Either `"symmetric"` or `"row"`. The function that applies
@@ -200,8 +206,13 @@ independent of the figure they are compared with.
   matrix (assumption A-19).
 
 - **The data-driven graph keeps the 41 most strongly correlated sensor pairs.**
-  The paper never builds such a graph, so both the rule for joining sensors and
-  the number of edges are choices (assumption A-27).
+  The paper describes no such graph for its network — it computes correlations
+  only to choose which sensors to keep, and never says what replaced its graph
+  in the "without physics prior" experiment — so both the rule for joining
+  sensors and the number of edges are choices (assumption A-27). (Corrected
+  2026-10-03: this said the paper never builds such a graph, which is more than
+  its text can show. Found by a review that day that flagged the sentence as
+  unsupported.)
 
 - **The adjacency matrix is row-normalised.** The paper describes normalising
   the matrix with self-loops added but never prints the formula, and two forms
@@ -242,10 +253,10 @@ The section above explains the ones that need more than a line.
 | `clip_test_labels` | `True` | Whether the same ceiling is put on the test labels. Leave it on; see above (assumption A-02). |
 | `normalization` | `"zscore"` | How the sensors are put on a comparable scale (assumption A-03). |
 | `smoothing_alpha` | `0.5` | How hard to smooth, between 0 and 1. Larger follows the raw signal more closely; smaller smooths harder. `None` turns smoothing off (assumption A-04). |
-| `graph` | `"physics"` | Which sensor graph the network gets: `"physics"`, `"complete"` (assumption A-19) or `"correlation"` (assumption A-27). |
+| `graph` | `"physics"` | Which sensor graph the network gets: `"physics"`, `"complete"` (assumption A-19), `"correlation"` (assumption A-27), `"random"` or `"rewired"` (assumption A-41). |
 | `adjacency_normalization` | `"row"` | How that graph is rescaled before use (assumption A-21). |
 | `validation_fraction` | `0.2` | What share of the **engines** to hold back. `0.0` holds nothing back, which is the paper's arrangement; 0.2 is this project's addition. Never split by window (assumption A-06). |
-| `seed` | `42` | Fixes which engines get held back. |
+| `seed` | `42` | Fixes which engines get held back, and which graph is drawn when `graph` is `"random"` or `"rewired"`. |
 | `notes` | — | Free text saved with the settings. It changes no number, so the digest below leaves it out. |
 
 `save(path)` writes them to a YAML file, `to_dict()` returns them as a plain

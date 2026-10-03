@@ -35,11 +35,17 @@ NormalizationMethod = Literal["minmax_per_condition", "minmax_global", "zscore"]
 
 # Which sensor graph to give the network: the paper's own; one where every
 # sensor is connected to every other, which stands in for an experiment the
-# paper names but never describes (ASSUMPTION A-19); or one built from how
+# paper names but never describes (ASSUMPTION A-19); one built from how
 # strongly the sensors' readings move together on the training engines, with
-# as many edges as the paper's graph (ASSUMPTION A-27).
-SensorGraph = Literal["physics", "complete", "correlation"]
-SENSOR_GRAPHS: tuple[str, ...] = ("physics", "complete", "correlation")
+# as many edges as the paper's graph (ASSUMPTION A-27); or one of two graphs
+# drawn at random from the run's seed, which keep the paper's 41 edges but none
+# of its engineering knowledge: "random" joins 41 pairs chosen at random, and
+# "rewired" swaps the ends of the paper's own edges until which pairs are
+# joined is random but every sensor keeps its number of connections
+# (ASSUMPTION A-41: one graph per seed, redrawn until every sensor can reach
+# every other).
+SensorGraph = Literal["physics", "complete", "correlation", "random", "rewired"]
+SENSOR_GRAPHS: tuple[str, ...] = ("physics", "complete", "correlation", "random", "rewired")
 
 # The two ways of rescaling that graph before the network uses it.
 # ASSUMPTION A-21 covers the choice. Applied by normalize_adjacency() in
@@ -99,7 +105,13 @@ class PreprocessingConfig:
     # ASSUMPTION A-27: "correlation" joins the 41 most strongly correlated
     # sensor pairs on the training engines, the same number of edges as the
     # paper's graph. The paper claims its graph captures more than correlations
-    # but never builds one to compare against. Written up in docs/ASSUMPTIONS.md.
+    # but describes no correlation graph to compare against. Written up in
+    # docs/ASSUMPTIONS.md.
+    # ASSUMPTION A-41: "random" and "rewired" are drawn from `seed` below, so a
+    # run whose seed varies gets a different graph on every seed. They are the
+    # controls the audit of 2026-09-08 asked for in place of "complete", which
+    # changes the number of edges as well as the knowledge. Written up in
+    # docs/ASSUMPTIONS.md.
     graph: SensorGraph = "physics"
     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
     # formula and two forms fit what it says. With nothing held back --

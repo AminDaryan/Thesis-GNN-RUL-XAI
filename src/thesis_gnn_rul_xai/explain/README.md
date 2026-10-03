@@ -186,13 +186,26 @@ temptation is to feed a sensor 0 when it is left out. Whether that is safe
 depends entirely on the rescaling, not on the baseline:
 
 - Under the **min-max** scaling that was the default until 2026-08-29, zero was
-  a sensor's lowest ever reading. Substituting it produced a ranking unrelated
-  to the mean-window one (Spearman −0.16) and promoted `P15`, the least
-  informative sensor, to first place.
+  a sensor's lowest ever reading. Substituting it produced a ranking of the
+  fourteen sensors unrelated to the mean-window one — a Spearman rank
+  correlation of −0.16, where +1 would mean the two orderings are identical
+  and 0 that they are unrelated — and promoted `P15`, the least informative
+  sensor, to first place.
 - Under the **z-score** default now in force — every sensor rescaled to say how
   many standard deviations it sits from its own training average, so that zero
   means "exactly average" — the number zero is the training mean, and the zero
-  baseline agrees with the mean window almost exactly (Spearman +0.996).
+  baseline agrees closely with the mean window, though not exactly. Over five
+  networks trained with seeds 42 to 46 under the default settings, except that
+  no training engine was held back, the rank correlation between the two
+  orderings is +0.968 ± 0.015, from 0.952 to 0.991, and the same four sensors
+  lead under both on every one.
+
+(Corrected 2026-10-03: the second item said the two agree "almost exactly
+(Spearman +0.996)". That figure came from one network, trained under the
+learning-rate schedule of 2026-08-31, which shrank the rate after every pass
+over the training data; the log's five-network measurement under today's
+schedule, added that day, replaced it. Found by a review of the five-seed
+results.)
 
 The log records both measurements (assumption A-20). The point it draws from
 them is that a SHAP
@@ -486,11 +499,15 @@ give `818b40`; the folder names keep the codes they were given
 For each of the five seeds, the held-back engine with the most windows — the
 same engine in both runs, because the seed decides which engines are held back
 — was explained at every window with `shap_for_each_seed`. The explaining code
-is at commit `19dceb5-dirty`: `explain/seeds.py`, which holds
-`shap_for_each_seed`, and the change to `explain/shap.py` that runs the
-temporal stage once per window were not yet committed when step 8 was
-executed. They are the code that arrived in the same change as this section,
-and once it is committed, step 8 re-executed names a commit without `-dirty`.
+is at commit `6733d77`: step 8 was re-executed on 2026-10-03 from a clean tree
+at that commit, and every figure below came out the same as in its first
+execution at `19dceb5-dirty`, before `explain/seeds.py` and the change to
+`explain/shap.py` that runs the temporal stage once per window were committed.
+The notebook was executed twice more that day with uncommitted changes in the
+working tree, none of them to those two files: once after the legend of its
+step 5 figure was renamed, and once with other work in progress. Step 8 prints
+the commit of the latest execution, so it now shows `6733d77-dirty`; every
+figure below came out the same each time.
 Mean ± standard deviation over the five seeds:
 
 | | Joins over the 12 steps inside graphs 1–5, 78–82, 187–191 | Step-to-size ratio over those 12 steps, on sizes | Share of steps with at least one join, every window | Share of steps with two or more joins, every window | Joins per step, every window | Stage jitter |
@@ -657,13 +674,23 @@ checks the one-term relationship on a three-sensor network.
 
 `plot_contributions_over_time` draws what `dynamic_shap` returns. The top panel
 is the prediction being explained: each window's label, the remaining life
-capped at 125 cycles (assumption A-01), which the legend calls "true remaining
-life"; the predicted remaining life; the prediction at the baseline; and a line
-at the cycle where the label first drops below its ceiling. Below it is one
-small panel per sensor,
+capped at 125 cycles (assumption A-01), which the legend calls "label:
+remaining life, capped"; the predicted remaining life; the prediction at the
+baseline; and a line at the cycle where the label first drops below its
+ceiling. Below it is one small panel per sensor,
 holding that sensor's contribution at every window, ordered by average size with
 the largest first, and all on **one vertical scale**, so that a tall panel is a
 large contribution and not just a large axis.
+
+(Corrected 2026-10-03: the legend itself said "true remaining life" after this
+section and the column table below had been corrected. Early in a long life the
+line sits below the life the engine truly had. Engine 2 of the training file
+ran 287 cycles; with windows of 20 cycles its first window ends with 267 cycles
+truly left and a label of 125, and the line is below the true remaining life in
+142 of its 268 windows. The legend was renamed, and
+`tests/test_shap.py::test_the_figure_names_its_grey_line_the_capped_label`
+checks the name and those numbers. Found by a review of the wording around the
+capped label.)
 
 With one method, the area between the line and zero is blue where the sensor
 pushed the predicted life up and red where it pushed it down. Given a second

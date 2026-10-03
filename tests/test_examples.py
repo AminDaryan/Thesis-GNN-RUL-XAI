@@ -457,9 +457,11 @@ def test_example_r_squared():
 
 
 def test_example_asue():
-    """Only the two pessimistic engines count: (10 + 20) / 2."""
+    """Only the two pessimistic engines count: (10 + 20) / 2; with none, not a number."""
     assert asue([100, 50, 30], [90, 60, 10]) == 15.0
-    assert asue([100], [110]) == 0.0
+    # Assumption A-39: no engine predicted early is 0 / 0 in Equation 24.
+    with pytest.warns(RuntimeWarning):
+        assert np.isnan(asue([100], [110]))
 
 
 def test_example_evaluate():
@@ -1203,3 +1205,191 @@ def test_example_a_whole_number_where_a_decimal_is_declared_is_held_as_the_decim
     assert written.digest() == PreprocessingConfig(validation_fraction=0.0).digest() == "2c9b5b"
     # A whole-number field goes the other way: 125.0 is held as 125.
     assert type(PreprocessingConfig(rul_max=125.0).rul_max) is int
+
+
+# --- evaluation/metrics.py: ASUE when no engine is predicted early (A-39) ----
+
+
+def test_example_asue_is_undefined_for_a_model_that_is_never_early(raw_dir):
+    """Predicting the ceiling for every FD001 test engine is late on all 100, so ASUE has nothing to average."""
+    labels = np.minimum(np.loadtxt(raw_dir / "RUL_FD001.txt"), 125)   # the 100 answers, capped
+    assert labels.shape == (100,) and labels.max() == 125
+    with pytest.warns(RuntimeWarning, match="no engine was predicted early"):
+        scored = evaluate(labels, np.full(100, 125.0))
+    # No capped answer is above 125, so no prediction is below its answer:
+    # Equation 24's N_under is 0 and its sum is 0.
+    assert (scored["n_early"], scored["n_late"]) == (0, 100)
+    assert np.isnan(scored["asue"])
+    # Late on every engine, by 50.55 cycles on average: the mistake the NASA
+    # score punishes hardest. The 0.0 returned until 2026-10-03 called this
+    # the best ASUE there is.
+    assert round(scored["mean_error"], 2) == 50.55
+    assert round(scored["score"], 1) == 1502460.8
+    # One cycle lower, the 11 engines whose answers were capped from above 125
+    # are each early by exactly one cycle, so ASUE is (1 + ... + 1) / 11.
+    lower = evaluate(labels, np.full(100, 124.0))
+    assert (lower["n_early"], lower["asue"]) == (11, 1.0)
+    assert (np.flatnonzero(labels > 124.0) + 1).tolist() == [25, 39, 47, 55, 65, 73, 74, 83, 89, 95, 96]
+
+
+# --- graph/controls.py: graphs with Table 3's 41 connections but not its choices (A-41) ---
+
+
+def test_example_one_swap_on_table_3_moves_two_connections_and_keeps_four_counts():
+    """P15-Nf and T50-W32 become P15-W32 and T50-Nf; all four sensors still have 4 connections each."""
+    from thesis_gnn_rul_xai.graph.controls import (
+        build_random_adjacency,
+        build_rewired_adjacency,
+        swap_ends,
+    )
+
+    table3, symbols = build_physics_adjacency()
+    at = {symbol: i for i, symbol in enumerate(symbols)}
+    count = dict(zip(symbols, table3.sum(axis=1).astype(int).tolist(), strict=True))
+    assert [count[s] for s in ("P15", "Nf", "T50", "W32")] == [4, 4, 4, 4]
+    first, second = (at["P15"], at["Nf"]), (at["T50"], at["W32"])
+    assert (first, second) == ((3, 5), (2, 13))
+    assert table3[first] == table3[second] == 1                  # both are in Table 3
+    new_first, new_second = swap_ends(first, second)
+    assert (new_first, new_second) == ((3, 13), (2, 5))          # P15-W32 and T50-Nf
+    assert table3[new_first] == table3[new_second] == 0          # neither is, yet
+    swapped = table3.copy()
+    for (i, j), value in ((first, 0), (second, 0), (new_first, 1), (new_second, 1)):
+        swapped[i, j] = swapped[j, i] = value
+    # P15 lost Nf and gained W32, Nf lost P15 and gained T50, and so on: 4 each.
+    np.testing.assert_array_equal(swapped.sum(axis=1), table3.sum(axis=1))
+    assert int(swapped.sum() // 2) == 41
+
+    # A swap that would join one pair twice is refused: T24-T30 with T50-W32
+    # would give T24-W32 and T30-T50, and T30-T50 is already in Table 3.
+    assert swap_ends((at["T24"], at["T30"]), (at["T50"], at["W32"])) == ((0, 13), (1, 2))
+    assert table3[at["T30"], at["T50"]] == 1
+
+    # Seed 42's 4,000 proposals end with every count as Table 3 has it and 19
+    # of the 41 connections the engineer drew; Nf-NRf, a speed and the
+    # corrected speed computed from it, is not among them.
+    rewired, _ = build_rewired_adjacency(42)
+    assert rewired.sum(axis=1).astype(int).tolist() == [7, 8, 4, 4, 7, 4, 8, 7, 6, 4, 4, 7, 8, 4]
+    assert int((rewired * table3).sum() // 2) == 19
+    assert table3[at["Nf"], at["NRf"]] == 1 and rewired[at["Nf"], at["NRf"]] == 0
+    # The random graph keeps only the count: seed 42 shares 19 connections too,
+    # but gives P30 11 where Table 3 gives it 7.
+    drawn, _ = build_random_adjacency(42)
+    assert int(drawn.sum() // 2) == 41 and int((drawn * table3).sum() // 2) == 19
+    assert (int(drawn[at["P30"]].sum()), count["P30"]) == (11, 7)
+
+
+def test_example_a_random_41_connection_graph_on_14_sensors_is_split_once_in_386_draws():
+    """Counting every such graph: 0.259 % leave some sensor unable to reach another, nearly all by leaving one alone."""
+    from functools import cache
+    from math import comb
+
+    @cache
+    def in_one_piece(n: int, m: int) -> int:
+        """Graphs on n named sensors with m connections in which every sensor reaches every other."""
+        if n == 1:
+            return int(m == 0)
+        total = comb(comb(n, 2), m)
+        # Take away every graph in which sensor 1's piece holds only k sensors.
+        for k in range(1, n):
+            for j in range(m + 1):
+                total -= comb(n - 1, k - 1) * in_one_piece(k, j) * comb(comb(n - k, 2), m - j)
+        return total
+
+    # Four sensors and three connections, by hand: C(6, 3) = 20 graphs; the 4
+    # triangles leave one sensor alone, the other 16 reach everything.
+    assert (comb(6, 3), in_one_piece(4, 3)) == (20, 16)
+    assert [in_one_piece(4, m) for m in range(7)] == [0, 0, 0, 16, 15, 6, 1]
+
+    every = comb(comb(14, 2), 41)                       # 41 of the 91 possible pairs
+    split = 1 - in_one_piece(14, 41) / every
+    assert round(split, 6) == 0.002592 and round(1 / split) == 386
+    # Some sensor joined to nothing, by counting in and out over which are alone.
+    alone = sum((-1) ** (k + 1) * comb(14, k) * comb(comb(14 - k, 2), 41) for k in range(1, 15)) / every
+    assert round(alone, 6) == 0.00259 and alone / split > 0.999
+
+
+# --- Which way the three graphs' test errors lean, against the label and against
+# the life truly left (added 2026-10-03). The log's comparison of the graphs
+# (assumption A-27) and step 5 of notebooks/graph/04_comparison_fd001.ipynb quote
+# these figures; the notebook does not compute the uncapped ones itself.
+
+LEAN_RUNS = {
+    "Table 3": "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z",
+    "correlation": "fd001_correlation_row_cap_5seed_varsplit_cfg7fdfce_f386291-dirty_20260914T150213Z",
+    "every sensor": "fd001_complete_row_cap_5seed_varsplit_cfgf21547_f386291-dirty_20260914T150527Z",
+}
+
+
+def test_example_the_lean_of_the_errors_against_the_capped_label_and_against_the_life_truly_left(raw_dir):
+    """Every seed's average error is 1.070 cycles lower against NASA's answer than against the label capped at 125."""
+    import json
+    from pathlib import Path
+
+    from scipy import stats
+
+    from thesis_gnn_rul_xai.data.loading import read_rul_file
+    from thesis_gnn_rul_xai.utils.paths import project_root, reports_dir
+
+    paths = {graph: reports_dir() / name for graph, name in LEAN_RUNS.items()}
+    if not all((path / "seed_46" / "test_predictions.csv").is_file() for path in paths.values()):
+        pytest.skip("the three stored runs of 2026-09-14 are not in reports/")
+
+    # NASA's answer, a pandas Series indexed by test engine 1 to 100, and the
+    # label every score is computed against: the same, capped at 125.
+    life = read_rul_file(raw_dir / "RUL_FD001.txt")
+    label = np.minimum(life, 125)
+    # 11 engines have more than 125 cycles left, 107 cycles above the cap between
+    # them, so the average label is 107 / 100 = 1.070 below the average life.
+    assert int((life > 125).sum()) == 11 and int((life - label).sum()) == 107
+
+    by_label, by_life, highest = {}, {}, {}
+    for graph, path in paths.items():
+        by_label[graph], by_life[graph], highest[graph] = [], [], 0.0
+        for seed in range(42, 47):
+            saved = pd.read_csv(path / f"seed_{seed}" / "test_predictions.csv").set_index("unit")
+            truly_left = life.loc[saved.index].to_numpy()
+            np.testing.assert_array_equal(saved["rul"].to_numpy(), np.minimum(truly_left, 125))
+            late_by_label = saved["predicted"] - saved["rul"]
+            late_by_life = saved["predicted"] - truly_left
+            # No prediction reaches 125, so a prediction above its label is never on a capped
+            # engine: the late engines and the largest late error are the same either way.
+            assert int((late_by_label > 0).sum()) == int((late_by_life > 0).sum())
+            assert late_by_label.max() == pytest.approx(late_by_life.max(), abs=1e-9)
+            by_label[graph].append(float(late_by_label.mean()))
+            by_life[graph].append(float(late_by_life.mean()))
+            highest[graph] = max(highest[graph], float(saved["predicted"].max()))
+        by_label[graph], by_life[graph] = np.array(by_label[graph]), np.array(by_life[graph])
+        np.testing.assert_allclose(by_label[graph] - by_life[graph], 1.07, atol=1e-9)
+
+    def rounded(values):
+        return [round(float(v), 3) for v in values]
+
+    # Seed 42 of Table 3, the first of the five: 1.158 above the label, 0.088 above the life.
+    assert rounded(by_label["Table 3"]) == [1.158, 1.543, 2.328, 1.036, -1.763]
+    assert rounded(by_life["Table 3"]) == [0.088, 0.473, 1.258, -0.034, -2.833]
+    assert rounded(by_label["correlation"]) == [2.661, 3.2, 4.252, 2.289, 0.655]
+    assert rounded(by_life["correlation"]) == [1.591, 2.13, 3.182, 1.219, -0.415]
+    summary = {graph: (round(float(by_life[graph].mean()), 3), round(float(by_life[graph].std(ddof=1)), 3))
+               for graph in LEAN_RUNS}
+    assert summary == {"Table 3": (-0.21, 1.551), "correlation": (1.541, 1.32), "every sensor": (1.801, 1.615)}
+    # Against the label the correlation graph is above it on every seed; against the life, not on seed 46.
+    assert (by_label["correlation"] > 0).all() and by_life["correlation"][-1] < 0
+    assert round(float(stats.ttest_1samp(by_life["Table 3"], 0).pvalue), 2) == 0.78
+    assert round(float(stats.ttest_1samp(by_life["correlation"], 0).pvalue), 3) == 0.059
+    assert round(max(highest["Table 3"], highest["correlation"]), 3) == 123.356
+    assert round(max(highest.values()), 3) == 123.754
+
+    # The two places that quote these figures, in their own minus sign.
+    def shown(value):
+        return f"{value:.3f}".replace("-", "\N{MINUS SIGN}")
+
+    log = (project_root() / "docs" / "ASSUMPTIONS.md").read_text(encoding="utf-8")
+    note = log[log.index("**They do make different errors.**"):log.index("**What this says about the paper's claim.**")]
+    for figure in (f"{shown(-0.210)} ± 1.551", "1.541 ± 1.320", shown(-0.415), "123.356", "1.070"):
+        assert figure in note, figure
+    notebook = json.loads(Path(project_root(), "notebooks", "graph", "04_comparison_fd001.ipynb")
+                          .read_text(encoding="utf-8"))
+    step5 = next("".join(cell["source"]) for cell in notebook["cells"] if cell.get("id") == "3c91166f")
+    for figure in (f"{shown(-0.210)} ± 1.551", "1.541 ± 1.320", shown(-0.415), "1.801 ± 1.615", "1.070"):
+        assert figure in step5, figure

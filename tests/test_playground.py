@@ -1590,3 +1590,157 @@ def test_the_network_table_is_layer_summary_with_the_stage_in_the_input_row(temp
     script = (ROOT / "src/thesis_gnn_rul_xai/docsite/assets/playground.js").read_text(encoding="utf-8")
     assert "table4Rows" not in script and '"Temporal"' not in script
     assert "preview.layers.map(function (l) {" in script and "esc(l.from)" in script
+
+
+# --- the page calls a capped label capped (added 2026-10-03) ------------------
+
+CAPPED_RUN = "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z"
+
+
+def test_the_page_calls_a_capped_test_label_capped_not_true(raw_dir):
+    """Seed 42 of the stored default run, named by the page's own code.
+
+    The run capped its test labels at 125. Test engine 1 has 112 cycles left,
+    under the cap, so its label is 112 and the slider reads "engine 1, capped
+    remaining life 112, predicted 108.6". Eleven of the 100 labels read 125
+    where NASA's answer file gives 126 to 145, so the page may not call that
+    column the true remaining life; it says so only for a run that left its
+    test labels uncapped, and an engine's own windows are always capped.
+    """
+    import shutil
+
+    import numpy as np
+
+    from thesis_gnn_rul_xai.data.loading import read_rul_file
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to run the page's naming code.")
+    if not (ROOT / "reports" / CAPPED_RUN / "seed_42" / "test_predictions.csv").is_file():
+        pytest.skip(f"The stored run {CAPPED_RUN} is not in reports/.")
+    detail = playground.run_detail(ROOT, CAPPED_RUN)
+    rows = detail["per_seed"]["42"]["predictions"]
+    answers = read_rul_file(raw_dir / "RUL_FD001.txt")
+    labels = np.array([row["rul"] for row in rows])
+    truth = answers.loc[[row["unit"] for row in rows]].to_numpy()
+    np.testing.assert_array_equal(labels, np.minimum(truth, 125))
+    assert sorted(truth[labels < truth].tolist()) == [126, 128, 128, 131, 135, 136, 137, 137, 137,
+                                                      142, 145]
+
+    script = r"""
+const fs = require('fs'), vm = require('vm');
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const context = {window: {}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {S, lifeLabel, lifeSeriesName, explanationCapped, explanationCaption, predictionsChartName,
+    setup: function (helpers) { T = helpers; }};`), context);
+const P = context.window.test;
+P.setup({escapeHtml: s => String(s), fixed: (x, n) => Number(x).toFixed(n)});
+const d = input.detail, row = input.row;
+P.S.explain = P.S.explain || {};
+P.S.explain.detail = d;
+P.S.explain.values = {summary: {scope: 'test'}};
+const out = {series: P.lifeSeriesName(d.clip_test_labels, d.rul_max), order: P.lifeLabel(d.clip_test_labels),
+             caption: P.explanationCaption(row),
+             engine: P.explanationCapped({summary: {scope: 'engine'}})};
+P.S.explain.detail = Object.assign({}, d, {clip_test_labels: false});
+out.uncapped = P.explanationCaption(row);
+P.S.explain.detail = Object.assign({}, d, {clip_test_labels: undefined});
+out.unrecorded = P.explanationCaption(row);
+out.engineWhenUncapped = P.explanationCapped({summary: {scope: 'engine'}});
+out.chart = P.predictionsChartName(d.clip_test_labels, d.rul_max);
+out.chartUncapped = P.predictionsChartName(false, d.rul_max);
+out.chartUnrecorded = P.predictionsChartName(undefined, d.rul_max);
+process.stdout.write(JSON.stringify(out));
+"""
+    payload = {"detail": {key: detail[key] for key in ("clip_test_labels", "rul_max")}, "row": rows[0]}
+    result = subprocess.run([node, "-e", script], cwd=ROOT, input=json.dumps(payload),
+                            text=True, encoding="utf-8", capture_output=True)
+    assert result.returncode == 0, result.stderr
+    named = json.loads(result.stdout)
+    assert (rows[0]["unit"], rows[0]["rul"], round(rows[0]["predicted"], 1)) == (1, 112, 108.6)
+    assert named == {
+        "series": "remaining life capped at 125",
+        "order": "capped remaining life",
+        "caption": "engine 1, capped remaining life 112, predicted 108.6",
+        "engine": True,
+        "uncapped": "engine 1, true remaining life 112, predicted 108.6",
+        "unrecorded": "engine 1, test label 112, predicted 108.6",
+        "engineWhenUncapped": True,
+        # The Fig. 8 chart's spoken name (added 2026-10-03), after the series beside it.
+        "chart": "predictions against the remaining life capped at 125",
+        "chartUncapped": "predictions against the true remaining life",
+        "chartUnrecorded": "predictions against the test label",
+    }
+    source = (ROOT / "src/thesis_gnn_rul_xai/docsite/assets/playground.js").read_text(encoding="utf-8")
+    assert "against truth" not in source
+    assert "label: predictionsChartName(d.clip_test_labels, d.rul_max)" in source
+
+
+# --- comparing two runs when one seed has no ASUE (assumption A-39) ---
+
+
+def test_a_run_comparison_keeps_each_seed_with_its_own_difference_and_leaves_an_undefined_mean_undefined(tmp_path):
+    """With seed 43's ASUE not a number, seeds 44 to 46 keep their own differences and the mean is None."""
+    import shutil
+
+    import numpy as np
+    import pandas as pd
+
+    first = "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z"
+    second = "fd001_physics_row_cap_5seed_varsplit_noearlystop_cfgba82e3_f4f40ad_20261002T170226Z"
+    if not all((ROOT / "reports" / name / "results.csv").is_file() for name in (first, second)):
+        pytest.skip("the two stored runs this test names are not in reports/")
+    # Copies of the two runs' records, never the runs themselves (working rule 3a).
+    for name in (first, second):
+        (tmp_path / "reports" / name).mkdir(parents=True)
+        for record in ("summary.json", "results.csv", "preprocessing_config.yaml", "model_config.yaml"):
+            shutil.copy(ROOT / "reports" / name / record, tmp_path / "reports" / name / record)
+
+    # Both runs as stored: five seeds paired, the default against the same
+    # network trained all 200 passes; second minus first, seed by seed.
+    whole = playground.compare_runs(tmp_path, first, second)["measures"]["asue"]
+    assert [(row["seed"], round(row["difference"], 4)) for row in whole["per_seed"]] == [
+        (42, -0.3967), (43, 1.5287), (44, -1.3184), (45, 0.4724), (46, 0.0)]
+    assert round(whole["mean_difference"], 4) == 0.0572   # (-0.3967 + 1.5287 - 1.3184 + 0.4724 + 0) / 5
+
+    # Seed 43 of the second run with no engine predicted early: its ASUE is
+    # not a number, which results.csv holds as an empty field.
+    results = pd.read_csv(tmp_path / "reports" / second / "results.csv")
+    results.loc[results["seed"] == 43, "asue"] = np.nan
+    results.to_csv(tmp_path / "reports" / second / "results.csv", index=False)
+    asue = playground.compare_runs(tmp_path, first, second)["measures"]["asue"]
+    assert [(row["seed"], None if row["difference"] is None else round(row["difference"], 4))
+            for row in asue["per_seed"]] == [(42, -0.3967), (43, None), (44, -1.3184), (45, 0.4724), (46, 0.0)]
+    # Undefined, as a mean over seeds is when a seed has no ASUE, rather than
+    # the -0.3107 of the four seeds that have one.
+    assert (asue["mean_difference"], asue["t"], asue["p"]) == (None, None, None)
+
+
+def test_one_random_graph_for_every_seed_with_nothing_held_back_is_refused_before_a_job_starts(monkeypatch):
+    """scripts/train.py refuses --fixed-split with a random or rewired graph and no engine held back; so does the form."""
+    conflict = {"fixed_split": True, "validation_fraction": 0.0, "early_stopping": False}
+    # Today the form offers neither graph, so both are refused by their name first.
+    for graph in ("random", "rewired"):
+        with pytest.raises(playground.SettingsError, match="Sensor graph must be one of"):
+            playground.validate_settings({**conflict, "graph": graph})
+
+    # Were it to offer them, the combination would still be refused, in the
+    # training script's terms, and only the combination.
+    from thesis_gnn_rul_xai.docsite.playground.settings import _BY_KEY
+
+    offered = _BY_KEY["graph"]["choices"]
+    monkeypatch.setitem(_BY_KEY["graph"], "choices", [
+        *offered, {"value": "random", "label": "random", "source": None},
+        {"value": "rewired", "label": "rewired", "source": None}])
+    for graph in ("random", "rewired"):
+        with pytest.raises(playground.SettingsError, match="needs engines held back"):
+            playground.validate_settings({**conflict, "graph": graph})
+        held_back = playground.validate_settings({**conflict, "graph": graph, "validation_fraction": 0.2})
+        assert [note["text"] for note in playground.caveats(held_back) if note["ref"] == "A-41"] == [
+            "The graph is drawn at random from one seed and serves every seed."]
+        playground.validate_settings({**conflict, "graph": graph, "fixed_split": False})
+    for graph in ("physics", "complete", "correlation"):
+        playground.validate_settings({**conflict, "graph": graph})

@@ -218,6 +218,14 @@ def train(
         train_set, model.rul_max, config.batch_size, shuffle=True, generator=generator
     )
     loss_function = nn.MSELoss()
+    # ASSUMPTION A-40: nothing is added to keep the weights small or to stop
+    # the network memorising its training engines. Adam keeps PyTorch's weight
+    # decay of 0, the network has no dropout, and no step is limited unless
+    # gradient_clip is set, which it is not by default. Section 3.4 and Table 6
+    # of the paper name the loss, the optimiser, the two rates, the passes and
+    # the batch size, and nothing of the kind. The only guard against
+    # over-training is the held-back engines and stopping on them (assumptions
+    # A-06 and A-18). Written up in docs/ASSUMPTIONS.md.
     optimiser = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     scheduler = _build_scheduler(optimiser, config)
     is_plateau = isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)

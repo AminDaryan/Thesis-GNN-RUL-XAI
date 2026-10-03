@@ -47,7 +47,7 @@ identifier below.
 | A-24 | What `phi_0` is in Equation 14 | Calls it "the average value of target variable across all samples" | The prediction at the average window, forced by A-20; **10.719 cycles** from the paper's wording |
 | A-26 | Size and depth of the recurrent stage | Table 4 has **no recurrent row**; Table 6 lists no hidden size, depth or projection | One layer, hidden size 32, a linear projection to the one number Table 4 prints; **fourteen dedicated cells**, which the paper does state |
 | A-25 | Where the scaling is fitted | Fig. 1 puts normalisation **before** the train and test datasets; never names the fitting set | Split first, fit on training engines only |
-| A-27 | A sensor graph built from the data | Never builds one; its Conclusions claim its own graph goes "beyond data-driven correlations" | The 41 most strongly correlated pairs on the training engines, as many edges as Table 3; **indistinguishable from Table 3 by test RMSE** (+0.096, p = 0.655), lower held-back error on every seed, by 1.8 to 2.0 cycles on average on each of four summaries of it (p 0.010 to 0.020), but its test predictions run later; with the recurrent stage, indistinguishable again by test RMSE (+0.002, p = 0.995) and no held-back advantage that survives a summary no pass was chosen by |
+| A-27 | A sensor graph built from the data | Describes none for its network, using correlations only to choose sensors, and never says what replaced its graph in Table 11; its Conclusions claim its own graph goes "beyond data-driven correlations" | The 41 most strongly correlated pairs on the training engines, as many edges as Table 3; **indistinguishable from Table 3 by test RMSE** (+0.096, p = 0.655), lower held-back error on every seed, by 1.8 to 2.0 cycles on average on each of four summaries of it (p 0.010 to 0.020), but its test predictions run later; with the recurrent stage, indistinguishable again by test RMSE (+0.002, p = 0.995) and no held-back advantage that survives a summary no pass was chosen by |
 | A-28 | Each sensor's last reading, average and change as node features | Never considered; Table 4 prints one number per sensor, from the LSTM stage | A stage outside the paper, not the default; **2.910 cycles below the last cycle** (p = 0.00025, engine interval [−5.19, −0.63]), indistinguishable from the recurrent stage on test error |
 | A-29 | Explaining the sensor graph itself | Explains sensor nodes only (Section 2.4), yet says its rankings set "edge weights" and validate its graph (Section 4.4) | Walk shares from GNN-LRP, of the score before the sigmoid, with the authors' own setting of gamma (0, 1.5, 0), 0 at the first graph layer; on the default network about half the score is the dense layers' constant (51 ± 4 %), and how much stays within a sensor's group is mostly set by the graph |
 | A-30 | What removing one connection means | Removes the whole graph once and retrains; never one connection | Delete it from the raw graph both ways, rescale, rerun without retraining; on the default network its effect ranks the connections against what flowed along them (rank correlation −0.26 ± 0.14, p = 0.013) |
@@ -59,6 +59,17 @@ identifier below.
 | A-36 | A GRU in place of each sensor's LSTM | Has no such stage; its "GRU [55]" row is another published method | An optional stage at the LSTM stage's size, PyTorch's cell; on FD001 against the LSTM stage −0.416 test RMSE (p = 0.455) and −0.999 held-back (p = 0.0047), neither clearing the bar |
 | A-37 | The bar when several comparisons are read together | Tests no difference: one number per cell, no seeds, no spread | p below 0.05 divided by the number of comparisons; among the seventeen of the FD001 sensitivity study it sets aside one test and two held-back differences |
 | A-38 | Ordinary models' predictions outside 0 to the label ceiling | Never says how its compared methods' numbers were obtained or bounded | Clipped to 0 to 125 before scoring; lowers linear regression on the 42 window summaries by 1.295 cycles of RMSE, every other model by at most 0.144; no comparison with the network changes side |
+| A-39 | ASUE when no engine is predicted early | Equation 24 divides by `N_under`, the number predicted early, and never says what the measure is when that is 0 | "Not a number", with a warning, and the count of early engines written beside every ASUE; changes no stored figure (fewest early engines in any of 464 stored prediction files: 25 of 100) |
+| A-40 | Regularisation: anything added to keep a network from memorising its training engines | Section 3.4 and Table 6 list the loss, optimiser, rates, passes, batch size and window, and no weight decay, dropout, clipping or early stopping | None of the first three; the held-back engines and early stopping (A-06, A-18) are the only guard. Over 200 passes the default's held-back error rises 0.411 ± 0.398 cycles after its best pass, the recurrent stage's 3.574 ± 0.721 |
+| A-41 | Graphs with the paper's 41 connections and none of its knowledge | Never describes drawing a graph at random or rewiring one; its "w/o Physics prior" row never says what replaced Table 3 | 41 pairs picked at random, or Table 3 rewired by 4,000 proposed swaps keeping every sensor's number of connections; one graph per seed, redrawn until in one piece (0.26 % of random draws are not); **not yet trained** |
+| F-22 | The networks beside ordinary models with no sensor graph | Compares its network with eight published methods, each row citing a source (Tables 7 to 10); never says how their numbers were obtained (A-38) | Measured on FD001 at `6733d77`, beside both networks with their best held-back pass restored and trained the paper's way: given the default's fourteen latest readings, gradient boosting, a random forest and a network of 64 trail it on four or five seeds of five by 0.12 to 1.57 cycles, no interval over the test engines excluding zero; given each window's latest reading, average and slope, untuned gradient boosting beats the default by 4.36 and 4.35 (p = 0.0001 and < 0.0001) and the recurrent-stage network on every seed, by 1.09 with its best pass restored (p = 0.0048) and 3.58 trained the paper's way (p = 0.0012, its interval over engines clear of zero), neither under the bar 0.05 / 58; given the latest reading and slope without the average, a row added after the first results were seen, by 3.91 trained the paper's way (p = 0.00085, just under that bar; interval over the test engines +1.93 to +5.95) |
+
+The table lists the assumptions, the choices this project made. Findings,
+facts established by measurement, are listed only in their own entries, with
+one exception kept on purpose: the comparison with ordinary models (finding
+F-22) has a row, because it answers the question a reader brings to every
+result in this table, whether a model with no sensor graph does as well. Its
+last column is a measurement, not a choice.
 
 ---
 
@@ -1406,7 +1417,9 @@ have never been run in this repository. `scripts/train.py --graph` offers the
 paper's graph, every sensor joined, and the 41 strongest correlations
 (assumption A-27); the audit's own three-seed figures for random graphs were
 measured outside the repository and name no commit here. Running them needs a
-new graph option and new training.
+new graph option and new training. (Added 2026-10-03: the option now exists,
+`--graph random` and `--graph rewired`, drawn one per seed; assumption A-41
+records how and holds the commands. The training has not been run.)
 
 ```python
 import numpy as np
@@ -1721,8 +1734,105 @@ difference between them. Yet the gap in agreement grew from 0.004 to 0.035 with
 only the training changed. How far a given difference in the stand-in moves the
 ranking is a property of the trained network, not of the data alone.
 
-Both tables come from one network, seed 42. How much a different seed moves them
-is not measured.
+Both tables come from one network, seed 42. Until 2026-10-03 this paragraph went
+on: "How much a different seed moves them is not measured." It has now been
+measured for the second table, the current schedule's.
+
+**Five seeds, added 2026-10-03.** The run
+`fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`
+trained five networks, seeds 42 to 46, under exactly the settings of the second
+table: z-score scaling, row rescaling of the graph, nothing held back, the step
+schedule, and all 200 passes over the training data with no early stopping. It
+was trained at a clean commit `19dceb5` and its test error is 16.818 ± 0.157
+cycles. Each network was reloaded, checked against the test error its run
+recorded, and explained with the code at `6733d77`, from a clean checkout, on
+the same 20 test windows as the tables above (the last window of test engines
+1 to 20).
+
+**Seed 42 of that run is the network of the second table.** It gives back every
+figure in it to the last printed digit: the order of the four leading sensors
+under each stand-in, 3.340, 2.952 and 3.192, and +0.956 and +0.965. So
+`scripts/train.py` at `19dceb5` and the verification script at `8b487ab-dirty`
+train the same network for seed 42 when nothing is held back.
+
+With nothing held back every seed trains on all 100 training engines, so the
+scaling, the training windows and all three stand-ins are byte for byte the same
+on every seed (checked: the code below prints a fingerprint of the scaled
+training windows and of each stand-in, a short code computed from their exact
+bytes, and all five seeds print the same four). Only the starting weights and
+the order of the batches differ. Over the five seeds, as mean ± standard
+deviation (the sample standard deviation, as `scripts/train.py` reports it),
+with the smallest and largest in brackets:
+
+| Stand-in | Four most important sensors | Seeds giving that order | mean \|φ\| | Spearman with the mean window |
+|---|---|---|---|---|
+| mean window (used here) | Nc, T50, W31, T24 | 5 of 5 | 3.399 ± 0.054 [3.340, 3.485] | — |
+| median window | T50, W31, T24, Nc | 4 of 5; seed 42 gives T50, T24, W31, Nc | 3.043 ± 0.099 [2.952, 3.194] | +0.953 ± 0.019 [0.925, 0.969] |
+| all zeros | T50, Nc, W31, T24 | 3 of 5; seed 45 gives Nc, T50, W31, T24 and seed 46 Nc, W31, T50, T24 | 3.428 ± 0.263 [3.160, 3.749] | +0.968 ± 0.015 [0.952, 0.991] |
+
+"mean \|φ\|" is the average size of one sensor's contribution, in cycles, over
+the 20 windows and the 14 sensors. The Spearman figure is the rank correlation
+between a stand-in's ordering of the fourteen sensors and the mean window's:
++1 when the two orders are identical.
+
+**What holds on every seed.** The same four sensors, `Nc`, `T50`, `W31` and
+`T24`, lead under all three stand-ins on all five seeds, and `P15` is
+fourteenth of fourteen under all three on all five. Under the mean window the
+order of the four is the same on every seed, so `Nc` first and `T50` second is
+not one network's accident under the current schedule. Whether `T50` led on
+other seeds under the old schedule cannot be checked: no stored run trains the
+old schedule with nothing held back and keeps its networks. And zeros agree
+closely with the mean window on every seed, 0.952 at the lowest, nowhere near
+the −0.16 of min-max below.
+
+**What moves.** With the data and the stand-ins identical, the agreement between
+zeros and the mean window runs from 0.952 to 0.991 over the seeds, so the gap
+from perfect agreement runs from 0.009 to 0.048. The paragraph above read the
+gap growing from 0.004 to 0.035 as the effect of changing the schedule. Changing
+only the seed already moves it that far, so the five seeds confirm that paragraph's
+conclusion, that how far a difference in the stand-in moves the ranking is a
+property of the trained network. They also show that one network per schedule
+cannot attribute the change to the schedule: the old schedule's 0.996 lies
+0.005 above the highest of the five seeds under the current one. The average size
+of a contribution is least settled under zeros (standard deviation 0.263 cycles)
+and most settled under the mean window (0.054).
+
+Reproduce with the code at `6733d77`:
+
+```python
+import hashlib
+
+import numpy as np
+from scipy.stats import spearmanr
+from thesis_gnn_rul_xai.explain import shap_for_each_seed, shap_values
+from thesis_gnn_rul_xai.training import read_run
+
+
+def fingerprint(array):                              # the first 12 characters of a SHA-256 of its bytes
+    return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()[:12]
+
+
+run = read_run("fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z")
+for e in shap_for_each_seed(run, units=[]):        # load and check each network
+    symbols = list(e.prepared.sensor_symbols)
+    windows = e.prepared.test.features[:20]          # the last window of test engines 1 to 20
+    stand_ins = {"mean window": e.baseline,
+                 "median window": np.median(e.prepared.train.features, axis=0).astype(np.float32),
+                 "all zeros": np.zeros_like(e.baseline)}
+    print(e.seed, "training windows", fingerprint(e.prepared.train.features),   # the same on every seed
+          {name: fingerprint(s) for name, s in stand_ins.items()})
+    size = {name: np.abs(shap_values(e.model, windows, s)).mean(axis=0)
+            for name, s in stand_ins.items()}
+    for name, s in size.items():
+        order = [symbols[i] for i in np.argsort(-s)]
+        print(e.seed, name, order[:4], "P15", order.index("P15") + 1, round(s.mean(), 3),
+              round(spearmanr(size["mean window"], s).statistic, 3))
+```
+
+Each seed prints one line of fingerprints, `723eaa2bb6bd` for the training
+windows on all five, then one line per stand-in: the four leading sensors,
+`P15`'s place out of fourteen, mean \|φ\| and the Spearman figure. The table's
+mean, spread and range are taken over the five unrounded values.
 
 **Under the previous min-max default the same comparison said the opposite.**
 Preserved from before the A-22 rework, measured under `minmax_per_condition`:
@@ -1740,8 +1850,12 @@ place.
 
 **The finding, which is more general than either measurement.** *The safety of
 a baseline is a property of the scaling, not of the baseline.* Zero is
-catastrophic under min-max and almost exactly right under z-score, and nothing
-about the choice of stand-in changed in between. So a SHAP baseline cannot be
+catastrophic under min-max and close to the mean window under z-score (a rank
+correlation of 0.952 to 0.991 over the five seeds above), and nothing about the
+choice of stand-in changed in between. (Note of 2026-10-03: this said "almost
+exactly right under z-score", written beside one network's +0.996; the five
+seeds put it lower, and a review of the explanation folder's guide, which
+repeated the +0.996, led here.) So a SHAP baseline cannot be
 justified on its own; it has to be justified against the rescaling in force,
 and any paper that names one without naming the other has not said enough to be
 reproduced. Wen et al. name neither.
@@ -1752,7 +1866,9 @@ neutral onto.
 
 Any figure quoted from this analysis must say which baseline **and which
 scaling** produced it — and, since the correction of 2026-09-14 above, **which
-training**: the learning-rate schedule and whether engines were held back.
+training**: the learning-rate schedule and whether engines were held back. Since
+2026-10-03 it is quoted from the five seeds, with their spread, not from seed
+42's network alone.
 
 ---
 
@@ -1808,17 +1924,137 @@ two engines whose reading crosses between its levels, but only 5.3 % on engine
 25, where it never does. Its average contribution moved by between −2.1 % and
 +8.0 %, and the top sensor's by at most 5.1 %.
 
+(Note of 2026-10-03: the sentence above set engine 25's small change beside the
+fact that its reading never changes level, as though the second explained the
+first. The five seeds below do not support that. Changing only the seed moves
+engine 25's largest `P15` contribution by nearly the same proportion as engines
+5 and 82's: its standard deviation over the five seeds is 20.7 % of the mean,
+against 20.6 % and 24.1 %, and the smallest of the five is 36.2 % below the
+largest, against 43.6 % and 50.2 %. The 5.3 % compares one pair of networks, and
+cannot be read as engine 25's largest contribution being insensitive to how the
+network was trained. What survives is the ordering: on every seed engine 25's
+largest contribution is the lowest of the three, and its highest over the five
+seeds, 2.626 cycles, is below the lowest of the other two, 3.218. An independent
+review of the five-seed figures found this on 2026-10-03.)
+
 Every argument that follows still holds under the current schedule, with its
 numbers changed:
 
 - the medians still do not single out engine 25 as the quiet one: 0.445 against
   0.363 and 0.420;
 - the maxima still do, 6.814 and 6.287 against 1.675;
-- nothing on engine 25 reaches 1.8 cycles.
+- nothing on engine 25 reaches 1.8 cycles. (Note of 2026-10-03: true of seed
+  42's network only; on three of five seeds something on engine 25 does; see
+  the five seeds below.)
 
 Where the text below quotes 9.449, 9.526 or "9.5 cycles", those are figures
-under the old schedule. As in A-20, this is one network, seed 42, and how much a
-different seed moves it is not measured.
+under the old schedule. As in A-20, this is one network, seed 42. Until
+2026-10-03 this paragraph went on: "and how much a different seed moves it is
+not measured." It has now been measured for the current schedule's table.
+
+**Five seeds, added 2026-10-03.** The five networks are those of A-20's
+five-seed section: the run
+`fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`,
+seeds 42 to 46, z-score scaling, row rescaling, nothing held back, the step
+schedule, all 200 passes over the training data, trained at a clean commit
+`19dceb5` (test error 16.818 ± 0.157 cycles) and explained with the code at
+`6733d77`, from a clean checkout, at every window of the three engines. Seed 42
+gives back every figure of the table above to the last printed digit, so it is
+the same network. The "top sensor" column is that sensor's mean \|φ\|: computed
+that way, seed 42 gives 11.146 for `T24` on engine 5.
+
+Over the five seeds, as mean ± standard deviation (the sample standard
+deviation, as `scripts/train.py` reports it), with the smallest and largest in
+brackets:
+
+| Engine | Windows | `P15` rank | mean \|φ\| for `P15` | median \|φ\| | max \|φ\| | top sensor |
+|---|---|---|---|---|---|---|
+| 5  | 240 | 14 of 14 on 5 seeds of 5 | 0.760 ± 0.144 [0.541, 0.941] | 0.389 ± 0.093 [0.249, 0.489] | 5.859 ± 1.208 [3.845, 6.814] | 11.362 ± 0.284 [11.144, 11.815]; `T24` on three seeds, `T50` on two |
+| 25 | 201 | 14 of 14 on 5 seeds of 5 | 0.485 ± 0.018 [0.464, 0.504] | 0.448 ± 0.024 [0.430, 0.489] | 2.013 ± 0.417 [1.675, 2.626] | 9.748 ± 0.275 [9.383, 10.053]; `Nc` on all five |
+| 82 | 185 | 14 of 14 on 5 seeds of 5 | 0.731 ± 0.162 [0.484, 0.931] | 0.380 ± 0.103 [0.204, 0.456] | 5.373 ± 1.294 [3.218, 6.465] | 14.981 ± 0.120 [14.799, 15.119]; `Nc` on all five |
+
+**The rank holds on every seed, and not narrowly.** `P15` is fourteenth of
+fourteen on all three engines on all five seeds, fifteen cases of fifteen. In
+every one of them its average contribution is between 0.290 and 0.505 of the
+thirteenth sensor's, which is `Nf` on engines 5 and 25 and `NRf` on engine 82,
+on every seed.
+
+**The maxima still single out engine 25 on every seed, by less on some.** On
+every seed engine 25's largest `P15` contribution is the smallest of the three.
+The smaller of the other two engines' is 3.75, 3.52, 1.43, 2.04 and 3.30 times
+it on seeds 42 to 46. Taken over all five seeds together, the highest on engine
+25 (2.626, seed 45) is still below the lowest on engines 5 and 82 (3.218, seed
+44).
+
+**"Nothing on engine 25 reaches 1.8 cycles" was one network's figure, and the
+five seeds do not bear it out.** Engine 25's largest contribution is 1.675,
+1.836, 2.254, 2.626 and 1.675 cycles on seeds 42 to 46: above 1.8 on three
+seeds and above 2 on two. Three sentences of this entry rest on a fixed
+threshold — the third bullet above, "nothing above 1.8 cycles ever appears" and
+"the one engine of the three on which `P15` never reaches 2 cycles" below. They
+were true of seed 42's network under both schedules and are not true of the
+method; each now carries a note. What survives is the comparison: on every seed,
+the engine whose reading never changes level has the lowest maximum of the
+three.
+
+**The medians still do not single out engine 25.** Its median is the highest of
+the three on seeds 42, 44 and 45 and the lowest on seeds 43 and 46, there by
+0.023 and 0.003 cycles.
+
+**The seed moves the sizes at least as far as the schedule did.** The correction
+above found that changing only the schedule moved `P15`'s largest contribution
+by 27.9 % on engine 5, 34.0 % on engine 82 and 5.3 % on engine 25. Changing only
+the seed moves it from 3.845 to 6.814 cycles on engine 5, from 3.218 to 6.465 on
+engine 82 and from 1.675 to 2.626 on engine 25: the smallest is 43.6 %, 50.2 %
+and 36.2 % below the largest, and the standard deviation is 20.6 %, 24.1 % and
+20.7 % of the mean. So in proportion the seed moves engine 25's largest
+contribution nearly as far as the other two engines', although its reading
+never changes level; what keeps engine 25 apart is the size, the lowest of the
+three on every seed. The average contribution behaves differently: it moves
+almost as much as the largest on engines 5 and 82 (a standard deviation of
+19.0 % and 22.2 % of the mean) but only 3.6 % on engine 25, and the top sensor's
+average moves 0.8 % to 2.8 %. The top sensor itself is `Nc` on every seed on
+engines 25 and 82, but on engine 5 it is `T24` on three seeds and `T50` on two.
+
+**Two figures have no seed spread.** The level-change counts below are read from
+the raw file. The standard deviations of the scaled windows (`P15` 0.862, `Nc`
+1.053, `T50` 1.002, `T24` 1.000) depend only on the training windows, which are
+byte for byte the same on every seed when nothing is held back (checked on all
+five: the code below prints, for every seed, a fingerprint of the scaled
+training windows, a short code computed from their exact bytes, and the four
+spreads, and all five seeds print the same ones).
+
+Reproduce with the code at `6733d77`:
+
+```python
+import hashlib
+
+import numpy as np
+from thesis_gnn_rul_xai.explain import shap_for_each_seed
+from thesis_gnn_rul_xai.training import read_run
+
+run = read_run("fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z")
+for e in shap_for_each_seed(run, split="train", units=[5, 25, 82]):
+    symbols = list(e.prepared.sensor_symbols)
+    last = e.prepared.train.features[:, :, -1]      # each training window's last cycle, what the graph layers see
+    print(e.seed, hashlib.sha256(e.prepared.train.features.tobytes()).hexdigest()[:12],
+          {s: round(float(last[:, symbols.index(s)].std()), 3) for s in ("P15", "Nc", "T50", "T24")})
+    for engine, table in e.tables.items():          # one row per window
+        size = table[symbols].abs()
+        ranking = size.mean().sort_values(ascending=False)
+        p15 = size["P15"]
+        print(e.seed, engine, len(table), list(ranking.index).index("P15") + 1,
+              round(p15.mean(), 3), round(p15.median(), 3), round(p15.max(), 3),
+              round(ranking.iloc[0], 3), ranking.index[0],
+              ranking.index[12], round(p15.mean() / ranking.iloc[12], 3))
+```
+
+Each seed prints one line with the fingerprint, `723eaa2bb6bd` on all five,
+and the four spreads, then one line per engine: its number of windows, `P15`'s
+place out of fourteen, `P15`'s mean, median and largest \|φ\|, the top sensor's
+mean \|φ\| and name, the thirteenth sensor's name, and `P15`'s mean \|φ\| as a
+fraction of the thirteenth sensor's. The table's mean, spread and range are
+taken over the five unrounded values. It ran in under four minutes on a CPU.
 
 **The magnitudes fell by roughly a factor of six**, and the shape of the
 failure changed with them. Under min-max the same three engines gave mean
@@ -1835,7 +2071,10 @@ But the *maxima* still separate sharply: 9.449 and 9.526 against 1.769.
 That is the mechanism claim, and it still holds. Engine 25's `P15` never
 changes level at all; engines 5 and 82 change 34 and 20 times. A quantisation
 step falling inside a window is still worth several cycles of attribution, and
-where no step can fall, nothing above 1.8 cycles ever appears.
+where no step can fall, nothing above 1.8 cycles ever appears. (Note of
+2026-10-03: that threshold is one network's. Over five seeds engine 25 reaches
+up to 2.626 cycles, still below 3.218, the lowest maximum of engines 5 and 82
+on any seed; see the five seeds above.)
 
 **The mechanism is measurement quantisation.** `P15`'s two raw levels are 21.60
 and 21.61 psia, 0.01 apart, which is the resolution of the recording rather
@@ -1851,7 +2090,9 @@ them — these counts are of the raw file and are unaffected by any scaling:
 Across all 100 training engines the level changes a median of 2 times, never
 for 38 of them, and up to 34 times. Engine 25 is one of the 38 that never
 change, and it is the one engine of the three on which `P15` never reaches 2
-cycles.
+cycles. (Note of 2026-10-03: true of seed 42's network; on seeds 44 and 45 it
+reaches 2.254 and 2.626. On every seed it is the engine of the three whose
+largest `P15` contribution is lowest; see the five seeds above.)
 
 **The rescaling still makes those steps loud, and the original entry predicted
 exactly this.** Its second consequence read: "Min-max rescaling is unsafe for a
@@ -1878,11 +2119,13 @@ what the original entry said would happen.
 
 1. F-01's check should be stated as a *ranking* claim, not a magnitude one.
    "`P15` should rank last" is confirmed on every engine tested, under both
-   scalings and both architectures — it is the most durable result in this
-   file. "`P15`'s attribution should be near zero" is not confirmed: under
-   z-score its worst window still reaches 9.5 cycles on the engines whose
-   reading crosses between its two levels (6.8 under the learning-rate
-   schedule in force since 2026-09-01; see the correction above).
+   scalings and both architectures, and since 2026-10-03 on all five seeds of
+   the current schedule — it is the most durable result in this file.
+   "`P15`'s attribution should be near zero" is not confirmed: under z-score
+   its worst window still reaches 9.5 cycles on the engines whose reading
+   crosses between its two levels (6.8 under the learning-rate schedule in
+   force since 2026-09-01; see the correction above; between 3.2 and 6.8
+   over the five seeds of that schedule).
 2. **Rescaling by any per-sensor statistic is unsafe for a sensor whose real
    variation sits at the resolution limit**, because it maps quantisation onto
    the same range as genuine signal. This was written as a prediction about
@@ -1901,7 +2144,10 @@ what the original entry said would happen.
    conclusion A-20 reaches from the baseline side. The correction of
    2026-09-14 adds the training to the scaling: changing only the learning-rate
    schedule moved `P15`'s largest contribution by up to a third, and again its
-   rank did not move.
+   rank did not move. The five seeds of 2026-10-03 add the seed: changing only
+   the seed moves it further, the smallest of the five lying 43.6 % below the
+   largest on engine 5, 50.2 % on engine 82 and 36.2 % on engine 25, and its
+   rank does not move on any of the five.
 4. This is a concrete case of an explanation exposing a **preprocessing**
    defect rather than a model defect, which is a useful thing for a thesis on
    explainability to be able to demonstrate.
@@ -2992,8 +3238,11 @@ of its "Testing sets" box; the colours were sampled from the page rendered at
 eight times its printed size.
 
 Its Fig. 7 shows what the testing set is. Each of its nine panels, FD002
-engines 7, 10, 20, 30, 55, 74, 100, 120 and 250, draws the true remaining life
-at 125 and then falling by one per cycle. The figure is a single picture
+engines 7, 10, 20, 30, 55, 74, 100, 120 and 250, draws the remaining life
+capped at 125: flat at 125, then falling by one per cycle. (Corrected
+2026-10-03: this said the panels draw "the true remaining life at 125"; a life
+held flat at 125 is a capped one, and a review of the wording around the
+capped label found it.) The figure is a single picture
 embedded in the page, 1700 by 1190 pixels, and was measured at that size. Each
 panel's two scales were set from its frame, whose edges are the ends of its
 axes; checked against the panel's dashed gridlines and tick marks, every
@@ -3773,6 +4022,19 @@ re-run at one commit would remove the question. The run directories:
 - `reports/fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f82c76c-dirty_20260909T123135Z` (`last_cycle`, 20 %)
 - `reports/fd001_physics_row_cap_5seed_varsplit_cfg00be26_ae59bc1-dirty_20260908T224841Z` (`last_cycle`, nothing held back)
 
+**The pairing at one commit (added 2026-10-03).** Arm D and the `last_cycle`
+run at nothing-held-back were both trained again on 2026-10-03 from a clean
+checkout of `19dceb5`, on the processor with PyTorch 2.13.0, five seeds each:
+`reports/fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z` (D)
+and `reports/fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`
+(`last_cycle`). Each reproduces its stored arm seed for seed — arm D
+`[15.341, 15.247, 16.339, 17.619, 15.715]`, 16.052 ± 0.975; `last_cycle`
+16.818 ± 0.157 — so the pairing no longer crosses a refactor and its result is
+unchanged: the recurrent stage 0.766 cycles lower on test RMSE, per seed
+`[−1.250, −1.591, −0.585, +0.626, −1.028]`, paired p = 0.117. The question the
+paragraph above left open is closed by measurement rather than by the
+refactor's own gate.
+
 ---
 
 #### What this entry said on 2026-09-09, before arms C and D
@@ -3999,17 +4261,44 @@ sizes unchanged; it has its own entry, assumption A-36 (pointer added
 `data/pipeline/`; `graph: correlation` in the configuration, or
 `scripts/train.py --graph correlation`
 
-**The gap.** The paper never builds a graph from the data. It uses the Pearson
-correlation coefficient in one place, to decide which sensors to keep at all
-(Section 3.2.2, Equation 17: sensors that never change, or that correlate above
-0.95 with another, are dropped). Its graph is built by hand (Section 2.3.1,
-Table 3). Yet item 2 of its Conclusions says the hand-built matrix captures
-sensor relationships "beyond data-driven correlations". Nothing in the paper
-tests that claim against a graph built from correlations, and its "without
-physics prior" row of Table 11 never says what replaced its graph (assumption
-A-19). Checked on 2026-09-14 by searching the PDF's text for every occurrence
-of "correlat": none of them describes building a graph from correlations or
-comparing one with Table 3.
+**The gap.** The paper describes no graph built from the data for its network
+to use. Its graph is built by hand: "the adjacency matrix is established by
+analyzing the physical relationships among 14 sensor parameters", an entry
+being 1 "for strong physical relationships between sensor pairs and 0
+otherwise" (Section 2.3.1, Table 3). It uses the Pearson correlation
+coefficient in one place, to decide which sensors to keep at all (Section
+3.2.2, Equation 17: sensors that never change, or that correlate above 0.95
+with another, are dropped; in its words the analysis "ensures the removal of
+features with high correlational redundancy (above 0.95) and constant
+values"), and shows the correlations as a heatmap (Fig. 5); nothing turns them
+into connections. Two passages come near a graph from the data without
+describing one. Its "without physics prior" row of Table 11 never says what
+replaced its graph, so a graph derived from the data is one of the readings
+left open (assumption A-19); of the network in that row it says only that its
+error rises the least of the three parts removed and that "the model can
+partially compensate through data-driven learning" (Section 4.3).
+And the "dynamic interpretability graphs" of Section 4.4 (Figs. 9 and 10) are
+computed from the network's Shapley values — "the resulting importance rankings
+determine both the node coloring and edge weights in the interpretability
+graph" — but they are pictures of the explanation, which the network never
+uses. Yet item 2 of its Conclusions says the hand-built matrix captures sensor
+relationships "beyond data-driven correlations". Nothing in the paper tests
+that claim against a graph built from correlations. Checked on 2026-09-14 by
+searching the PDF's text for every occurrence of "correlat": none of them
+describes building a graph from correlations or comparing one with Table 3.
+
+(Corrected 2026-10-03: this opened "The paper never builds a graph from the
+data", and the summary table at the top of this file said "Never builds one".
+Both say more than the PDF can: what replaced the graph in the Table 11 row is
+not stated, and Figs. 9 and 10 are graphs computed from Shapley values. A
+review flagged the sentence as unsupported. Re-checked that day by searching
+the PDF's text for "correlat", "Pearson", "mutual information", "data-driven",
+"adjacen", "graph construct", "similarity", "learnable", "edge" and "threshold",
+and reading Sections 2.3, 4.3 and 4.4 and the Conclusions: the Pearson
+coefficient appears only in Section 3.2.2, "mutual information" and
+"similarity" not at all, and the only graphs built from correlations that the
+paper mentions are other authors', in its review of earlier work, such as the
+"feature-correlated graphs" of its reference 26.)
 
 **What we chose.** A graph with exactly as many edges as Table 3 has, 41,
 joining the 41 pairs of sensors whose readings have the largest absolute
@@ -4203,13 +4492,14 @@ which the stopping rule's 0.0001-cycle margin does not guarantee. A review the
 same day tested both differences (p = 0.19 and 0.10), checked the window in all
 fifteen runs, and the paragraphs above now say so.
 
-**They do make different errors.** The correlation graph predicts more life
-than the engine had, on every seed. Read from the `test_predictions.csv` each
-seed saved:
+**They do make different errors.** On every seed, the correlation graph's
+predictions lie above the test label on average, the label being the remaining
+life capped at 125 cycles (assumption A-02), the number every score here is
+computed against. Read from the `test_predictions.csv` each seed saved:
 
 | | Table 3 | 41 strongest correlations |
 |---|---|---|
-| mean of predicted − actual, cycles | 0.860 | 2.611 |
+| mean of predicted − label, cycles | 0.860 | 2.611 |
 | test engines predicted late, of 100 | 50.8 | 55.2 |
 | largest late error, cycles | 45.7 | 59.3 |
 
@@ -4223,6 +4513,31 @@ only ASUE's difference clears the bar; and the mean-error comparison was run aft
 the score and ASUE, to explain them, so it is a follow-up and not a test
 decided in advance. One seed of the correlation run, seed 42, kept its weights
 from the third pass over the data.
+
+*Correction, 2026-10-03.* Until this date the paragraph above said the
+correlation graph "predicts more life than the engine had, on every seed", and
+the table's first row read "mean of predicted − actual". Both are computed
+against the label, not against the life the engines had: 11 of the 100 test
+engines have more than 125 cycles left, 107 cycles above the cap between them,
+so against NASA's uncapped answer in `RUL_FD001.txt` every seed's mean error is
+1.070 cycles lower. Table 3's is then −0.210 ± 1.551 (by seed
+`[0.088, 0.473, 1.258, −0.034, −2.833]`: three seeds late and two early, and a
+one-sample t-test, which asks whether the five seeds' averages could have come
+from no lean at all, gives p = 0.78), and the correlation graph's
+1.541 ± 1.320 (`[1.591, 2.130, 3.182, 1.219, −0.415]`, p = 0.059), below zero
+on seed 46. So against the life the engines truly had, the correlation graph
+does not predict too much on every seed, and neither graph's lean is
+established. The shift between the two graphs, the counts of late engines and
+the largest late errors are the same either way: no prediction in these ten
+seed files exceeds 123.356 cycles, so a prediction above its label is never on
+an engine whose label was capped. Recomputed on 2026-10-03 from seeds 42 to 46
+of the two runs named under "Reproduce with" below, with the code at
+`6733d77`;
+`tests/test_examples.py::test_example_the_lean_of_the_errors_against_the_capped_label_and_against_the_life_truly_left`
+recomputes them. Found when a review of the wording around the capped label
+compared this paragraph with step 5 of
+`notebooks/graph/04_comparison_fd001.ipynb`, corrected the same day, which the
+paragraph then contradicted.
 
 **What this says about the paper's claim.** In this configuration the
 engineering knowledge did not make the network more accurate than the data's
@@ -5655,7 +5970,18 @@ and the recurrent one
 both at `f386291-dirty`, each seed explained at every window of its held-back
 engine with the most windows (engines 5, 96, 95, 92 and 67 for seeds 42 to 46,
 with 240 to 312 windows, so 50 to 122 shifts each and 447 in all). The
-explanations were computed on 2026-10-03 at `19dceb5-dirty`, on the processor:
+explanations were computed on 2026-10-03 on the processor, first at
+`19dceb5-dirty` and again from a clean tree at `6733d77`, and both gave the
+same figures. Step 8 of `notebooks/xai/01_shap_fd001.ipynb`, which prints the
+commit of its latest execution, computes only the first column: re-executed
+at `6733d77-dirty` the same day, once after the legend of its step 5 figure
+was renamed and once more later with other work uncommitted, it printed the
+same joins in the 12 steps for every seed of both networks, and Table 12's
+single join, each time. The other three columns come only from the code under
+"Reproduce with" below. (A version of this sentence written earlier the same
+day, never committed, said the execution after the legend was renamed gave
+every figure in the table; a review found that the notebook computes none of
+the three shift columns.)
 
 | | Joins in the 12 steps, our reading | Graph 191 at the engine's last window | Fewest and most over every shift | Shifts with one join or none, of 447 |
 |---|---|---|---|---|
@@ -5898,7 +6224,7 @@ checks the comparison of the two orders on T50's trained GRU.
 
 ## A-37 — When several comparisons are read together, a difference counts only below 0.05 divided by their number
 
-**Where:** finding F-19, its held-back addition, and assumptions A-03, A-32 and A-36 (0.05 / 17); assumption A-27 (0.05 / 3 and 0.05 / 4); `notebooks/temporal/07_comparison_fd001.ipynb`, step 3 (`BAR = 0.05 / tests`); `notebooks/graph/04_comparison_fd001.ipynb` (0.05 / 4 and 0.05 / 3)
+**Where:** finding F-19, its held-back addition, and assumptions A-03, A-32 and A-36 (0.05 / 17); assumption A-27 (0.05 / 3 and 0.05 / 4); `notebooks/temporal/07_comparison_fd001.ipynb`, step 3 (`BAR = 0.05 / tests`); `notebooks/graph/04_comparison_fd001.ipynb` (0.05 / 4 and 0.05 / 3); finding F-22 (0.05 / 58)
 
 **The gap.** The paper reports one number per method, measure and
 sub-dataset (Tables 7 to 11) and tests none of its differences: it gives no
@@ -5926,6 +6252,7 @@ Wherever the bar is used, the set and its size are named:
 | assumption A-27; notebook `graph/04` | the three summaries of held-back error no pass was chosen by, added to test the recorded one | 0.05 / 3 = 0.0167 |
 | assumption A-27; notebook `graph/04` | the four test measures of one comparison | 0.05 / 4 = 0.0125 |
 | notebook `temporal/07` | every pair of temporal stages trained at one commit, each on test and on held-back error: 7 pairs and 14 tests when it was last executed | 0.05 / 14 = 0.0036 |
+| finding F-22 (added 2026-10-03) | the ordinary-models tables: fourteen models against each of four networks, the default and the recurrent-stage network each with its best held-back pass restored and trained the paper's way, plus the two networks of each procedure against each other; 29 comparisons and a bar of 0.05 / 29 = 0.00172 until the paper's-way tables were added the same day | 0.05 / 58 = 0.000862 |
 
 A p below 0.05 but above the bar is reported with its value and called
 unresolved, never a result.
@@ -6126,6 +6453,1417 @@ holds every clipped prediction. It took 499 seconds on the processor, with
 other work sharing the machine. The two engines above come from the script's
 own `rebuild_and_verify` and `fit_and_predict` for seed 42, which return the
 prediction before and after the clip.
+
+---
+
+## A-39 — ASUE is "not a number" when no engine is predicted early
+
+**Where:** `evaluation/metrics.py` (`asue`, and `n_early` in `evaluate`); where
+ASUE is written, in `scripts/train.py`, `scripts/baselines.py` and
+`scripts/run_sensitivity.py`; where two runs' ASUEs are compared seed by seed,
+in `docsite/playground/runs.py` (`compare_runs`); `evaluation/README.md`, under
+`asue`
+
+**The gap.** ASUE, the Average Safe Underestimation Error, is the paper's
+measure of how cautious a model is: the average amount by which it
+under-predicts, taken over the engines it under-predicts. Equation 24
+(page 9, rendered from the PDF at scale 8 on 2026-10-03) prints it as
+
+```
+ASUE = (1 / N_under) × Σ_{i=1..N} max(0, y_i − ŷ_i)
+```
+
+where `N` is the number of test engines, `y_i` engine *i*'s true remaining
+life, `ŷ_i` its predicted remaining life, and `N_under` "the number of
+instances where ŷ_i < y_i", the engines predicted *early* — less life than they
+had, so they would be serviced too soon. `max(0, y_i − ŷ_i)` is engine *i*'s
+shortfall when it is early and 0 otherwise, so the sum adds up the early
+engines' shortfalls and the division averages them. The text before it says
+ASUE "is mathematically defined for instances where the predicted RUL is less
+than the actual RUL". Neither says what the measure is when no engine is
+predicted early. Then `N_under` is 0 and every term of the sum is 0, and the
+equation reads 0 / 0.
+
+**What we chose.** In that case `asue` returns "not a number" (Python's
+`float("nan")`) and raises a warning saying why. `evaluate` reports beside it
+`n_early`, the number of engines predicted early, which is Equation 24's
+`N_under`, so `n_early + n_late` is the number of engines. Every results file
+a script writes from then on has the count beside each ASUE: each seed's row of
+a run's `results.csv`, the mean and spread in its `summary.json`, the table the
+training script prints, the comparison with ordinary models' `per_seed.csv`
+and its `results.csv` (`n_early_mean`), and the sensitivity study's
+`summary.csv`. Files written before 2026-10-03 do not have it, and neither do
+the documents and notebooks that quote a stored ASUE, nor the playground's
+comparison of two runs. For any of those the count is `n_engines` minus
+`n_late`, both in each of the 136 stored `results.csv` files that have an
+ASUE, and 100 minus `n_late` in the comparison's `per_seed.csv`; on 2026-10-03
+that agreed with the engines whose saved prediction is below their label in
+all 464 per-seed files of predictions and in all 80 model-and-seed rows of the
+comparison. The nine runs written at `cdcc827-dirty` on 2026-08-27 and 28
+saved no predictions, and may come from before `n_late` began counting an
+error of exactly zero as late (commit `09628fa`); there the difference could
+also count an engine predicted exactly right. A mean
+over seeds is left undefined when any seed has no ASUE, rather than taken over
+the seeds that have one, and so is the playground's mean difference between
+two runs; in `summary.json` an undefined value is written as `null`, because
+"not a number" is not valid JSON. (Narrowed on 2026-10-03: this said the count
+is written wherever ASUE is; a review the same day found the comparison's
+`results.csv` without it, which now has it, and the rest listed above.)
+
+**Why.** Until 2026-10-03 the function returned 0.0 here, and its description
+and `evaluation/README.md` called 0.0 "the best value this measure can take".
+The audit of 2026-09-08 (its item D-11) pointed out what such a model does. On
+the real FD001 test labels, capped at 125 (assumption A-02): a model that
+predicts the ceiling, 125 cycles, for all 100 test engines is below no label,
+so it has no early engine and is late on all 100, by 50.55 cycles on average,
+with a NASA score of 1,502,460.8 — the behaviour that score punishes hardest
+(assumption A-15). Under the old rule its ASUE was 0.0, the best there is. The
+same model one cycle lower, at 124, is early on the 11 engines whose labels
+were capped down from above 125 (engines 25, 39, 47, 55, 65, 73, 74, 83, 89, 95
+and 96), by exactly one cycle each, so its ASUE is 1.0. A 0.0 would therefore
+rank the model that is late everywhere ahead of one that is early by a cycle on
+eleven engines. The audit called 0.0 the worst value instead; that overstates
+it the other way, since with no early engine the measure says nothing at all.
+
+"Not a number" is the value a computer's arithmetic gives for 0 / 0, it cannot
+be read as a measurement, and NumPy's average carries it through: an average
+that includes it is itself "not a number". pandas skips it by default when it
+averages a column, which would quietly average the other seeds, so the scripts
+that average over seeds were changed to carry it through as well. Raising an
+error, which `r_squared` does when every true label is the same, was the other
+option; it was not chosen because it would end a whole training run, after
+every seed had trained, over a measure that only describes the predictions.
+
+**How much it matters, measured: it changes no stored figure.** The case has
+never occurred in this project. At about 10:00 UTC on 2026-10-03, while the
+second sensitivity study was still writing, every per-seed file of test
+predictions stored under `reports/` was counted, 464 files: 114 from the
+FD001 training runs, 90 from the FD001 sensitivity study at `fd65a3b-dirty`
+(`reports/sensitivity_fd65a3b-dirty_20260929T101059Z`), and 85, 90 and 85 from
+the FD002, FD003 and FD004 parts of the second study
+(`reports/sensitivity_fd65a3b-dirty_20260930T160040Z`). The fewest engines
+predicted early in any one of them is 25 of 100, in seed 44 of the first
+study's arm with min-max scaling over all conditions at once
+(`runs/FD001/scaling_minmax_global`); in the training runs alone it is 30 of
+100, and in the second study's FD002, FD003 and FD004 files 114 of 253, 27 of
+100 and 91 of 237 (the test engines left once those shorter than the window
+are set aside, assumption A-23). None of the 136 stored `results.csv` files that have an ASUE
+column holds an ASUE of exactly 0, and in the stored comparison with ordinary
+models
+(`reports/baselines_fd001_physics_row_cap_5seed_varsplit_cfgba82e3_6733d77_20261003T100207Z`,
+at a clean `6733d77`) the fewest engines any model predicted early on any seed
+is 36 of 100. So no ASUE quoted in this log, in `README.md` or in a notebook
+came from the undefined case.
+
+**Reproduce with** (from the repository root; the counts are from the stored
+files, and the worked case uses the code):
+
+```python
+from glob import glob
+import numpy as np
+import pandas as pd
+from thesis_gnn_rul_xai.evaluation import evaluate
+
+files = glob("reports/**/test_predictions.csv", recursive=True)
+early = {f: int((t.predicted < t.rul).sum()) for f in files for t in [pd.read_csv(f)]}
+print(len(files), min(early.values()), min(early, key=early.get))
+
+labels = np.minimum(np.loadtxt("data/raw/RUL_FD001.txt"), 125)
+for guess in (125.0, 124.0):
+    print(guess, evaluate(labels, np.full(100, guess)))        # n_early 0 and nan, then 11 and 1.0
+```
+
+`tests/test_examples.py` checks the worked case, and `tests/test_metrics.py`
+the warning.
+
+---
+
+## A-40 — Nothing is added to keep the weights small; the held-back engines are the only guard against over-training
+
+**Where:** `training/run.py` (`train`, where Adam is built); `training/config.py`
+(`gradient_clip`); `models/` (no layer that drops anything)
+
+**What the word covers.** A network fitted long enough to its training
+engines can learn their particular noise and do worse on engines it has not
+seen; this is *over-training*. *Regularisation* is the name for anything added
+to training to discourage it. Four kinds are common: a penalty on large
+weights, added to the loss or applied by the optimiser as *weight decay*;
+*dropout*, which sets a random share of a layer's numbers to zero at each
+training step; a cap on the size of one step, *gradient clipping*; and
+*early stopping*, which ends training once the error on held-back engines
+stops falling.
+
+**The gap.** Section 3.4 (page 9) and Table 6, rendered from the PDF at scale 8
+on 2026-10-03, give the training settings: mean squared error as the loss,
+Adam as the optimiser, a learning rate "beginning at 1 × 10⁻³ and reducing to
+1 × 10⁻⁴", 200 epochs, batches of 32 and windows of 30 time steps. Nothing
+else. A search of the text of all 16 pages on the same day finds no
+"dropout", "regularization" or "regularisation", "weight decay",
+"overfitting", "generalization", "stopping", "checkpoint", "batch norm" or
+"layer norm". "Penalty" appears only for the NASA score's asymmetry and for
+mean squared error's "quadratic penalties", and "validation" only in the
+closing limitations ("Current validation is limited to the C-MAPSS benchmark
+dataset") and the authors' contribution statement. So the paper neither says
+it used any regularisation nor that it used none.
+
+**What we chose.** None of the first three. Adam is built with PyTorch's
+default weight decay of 0; no layer of the network drops anything; and
+`gradient_clip` is `None`, so no step is capped (the option exists, off by
+default). The only guard is the fourth kind, already logged: a fifth of the
+training engines held back (assumption A-06), training stopped once their
+error has not improved for 20 passes, and the weights of their best pass kept
+(assumption A-18). With nothing held back, the paper's own arrangement, there
+is no guard at all.
+
+**Why.** Each of the first three needs settings the paper does not give — how
+strong a penalty, what share to drop and after which layer, how large a step
+may be — and each would be a further guess with an effect of its own on every
+result. A text that lists its training settings and names none of them is
+read most closely by adding none. Early stopping is different in kind: it
+changes no training step, only when training ends and which weights are kept,
+and it uses the held-back engines this project keeps anyway, to choose between
+settings without looking at the test engines.
+
+**How much it matters — partly measured.** What a penalty, dropout or a cap
+would do here was **not measured**: no network was trained with any of them.
+What was measured is how much over-training there is for early stopping to
+catch, from the per-pass records (`training_history.csv`) of two stored
+five-seed runs trained all 200 passes with a fifth of the engines held back
+and the best pass restored. Computed on 2026-10-03 from the stored files, the
+network sizes and the window count with the code at `6733d77`:
+
+| Temporal stage (run, commit) | Learned numbers | Best held-back pass, per seed | Held-back error rise, best pass to 200 (cycles) | Training error at pass 200 | Held-back error at pass 200 |
+|---|---|---|---|---|---|
+| last reading of each sensor, the default (`fd001_physics_row_cap_5seed_varsplit_noearlystop_cfgba82e3_f4f40ad_20261002T170226Z`, clean `f4f40ad`) | 61,729 | 178, 94, 80, 48, 35 | 0.411 ± 0.398 (0.098 to 1.034) | 19.764 to 20.335 | 19.879 to 22.628 |
+| recurrent, hidden size 32 (`fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfgba82e3_19dceb5_20261003T090451Z`, clean `19dceb5`) | 124,482 | 17, 24, 9, 37, 5 | 3.574 ± 0.721 (2.783 to 4.523) | 2.252 to 2.614 | 16.468 to 18.592 |
+
+The errors are root mean squared errors in cycles over every window of their
+engines. The training error is `√(train_loss) × 125`: `train_loss` is the
+average squared error, in the units the labels are divided into (assumption
+A-13), over the batches of that pass while the weights were still changing,
+and for this network, which has no dropout, training and prediction compute
+the same thing. Held-back minus training error at pass 200 is 1.380 ± 1.333
+cycles for the default and 15.316 ± 0.984 for the recurrent stage. Under seed
+42 the training engines give 14,459 windows.
+
+So the default network hardly over-trains: after 200 passes its training error
+is still within about three cycles of its held-back error, both around 20, and
+its held-back error has risen by less than half a cycle on average since its
+best pass. The recurrent stage fits its training windows to about 2.5 cycles
+while erring by 16.5 to 18.6 on held-back engines, the over-training that the
+paper's procedure of all 200 passes with nothing held back exposes it to
+(finding F-16). It is an argument, not a measurement, that regularisation
+would matter little for the default and could matter a great deal for the
+recurrent stage; which way it would move the recurrent stage's result, and by
+how much, is unknown, and any such run would be a configuration the paper does
+not describe.
+
+**Reproduce with** (from the repository root; the stored runs are not
+committed):
+
+```python
+import numpy as np
+import pandas as pd
+
+for run in ("fd001_physics_row_cap_5seed_varsplit_noearlystop_cfgba82e3_f4f40ad_20261002T170226Z",
+            "fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfgba82e3_19dceb5_20261003T090451Z"):
+    for seed in range(42, 47):
+        curve = pd.read_csv(f"reports/{run}/seed_{seed}/training_history.csv").set_index("epoch")
+        best, last = curve.validation_rmse_cycles.idxmin(), curve.iloc[-1]
+        print(run[:40], seed, best, round(last.validation_rmse_cycles - curve.validation_rmse_cycles[best], 3),
+              round(float(np.sqrt(last.train_loss) * 125), 3), round(last.validation_rmse_cycles, 3))
+```
+
+and for the learned numbers, `sum(p.numel() for p in build_model(...).parameters())`
+on the default settings with `ModelConfig()` and with
+`ModelConfig(temporal="lstm")`.
+
+---
+
+### F-22 — Flexible ordinary models given the default network's fourteen numbers trail it on four or five seeds of five, by less than the test engines can resolve; given each window's latest reading and slope, an untuned gradient booster beats the default clearly, and the recurrent-stage network on every seed, by enough to clear the bar for the whole entry only when that network is trained the paper's way, and then only just, on a row chosen after the first results were seen
+
+**Established from.** The record run of `scripts/baselines.py`,
+`reports/baselines_fd001_physics_row_cap_5seed_varsplit_cfgba82e3_6733d77_20261003T100207Z`,
+written from a clean checkout of `6733d77` (its `summary.json` records the
+commit and no uncommitted code) on 2026-10-03, finishing at 10:02 UTC, with
+scikit-learn 1.9.0 on the processor, in 440 seconds. It sets ordinary models
+beside two stored five-seed runs of `config/fd001.yaml`, seeds 42 to 46, each
+holding a fifth of the training engines back, stopping early and restoring the
+pass over the training data with the lowest held-back error:
+
+- **the default network**, which hands each sensor node its latest reading
+  (assumption A-07), re-trained from a clean `f4f40ad` on the processor:
+  `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z`;
+- **the recurrent-stage network**, the same with the paper's per-sensor LSTM in
+  front of the graph layers at the size assumption A-26 chose, trained from a
+  clean `19dceb5` on the graphics card with PyTorch 2.5.1 (assumption A-27
+  records that training):
+  `fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_19dceb5_20261002T210700Z`.
+  Restoring its best held-back pass is this project's procedure, not the
+  paper's (finding F-16).
+
+A second record run sets the same models beside both networks trained the
+paper's way, holding nothing back and keeping the weights after 200 passes; it
+has its own section at the end of this entry (added 2026-10-03).
+
+The audit of 2026-09-08 asked the question (its item D-5): does the graph
+network do better than an ordinary regression model given the same numbers?
+A first answer was measured on 2026-09-14, with follow-up rows the next day,
+by a script that was never kept; this run replaces it, and a section below
+compares the two row by row. Every
+figure of the two tables below was recomputed from the run's `predictions.csv`
+with the script's own functions at `6733d77`, and agrees with its
+`results.csv` to 5e-15; refitting seven of the models with the same code
+reproduced their stored predictions to 1.5e-14 cycles (on all five seeds for
+the constant and the two linear regressions, on seed 42 for the rest).
+
+**What was compared, and how.** For each seed the script rebuilds that seed's
+data: which 80 training engines its network learned from, and the rescaling
+measured on them (assumption A-25). It refuses to go on unless each stored
+network, reloaded and run on the rebuilt test inputs, gives back its saved
+predictions; here they agreed to within 3.8e-06 cycles for the default and
+2.55e-05 for the recurrent-stage network, against an allowed 0.001. Each ordinary
+model is then fitted on every 30-cycle window of those 80 engines, labelled
+with the remaining life at the window's last cycle capped at 125, with the 20
+held-back engines unused, and predicts the last window of each of the same 100
+test engines. Every model is scikit-learn's with the library's default
+settings and the seed of the stored network as its random seed; the one
+setting not the library's is the small network's width of 64, taken from the
+audit. Every prediction of an ordinary model is clipped to between 0 and 125
+cycles before it is scored, the range the network cannot leave (assumption
+A-38); the networks' predictions are left as they are. The small network
+reached its limit of 200 passes over the training windows on every seed before
+it had settled, and scikit-learn's warning is kept in `summary.json`.
+`evaluation/README.md`, under "Ordinary models beside the network", says what
+each model is and why each check exists.
+
+The models are given one of two things. **The latest readings**: the fourteen
+numbers the default network receives, each sensor's last reading in the window
+(`features[:, :, -1]`). **Window summaries**: for each sensor's 30-cycle window,
+after smoothing and rescaling, its latest reading, the average of the thirty
+readings, and its slope, how fast the readings rise or fall per cycle along the
+straight line that fits them best; all three make 42 numbers, and the last five
+gradient-boosting rows take one or two of them.
+
+**The table.** RMSE, the root mean square error in cycles, is the mean over the
+five seeds with its standard deviation. "Network minus this" is the network's
+RMSE minus the model's, averaged over the seeds, so a negative number means the
+network is better. "Network better on" counts the seeds on which the network's
+RMSE is the lower. p is the paired t-test over the five seeds. The interval is
+the middle 95 % of the same difference over 20,000 resamplings of the 100 test
+engines, drawn with replacement, the same draws for every model and seed
+(`evaluation/README.md`, "How the comparison is scored", works both through
+with real numbers). The run's `table.md` prints the same two tables.
+
+Set against the default network:
+
+| Model | Given | RMSE | Network minus this | Network better on | p | 95 % interval over engines |
+|---|---|---|---|---|---|---|
+| default network | the latest readings, through the paper's graph | 16.496 ± 0.415 | — | — | — | its own RMSE [14.00, 18.90] |
+| recurrent-stage network | each sensor's whole window, through the paper's graph | 13.234 ± 0.723 | +3.262 | 0/5 | 0.0022 | [+1.15, +5.37] |
+| constant: the average training label | nothing | 40.568 ± 0.089 | −24.072 | 5/5 | < 0.0001 | [−29.00, −19.12] |
+| gradient boosting trained on shuffled labels | the latest readings | 40.846 ± 0.292 | −24.349 | 5/5 | < 0.0001 | [−29.33, −19.35] |
+| gradient boosting | the engine's age alone | 31.239 ± 0.100 | −14.742 | 5/5 | < 0.0001 | [−18.92, −10.56] |
+| linear regression | the latest readings | 20.457 ± 0.219 | −3.961 | 5/5 | < 0.0001 | [−6.30, −1.70] |
+| network with one layer of 64 | the latest readings | 17.213 ± 0.223 | −0.716 | 5/5 | 0.0230 | [−2.44, +1.11] |
+| random forest | the latest readings | 18.062 ± 0.415 | −1.566 | 5/5 | 0.0026 | [−3.39, +0.42] |
+| gradient boosting | the latest readings | 17.253 ± 0.329 | −0.756 | 5/5 | 0.0472 | [−2.56, +1.17] |
+| gradient boosting | latest, average and slope, 42 numbers | 12.140 ± 0.351 | +4.356 | 0/5 | 0.0001 | [+2.03, +6.68] |
+| gradient boosting | average | 21.230 ± 0.506 | −4.733 | 5/5 | 0.0001 | [−8.65, −1.33] |
+| gradient boosting | slope | 13.693 ± 0.488 | +2.803 | 0/5 | 0.0002 | [−0.12, +5.68] |
+| gradient boosting | latest and average | 15.047 ± 0.631 | +1.449 | 0/5 | 0.0130 | [−0.39, +3.30] |
+| gradient boosting | latest and slope | 11.835 ± 0.391 | +4.661 | 0/5 | 0.0002 | [+2.32, +6.97] |
+| gradient boosting | average and slope | 12.827 ± 0.320 | +3.669 | 0/5 | < 0.0001 | [+1.26, +6.10] |
+| linear regression | latest, average and slope, 42 numbers | 14.520 ± 0.120 | +1.976 | 0/5 | 0.0002 | [−0.34, +4.17] |
+
+Set against the recurrent-stage network, the rows in the same order, each
+model's RMSE as above:
+
+| Model | Given | Network minus this | Network better on | p | 95 % interval over engines |
+|---|---|---|---|---|---|
+| default network | the latest readings, through the paper's graph | −3.262 | 5/5 | 0.0022 | [−5.37, −1.15] |
+| recurrent-stage network | each sensor's whole window, through the paper's graph | — | — | — | its own RMSE [11.20, 15.24] |
+| constant: the average training label | nothing | −27.334 | 5/5 | < 0.0001 | [−32.32, −22.29] |
+| gradient boosting trained on shuffled labels | the latest readings | −27.611 | 5/5 | < 0.0001 | [−32.64, −22.52] |
+| gradient boosting | the engine's age alone | −18.004 | 5/5 | < 0.0001 | [−22.26, −13.83] |
+| linear regression | the latest readings | −7.223 | 5/5 | < 0.0001 | [−10.12, −4.42] |
+| network with one layer of 64 | the latest readings | −3.978 | 5/5 | 0.0001 | [−6.29, −1.68] |
+| random forest | the latest readings | −4.828 | 5/5 | 0.0002 | [−7.31, −2.30] |
+| gradient boosting | the latest readings | −4.018 | 5/5 | < 0.0001 | [−6.38, −1.64] |
+| gradient boosting | latest, average and slope, 42 numbers | +1.094 | 0/5 | 0.0048 | [−0.10, +2.30] |
+| gradient boosting | average | −7.995 | 5/5 | < 0.0001 | [−12.35, −4.20] |
+| gradient boosting | slope | −0.459 | 4/5 | 0.3515 | [−2.57, +1.65] |
+| gradient boosting | latest and average | −1.813 | 5/5 | 0.0064 | [−3.56, −0.10] |
+| gradient boosting | latest and slope | +1.400 | 0/5 | 0.0037 | [+0.26, +2.55] |
+| gradient boosting | average and slope | +0.407 | 1/5 | 0.2918 | [−0.98, +1.76] |
+| linear regression | latest, average and slope, 42 numbers | −1.286 | 5/5 | 0.0178 | [−3.38, +0.58] |
+
+The last six rows were added on 2026-09-15, after the 42-number row had been
+seen, to find which summary carries the difference: they are follow-up
+questions, and no p turns a comparison chosen after seeing a result into one
+decided in advance (assumption A-37). The rows above them were not drawn up
+blind either: five of them, and the width of 64, follow the audit, which had
+measured those models first (`evaluation/README.md`, "The ladder").
+
+**Two kinds of uncertainty, and what each can tell.** The ± and the paired test
+come from repeating the training with five seeds. A seed changes the network's
+starting values, the order of its training examples and which 20 engines are
+held back, and an ordinary model's random choices; it never changes the test
+engines, the same 100 every time. So the seed spread says how much retraining
+moves a result, and nothing about how much the result depends on which 100
+engines happen to be in NASA's test file. The interval over engines answers
+that second question, by redrawing the 100 engines, and says nothing about
+retraining. A difference can be clear on one and not on the other: the default
+network's lead over the network of 64 holds on all five seeds, yet a different
+set of 100 engines of the same kind could reverse it.
+
+**The bar for reading the table as a whole.** (Since 2026-10-03 this entry
+reads 58 comparisons together, at 0.05 / 58 = 0.000862, once the two tables
+beside the networks trained the paper's way are counted; the section on them at
+the end of this entry says why. The bar and the intervals at its width in this
+section and in the plain reading below are at 0.05 / 29, as first written, and
+every conclusion drawn from them holds at 0.05 / 58.) The two tables make 29
+comparisons: fourteen ordinary models against each of two networks, and the two
+networks against each other, which both tables print. Read together, a
+difference counts as established only if its p is below 0.05 / 29 = 0.00172
+(assumption A-37), which with five seeds needs a `t` larger than 7.461 either
+way. 27 of the 29 have p below 0.05; 18 clear the bar:
+
+- **the default network**, in its favour, against the constant, shuffled
+  labels, the engine's age, linear regression on the latest readings and
+  boosting on the average alone; against it, against boosting on all three
+  summaries, on the slope alone, on latest and slope and on average and slope,
+  and linear regression on all three;
+- **the recurrent-stage network**, in its favour, against the constant,
+  shuffled labels, the engine's age, all four models given the latest readings,
+  and boosting on the average alone.
+
+The other eleven do not: the two networks against each other (p = 0.0022); the
+default against the network of 64 (0.023), the random forest (0.0026), boosting
+on the latest readings (0.047) and boosting on latest and average (0.013); and
+the recurrent-stage network against boosting on all three summaries (0.0048),
+on the slope alone (0.35), on latest and average (0.0064), on latest and slope
+(0.0037), on average and slope (0.29), and linear regression on all three
+(0.018). Which set is counted matters for two of them. Left out the six
+follow-up rows, and the set is 17 comparisons with a bar of 0.00294, which the
+recurrent-stage network's lead over the default and the default's lead over the
+random forest would clear. Counted as the whole table, as here, they do not.
+
+Assumption A-37 sets its bar for the paired tests only. Widening the intervals
+over engines to match it is a choice made here, not part of that assumption:
+the 95 % interval answers one comparison looked at alone, and 29 read together
+need the same extra strictness on the engines as on the seeds. These wider
+intervals are reported in addition to the 95 % ones, never instead of them.
+Applied the
+same way to the resamplings, an interval keeps the middle
+1 − 0.05 / 29 = 99.83 % of the 20,000 draws, leaving about 17 in each tail, so
+its ends rest on few draws and are rougher than the 95 % ends. At that width
+these differences still exclude
+zero: both networks' leads over the constant, shuffled labels, the engine's age
+and linear regression on the latest readings; the recurrent-stage network's
+over the network of 64 [−7.65, −0.39], the random forest [−8.96, −0.86],
+boosting on the latest readings [−7.76, −0.27] and boosting on the average
+[−15.09, −2.43]; and the default's shortfall to boosting on all three summaries
+[+0.68, +8.08] and on latest and slope [+0.97, +8.37]. No other does.
+
+**The plain reading.**
+
+1. **Given the fourteen numbers it receives, the default network beats every
+   flexible ordinary model on every seed, but by less than the test engines can
+   resolve.** Its lead is 0.716 cycles over the network of 64, 1.566 over the
+   random forest and 0.756 over gradient boosting, on all five seeds each; none
+   of the three clears the bar, and every interval over engines contains zero.
+   It beats linear regression on the same numbers by 3.961 cycles, clearly on
+   both kinds of uncertainty. On the NASA score, which charges a late
+   prediction more than an early one (assumption A-15), the default is lower
+   than each flexible model on every seed: 540 ± 45 against 809 ± 107 for the
+   network of 64, 1,048 ± 156 for the forest and 871 ± 116 for the booster. The
+   script tests RMSE only, so no p is given for the score. The recurrent-stage
+   network, which reads each sensor's whole window, beats all four models given
+   the latest readings by 3.978 to 7.223 cycles, every one clearing the bar,
+   with every interval below zero even at the bar's width.
+2. **Given each window's latest reading and slope, an untuned gradient booster
+   beats the default clearly, and the recurrent-stage network on every seed by
+   an amount that the five seeds and these 100 engines do not establish under
+   the bar for the whole table.** Given the latest reading, average and slope
+   it beats the default by 4.356 cycles, and given the latest reading and slope
+   by 4.661, on every seed, both clearing the bar, both intervals excluding
+   zero even at the bar's width. It beats the recurrent-stage network on every
+   seed as well, by 1.094 on all three summaries and 1.400 on latest and slope.
+   Neither p clears the bar (0.0048 and 0.0037), and neither interval at the
+   bar's width excludes zero ([−0.74, +3.14] and [−0.45, +3.38]). At 95 % the
+   first, [−0.10, +2.30], contains zero and the second, [+0.26, +2.55], does
+   not, and latest-and-slope is a follow-up row. So on these 100 engines the
+   booster beats the recurrent-stage network on every retraining; whether it
+   would on other engines of this kind is not established. The slope alone is
+   not enough to beat both: boosting on the slope alone beats the default by
+   2.803 cycles on every seed (p = 0.0002, clearing the bar, though its 95 %
+   interval over engines, [−0.12, +5.68], contains zero), and trails the
+   recurrent-stage network by 0.459, on four seeds of five (p = 0.35). Linear
+   regression given the three summaries beats the default on every seed too,
+   by 1.976 cycles, clearing the bar on the seeds though its interval over
+   engines contains zero, and loses to the recurrent-stage network on every
+   seed by 1.286 (p = 0.018).
+
+   Both the information and the algorithm count, and how the gain splits
+   between them depends on which is added first. Adding the window summaries
+   lowers linear regression's RMSE by 5.937 cycles (20.457 to 14.520) and
+   gradient boosting's by 5.113 (17.253 to 12.140), while gradient boosting
+   given only the default's own fourteen numbers is 0.756 cycles worse than
+   the default: the summaries carry information the default is never given.
+   Taken the other way, on the same 42 numbers gradient boosting is a further
+   2.380 cycles better than linear regression, and linear regression recovers
+   1.976 of the booster's 4.356-cycle lead over the default, 45 % of it: the
+   algorithm counts too. The average alone does not carry the gain: boosting
+   on the average alone is 4.733 cycles worse than the default. All of this is
+   FD001, with gradient boosting and linear regression at the library's
+   settings. The graph
+   network handed the same three numbers per sensor is measured under
+   assumption A-28.
+3. **The shuffled-label row shows that the scores need the link between
+   readings and remaining life, and nothing more.** Gradient boosting trained
+   on labels shuffled among the training windows lands at 40.846 ± 0.292,
+   beside the constant's 40.568 ± 0.089: with the link cut, the readings
+   predict nothing. That rules out a scoring error that would reward any
+   prediction. It does not show that nothing leaks: if the test answers had
+   leaked into the inputs, a model trained on shuffled labels would not learn
+   to read them either, and would land on the constant all the same. The check
+   for a leak from the answers is in `tests/test_baselines.py`. It copies the
+   three FD001 files, adds 7 to every answer in the copy of `RUL_FD001.txt` (the
+   true remaining life of each test engine), runs the preprocessing on the
+   original files and on the copy, once with the paper's graph and once with
+   the graph measured from correlations in the training engines (assumption
+   A-27), and requires every input to come out identical: the training,
+   held-back and test windows with their engines and cycles, the training and
+   held-back labels, the rescaling numbers and the rescaled graph. A stored
+   network, its data rebuilt from each copy, must give identical test
+   predictions. Only the test labels may move, and with them the scores: by 7
+   for 86 engines, by less for the 3 whose answers lay within 7 of the ceiling
+   of 125, and not at all for the 11 already above it. Its three cases passed
+   on 2026-10-03. It covers the answer file only; that the held-back and test
+   engines play no part in the rescaling is answered where the split is made
+   (assumption A-25).
+
+**What it does not show.**
+
+- **That the graph is useless, or that it helps.** No row is the default
+  network with its graph taken out or replaced; that is measured under
+  assumptions A-19 and A-27. The nearest row, the network of 64 given the same numbers, has no graph
+  and trails the default on every seed by an amount the test engines cannot
+  resolve.
+- **What either side can do at its best.** The ordinary models are untuned,
+  and the small network stopped at its pass limit before it had settled. The
+  networks were not tuned for this comparison either, but they are not
+  untouched: the settings the paper leaves open were chosen to bring the error
+  closest to the paper's figure, partly on the test engines (assumption A-22).
+  If that choice favours either side, it favours the networks.
+- **Anything about FD002, FD003 or FD004.** This is FD001 only, the
+  sub-dataset with a single operating condition.
+- **What the paper's recurrent stage is worth under the paper's procedure.**
+  These rows restore its best held-back pass. With nothing held back and the
+  weights after 200 passes, the paper's procedure, the stage was worth
+  +0.766 cycles at p = 0.117 (finding F-16). The same ladder beside networks
+  trained that way is in the section at the end of this entry (added
+  2026-10-03; until then this said it was still to be run).
+- **A comparison with the paper's own ordinary model.** Its Table 8 (page 10)
+  sets the network beside eight methods, each citing a source; the one with no
+  neural network, SVR [50], a support vector regression, has an FD001 RMSE of
+  20.89. The paper does not say what that model was given or how it was
+  trained (assumption A-38), so it cannot be set beside these rows.
+- **Anything about engines.** That a model given the slope predicts better
+  says the slope is useful for these labels, not that it causes anything in an
+  engine.
+
+**Beside the measurements of 2026-09-14 and 15.** The first measurement set
+the ladder up to the 42-number row beside two stored runs of the same settings,
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`
+and `…_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`, on 2026-09-14; the
+six follow-up rows were measured the same way the next day, with the RMSE
+alone and no paired tests. The script was never kept, so under working rule 3a
+none of its figures could be quoted. Row by row, its figures against this
+run's, the rows marked 15 measured on 2026-09-15:
+
+| Row | 2026-09-14 and 15 | This run | Why |
+|---|---|---|---|
+| default network | 16.496 ± 0.415 | 16.496 ± 0.415 | unchanged: the re-training at a clean `f4f40ad` gives the same five RMSEs to every stored digit (16.694915, 16.131090, 16.843242, 15.970384, 16.842666) and keeps the same passes (51, 55, 8, 18, 35) |
+| recurrent-stage network | 13.307 ± 0.532; +3.189, p = 0.0009, [+1.03, +5.35] | 13.234 ± 0.723; +3.262, p = 0.0022, [+1.15, +5.37] | another training of the same settings (the two runs' records differ only in a note): kept passes 10, 13, 9, 14, 21 then, 17, 24, 9, 15, 5 now, on the graphics card with PyTorch 2.5.1; finding F-16 records the same kind of movement for another of these re-trainings |
+| network of 64, latest readings | 17.702 ± 0.469; −1.206, p = 0.0023, [−2.89, +0.64] | 17.213 ± 0.223; −0.716, p = 0.0230, [−2.44, +1.11] | not traced (below) |
+| random forest, latest readings | 17.870 ± 0.308; −1.373, p = 0.0057, [−3.20, +0.56] | 18.062 ± 0.415; −1.566, p = 0.0026, [−3.39, +0.42] | not traced (below) |
+| boosting, 42 summaries | 12.134 ± 0.364; +4.363, p = 0.0001, [+2.04, +6.69] | 12.140 ± 0.351; +4.356, p = 0.0001, [+2.03, +6.68] | the average taken in single precision then |
+| boosting, 42 summaries, against the recurrent-stage network | +1.174, 0/5, p = 0.0099, [−0.13, +2.45] | +1.094, 0/5, p = 0.0048, [−0.10, +2.30] | the recurrent-stage network's re-training, and the average taken in single precision then (12.134 against 12.140) |
+| boosting, average (15) | 21.207 ± 0.447 | 21.230 ± 0.506 | the average taken in single precision then |
+| boosting, latest and average (15) | 15.086 ± 0.595 | 15.047 ± 0.631 | the same |
+
+Every other figure the 2026-09-14 table printed comes out the same to its last
+digit: the constant, shuffled labels, the engine's age, and linear regression
+and boosting on the latest readings, each with its difference, seed count, p
+and interval; and so does every other RMSE of the follow-up rows measured the
+next day, for which only the RMSE was printed: boosting on the slope, on latest
+and slope and on average and slope, and linear regression on all three.
+
+*The average in single precision.* The scratch script averaged each window's
+thirty readings in single precision, about seven significant digits, where this
+script averages in double precision (`evaluation/README.md`, "The window
+summaries", gives the reason and the size of the difference). Recomputed with
+the code at `6733d77`, with only the average taken in single precision,
+gradient boosting gives 12.134 ± 0.364 on all three summaries, 21.207 ± 0.447
+on the average, 15.086 ± 0.595 on latest and average and 12.827 ± 0.320 on
+average and slope: the 2026-09-14 and 15 figures exactly, the last of them the
+same either way. The last snippet of this entry prints these four.
+
+*The network of 64 and the random forest.* Why these two moved cannot be
+established, because the script that produced them was not kept. With the code
+at `6733d77`, none of the plausible differences reproduces them: the small
+network given its inputs and labels in single precision gives
+17.211 ± 0.223, with random seed 0 in place of the network's seed
+17.256 ± 0.189, and with its training windows in one shuffled order (the
+permutation drawn by `np.random.default_rng(1)`) 17.185 ± 0.273; the forest
+with random seed 0 gives 18.153 ± 0.331, and with the windows in that shuffled
+order 17.925 ± 0.267. The same snippet prints all six. Gradient boosting
+with the windows
+shuffled gives its own figure again, 17.253 ± 0.329, because it draws no random
+sample of windows. The forest moves by up to 0.23 cycles between the three
+random choices tried (17.925 to 18.153), and its 2026-09-14 figure, 17.870,
+lies just below that range; the small network's 17.702 lies 0.45 above every
+variant tried (17.185 to 17.256). This run's figures for both are
+reproducible: the run of 2026-10-03 at `19dceb5-dirty` that assumption A-38
+reports gave the small network the same 17.213 ± 0.223. On the reading,
+neither change moves a side: the default leads both on every seed, by 0.716
+instead of 1.206 cycles over the small network and 1.566 instead of 1.373 over
+the forest, and both intervals over engines still contain zero.
+
+What the 2026-09-14 reading said and what holds now: that the default's edge
+over a flexible model on the same fourteen numbers is not established still
+holds; that the booster given the window's trend beats the default clearly
+still holds; and that the booster on all three summaries beats the
+recurrent-stage network "on seeds but not resolvably over engines" still
+holds: on every seed, its 95 % interval over engines, [−0.10, +2.30],
+containing zero, and its p, 0.0048, short of the bar for the whole table. The
+booster on latest and slope set against the recurrent-stage network is a
+comparison the scratch never made, since its follow-up rows had no paired
+tests; this run makes it for the first time, and finds it ahead on every seed
+with a 95 % interval over engines of [+0.26, +2.55], excluding zero, but short
+of the bar on the seeds (p = 0.0037) and on the engines ([−0.45, +3.38] at the
+bar's width).
+
+**Reproduce with**, from a clean checkout of `6733d77` with the NASA files in
+`data/raw/` and the two stored runs in `reports/`, about seven minutes on the
+processor:
+
+```bash
+python scripts/baselines.py --run fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z --also fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_19dceb5_20261002T210700Z
+```
+
+It writes a new folder under `reports/` whose `table.md` holds the two tables
+above. The count of comparisons, the bar and the intervals at the bar's width
+come from the stored folder with no fitting, from the repository root:
+
+```python
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+sys.path.insert(0, "scripts")
+import baselines  # the script itself, for its resampling
+
+folder = Path("reports/baselines_fd001_physics_row_cap_5seed_varsplit_cfgba82e3_6733d77_20261003T100207Z")
+results = pd.read_csv(folder / "results.csv")
+predictions = pd.read_csv(folder / "predictions.csv")
+seeds = sorted(predictions.seed.unique())
+
+
+def by_seed(model, column):
+    """One row per seed, one column per test engine."""
+    return np.vstack([predictions[(predictions.model == model) & (predictions.seed == s)][column] for s in seeds])
+
+
+truth = by_seed("network", "rul")
+draws = np.random.default_rng(baselines.RESAMPLING_SEED).integers(0, 100, size=(baselines.DRAWS, 100))
+resampled = {m: baselines.resampled_rmse(truth, by_seed(m, "predicted"), draws) for m in predictions.model.unique()}
+
+tests = results.dropna(subset=["paired_t_p"])
+tests = tests[~((tests.network == "network_1") & (tests.model == "network"))]  # the networks' own pair, once
+bar = 0.05 / len(tests)
+print(len(tests), f"{bar:.5f}", f"{stats.t.ppf(1 - bar / 2, df=4):.3f}",
+      int((tests.paired_t_p < 0.05).sum()), int((tests.paired_t_p < bar).sum()))
+for row in tests.itertuples():
+    low, high = np.percentile(resampled[row.network] - resampled[row.model], [50 * bar, 100 - 50 * bar])
+    print(row.network, row.model, f"{row.paired_t_p:.2g}", row.paired_t_p < bar, f"[{low:+.2f}, {high:+.2f}]")
+```
+
+It prints `29 0.00172 7.461 27 18`, then one line per comparison. The NASA
+scores come from the folder's `per_seed.csv`, column `score`, averaged over the
+seeds of each model.
+
+The figures in the paragraphs on the single-precision average and on the
+network of 64 and the random forest refit those models under the changed
+settings, so they need the NASA files and the default network's stored run,
+and take about nine minutes on the processor, from the repository root:
+
+```python
+import sys
+from pathlib import Path
+
+import numpy as np
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.neural_network import MLPRegressor
+
+sys.path.insert(0, "scripts")
+import baselines  # the script itself, for its rebuilding of each seed and its slope
+from thesis_gnn_rul_xai.training import read_run
+
+run = read_run(Path("reports/fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z"))
+
+
+def summaries(windows, names):
+    """The script's window summaries, except that the average is taken in single precision."""
+    x = windows.features  # single precision, as stored
+    parts = {"last": lambda: x[:, :, -1].astype(np.float64),
+             "mean": lambda: x.mean(axis=2).astype(np.float64),
+             "slope": lambda: baselines.window_slopes(x)}
+    return np.concatenate([parts[name]() for name in names.split("+")], axis=1)
+
+
+rmses = {}
+for seed in run.seeds:
+    prepared, _, _ = baselines.rebuild_and_verify(run, seed, Path("data/raw"))
+    train, test = prepared.train, prepared.test
+    y, truth = train.targets.astype(np.float64), test.targets.astype(np.float64)
+    last32, test32 = train.features[:, :, -1], test.features[:, :, -1]  # single precision
+    last, test_last = last32.astype(np.float64), test32.astype(np.float64)
+    order = np.random.default_rng(1).permutation(len(y))  # one shuffled order of the training windows
+    variants = [(f"boosting on {names}, single-precision average", GradientBoostingRegressor(random_state=seed),
+                 summaries(train, names), y, summaries(test, names))
+                for names in ("last+mean+slope", "mean", "last+mean", "mean+slope")]
+    variants += [
+        ("network of 64, single-precision inputs", MLPRegressor(hidden_layer_sizes=(64,), random_state=seed),
+         last32, train.targets, test32),
+        ("network of 64, random seed 0", MLPRegressor(hidden_layer_sizes=(64,), random_state=0), last, y, test_last),
+        ("network of 64, windows shuffled", MLPRegressor(hidden_layer_sizes=(64,), random_state=seed),
+         last[order], y[order], test_last),
+        ("forest, random seed 0", RandomForestRegressor(random_state=0), last, y, test_last),
+        ("forest, windows shuffled", RandomForestRegressor(random_state=seed), last[order], y[order], test_last),
+        ("boosting, windows shuffled", GradientBoostingRegressor(random_state=seed), last[order], y[order], test_last),
+    ]
+    for label, model, inputs, targets, test_inputs in variants:
+        predicted = np.clip(model.fit(inputs, targets).predict(test_inputs), 0, 125)
+        rmses.setdefault(label, []).append(np.sqrt(np.mean((predicted - truth) ** 2)))
+for label, values in rmses.items():
+    print(f"{label}: {np.mean(values):.3f} ± {np.std(values, ddof=1):.3f}")
+```
+
+Run on 2026-10-03 with the code at `6733d77`, it printed:
+
+```
+boosting on last+mean+slope, single-precision average: 12.134 ± 0.364
+boosting on mean, single-precision average: 21.207 ± 0.447
+boosting on last+mean, single-precision average: 15.086 ± 0.595
+boosting on mean+slope, single-precision average: 12.827 ± 0.320
+network of 64, single-precision inputs: 17.211 ± 0.223
+network of 64, random seed 0: 17.256 ± 0.189
+network of 64, windows shuffled: 17.185 ± 0.273
+forest, random seed 0: 18.153 ± 0.331
+forest, windows shuffled: 17.925 ± 0.267
+boosting, windows shuffled: 17.253 ± 0.329
+```
+
+**Corrected 2026-10-03, before this entry was committed.** A review the same
+day, recomputing every figure from the run's `predictions.csv`, found five
+statements wrong as first written, and one set of figures with no code behind
+it.
+
+- The heading said ordinary models given the default's fourteen numbers lose
+  to it by less than the test engines can resolve. Linear regression and the
+  booster trained on shuffled labels lose by more (intervals [−6.30, −1.70] and
+  [−29.33, −19.35]), so the heading now names the flexible models, as the first
+  plain reading always did.
+- The heading and the second plain reading said a booster given each window's
+  slope beats both networks. Given the slope alone it trails the
+  recurrent-stage network on four seeds of five, and no booster's lead over
+  that network clears the bar, so both now name the latest reading and slope
+  and say the lead over the recurrent stage is not established.
+- The second plain reading said the default's shortfall comes from the
+  information it lacks more than from the boosting algorithm. How the gain
+  splits depends on which is added first, and both orders are now given.
+- The row-by-row comparison set the scratch's +1.174 cycles, which was the
+  booster on all three summaries against the recurrent-stage network, beside
+  this run's booster on latest and slope against that network, and so reported
+  a change of reading that had not happened. The row now compares the same
+  model, and the 2026-09-14 reading of it still holds.
+- It dated the six follow-up rows 2026-09-14; they were measured on 2026-09-15.
+- The figures for the single-precision average and for the variants of the
+  network of 64 and the forest came from scripts outside the repository; the
+  snippet above now produces them, and it printed the same figures.
+
+**Beside the networks trained the paper's way (added 2026-10-03).** Everything
+above sets the ordinary models beside networks that hold a fifth of the
+training engines back and keep the pass with the lowest held-back error, which
+is this project's procedure. The paper describes no engines held back and 200
+passes over the training data, and this project reads its reported network as
+the one left after the last pass (finding F-16). A second record run of
+`scripts/baselines.py` sets the same fourteen models beside two networks trained
+that way:
+`reports/baselines_fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_6733d77_20261003T150939Z`,
+written from a clean checkout of `6733d77` (its `summary.json` records the
+commit and no uncommitted code) on 2026-10-03, finishing at 15:09 UTC, with
+scikit-learn 1.9.0 on the processor, in 555 seconds. Both networks were trained
+from a clean `19dceb5` on the processor with PyTorch 2.13.0, seeds 42 to 46,
+holding nothing back and keeping the weights after pass 200:
+
+- **the default network**:
+  `fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`,
+  16.818 ± 0.157;
+- **the recurrent-stage network**, at the size assumption A-26 chose:
+  `fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z`,
+  16.052 ± 0.975.
+
+Each gives back the stored arm of finding F-16 seed for seed, as that finding
+records. Reloaded and run on the rebuilt test inputs, both gave their saved
+predictions to within 3.81e-06 cycles. The `varsplit` in all three folder names
+does not mean the split varies: nothing is held back. The two network runs took
+that part of the name from a command-line option alone, at the commit that
+wrote them (the audit's item D-4, since corrected in `scripts/train.py`), and
+the comparison's own folder copies the default network's run name, `varsplit`
+included (`folder_name` in `scripts/baselines.py`). Every figure below was
+recomputed from the run's `predictions.csv` with the script's own functions at
+`6733d77` and agrees with its `results.csv` to 7.1e-15. Refitting seven of the
+models with the same code reproduced their stored predictions to 1.4e-14
+cycles: the constant, linear regression on the latest readings and boosting on
+latest and slope on seed 43, boosting on all three summaries on seed 46, the
+forest on seed 44, the network of 64 on seed 45 and the booster on shuffled
+labels on seed 42.
+
+*Why eleven of the fourteen models show no spread over seeds.* In the first two
+tables a seed decided which 80 engines both the network and the ordinary models
+learned from. With nothing held back there is no split for it to decide.
+Rebuilt under seeds 42 and 43, the data are identical: all 100 training engines,
+the same 17,731 windows of 30 cycles, the rescaling measured on all of them, and
+the same test inputs. A model whose fitting involves no random step is then
+fitted on the same table every time and makes the same predictions on every
+seed: the constant and both linear regressions are of that kind. The eight
+gradient boosters given the true labels nearly are. At the library's settings
+they draw no random sample of windows and every tree looks at every input;
+their one random step is the order in which a tree tries the inputs when it
+chooses each of its yes-or-no questions, which the seed shuffles
+(scikit-learn's description of its `random_state` setting). That order can
+decide only between two questions that fit the training windows equally well.
+Across the five seeds the predictions agree exactly for the constant, the two
+linear regressions and the booster on the engine's age, whose single input
+leaves nothing to reorder, and to within 3.3e-13 cycles for the other seven
+boosters. Fitted twice on seed 42's rebuilt data with the code at `6733d77`,
+gradient boosting on the latest readings gave identical predictions with the
+same seed, and predictions up to 1.4e-13 cycles apart with seeds 42 and 43
+(the last snippet of this entry prints the gaps and the three fits). So for
+all eleven the ± is 0.000. Three still vary by whole cycles, because the
+seed decides much more in each: which shuffle of the labels the shuffled-label
+booster learns from, the network of 64's starting values and the order in which
+it sees the windows, and which windows each of the forest's 100 trees is fitted
+on. On the networks' side the seed now changes only their starting values and
+the order of their training windows.
+
+*What that does to the paired test.* Pairing by seed helps when both sides of a
+difference share something that changes from seed to seed. In the first two
+tables they did: on one seed both learned from the same 80 engines, so a split
+that made the task easier or harder moved both, and subtracting one from the
+other removed it. Here they share nothing. Against a model with no spread, each
+seed's difference is the network's RMSE on that seed minus one fixed number, so
+the five differences spread exactly as the network's five RMSEs do, and the
+test asks only whether retraining the network would put its RMSE on the other
+side of that number. Gradient boosting on latest and slope scores 12.138 cycles
+on every seed; the recurrent-stage network's five RMSEs are 15.341, 15.247,
+16.339, 17.619 and 15.715:
+
+```
+differences d    3.2033   3.1088   4.2015   5.4812   3.5775
+mean d̄           (3.2033 + 3.1088 + 4.2015 + 5.4812 + 3.5775) / 5   = 3.9145
+spread s         0.9754, the recurrent-stage network's own spread over seeds
+s / √5           0.9754 / 2.2361                                     = 0.4362
+t                3.9145 / 0.4362                                     = 8.974
+```
+
+and p = 0.000853, the same p a one-sample t-test of the five RMSEs against
+12.138 gives. Two things follow. The same size of difference is far easier to
+establish against the default, whose RMSE varies by 0.157 across seeds, than
+against the recurrent-stage network, which varies by 0.975: the booster's lead
+of 4.680 cycles over the default gives `t` = 66.5. And ± 0.000 does not mean
+these models' errors are known exactly: retraining cannot move them on these
+engines, but the interval over engines is as wide as ever (gradient boosting on
+latest and slope: 10.38 to 13.88 cycles).
+
+*The tables.* The columns are those of the first two tables. Set against the
+default network trained the paper's way:
+
+| Model | Given | RMSE | Network minus this | Network better on | p | 95 % interval over engines |
+|---|---|---|---|---|---|---|
+| default network, the weights after 200 passes | the latest readings, through the paper's graph | 16.818 ± 0.157 | — | — | — | its own RMSE [14.14, 19.37] |
+| recurrent-stage network, the weights after 200 passes | each sensor's whole window, through the paper's graph | 16.052 ± 0.975 | +0.766 | 1/5 | 0.1172 | [−2.43, +4.00] |
+| constant: the average training label | nothing | 40.548 ± 0.000 | −23.730 | 5/5 | < 0.0001 | [−28.69, −18.73] |
+| gradient boosting trained on shuffled labels | the latest readings | 40.546 ± 0.311 | −23.728 | 5/5 | < 0.0001 | [−28.71, −18.71] |
+| gradient boosting | the engine's age alone | 31.180 ± 0.000 | −14.362 | 5/5 | < 0.0001 | [−18.56, −10.13] |
+| linear regression | the latest readings | 20.394 ± 0.000 | −3.577 | 5/5 | < 0.0001 | [−5.92, −1.33] |
+| network with one layer of 64 | the latest readings | 17.100 ± 0.093 | −0.282 | 5/5 | 0.0454 | [−2.06, +1.58] |
+| random forest | the latest readings | 17.954 ± 0.428 | −1.136 | 5/5 | 0.0009 | [−2.97, +0.80] |
+| gradient boosting | the latest readings | 16.936 ± 0.000 | −0.118 | 4/5 | 0.1693 | [−1.93, +1.84] |
+| gradient boosting | latest, average and slope, 42 numbers | 12.470 ± 0.000 | +4.348 | 0/5 | < 0.0001 | [+1.78, +6.95] |
+| gradient boosting | average | 21.521 ± 0.000 | −4.703 | 5/5 | < 0.0001 | [−9.31, −0.85] |
+| gradient boosting | slope | 13.531 ± 0.000 | +3.287 | 0/5 | < 0.0001 | [+0.08, +6.40] |
+| gradient boosting | latest and average | 14.341 ± 0.000 | +2.477 | 0/5 | < 0.0001 | [+0.40, +4.61] |
+| gradient boosting | latest and slope | 12.138 ± 0.000 | +4.680 | 0/5 | < 0.0001 | [+2.15, +7.19] |
+| gradient boosting | average and slope | 12.333 ± 0.000 | +4.485 | 0/5 | < 0.0001 | [+1.92, +7.13] |
+| linear regression | latest, average and slope, 42 numbers | 14.439 ± 0.000 | +2.379 | 0/5 | < 0.0001 | [+0.02, +4.65] |
+
+Set against the recurrent-stage network trained the paper's way, the rows in
+the same order, each model's RMSE as above:
+
+| Model | Given | Network minus this | Network better on | p | 95 % interval over engines |
+|---|---|---|---|---|---|
+| default network, the weights after 200 passes | the latest readings, through the paper's graph | −0.766 | 4/5 | 0.1172 | [−4.00, +2.43] |
+| recurrent-stage network, the weights after 200 passes | each sensor's whole window, through the paper's graph | — | — | — | its own RMSE [13.68, 18.27] |
+| constant: the average training label | nothing | −24.496 | 5/5 | < 0.0001 | [−29.71, −19.36] |
+| gradient boosting trained on shuffled labels | the latest readings | −24.494 | 5/5 | < 0.0001 | [−29.71, −19.33] |
+| gradient boosting | the engine's age alone | −15.128 | 5/5 | < 0.0001 | [−19.63, −10.81] |
+| linear regression | the latest readings | −4.342 | 5/5 | 0.0006 | [−7.81, −1.02] |
+| network with one layer of 64 | the latest readings | −1.048 | 4/5 | 0.0796 | [−4.36, +2.31] |
+| random forest | the latest readings | −1.902 | 5/5 | 0.0049 | [−5.34, +1.55] |
+| gradient boosting | the latest readings | −0.884 | 4/5 | 0.1128 | [−4.29, +2.56] |
+| gradient boosting | latest, average and slope, 42 numbers | +3.583 | 0/5 | 0.0012 | [+1.56, +5.67] |
+| gradient boosting | average | −5.468 | 5/5 | 0.0002 | [−10.89, −0.72] |
+| gradient boosting | slope | +2.521 | 0/5 | 0.0045 | [+0.01, +5.00] |
+| gradient boosting | latest and average | +1.712 | 0/5 | 0.0172 | [−0.96, +4.32] |
+| gradient boosting | latest and slope | +3.914 | 0/5 | 0.0009 | [+1.93, +5.95] |
+| gradient boosting | average and slope | +3.719 | 0/5 | 0.0010 | [+1.78, +5.64] |
+| linear regression | latest, average and slope, 42 numbers | +1.614 | 0/5 | 0.0209 | [−1.03, +4.07] |
+
+*The bar, now for 58 comparisons.* These two tables add 29 comparisons, the
+fourteen models against each network and the two networks against each other,
+and this entry reads all four tables together, so the count is now 58: a
+difference counts as established only if its p is below 0.05 / 58 = 0.000862
+(assumption A-37), which with five seeds needs a `t` larger than 8.950 either
+way. They are counted together because the bar exists to hold to 0.05 the
+chance of any false alarm among the comparisons a conclusion is drawn from, and
+this entry's heading and readings draw on both procedures at once, for instance
+in saying under which one the booster's lead over the recurrent-stage network
+is established. Read as two separate sets of 29, each could raise a false alarm
+with a chance of up to 0.05, and the two together up to 0.10. The four tables
+share the 100 test engines and nearly the same ordinary models, so their tests
+are not independent; the bar's guarantee does not need them to be, and is
+stricter than necessary when they are not (assumption A-37).
+
+In the first two tables the larger count changes no side. The 18 comparisons
+that cleared 0.05 / 29 there have p of at most 0.000234, below the new bar, and
+the other eleven did not clear the old one. At the new bar's width, the middle
+1 − 0.05 / 58 = 99.914 % of the 20,000 draws, about 9 in each tail and so
+rougher still, the same differences exclude zero as at 0.05 / 29: the
+recurrent-stage network's leads over the network of 64 become [−7.80, −0.27],
+over the forest [−9.19, −0.63], over boosting on the latest readings
+[−7.97, −0.12] and over boosting on the average [−15.45, −2.28], and the
+default's shortfalls to boosting on all three summaries [+0.40, +8.33] and on
+latest and slope [+0.74, +8.65].
+
+In the two new tables 25 of the 29 have p below 0.05, 20 below 0.05 / 29, and
+18 clear 0.05 / 58:
+
+- **the default network trained the paper's way**, in its favour, against the
+  constant, shuffled labels, the engine's age, linear regression on the latest
+  readings, the random forest and boosting on the average alone; against it,
+  against boosting on all three summaries, on the slope alone, on latest and
+  average, on latest and slope and on average and slope, and linear regression
+  on all three;
+- **the recurrent-stage network trained the paper's way**, in its favour,
+  against the constant, shuffled labels, the engine's age, linear regression on
+  the latest readings and boosting on the average alone; against it, against
+  boosting on latest and slope.
+
+Two of the 18 clear the bar by a hair: the default against the forest
+(p = 0.000861, `t` = 8.953) and the recurrent-stage network against boosting on
+latest and slope (p = 0.000853, `t` = 8.974), against a bar of 0.000862 and
+8.950. They are at the bar, not beyond it. The other eleven do not clear it: the
+two networks against each other (p = 0.117, the comparison of finding F-16); the
+default against the network of 64 (0.045) and boosting on the latest readings
+(0.17); and the recurrent-stage network against the network of 64 (0.080), the
+forest (0.0049), boosting on the latest readings (0.11), on all three summaries
+(0.0012), on the slope alone (0.0045), on latest and average (0.017) and on
+average and slope (0.0010), and linear regression on all three (0.021). Which
+set is counted matters for two of them: read as their own set of 29, the
+recurrent-stage network's shortfalls to boosting on all three summaries and on
+average and slope would clear 0.05 / 29.
+
+Applied the same way to the resamplings, at the width of 0.05 / 58 these
+differences exclude zero: both networks' leads over the constant, shuffled
+labels and the engine's age, and both networks' shortfalls to boosting on all
+three summaries (the default [+0.06, +8.62], the recurrent-stage network
+[+0.24, +7.22]), on latest and slope ([+0.38, +9.01] and [+0.76, +7.56]) and on
+average and slope ([+0.18, +8.93] and [+0.59, +7.18]). No other does. In
+particular neither network's lead over linear regression on the latest readings
+does ([−7.59, +0.11] and [−10.23, +1.38]), though both exclude zero at 95 %; in
+the first two tables both did even at the bar's width.
+
+*The plain reading, trained the paper's way.*
+
+1. **Given the fourteen numbers it receives, the default network still leads
+   every flexible ordinary model by less than the test engines can resolve;
+   the recurrent-stage network no longer clearly leads them.** The default
+   leads the network of 64 by 0.282 cycles and the random forest by 1.136, on
+   all five seeds each, and gradient boosting by 0.118 on four seeds, trailing
+   it on seed 45 (16.993 against 16.936). Only the forest's p clears the bar,
+   at its edge, and every 95 % interval over engines contains zero. On the NASA
+   score the default is lower than each of the three on every seed: 610 ± 25
+   against 799 ± 35 for the network of 64, 1,021 ± 127 for the forest and 860
+   for the booster. With the best held-back pass restored its leads were 0.716,
+   1.566 and 0.756, all on five seeds; trained the paper's way the default is
+   0.32 cycles worse (16.496 to 16.818), while the three models, fitted on all
+   100 training engines instead of each seed's 80, are 0.11 to 0.32 better.
+   This is also the setting of the audit of 2026-09-08 (its item D-5), which
+   measured this question outside the repository on the default of the day,
+   holding nothing back: its row for the network, 16.82 ± 0.16, matches this
+   default's, and its rows for gradient boosting and linear regression on the
+   same fourteen numbers (RMSE, NASA score, R² and ASUE: 16.94, 860, 0.821 and
+   9.32; 20.39, 1040, 0.741 and 14.25) are this run's to every digit it
+   printed. The recurrent-stage network trained the paper's way still beats
+   linear regression on the latest readings by 4.342 cycles on every seed
+   (p = 0.00057, clearing the bar), but its leads over the three flexible
+   models, 1.048 over the network of 64, 1.902 over the forest and 0.884 over
+   gradient boosting, hold on four, five and four seeds; none clears the bar,
+   and every interval over engines contains zero. With its best held-back pass
+   restored the same three leads were 3.978 to 4.828 cycles, each clearing the
+   bar, with intervals below zero even at the bar's width.
+2. **Given each window's latest reading and slope, gradient boosting beats both
+   networks trained the paper's way on every seed, and against both the
+   difference clears the bar, against the recurrent-stage network only just.**
+   It beats the default by 4.680 cycles (95 % interval over engines
+   [+2.15, +7.19]) and the recurrent-stage network by 3.914 ([+1.93, +5.95]);
+   both intervals exclude zero at the bar's width as well. Against the
+   recurrent-stage network with its best held-back pass restored, the same
+   comparison was +1.400 (p = 0.0037, short of the bar, its interval at the
+   bar's width containing zero). Given all three summaries, the row drawn up
+   before the six follow-up rows, the booster beats the recurrent-stage network by 3.583 on every seed,
+   with an interval clear of zero even at the bar's width, [+0.24, +7.22], but
+   p = 0.0012, short of 0.05 / 58; with the best pass restored it was +1.094,
+   p = 0.0048, its 95 % interval containing zero. The slope alone is now enough
+   to beat both networks on every seed: by 3.287 cycles over the default
+   (p < 0.0001) and 2.521 over the recurrent-stage network (p = 0.0045), though
+   both 95 % intervals only just exclude zero ([+0.08, +6.40] and
+   [+0.01, +5.00]); with the best pass restored it trailed the recurrent-stage
+   network on four seeds of five. Linear regression given all three summaries
+   beats both on every seed too, by 2.379 cycles (clearing the bar) and 1.614
+   (p = 0.021); with the best pass restored it lost to the recurrent-stage
+   network on every seed. Latest-and-slope is still a follow-up row, added on
+   2026-09-15 after the 42-number row had been seen on the same 100 test
+   engines. The whole ladder was fixed before any figure of these two tables
+   existed, but the row was chosen after seeing a result on these engines, so
+   it is not a comparison decided in advance (assumption A-37).
+3. **What changed between the procedures is the recurrent-stage network.** It
+   moves from 13.234 ± 0.723 with its best held-back pass restored to
+   16.052 ± 0.975 trained the paper's way, the default from 16.496 to 16.818,
+   and no ordinary model by more than 0.71 cycles (gradient boosting on latest
+   and average, 15.047 to 14.341). The two networks, 3.262 cycles apart with the
+   best pass restored (p = 0.0022), are 0.766 apart trained the paper's way
+   (the default better on one seed of five, p = 0.117, interval over engines
+   [−2.43, +4.00]): finding F-16's comparison, given back from these files. So
+   the paper's procedure moves the ordinary models little, though ranked by
+   RMSE four pairs of neighbours swap places: boosting on average and slope now
+   beats boosting on all three summaries (12.333 against 12.470, where it was
+   12.827 against 12.140), boosting on latest and average now beats linear
+   regression on all three (14.341 against 14.439, where it was 15.047 against
+   14.520), boosting on the latest readings now beats the network of 64
+   (16.936 against 17.100, where it was 17.253 against 17.213), and the
+   shuffled-label booster now sits 0.002 cycles below the constant instead of
+   0.278 above it. What the procedure takes from the recurrent stage is most of
+   its lead over the three flexible models given the latest readings, 61 to
+   78 % of it (3.978 to 1.048 over the network of 64, 4.828 to 1.902 over the
+   forest, 4.018 to 0.884 over gradient boosting); two-fifths of its lead over
+   linear regression on the same readings (7.223 to 4.342); and 10 to 32 % of
+   its leads over the constant, shuffled labels, the engine's age and boosting
+   on the average (27.334 to 24.496, 27.611 to 24.494, 18.004 to 15.128 and
+   7.995 to 5.468). Its leads over boosting on the slope alone, on latest and
+   average and over linear regression on all three summaries turn into
+   shortfalls. The shuffled-label booster lands with the constant again,
+   40.546 ± 0.311 against 40.548.
+
+*What these tables do not show*, beyond what the list above says for the first
+two:
+
+- **That the paper followed this procedure.** It describes no engines held back
+  and 200 passes, and never says which weights it reported; reading them as the
+  weights after the last pass is this project's reading (finding F-16,
+  assumptions A-06 and A-18).
+- **That a booster given the slope beats the paper's network.** These rows are
+  this project's networks, at sizes and settings the paper leaves open
+  (assumptions A-22 and A-26), on FD001 only.
+
+*The heading and summary row.* Until this section was added the heading said
+the flexible models lose to the default "on every seed", and ended "and the
+recurrent-stage network on every seed but short of the bar for the whole
+table". Gradient boosting on the latest readings beats the default trained the
+paper's way on one seed, and the booster's lead over the recurrent-stage
+network clears the bar when that network is trained the paper's way, so the
+heading now says four or five seeds of five and where the lead clears the bar;
+the row for this entry in the table at the top of this log gives both
+procedures.
+
+*Corrected 2026-10-03, later the same day.* An independent review of this
+section, refitting one booster with two seeds and recomputing every figure from
+the stored folders, found six statements wrong or overstated as first written:
+
+- It said the eight boosters given the true labels have no random step in their
+  fitting. They have one, the order in which a tree tries the inputs, which the
+  seed shuffles; it is why seven of them differ across seeds by 1.4e-13 to
+  3.3e-13 cycles while the booster on the engine's age, with one input, agrees
+  exactly. The ± 0.000 stands; the reason given for it did not, and
+  `README.md` section 8 said the same and is corrected with it.
+- The heading and the summary row gave the booster on latest reading and slope
+  as clearing the bar without saying it is a row chosen after the first results
+  were seen, and the summary row gave its p without its interval over the test
+  engines. The row drawn up in advance, the booster on all three summaries, does
+  not clear the bar against the recurrent-stage network trained the paper's way
+  (p = 0.0012). Both now say so, and the summary row gives the interval.
+- The third plain reading said the paper's procedure leaves the ladder where it
+  was and takes from the recurrent stage most of its lead over the ordinary
+  models. Four pairs of neighbouring rows swap places, and "most" holds only for
+  the three flexible models given the latest readings; it now gives each.
+- It said all three folder names took `varsplit` from a command-line option.
+  That holds for the two network runs; the comparison's folder copies the
+  default network's run name.
+- It gave the reload agreement as 3.8e-06 cycles, below the largest stored gap,
+  3.809e-06 (the recurrent-stage network, seed 45); it is now 3.81e-06. The
+  same rounding had given the recurrent-stage network's agreement in the first
+  record run as 2.5e-05, below its largest stored gap of 2.5496e-05; that is
+  now 2.55e-05.
+- It described the networks' and the three randomised models' gaps across seeds
+  as "several cycles", for gaps of 4.9 to 55; the snippet's line for those gaps
+  measured each seed against seed 42 only. Both are corrected below.
+
+**Reproduce with**, from a clean checkout of `6733d77` with the NASA files in
+`data/raw/` and the two stored runs in `reports/`, about nine minutes on the
+processor:
+
+```bash
+python scripts/baselines.py --run fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z --also fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z
+```
+
+Its `table.md` holds the two tables above. The count of 58, the bar, the counts
+for each folder, the intervals at the bar's width and how far each model's
+predictions lie apart across seeds come from the two stored folders with no
+fitting; the lines from `read_run` on rebuild two seeds of the default's data
+and fit one booster three times on it, which needs the NASA files and the
+stored default run. From the repository root:
+
+```python
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sklearn.ensemble import GradientBoostingRegressor
+
+sys.path.insert(0, "scripts")
+import baselines  # the script itself, for its resampling and its rebuilding of each seed
+from thesis_gnn_rul_xai.training import read_run
+
+folders = [Path("reports") / name for name in (
+    "baselines_fd001_physics_row_cap_5seed_varsplit_cfgba82e3_6733d77_20261003T100207Z",
+    "baselines_fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_6733d77_20261003T150939Z")]
+draws = np.random.default_rng(baselines.RESAMPLING_SEED).integers(0, 100, size=(baselines.DRAWS, 100))
+tests, resampled = [], {}
+for folder in folders:
+    predictions = pd.read_csv(folder / "predictions.csv").sort_values(["model", "seed", "unit"])
+    by_model = {m: block.predicted.to_numpy().reshape(-1, 100) for m, block in predictions.groupby("model")}
+    truth = predictions[predictions.model == "network"].rul.to_numpy().reshape(-1, 100)
+    for model, predicted in by_model.items():
+        resampled[folder.name, model] = baselines.resampled_rmse(truth, predicted, draws)
+        if folder == folders[1]:  # the largest gap between two seeds' predictions for any one engine
+            print(model, f"{np.ptp(predicted, axis=0).max():.1e}")
+    results = pd.read_csv(folder / "results.csv").dropna(subset=["paired_t_p"])
+    results = results[~((results.network == "network_1") & (results.model == "network"))]  # the pair once
+    tests.append(results.assign(folder=folder.name))
+tests = pd.concat(tests)
+bar = 0.05 / len(tests)
+print(len(tests), f"{bar:.6f}", f"{stats.t.ppf(1 - bar / 2, df=4):.3f}")
+for name, block in tests.groupby("folder", sort=False):
+    p = block.paired_t_p
+    print(name[-16:], int((p < 0.05).sum()), int((p < 0.05 / 29).sum()), int((p < bar).sum()), f"{p[p < bar].max():.6f}")
+for row in tests.itertuples():
+    low, high = np.percentile(resampled[row.folder, row.network] - resampled[row.folder, row.model],
+                              [50 * bar, 100 - 50 * bar])
+    print(row.folder[-16:], row.network, row.model, f"{row.paired_t_p:.3g}", row.paired_t_p < bar,
+          f"[{low:+.2f}, {high:+.2f}]")
+
+run = read_run(Path("reports/fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z"))
+a, b = (baselines.rebuild_and_verify(run, seed, Path("data/raw"))[0] for seed in (42, 43))
+print(len(set(a.train.units.tolist())), a.train.features.shape,
+      np.array_equal(a.train.features, b.train.features), np.array_equal(a.test.features, b.test.features))
+
+x, x_test = a.train.features[:, :, -1].astype(np.float64), a.test.features[:, :, -1].astype(np.float64)
+fits = [GradientBoostingRegressor(random_state=seed).fit(x, a.train.targets.astype(np.float64)).predict(x_test)
+        for seed in (42, 42, 43)]  # the same seed twice, then another
+print(np.abs(fits[0] - fits[1]).max(), f"{np.abs(fits[0] - fits[2]).max():.1e}")
+```
+
+Run on 2026-10-03 with the code at `6733d77`, it printed first the largest gap
+between two seeds' predictions of each model for any one engine in the second
+folder: 0.0e+00 for the constant, both linear regressions and the booster on
+the engine's age; from 1.4e-13 to 3.3e-13 cycles for the other seven boosters
+given the true labels; 4.9 for the network of 64, 1.3e+01 for the forest and
+1.4e+01 for the shuffled-label booster; and 1.1e+01 for the default network and
+5.5e+01 for the recurrent-stage network. Then
+`58 0.000862 8.950`; then, for each folder, the number of p below 0.05, below
+0.05 / 29 and below 0.05 / 58 and the largest p below the last,
+`20261003T100207Z 27 18 18 0.000234` and `20261003T150939Z 25 20 18 0.000861`;
+then one line per comparison with its interval at the bar's width; then
+`100 (17731, 14, 30) True True`: 100 training engines, 17,731 windows, and the
+same training and test inputs on seeds 42 and 43; and last of all `0.0 1.4e-13`,
+gradient boosting on the latest readings fitted twice with seed 42 and once
+with seed 43 on seed 42's data. (Until 2026-10-03, later the same day, this
+line of the snippet measured each seed's gap from seed 42 only, which gave at
+most 2.4e-13 cycles for the boosters where the largest gap between any two
+seeds is 3.3e-13, and the fitting with two seeds was not part of it.) The NASA
+scores come from
+the folder's `per_seed.csv`, column `score`, and the worked `t` above from
+`scipy.stats.ttest_1samp` on the recurrent-stage network's five RMSEs in that
+file against the booster's RMSE on any one seed.
+
+---
+
+## A-41 — The graphs with the paper's 41 connections and none of its knowledge are drawn at random, one per seed, in one piece
+
+**Where:** `graph/controls.py` (`build_random_adjacency`,
+`build_rewired_adjacency`); `data/pipeline/`, where the graph is built;
+`graph: random` and `graph: rewired` in the configuration, or
+`scripts/train.py --graph random` and `--graph rewired`; each seed folder's
+`graph.json` and `summary.json`'s `graph_seeds`; `graph/README.md`, under "Two
+graphs drawn at random, with the paper's 41 connections", which works every
+step through on Table 3
+
+**The gap.** The paper's Table 11 (page 12) has a row "ESTGNN w/o Physics
+prior", which its text on page 11 calls "ESTGNN without physics prior
+knowledge" and on page 13 "the removal of physics-informed adjacency matrix
+construction", and never says what took the place of its graph (assumption
+A-19). It never describes drawing a graph at random or rewiring one, so whether
+that row's graph was of either kind cannot be told from the paper. Checked on
+2026-10-03 by searching the text of all 16 pages: "random" appears once, for
+where the test histories end (page 7); "degree" twice, for the node degrees the
+rescaling balances (page 6) and for how strongly two variables are associated
+(page 7); "rewir" never. No row of the paper is set beside a run on either
+graph: that is this project's choice, because only the every-sensor graph is
+set beside the "w/o Physics prior" row (assumption A-19), not something the
+paper says.
+
+This project's stand-in for that row, every sensor joined to every other,
+removes more than the knowledge: once rescaled, it hands every sensor the same
+average of all fourteen (assumption A-19, measured there). The audit of
+2026-09-08 (its item D-2) asked for two controls that keep the number of
+connections and remove only the engineering knowledge: random graphs with 41
+edges, and rewirings of Table 3 that keep every sensor's number of connections.
+Neither had been built here.
+
+**What we chose.**
+
+1. **Two graphs.** `random` joins 41 of the 91 possible sensor pairs, every set
+   of 41 as likely as any other. `rewired` starts from Table 3 and swaps the
+   ends of two connections at a time, `P15–Nf` and `T50–W32` becoming
+   `P15–W32` and `T50–Nf`, so every sensor keeps its number of connections (its
+   degree); a swap that would join a sensor to itself or join a pair twice is
+   refused.
+2. **4,000 proposed swaps, refused ones counted as steps.** Counted that way, a
+   step from graph G to graph H is exactly as likely as the step back, so in
+   the long run every graph with Table 3's degrees is equally likely. Retrying
+   a refused proposal until one is accepted would favour graphs that allow many
+   swaps, in proportion to how many they allow.
+3. **One graph per seed.** Each graph is drawn from the seed the data is
+   prepared under, through NumPy's random number generator started from the
+   pair (seed, 1). By default each of a run's seeds holds back its own engines
+   and gets its own graph; with `--fixed-split` one graph serves every seed.
+   `--fixed-split` with nothing held back is refused: with no engine held back,
+   `scripts/train.py` prepares every seed under its own seed whatever
+   `--fixed-split` says, so the one graph the option asks for could not be
+   given. Refusing is chosen over quietly giving each seed its own graph.
+4. **In one piece.** A random draw that leaves some sensor unable to reach
+   another is drawn again; a rewiring that does is carried on for another 4,000
+   proposals.
+5. **Recorded.** Each seed folder's `graph.json` lists its graph connection by
+   connection, by sensor name, with the seed it was drawn from;
+   `summary.json`'s `graph_seeds` lists those seeds in seed-folder order.
+
+**Why.**
+
+- **One graph per seed rather than one fixed graph.** Graphs drawn the same way
+  differ from one another, so one draw trained five times answers a question
+  about that draw, the reason one seed is not a result (working rule 3). Drawn
+  per seed, a five-seed run paired by seed with Table 3 sets the engineer's
+  graph beside five draws, and its spread includes how much the draws differ,
+  which is the variation the question is about. It is also how the correlation
+  graph already behaves (assumption A-27). The cost: graph and training noise
+  are mixed in one spread, so a poor draw cannot be told from an unlucky
+  training. `--fixed-split` remains for looking at one graph.
+- **A generator of its own.** The seed alone already starts the generator that
+  picks the held-back engines (`data/windowing/`); starting the graph's from
+  the same number would make the graph and the split two readings of the same
+  random numbers. Drawing the graph takes nothing from the split's generator,
+  so each seed holds back the same engines as Table 3's run of that seed, and
+  the two pair by seed on held-back error as well.
+- **In one piece.** Table 3 is in one piece (asserted when
+  `graph/adjacency.py` is imported). A control that left a sensor alone would
+  differ from it twice: in which pairs are joined, and in some sensors never
+  exchanging anything, the kind of second change the audit raised against the
+  every-sensor graph. It costs almost nothing, because it almost never happens.
+  Counting every 41-connection graph on fourteen sensors, a share of
+  0.002592 is in more than one piece, about one in 386, and in 99.96 % of those
+  a single sensor is joined to nothing. Drawn 100,000 times with nothing
+  redrawn, 254 fell apart, every one by leaving a sensor alone; of 20,000
+  rewirings none did. So the redraw changes the distribution by about a
+  quarter of a percent for the random graph, and was never needed in 20,000
+  rewirings.
+- **4,000 proposals.** The equal chances hold only in the long run, so how long
+  is long enough was measured. Over seeds 0 to 2,999, the mean number of
+  connections shared with Table 3 (41 at the start) and of triangles, sets of
+  three sensors each joined to the other two (56 at the start), stop moving by
+  400 proposals: from there on no step in the table in `graph/README.md`
+  exceeds 0.08, against an uncertainty of 0.04 on each mean. 4,000 is ten times
+  that; seeds 42 to 46 accept 858 to 930 of their 4,000. That every graph with
+  these degrees can be reached by swaps at all is a standard property of this
+  kind of swap, and has not been checked against a source here.
+
+**What the five seeds' graphs look like.** Seeds 42 to 46, the seeds of a
+five-seed run of `config/fd001.yaml`: the random graphs share 19, 20, 16, 20
+and 20 of their 41 connections with Table 3 (41 × 41 / 91 = 18.5 expected,
+since each picked pair is one of Table 3's with chance 41/91) and give their
+sensors 2 to 11 connections; the rewirings share 19, 21, 21, 25 and 21 and keep
+Table 3's degrees exactly, 4 to 8. Every one of the ten is in one piece
+at the first draw or round, has a largest distance between two sensors of 2 or
+3, leaves no pair of sensors out of reach of three graph layers, and gives 14
+independent rows after rescaling. Table 3 has a largest distance of 4, four
+pairs out of reach, and 8 independent rows, because sensors at one place in
+the engine share their connections and the network cannot tell them apart
+(finding F-18). Taking the knowledge out takes those limits out with it, so a
+difference between Table 3 and a control will not say which of three things
+made it: the particular pairs, the groups of sensors with identical
+connections, or the reach.
+
+**How much it matters — not yet measured.** No network has been trained on
+either graph in this repository. The audit's own figures for graphs of these
+kinds were measured outside it and name no commit here, so they are not quoted.
+This entry is completed by the runs below, five seeds each, from a clean
+checkout of the commit that adds it, all six on one device, each configuration
+beside Table 3 trained at the same commit so the pairing crosses no change in
+the code:
+
+```bash
+python scripts/train.py --config config/fd001.yaml --seeds 5
+python scripts/train.py --config config/fd001.yaml --graph random --seeds 5
+python scripts/train.py --config config/fd001.yaml --graph rewired --seeds 5
+python scripts/train.py --config config/fd001.yaml --temporal lstm --seeds 5
+python scripts/train.py --config config/fd001.yaml --temporal lstm --graph random --seeds 5
+python scripts/train.py --config config/fd001.yaml --temporal lstm --graph rewired --seeds 5
+```
+
+The first three are the default network, which hands each sensor its last
+reading; the last three put the paper's recurrent stage in front of the graph
+layers at the size assumption A-26 chose and restore the best held-back pass,
+which is this project's procedure and not the paper's (finding F-16). Both are
+needed because both of this project's earlier graph comparisons shrank when
+the recurrent stage was put in: the every-sensor graph's cost from 2.784 to
+0.402 cycles of test error (assumption A-19), the correlation graph's
+held-back advantage to one no summary free of the choice of pass could
+establish (assumption A-27).
+
+Decided before any of them is trained: the comparisons are each control minus
+Table 3, paired by seed, in each of the two configurations, four in all; test
+RMSE is the measure, read together at 0.05 / 4 = 0.0125 (assumption A-37);
+the NASA score and the two held-back summaries no pass was chosen by (the
+mean of the last 20 passes, and the mean of the passes every run made, as
+assumption A-27 computes them) are reported beside it and not tested against
+that bar. A difference, if any, says how Table 3 compares with a typical graph
+drawn this way, in that configuration, and nothing about which of the three
+things above produced it.
+
+**Reproduce with** (from the repository root, no training; about seven minutes
+on the processor). `tests/test_graph_controls.py` checks the per-seed counts,
+and `tests/test_examples.py` the swap on Table 3 and the exact count of graphs
+in more than one piece.
+
+```python
+import logging
+
+import numpy as np
+from scipy.sparse.csgraph import connected_components
+
+from thesis_gnn_rul_xai.graph.adjacency import (
+    adjacency_report, build_physics_adjacency, normalize_adjacency, pairs_beyond_reach)
+from thesis_gnn_rul_xai.graph.controls import build_random_adjacency, build_rewired_adjacency
+
+logging.disable(logging.INFO)
+table3, symbols = build_physics_adjacency()
+
+
+def shared(graph):          # connections the graph has in common with Table 3
+    return int((graph * table3).sum() // 2)
+
+
+def triangles(graph):       # sets of three sensors each joined to the other two
+    return int(np.trace(np.linalg.matrix_power(graph.astype(np.int64), 3)) // 6)
+
+
+def pieces(graph):          # 1 when every sensor can reach every other
+    return connected_components(graph, directed=False)[0]
+
+
+# 1. How many proposals the rewiring needs: both counts stop moving by 400.
+for proposals in (100, 200, 400, 800, 1600, 4000, 16000):
+    drawn = [build_rewired_adjacency(s, proposals=proposals, connected=False)[0] for s in range(3000)]
+    a, b = np.array([shared(g) for g in drawn]), np.array([triangles(g) for g in drawn])
+    print(proposals, f"{a.mean():.3f} ({a.std() / 3000 ** 0.5:.3f})",
+          f"{b.mean():.3f} ({b.std() / 3000 ** 0.5:.3f})")
+print("Table 3 triangles", triangles(table3))
+
+# 2. How often a draw falls into more than one piece when nothing redraws it.
+split = [s for s in range(100_000) if pieces(build_random_adjacency(s, connected=False)[0]) > 1]
+alone = [s for s in split if (build_random_adjacency(s, connected=False)[0].sum(axis=1) == 0).any()]
+print("random", len(split), "of 100000 split;", len(alone), "with a sensor joined to nothing; first", split[:3])
+print("rewired", sum(pieces(build_rewired_adjacency(s, connected=False)[0]) > 1 for s in range(20_000)),
+      "of 20000 split")
+
+# 3. The graphs the five seeds of a run are given.
+for name, build in (("random", build_random_adjacency), ("rewired", build_rewired_adjacency)):
+    for seed in range(42, 47):
+        graph = build(seed)[0]
+        report = adjacency_report(graph, symbols)
+        table = normalize_adjacency(graph, method="row").astype(np.float64)
+        print(name, seed, shared(graph), int(graph.sum(axis=1).min()), int(graph.sum(axis=1).max()),
+              report["diameter"], len(pairs_beyond_reach(graph, symbols, 3)),
+              np.linalg.matrix_rank(table), triangles(graph))
+```
+
+The share of graphs in more than one piece is counted exactly, not drawn, in
+`test_example_a_random_41_connection_graph_on_14_sensors_is_split_once_in_386_draws`.
+Each rewiring logs how many of its proposals were accepted: 866, 930, 858, 868
+and 887 for seeds 42 to 46, checked by
+`test_each_rewiring_reports_how_many_of_its_proposals_were_accepted`.
+
+Table 3's own figures here — its degrees, its largest distance of 4, its four
+pairs out of reach, its 8 independent rows, its 56 triangles and the four
+connections of the swap example — were recomputed on 2026-10-03 from a clean
+checkout of `6733d77`. Every other figure was computed the same day with the
+code that adds this entry, before it was committed; the tests named above hold
+them, so they are checked again at whatever commit runs them.
+
+**Corrected 2026-10-03, before the entry was first committed.** An independent
+review of the draft found three errors, each checked again before it was
+fixed. The gap said the paper "never draws a graph at random"; the paper never
+says what its "w/o Physics prior" row used, so it may have, and the gap now
+says only what the text supports (re-checked by searching the PDF's text). The
+third choice gave as the reason for refusing `--fixed-split` with nothing held
+back that a reload would then draw a different graph; it would not, since the
+reload rebuilds every such seed under its own seed as training does, and the
+real reason is that the single graph asked for cannot be given (read from
+`scripts/train.py` and `training/stored.py`). And `graph/README.md` gave "21 to
+23 for each of the 41 connections", accepted swaps divided by 41, which reads
+as how often each connection was replaced; each accepted swap replaces two, so
+each is replaced 42 to 45 times on average (recounted from the five seeds'
+logged swaps).
 
 ---
 

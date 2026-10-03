@@ -634,7 +634,27 @@ def validate_settings(payload: Mapping[str, Any]) -> dict[str, Any]:
                 )
             value = [_number(spec, width, integer=True) for width in value]
         settings[spec["key"]] = value
+    # The form offers neither graph drawn at random, so the check above refuses
+    # them first; this keeps the training script's own refusal in force should
+    # it ever offer one.
+    refusal = fixed_graph_refusal(settings)
+    if refusal:
+        raise SettingsError(refusal)
     return settings
+
+
+def fixed_graph_refusal(settings: Mapping[str, Any]) -> str:
+    """Why scripts/train.py would refuse one graph drawn at random for every seed, or an empty string."""
+    # ASSUMPTION A-41: a random or rewired graph is drawn from the seed the data
+    # is prepared under. With no engine held back every seed is prepared under
+    # its own seed, so the same held-back engines for every seed cannot give
+    # every seed one graph, and the training script refuses the combination.
+    if (settings.get("graph") in ("random", "rewired") and settings.get("fixed_split")
+            and not float(settings.get("validation_fraction") or 0.0)):
+        return ("Same held-back engines for every seed, with a graph drawn at random, needs engines held "
+                "back: with none, every seed is prepared under its own seed and would be given a graph "
+                "of its own, so the training script refuses these settings.")
+    return ""
 
 
 def paper_row_for(
@@ -642,7 +662,21 @@ def paper_row_for(
 ) -> tuple[dict[str, Any] | None, str]:
     """The row of the paper a configuration may be set beside, or why there is none."""
     if graph == "correlation":
-        return None, "The paper never builds a graph from correlations, so no row describes one."
+        # ASSUMPTION A-19: only every sensor joined is set beside the w/o Physics
+        # prior row. The paper describes no graph built from correlations for its
+        # network (A-27) and never says what that row used, so whether it was a
+        # graph like this one cannot be told from it.
+        return None, ("The paper describes no graph built from correlations for its network, and "
+                      "never says what its w/o Physics prior row used instead; only every sensor "
+                      "joined is set beside that row, so no row describes this run.")
+    if graph in ("random", "rewired"):
+        # ASSUMPTION A-41: no row for these two graphs is this project's choice.
+        # The paper never says what its w/o Physics prior row used, so whether
+        # it trained on a graph like these cannot be told from it.
+        drawn = "a graph drawn at random" if graph == "random" else "a rewiring of its graph"
+        return None, (f"The paper never describes {drawn}, and never says what its w/o Physics "
+                      "prior row used instead; only every sensor joined is set beside that row, "
+                      "so no row describes this run.")
     for variant in ABLATIONS:
         if variant["settings"] == {"temporal": temporal, "graph": graph}:
             row = published_row(variant["key"], subset)

@@ -469,3 +469,68 @@ def test_rebuilt_data_that_differ_between_runs_or_between_seeds_are_refused(raw_
                               "--models", "constant", "--data-dir", str(raw_dir)],
                      tmp_path / "out_engines", capsys)
     assert "the test engines changed between seeds" in error
+
+
+# --- the split field, which runs before 2026-10-03 wrote with no split (audit item D-4) ---
+
+
+def test_two_runs_that_held_nothing_back_are_not_refused_over_their_recorded_split():
+    """With nothing held back there is no split to differ in; with engines held back the field must agree."""
+    from types import SimpleNamespace
+
+    script = _script()
+
+    def stored(name: str, fraction: float, split: str) -> SimpleNamespace:
+        """The parts of a stored run check_same_data reads."""
+        return SimpleNamespace(name=name, seeds=[42], summary={"split": split},
+                               preprocessing=PreprocessingConfig(validation_fraction=fraction))
+
+    # What a run recorded before 2026-10-03 and what one records since, for the same settings.
+    script.check_same_data(stored("before", 0.0, "varies_with_seed"), stored("since", 0.0, "none"), [42])
+    with pytest.raises(script.NotReproduced, match="prepared differently"):
+        script.check_same_data(stored("varied", 0.2, "varies_with_seed"), stored("held", 0.2, "fixed"), [42])
+
+
+# --- results.csv carries the early count beside the ASUE (assumption A-39) ---
+
+
+def test_every_row_of_the_comparison_carries_the_early_count_beside_its_asue():
+    """A stored network's seeds 42 and 43, and two flat guesses at the label ceiling and one cycle under it."""
+    import warnings
+
+    script = _script()
+    folder = reports_dir() / DEFAULT_RUN
+    if not (folder / "seed_43" / "test_predictions.csv").is_file():
+        pytest.skip(f"the stored run {DEFAULT_RUN} is not in reports/")
+    seeds = [42, 43]
+    saved = {s: pd.read_csv(folder / f"seed_{s}" / "test_predictions.csv") for s in seeds}
+    truth = np.vstack([saved[s]["rul"].to_numpy(float) for s in seeds])
+    predicted = {
+        "network": np.vstack([saved[s]["predicted"].to_numpy(float) for s in seeds]),
+        # 125 is above no capped label, so no engine is early; 124 is early by
+        # one cycle on the 11 engines whose labels were capped down to 125.
+        "ceiling": np.full_like(truth, 125.0),
+        "one_under": np.full_like(truth, 124.0),
+    }
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)   # ASUE's warning for the ceiling
+        scored = {key: [evaluate(truth[i], guess[i]) for i in range(len(seeds))]
+                  for key, guess in predicted.items()}
+    rows = {key: {"label": key, "inputs": "test", "seeds": seeds,
+                  **{f"{m}_by_seed": [one[m] for one in scored[key]]
+                     for m in (*script.MEASURES, "n_early")}}
+            for key in predicted}
+    draws = np.random.default_rng(0).integers(0, truth.shape[1], size=(20, truth.shape[1]))
+    resampled = {key: script.resampled_rmse(truth, guess, draws) for key, guess in predicted.items()}
+    results = pd.DataFrame(script.compare("network", rows, resampled)).set_index("model")
+
+    # The network: 47 and 49 of the 100 engines early, ASUE 12.2526 and 10.3136,
+    # as the stored run's results.csv has them (53 and 51 late).
+    assert [one["n_early"] for one in scored["network"]] == [47, 49]
+    assert results.loc["network", "n_early_mean"] == 48.0
+    assert results.loc["network", "asue_mean"] == pytest.approx((12.2526 + 10.3136) / 2, abs=1e-4)
+    # The ceiling: no early engine on either seed, so its ASUE is not a number,
+    # and so is the mean, with the count of 0 beside it saying why.
+    assert results.loc["ceiling", "n_early_mean"] == 0.0
+    assert np.isnan(results.loc["ceiling", "asue_mean"])
+    assert (results.loc["one_under", "n_early_mean"], results.loc["one_under", "asue_mean"]) == (11.0, 1.0)

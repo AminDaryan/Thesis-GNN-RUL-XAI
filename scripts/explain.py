@@ -60,7 +60,9 @@ changes, keeps a copy of them in ``code_state.zip``, so the result names the
 code that computed it.
 
 ``values.csv`` holds one row per window: the engine, the cycle the window ends
-at, the true and the predicted remaining life, the prediction at the baseline,
+at, the label (the remaining life capped at 125 cycles wherever the run caps
+it; assumptions A-01 and A-02) and the predicted remaining life, the
+prediction at the baseline,
 one column per sensor with its value in cycles, and one column
 ``reading_<sensor>`` per sensor holding what that sensor was reading at the
 window's last cycle, so that a chart can colour each value by whether the
@@ -72,7 +74,7 @@ size.
 
 A ``walks`` explanation writes different columns, on purpose, so that nothing
 written for sensor values in cycles can misread it: the engine, the cycle, the
-true and predicted remaining life, then ``score`` (the score before the
+label and the predicted remaining life, then ``score`` (the score before the
 sigmoid), ``constant`` (the part no sensor owns), ``stays`` and ``moves`` (the
 walks that stay within their starting sensor's group and the rest, sensors the
 graph cannot tell apart counting as one group), ``absolute_total`` (every

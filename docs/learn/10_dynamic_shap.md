@@ -558,14 +558,42 @@ the model, the input window or the reference can change the explanation.
 A sensor ranking from one trained model is not a general result across training
 runs.
 
-The earlier version of this page quoted reference-choice comparisons and the
-two-value sensor P15's rankings from a single trained network. Those are
-limited case studies, not established behaviour across seeds. Their settings
-and corrections remain in the records for
+An earlier version of this page quoted two things from a single trained
+network: how the ranking of the sensors changes with the reference, and where
+the two-value sensor P15 ranks. Both have since been measured on five
+networks, trained with five different seeds (42 to 46), which set their random
+starting values and the order in which they see the training windows. All five
+share one configuration: the default settings, except that no training engine
+is held back, so every network learns from the same 100 engines for all 200
+passes over them, and the network as it stands after the last pass is the one
+explained. Ranking the sensors by the average size of their contributions,
+sign set aside:
+
+- **The same four sensors lead on every network**, Nc, T50, W31 and T24,
+  whichever of three references stands in for an absent sensor: the average
+  training window used here, the median training window, or zeros.
+- **P15 comes last of the fourteen in every case measured**: on 20 test
+  windows under each of the three references, and over every window of three
+  training engines' lives, on all five networks.
+- **The sizes are not settled.** The largest contribution P15 makes over one
+  engine's life varies by tens of per cent across the five networks: of the
+  five, the smallest is between 36 and 50 per cent below the largest,
+  depending on the engine. Two of them can still agree closely: on one engine,
+  seeds 42 and 46 give the same 1.675 cycles to three decimal places.
+
+So the top and the bottom of the ranking hold across seeds for this one
+configuration; the exact sizes do not, and no other configuration has been
+measured this way. The settings, the tables and the code that produces them
+are in the records for
 [the reference choice](../ASSUMPTIONS.md#a-20--an-absent-sensor-is-replaced-by-its-average-training-window)
 (assumption A-20) and
 [the two-value sensor](../ASSUMPTIONS.md#f-05--what-shap-says-about-p15-and-what-it-does-not)
 (finding F-05).
+
+(Corrected 2026-10-03: this said both results came from one network and were
+limited case studies, not established behaviour across seeds. The five-network
+measurements were added to the two records that day, and a review found this
+page had not followed them.)
 
 Replacing sensor histories can also create combinations not observed together
 in a real engine. SHAP describes how the model responds to those combinations

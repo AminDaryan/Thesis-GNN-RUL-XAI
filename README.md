@@ -30,8 +30,16 @@ is that this re-implementation **spans 16.50 to 20.35 cycles depending on
 choices the source leaves open**. [Section 8](#8-results-so-far) gives all four
 measures.
 
-**Status.** Ruff is clean. The notebooks were re-executed on 2026-09-14 and
-their stored outputs match the code; section 10 gives the test counts.
+**Status.** Ruff is clean. Each of the sixteen notebooks was last run from top
+to bottom on 2026-10-02 or 2026-10-03, by the run times stored in its cells,
+and none stored an error. Whether the code has changed since a notebook was
+run is not checked here; a notebook's stored outputs follow a change only once
+it is re-executed. Section 10 gives the test counts. (Corrected 2026-10-03:
+this said the notebooks were re-executed on 2026-09-14 and that their stored
+outputs match the code. Every notebook has been run since, twelve of them
+added after that date, and nothing checks the match. Found by a review of
+2026-10-03 that flagged the date, and re-checked by reading the run times
+stored in each notebook and the commits that added them.)
 
 ---
 
@@ -287,7 +295,16 @@ $$\mathrm{ASUE} = \frac{1}{N_{\text{under}}}
 
 Underestimating is the safe direction, so this measures the cost of being too
 cautious: servicing engines that still had life left in them. Engines the
-model was optimistic about do not contribute at all.
+model was optimistic about do not contribute at all. When no engine was
+underestimated, `N_under` is 0 and the formula is 0 / 0, so the code reports
+"not a number" rather than 0, and every results file a script writes since
+2026-10-03 has the count of underestimated engines, `n_early`, beside each
+ASUE; for a file stored before then, and for the ASUEs quoted in this README,
+it is the number of test engines minus `n_late`, which every stored run's
+`results.csv` holds, and the comparison with ordinary models' `per_seed.csv`
+(assumption A-39; until 2026-10-03 the code returned 0 and called it the best
+value, and the first version of this sentence said every ASUE had the count
+beside it).
 
 All four are implemented in `src/thesis_gnn_rul_xai/evaluation/metrics.py`,
 on plain NumPy arrays, so a figure copied out of a published table can be
@@ -439,6 +456,13 @@ Read `notebooks/README.md` first: it holds what every notebook shares. Then:
 |----------|--------|
 | `01_preprocessing_fd001.ipynb` | steps 1 to 8: the raw text files become model-ready arrays |
 | `02_model_fd001.ipynb` | steps 9 to 11: build the network, train it and score it |
+| `temporal/01_last_cycle_fd001.ipynb` | the temporal stage, the part of the network that decides what each sensor carries into the graph layers from its last 30 cycles, as the default builds it: the newest reading kept and the other 29 dropped, standing in for the paper's recurrent stage (assumptions A-07 and A-11); worked on one real window, with its cost in learned numbers and its stored five-seed results |
+| `temporal/02_mean_window_fd001.ipynb` | the average of each sensor's 30 readings in place of the newest one, the other choice that keeps the paper's one number per sensor (assumption A-07) |
+| `temporal/03_window_summary_fd001.ipynb` | three numbers per sensor, its newest reading, its average and its change across the window, a stage this project added (assumption A-28) |
+| `temporal/04_lstm_fd001.ipynb` | the paper's own stage, one LSTM per sensor (its Section 2.2), at a size the paper does not give (assumption A-26), with one sensor's 30 readings followed through a trained network by hand |
+| `temporal/05_gru_fd001.ipynb` | the same with a gated recurrent unit, a simpler relative of the LSTM, in place of each sensor's LSTM; not a stage the paper has (assumption A-36) |
+| `temporal/06_raw_window_fd001.ipynb` | all 30 readings handed to the first graph layer untouched, the arrangement this project removed on 2026-08-28 and keeps behind a gate (assumption A-07); no stored run of it exists under these settings, so it shows no result |
+| `temporal/07_comparison_fd001.ipynb` | the stages with stored five-seed runs side by side, on the test and held-back engines, paired by seed |
 | `graph/01_physics_fd001.ipynb` | the paper's sensor graph on the real data: its table, the rescaled table, one graph layer worked by hand, how far three layers reach, and its stored five-seed result |
 | `graph/02_complete_fd001.ipynb` | every sensor joined to every other, and why it leaves the network predicting from one number |
 | `graph/03_correlation_fd001.ipynb` | the 41 sensor pairs whose readings move together most strongly, built step by step from the training engines |
@@ -447,7 +471,10 @@ Read `notebooks/README.md` first: it holds what every notebook shares. Then:
 | `xai/02_occlusion_fd001.ipynb` | a cheaper explanation method that is not in the paper, set beside the Shapley values |
 | `xai/03_walks_fd001.ipynb` | a method not in the paper that splits a prediction into the routes it took through the sensor graph, beside what removing each connection does |
 
-The first two are read in order. The `graph/` notebooks read the stored runs of
+The first two are read in order. Notebooks 01 to 06 of `temporal/` each show
+one temporal stage on one real window, and read the stored runs of that stage
+where any exist; 07 works on no window and compares those runs.
+`notebooks/temporal/README.md` says what they share and which runs they read. The `graph/` notebooks read the stored runs of
 three sensor graphs from one commit; `notebooks/graph/README.md` says which.
 The `xai/` notebooks each explain the same
 stored trained network, one method per notebook; `notebooks/xai/README.md` says
@@ -496,8 +523,28 @@ python scripts/train.py --seeds 5
 This preprocesses, builds the network of Table 4, trains it with the settings
 of Table 6, and reports the four measures on the test engines, averaged over
 five seeds. One seed is not evidence, so the script says so when given only
-one. `--graph complete` runs the "without physics prior" ablation, and
-`--no-early-stopping` reproduces the paper's fixed 200 epochs.
+one. `--graph complete` runs the "without physics prior" ablation;
+`--graph random` and `--graph rewired` give the network graphs with the
+paper's 41 connections but none of its engineering knowledge, drawn at random
+for each seed (assumption A-41, not yet trained); and
+a configuration that holds no engine back (`validation_fraction: 0.0`) follows
+the paper's procedure: with nothing to stop on, all 200 epochs run and the last
+one's weights are kept. `--no-early-stopping` changes nothing then. It matters
+only when engines are held back, where it runs all 200 epochs but still
+restores the weights of the held-back engines' best pass at the end
+(assumption A-18). (Corrected 2026-10-03: this said `--no-early-stopping`
+alone reproduces the paper's fixed 200 epochs, noticed while adding the
+paragraph below; the first correction then said the paper's procedure needs
+the option together with that configuration, and a review the same day read
+`training/run.py` and found the configuration alone does it.)
+
+Each run is written to a new folder under `reports/` whose name records its
+settings, among them whether training engines were held back and whether they
+changed with the seed: `varsplit`, `fixedsplit`, or `nosplit` when none were
+held back. (Added 2026-10-03: until that day a run that held none back was
+still named `varsplit` and recorded as varying its split, and stored runs keep
+those names.) `src/thesis_gnn_rul_xai/training/README.md` reads a name part by
+part, under "Loading a stored run back".
 
 ### What you get
 
@@ -586,10 +633,18 @@ with.** Joining every sensor to every other costs 2.78 cycles under the current
 default — paired `p = 0.0005`, every one of the five seeds worse. A graph built
 from the data instead, keeping the 41 sensor pairs whose readings move together
 most strongly — the same number of edges as the paper's — costs 0.10 cycles at
-`p = 0.66`, indistinguishable from nothing, although its predictions lean late.
-So most of what the every-sensor comparison costs is that graph's averaging of
-every sensor together, not the loss of the engineering knowledge. That is
-written up in `docs/ASSUMPTIONS.md` (assumption A-27).
+`p = 0.66`, indistinguishable from nothing, although its predictions are later
+than the paper's graph's, by 1.75 cycles on average and on every seed
+(`p = 0.0009`). So most of what the every-sensor comparison costs is that
+graph's averaging of every sensor together, not the loss of the engineering
+knowledge. That is written up in `docs/ASSUMPTIONS.md` (assumption A-27).
+
+(Corrected 2026-10-03: this said the correlation graph's predictions "lean
+late". They do against the test label, the remaining life capped at 125 cycles,
+but against the life the test engines truly had its average error is below
+zero on one seed of five and its lean is not established; what holds either way
+is that it is later than the paper's graph on every seed. Found by a review of
+the wording around the capped label.)
 
 **Most of what the default is missing is the direction the readings are moving
 in.** The default hands each sensor node only its last reading. Handing it three
@@ -680,6 +735,193 @@ F-06), together with what the sensor graph is worth (finding F-04 and
 assumption A-27) and what the Shapley values say about the sensor that carries
 almost no information (finding F-05).
 
+### Beside ordinary models with no sensor graph
+
+Whether the graph network is worth its complexity needs a model with no graph
+in it, fitted on the same training engines and scored on the same test engines.
+`scripts/baselines.py` does that for stored runs: for each seed it fits a fixed
+list of models from scikit-learn, a Python library of standard statistical
+models, every one at the library's default settings apart from the small
+network's width of 64 rather than the library's 100, taken from the review of
+2026-09-08 that first asked for this comparison
+(`docs/AUDIT_2026-09-08_scientific_validity.md`), on
+exactly the 80 engines that seed's network learned from, and scores them on the
+same 100 test engines. Linear regression predicts a weighted sum of its inputs.
+A random forest averages 100 decision trees, each a chain of yes-or-no
+questions about the inputs ending in a predicted value. Gradient boosting adds
+100 small trees one after another, each fitted to what the trees before it
+still get wrong. The small network computes 64 weighted sums of its inputs,
+replaces each negative one by zero, and predicts a weighted sum of the 64. Each
+model is given either the fourteen numbers the default network receives, each
+sensor's latest reading, or three numbers per sensor describing its 30-cycle
+window: the latest reading, the average, and the slope, how fast the readings
+rise or fall per cycle. Their predictions are held to between 0 and 125 cycles,
+the range the network cannot leave (assumption A-38). The record run,
+`baselines_fd001_physics_row_cap_5seed_varsplit_cfgba82e3_6733d77_20261003T100207Z`
+from a clean `6733d77`, sets them beside the default re-trained from a clean
+`f4f40ad` (`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z`)
+and beside the same network with the paper's recurrent stage, trained from a
+clean `19dceb5` with its best held-back pass restored
+(`fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_19dceb5_20261002T210700Z`):
+
+| Model | Given | RMSE | NASA score | R² | ASUE |
+|---|---|---|---|---|---|
+| **Current default** | the latest readings, through the paper's graph | **16.50 ± 0.42** | 540 ± 45 | 0.830 ± 0.008 | 11.65 ± 1.00 |
+| the same with the paper's recurrent stage, best held-back pass restored | each sensor's whole window | 13.23 ± 0.72 | 316 ± 57 | 0.891 ± 0.012 | 8.15 ± 0.48 |
+| linear regression | the latest readings | 20.46 ± 0.22 | 1064 ± 116 | 0.739 ± 0.006 | 14.32 ± 0.29 |
+| network with one layer of 64 | the latest readings | 17.21 ± 0.22 | 809 ± 107 | 0.815 ± 0.005 | 10.63 ± 0.40 |
+| random forest | the latest readings | 18.06 ± 0.42 | 1048 ± 156 | 0.797 ± 0.009 | 11.73 ± 0.79 |
+| gradient boosting | the latest readings | 17.25 ± 0.33 | 871 ± 116 | 0.815 ± 0.007 | 9.58 ± 0.80 |
+| gradient boosting | latest, average and slope | 12.14 ± 0.35 | 223 ± 16 | 0.908 ± 0.005 | 8.72 ± 0.52 |
+| gradient boosting | latest and slope | 11.83 ± 0.39 | 215 ± 16 | 0.913 ± 0.006 | 8.50 ± 0.78 |
+| linear regression | latest, average and slope | 14.52 ± 0.12 | 358 ± 12 | 0.869 ± 0.002 | 10.97 ± 0.18 |
+| gradient boosting trained on shuffled labels | the latest readings | 40.85 ± 0.29 | 20954 ± 1301 | −0.039 ± 0.015 | 26.43 ± 0.66 |
+| the average training label, for every engine | nothing | 40.57 ± 0.09 | 18579 ± 1002 | −0.025 ± 0.004 | 26.16 ± 0.58 |
+
+**Given the same fourteen numbers, the default is ahead of every flexible
+ordinary model on every seed, by less than the test engines can show.** Its
+RMSE is lower than the small network's by 0.72 cycles, the forest's by 1.57 and
+gradient boosting's by 0.76, on all five seeds each, and its NASA score, which
+charges a late prediction more than an early one, is lower than all three on
+every seed. But resampling the 100 test engines leaves zero inside every one of
+the three intervals for the RMSE difference, and none of the three paired tests
+clears the bar this project sets when several comparisons are read together: p
+below 0.05 divided by their number, here 0.05 / 58 for the 58 comparisons
+behind this table and the one beside the networks trained the paper's way below
+(assumption A-37). (Updated 2026-10-03: this said 0.05 / 29, for this table's
+29 alone, until the second table was added; nothing in this paragraph or the
+next changes side.) Against linear regression the
+lead, 3.96 cycles, is clear on both counts. The network with the recurrent
+stage is ahead of all four by 3.98 to 7.22 cycles, clearly on both.
+
+**Given each window's latest reading and slope, an untuned gradient booster
+beats the default clearly, and the recurrent-stage network on every seed by an
+amount these five seeds and 100 engines do not establish.** On the latest
+reading, the average and the slope it beats the default by 4.36 cycles on every
+seed (paired `p = 0.0001`, interval over the test engines +2.03 to +6.68), and
+on the latest reading and slope by 4.66 (`p = 0.0002`, +2.32 to +6.97).
+Against the recurrent-stage network it is ahead on every seed too, by 1.09
+cycles on all three and 1.40 on latest and slope, but neither clears the bar
+(`p = 0.0048` and `0.0037`). The first interval over engines, −0.10 to +2.30,
+contains zero; the second, +0.26 to +2.55, excludes it, but not once it is
+widened to the same strictness as the bar. The slope alone is not enough: the
+booster given only the slope beats the default by 2.80 cycles on every seed,
+and trails the recurrent-stage network on four seeds of five (`p = 0.35`).
+
+Both what the models are given and how they fit it matter. Adding the window
+summaries lowers linear regression's RMSE by 5.94 cycles (20.46 to 14.52) and
+gradient boosting's by 5.11 (17.25 to 12.14), while gradient boosting given
+only the default's fourteen numbers is 0.76 cycles worse than the default: the
+summaries carry information the default is never given, the direction the
+readings are moving in. But on the same 42 numbers gradient boosting is a
+further 2.38 cycles better than linear regression, so the boosting counts too.
+All of this is FD001, with the library's settings untouched.
+
+**The shuffled-label row is not a check for leaks.** Trained on labels shuffled
+among the training windows, gradient boosting lands where the constant does,
+which shows only that the scores need the link between readings and remaining
+life. The check that the answers cannot leak is a test,
+`tests/test_baselines.py`: it changes every answer in NASA's answer file and
+requires every input to every model to stay identical.
+
+**Beside the networks trained the paper's way.** The paper describes no engines
+held back and 200 passes over the training data, and this project reads its
+reported network as the one left after the last pass (finding F-16). A second
+record run,
+`baselines_fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_6733d77_20261003T150939Z`
+from a clean `6733d77`, sets the same models beside both networks trained that
+way, each from a clean `19dceb5`: the default
+(`fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`)
+and the network with the recurrent stage
+(`fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z`).
+With nothing held back there is no split for a seed to change, so every model
+is fitted on all 100 training engines, the same ones on every seed. The
+constant and linear regression have no random step in their fitting, so they
+make the same predictions on every seed. The gradient boosters given the true
+labels draw no random sample of windows; their one random step is the order in
+which a tree tries the inputs when it chooses each yes-or-no question, which
+the seed shuffles and which can only decide between two questions that fit
+equally well. It moved their predictions by at most 3.3e-13 cycles between
+seeds. So for all of these the ± 0.00 below means no spread at all, not a small
+one rounded away. The shuffled labels, the small network's starting values and
+the order it sees the windows in, and the windows each of the forest's trees is
+fitted on change with the seed by much more: the largest gap between two seeds'
+predictions for one engine is 4.9 cycles for the small network, 13 for the
+forest and 14 for the booster on shuffled labels. A paired test against a
+model with no spread therefore measures only how much retraining moves the
+network. (Corrected 2026-10-03, later the same day: this said the boosters have
+no random step in their fitting, and that only the shuffled labels, the small
+network and the forest still change with the seed. A review found the shuffled
+order of the inputs by fitting one booster with two seeds; the figures are
+with the comparison in `docs/ASSUMPTIONS.md` (finding F-22).)
+
+| Model | Given | RMSE | NASA score | R² | ASUE |
+|---|---|---|---|---|---|
+| **The default, the weights after 200 passes** | the latest readings, through the paper's graph | **16.82 ± 0.16** | 610 ± 25 | 0.824 ± 0.003 | 12.33 ± 0.60 |
+| the same with the paper's recurrent stage, the weights after 200 passes | each sensor's whole window | 16.05 ± 0.98 | 553 ± 85 | 0.839 ± 0.020 | 9.87 ± 0.84 |
+| linear regression | the latest readings | 20.39 ± 0.00 | 1040 ± 0 | 0.741 ± 0.000 | 14.25 ± 0.00 |
+| network with one layer of 64 | the latest readings | 17.10 ± 0.09 | 799 ± 35 | 0.818 ± 0.002 | 10.61 ± 0.53 |
+| random forest | the latest readings | 17.95 ± 0.43 | 1021 ± 127 | 0.799 ± 0.010 | 11.83 ± 0.24 |
+| gradient boosting | the latest readings | 16.94 ± 0.00 | 860 ± 0 | 0.821 ± 0.000 | 9.32 ± 0.00 |
+| gradient boosting | latest, average and slope | 12.47 ± 0.00 | 237 ± 0 | 0.903 ± 0.000 | 9.41 ± 0.00 |
+| gradient boosting | latest and slope | 12.14 ± 0.00 | 227 ± 0 | 0.908 ± 0.000 | 8.85 ± 0.00 |
+| linear regression | latest, average and slope | 14.44 ± 0.00 | 352 ± 0 | 0.870 ± 0.000 | 11.31 ± 0.00 |
+| gradient boosting trained on shuffled labels | the latest readings | 40.55 ± 0.31 | 19366 ± 1937 | −0.024 ± 0.016 | 26.05 ± 0.55 |
+| the average training label, for every engine | nothing | 40.55 ± 0.00 | 18365 ± 0 | −0.024 ± 0.000 | 26.27 ± 0.00 |
+
+**Trained the paper's way, the network with the recurrent stage loses its clear
+lead over the flexible ordinary models given the latest readings, and the
+booster given each window's latest reading and slope beats it.** Given the same
+fourteen numbers, the default is still ahead of the small network (by 0.28
+cycles) and the forest (1.14) on every seed, and of gradient boosting (0.12) on
+four seeds of five, again by less than the test engines can show: none of the
+three intervals over the test engines excludes zero, and on the seeds only the
+lead over the forest clears the bar, and only just (`p = 0.000861` against a
+bar of 0.000862). Its NASA score is still lower than all three on every seed.
+The review of 2026-09-08 measured this question outside the repository on
+the default of its day, which held nothing back and gave the figures of this
+table's first row, and its rows for gradient boosting and linear regression
+match this table to every digit it printed. The network with the recurrent
+stage, ahead of the three flexible models by 3.98 to 4.83 cycles with its best
+pass restored, is ahead of them by 0.88 to 1.90 trained the paper's way, on
+four or five seeds, none of it established. It is still ahead of linear
+regression on the same numbers by 4.34 cycles on every seed (`p = 0.00057`,
+clearing the bar), though the interval over the test engines no longer
+excludes zero once widened to the bar's strictness. Given each window's latest
+reading and slope, gradient boosting beats both networks on every seed: the
+default by 4.68 cycles and the recurrent-stage network by 3.91 (paired
+`p = 0.00085`, interval over the test engines +1.93 to +5.95). Unlike the 1.40
+with the best pass restored, that clears the bar, though only just, and on a
+row added after the first results were seen. The row drawn up before it, the
+booster on all three summaries, beats the recurrent-stage network by 3.58 on
+every seed but does not clear the bar (`p = 0.0012`). What moved between the
+two procedures is the recurrent-stage network, from 13.23 to 16.05 cycles; the
+default moved from 16.50 to 16.82, and no ordinary model by more than 0.71.
+(Corrected 2026-10-03, later the same day: the first sentence said "the
+booster given the slope", which also fits the booster given the slope alone,
+whose lead over the recurrent-stage network does not clear the bar, and
+"ordinary models", which took in linear regression; and this paragraph did not
+say that the default's lead over the forest clears the bar on the seeds.)
+
+**What it does not show**: that the graph is useless, since no row is this
+network with its graph taken out (assumptions A-19 and A-27 measure that); what
+either side can do at its best, since the ordinary models are untuned and the
+networks' open settings were chosen to land near the paper's figure
+(assumption A-22); anything beyond FD001; or which procedure the paper itself
+followed, since it never says which weights it reported (finding F-16).
+(Updated 2026-10-03: the last item said what the recurrent stage is worth under
+the paper's own procedure, before the second table was added.) The full
+tables, both kinds of uncertainty, and how the first run differs from a first
+measurement made outside the repository on 2026-09-14 and 15 are in
+`docs/ASSUMPTIONS.md` (finding F-22).
+
+Reproduce the two tables with:
+
+```bash
+python scripts/baselines.py --run fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z --also fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_19dceb5_20261002T210700Z
+python scripts/baselines.py --run fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z --also fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z
+```
+
 ---
 
 ## 9. How the project is organised
@@ -716,6 +958,15 @@ Thesis GNN RUL XAI/
 │   ├── README.md                 What every notebook shares; read it first
 │   ├── 01_preprocessing_fd001.ipynb
 │   ├── 02_model_fd001.ipynb
+│   ├── temporal/                 One notebook per temporal stage, and a comparison
+│   │   ├── README.md
+│   │   ├── 01_last_cycle_fd001.ipynb
+│   │   ├── 02_mean_window_fd001.ipynb
+│   │   ├── 03_window_summary_fd001.ipynb
+│   │   ├── 04_lstm_fd001.ipynb
+│   │   ├── 05_gru_fd001.ipynb
+│   │   ├── 06_raw_window_fd001.ipynb
+│   │   └── 07_comparison_fd001.ipynb
 │   ├── graph/                    One notebook per sensor graph, and a comparison
 │   │   ├── README.md
 │   │   ├── 01_physics_fd001.ipynb
@@ -752,7 +1003,7 @@ Thesis GNN RUL XAI/
 │       ├── utils/
 │       └── docsite/              The documentation website (computes nothing)
 │
-└── tests/                        646 tests, counted on 2026-10-03
+└── tests/                        698 tests, counted on 2026-10-03
 ```
 
 (Corrected 2026-10-03: the last line said 268 tests, the size of the suite in
@@ -941,6 +1192,7 @@ is defended.
 | Understand the method from nothing, in eight short pages | `docs/learn/`, or the **Learn** section of that site |
 | Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
 | Understand the model and the training | `notebooks/02_model_fd001.ipynb` |
+| See what each sensor's 30-cycle window is turned into before the graph layers, and what each way of doing it scores | `notebooks/temporal/` |
 | See what the sensor graph does, and whether the paper's beats two others | `notebooks/graph/` |
 | Understand which sensors a prediction came from, and how that changes over an engine's life | `notebooks/xai/01_shap_fd001.ipynb` |
 | Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
@@ -972,13 +1224,17 @@ python scripts/verify_claims.py --fast
 It recomputes the figures the assumptions log quotes — the sensor graph's edge
 counts, `P15`'s two levels, how many test labels the ceiling touches, the
 preprocessing-order measurement on FD002 — prints each beside the recorded
-value, and exits non-zero on a disagreement. That is **62 claims** in seconds,
-including the tables of the graph built from correlations (assumption A-27).
-Dropping `--fast` adds two checks that train a network to regenerate the tables
-of Shapley values the log quotes (assumption A-20 and finding F-05), bringing it
-to **91 claims**, which takes minutes rather than seconds. Every run writes its
-results and its commit into `reports/`, so a verification is itself
-reproducible.
+value, and exits non-zero on a disagreement. On 2026-10-03 that was **76
+claims** in seconds, including the tables of the graph built from correlations
+(assumption A-27). Dropping `--fast` adds two checks that train a network to
+regenerate the tables of Shapley values the log quotes (assumption A-20 and
+finding F-05), which takes minutes rather than seconds. On 2026-09-14, when the
+fast check had 62 claims, that brought it to **91**; the full check has not
+been counted since. Every run writes its results and its commit into
+`reports/`, so a verification is itself reproducible. (Corrected 2026-10-03:
+this gave 62 as the fast check's size, without a date. 62 was its count on
+2026-09-14, and checks added since bring it to 76. Found by a review that ran
+the check while reading this file's Status line.)
 
 **On 2026-09-14 all 91 pass**, the trained ones at `8b487ab-dirty`. They did
 not that morning. The two trained checks read today's default settings. The
@@ -1005,8 +1261,9 @@ nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
 
-With the data, the stored runs and the cited papers, 646 tests are collected
-and 645 pass, measured on 2026-10-03; the one failure is a stored run of the
+With the data, the stored runs and the cited papers, 698 tests are collected
+and 696 pass, measured late on 2026-10-03; one is skipped because no stored
+run is trained on a control graph yet, and the one failure is a stored run of the
 sensitivity study whose folder name and recorded commit disagree, written up in
 `docs/PENDING.md`. (Until 2026-10-03 this said all 268 pass, measured on
 2026-09-15.)
@@ -1111,11 +1368,19 @@ Understanding and recording the difference is the achievable goal.
 choices in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) have now been varied
 over five seeds: the input scaling, the smoothing, the label ceiling, the
 learning-rate schedule and early stopping (finding F-10), the held-back engines
-(assumption A-06), the rescaling of the graph (assumption A-21), what replaces
-the paper's graph (assumptions A-19 and A-27), and the stand-in for a removed
-sensor (assumption A-20). But each was varied under the configuration of its
-day, and this project's comparisons have reversed when that configuration
-changed, so none of them is settled for every configuration. The bias in the
+(assumption A-06), the rescaling of the graph (assumption A-21), and what
+replaces the paper's graph (assumptions A-19 and A-27). But each was varied
+under the configuration of its day, and this project's comparisons have
+reversed when that configuration changed, so none of them is settled for every
+configuration. The stand-in for a removed sensor (assumption A-20) changes no
+trained network and no test error, only what an explanation reports. Three
+stand-ins have been compared on five networks under one configuration, the
+default with no training engine held back, and there they agree on which four
+sensors lead and on `P15` coming last. (Corrected 2026-10-03: from 2026-09-14
+this paragraph listed the stand-in among the choices varied over five seeds,
+when it had been compared on one network; the five were measured on
+2026-10-03. Found by a review that day that set this paragraph beside the
+five-network results then added to the record of that choice.) The bias in the
 graph layers (assumption A-12) has been varied once, in a study that changed one
 choice at a time around the network with the paper's recurrent stage rather than
 the default, five seeds each: adding the bias raised the test error by 0.282

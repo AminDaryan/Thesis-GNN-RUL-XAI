@@ -64,8 +64,8 @@ ceiling (`rul_max`, assumption A-01), capping the test labels too
 assumption A-03), the smoothing strength (`smoothing_alpha`, assumption A-04),
 the rescaling of the graph (`adjacency_normalization`, assumption A-21), and
 holding any engines back at all (`validation_fraction`, assumption A-06).
-`graph` can also name two graphs the paper never uses (assumptions A-19 and
-A-27).
+`graph` can also name four graphs the paper never uses (assumptions A-19,
+A-27 and A-41).
 
 ---
 
@@ -267,7 +267,11 @@ if config.graph == "physics":
     adjacency_raw, symbols = build_physics_adjacency()
 elif config.graph == "complete":
     adjacency_raw, symbols = build_fully_connected_adjacency(len(PAPER_SENSOR_SYMBOLS))
-else:
+elif config.graph == "random":
+    adjacency_raw, symbols = build_random_adjacency(config.seed)
+elif config.graph == "rewired":
+    adjacency_raw, symbols = build_rewired_adjacency(config.seed)
+elif config.graph == "correlation":
     physics_edges = int(build_physics_adjacency()[0].sum() // 2)
     adjacency_raw, symbols = build_correlation_adjacency(
         train[train[UNIT_COL].isin(train_units)], columns, n_edges=physics_edges,
@@ -291,6 +295,13 @@ on 2026-09-26.) Because each seed holds back different engines, each
 seed can get a slightly different graph. `graph/README.md` explains why it
 keeps exactly as many edges as the paper's graph (assumption A-27), and
 `tests/test_pipeline.py` checks it is built from the training rows alone.
+
+**The random and the rewired graph read no data at all.** They are drawn from
+`config.seed` alone, so they cannot leak anything, and the same seed always
+gives the same graph; `graph/README.md` explains how they are drawn
+(assumption A-41). The record of what was observed names the seed as
+`graph_seed`, which is `None` for the other three graphs. (The trace below was
+printed before that entry existed, so it does not show it.)
 
 ```
   adjacency_raw       shape (14, 14) dtype float32

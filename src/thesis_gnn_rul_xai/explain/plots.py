@@ -77,7 +77,9 @@ def plot_contributions_over_time(
 
     top = figure.add_subplot(grid[0, :])
     _style(top)
-    top.plot(cycles, table["rul"], color=INK_MUTED, linewidth=1.6, label="true remaining life")
+    # The window's label: the remaining life capped at the ceiling, 125 cycles by default (assumption A-01).
+    top.plot(cycles, table["rul"], color=INK_MUTED, linewidth=1.6,
+             label="label: remaining life, capped")
     top.plot(cycles, table["predicted"], color=UP, linewidth=2.0, label="predicted")
     base = float(table["baseline"].iloc[0])
     top.axhline(base, color=INK_SECONDARY, linewidth=0.8)

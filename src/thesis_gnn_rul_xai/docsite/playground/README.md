@@ -618,7 +618,23 @@ Some things need no training, and the page shows them as the settings change:
 
 The cautions come from one function, `caveats()`, and each carries a `where`:
 `"run"` for a caution that qualifies a stored run's numbers, which the run's
-own page lists in full, and `"design"` for the two above. Most cautions are
+own page lists in full, and `"design"` for the two above. The form offers no
+graph drawn at random, but a stored run trained on one from the command line
+(`--graph random` or `--graph rewired`, assumption A-41) gets a caution saying
+whether every seed drew its own graph or one graph served them all, and "Set
+these settings up again" on it keeps the form's own graph and says so. The
+same holds for any recorded choice the form does not offer. One graph serves
+every seed only when the same engines are held back for all of them: such a
+graph is drawn from the seed the data is prepared under, and with no engine
+held back every seed is prepared under its own. `scripts/train.py` therefore
+refuses "Same held-back engines for every seed" with these graphs when nothing
+is held back. The playground's check of a request, `validate_settings`, refuses
+the same combination in the same terms (`fixed_graph_refusal` in
+`settings.py`), so that it would be stopped before a job starts should the form
+ever offer these graphs; and `caveats()` gives that refusal, not "one graph
+served them all", for those settings. Until 2026-10-03 the caution said one
+graph served every seed whenever the box was ticked, with engines held back or
+not; a review of the change found it the same day. Most cautions are
 `"run"` only, because on the design tab the i beside the setting already says
 the same thing, while a stored run's page shows no settings and the caution is
 the only copy there.
@@ -650,13 +666,22 @@ remove, one part at a time, the way the paper's Table 11 does:
 | w/o LSTM | the paper's | ESTGNN w/o LSTM, Table 11 |
 | LSTM | every sensor joined | ESTGNN w/o Physics prior, Table 11 |
 | w/o LSTM | every sensor joined | none: two parts removed at once |
-| anything | the 41 most correlated pairs | none: the paper builds no such graph |
+| anything | the 41 most correlated pairs | none: the paper describes no such graph for its network and never says what its w/o Physics prior row used, and this project sets only every sensor joined beside that row |
+| anything | 41 pairs picked at random, or the paper's graph rewired | none: the paper describes no such graph and never says what its w/o Physics prior row used, and this project sets only every sensor joined beside that row |
 | anything else | the paper's or every sensor joined | none: the paper has no row for the stage |
 | not recorded, in an older stored run | the paper's or every sensor joined | none: no row can be chosen |
 
+(Corrected 2026-10-03: the row for the 41 most correlated pairs said "the
+paper builds no such graph". It describes none for its network, but it never
+says what replaced its graph in the w/o Physics prior row, so whether that row
+used one cannot be told from it. Found by a review that flagged the sentence as
+unsupported.)
+
 The list of runs gives that row's root mean squared error (RMSE: the square
-root of the average squared difference between the predicted and the true
-remaining life, in cycles) in its Paper column, and a run's own
+root of the average squared difference between the predicted remaining life
+and the test label, the remaining life capped at 125 cycles (assumption A-02),
+in cycles; corrected 2026-10-03 from "the true remaining life", found by a
+review of the capped-label wording) in its Paper column, and a run's own
 page names the row and sets its figures beside the run's, or gives the reason
 from the table's last column. The design tab names no row: the pipeline already
 shows which parts are in, and the paper's number belongs beside a result, not
@@ -890,7 +915,15 @@ false and null retain their distinct meanings. A saved but unused recurrent
 setting remains visible, with a note when the temporal route does not use it.
 
 The run record shows the stored split policy, stopping policy, reported
-weights, code version and completion time. An expandable source record keeps
+weights, code version and completion time. The split is shown as it happened:
+a run that held no engine back is shown as having no split, and when its
+record says otherwise — every such run stored before 2026-10-03 recorded
+`varies_with_seed` (audit item D-4) — the recorded value is shown beside it.
+Comparing two runs reads the split by the same rule, so two runs that both
+held nothing back never differ in it. The ASUE card adds how many
+engines the run predicted early, on average over its seeds, when the run
+recorded it (since 2026-10-03); with none, ASUE has no value (assumption
+A-39). An expandable source record keeps
 every saved field accessible, including notes, additional configuration keys,
 the launch command and software environment when the run recorded them.
 The API's `recorded_summary` and `recorded_model` preserve the saved mappings;
@@ -954,8 +987,14 @@ uncommitted changes, so no committed state of the code reproduces that run;
 the list colours such a commit, and its column heading says so when pointed at.
 
 The run's predictions are drawn as the paper's Fig. 8 draws them, test engines
-in order of unit number, or ordered by true remaining life instead, which shows
-how the error changes along the life.
+in order of unit number, or ordered by their label instead, which shows how the
+error changes along the life. The label is each test engine's remaining life
+from NASA's answer file, capped at the run's ceiling, 125 cycles by default,
+when the run capped its test labels (assumption A-02); the chart then calls it
+the "remaining life capped at 125", calls it the true remaining life only for
+a run that left its test labels uncapped, and calls it the test label for a run
+that recorded neither. In FD001, 11 of the 100 test engines have more than 125
+cycles left, so a capped run draws those 11 at 125.
 
 Tick two runs and the page lists **every setting that differs** between them,
 then pairs their seeds. For each seed it takes the second run's number minus
@@ -997,15 +1036,22 @@ on this machine's processor with an untrained network, one window of exact
 Shapley values takes 0.07 s for the w/o LSTM network and 0.50 s with the LSTM
 stage, so an engine's whole life is minutes, not hours.
 
-A stored explanation holds one row per window: the true and predicted
-remaining life, one value per sensor in cycles, and, since 2026-09-16, what
+A stored explanation holds one row per window: the label, which is the
+remaining life capped at 125 cycles (assumption A-01; on a test engine, only
+when the run caps its test labels, as the default does, assumption A-02), the
+predicted remaining life, one value per sensor in cycles, and, since
+2026-09-16, what
 each sensor was reading at the window's last cycle, because the paper's Fig. 9
 colours every value by whether the sensor read high or low and nothing else in
 the file could say which. That last number is the reading **after** the noise
 filter and the rescaling, not the raw one: it is what the model was given, and
 it is the only version of it the stored windows hold. An explanation stored
 before the readings were kept is coloured by the window's place in the sequence
-instead, and its legend says so.
+instead, and its legend says so. (Corrected 2026-10-03: this called the first
+column the true remaining life. It is the label the network is scored against,
+taken from the dataset's targets, and where it is capped it is below the true
+remaining life of any window with more than 125 cycles left. Found by searching for the wording that
+a review had corrected elsewhere.)
 
 An explanation names the paper's figure when a chart follows one, as in "As
 the paper's Fig. 9, left." A method added by this project states that origin
@@ -1027,9 +1073,21 @@ of the readings used for that prediction, not a numbered block called a
 and its menu shows the actual engine identifiers. Moving between test engines
 does not represent time passing. The arrow buttons move to the previous or
 next saved entry; the menu jumps directly to a cycle or engine. The slider
-shows the endpoints and position among the saved entries, alongside actual
-and predicted remaining life in cycles. Where the saved comparison limits the
-actual-life labels to a ceiling, the control names that limit.
+shows the endpoints and position among the saved entries, alongside the label
+and the predicted remaining life in cycles. The label is the remaining life
+capped at the ceiling for the cycles of one engine, which are training-file
+windows (assumption A-01), and for test engines when the run capped their
+labels too (assumption A-02); the control then calls it the capped remaining
+life and names the ceiling, since wherever it reads the ceiling more cycles may
+truly remain. Only for a run that left its test labels uncapped does it say
+true remaining life, and for a run that recorded neither it says test label.
+
+(Corrected 2026-10-03: the control, the Fig. 7 and Fig. 8 charts, the history
+caption and the slider's spoken value called the capped label the true or
+actual remaining life, and this section said the control showed actual
+remaining life. For held-back engine 5 of seed 42 of the default configuration
+the capped label is below the life truly left in 114 of its 240 windows. Found
+by a review of the wording around the capped label.)
 
 Dragging updates the visible engine or graph, the selected-cycle marker on
 the remaining-life chart, the history readouts, and the selected test engine's

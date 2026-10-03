@@ -115,8 +115,13 @@ def test_asue_counts_only_the_pessimistic_engines():
     assert asue([100, 50, 30], [90, 60, 10]) == pytest.approx(15.0)
 
 
-def test_asue_is_zero_when_the_model_never_underestimates():
-    assert asue([100, 50], [110, 60]) == 0.0
+def test_asue_is_not_a_number_when_no_engine_is_predicted_early():
+    """Assumption A-39: Equation 24 is 0 / 0 then, so not a number, with a warning."""
+    with pytest.warns(RuntimeWarning, match="no engine was predicted early"):
+        assert math.isnan(asue([100, 50], [110, 60]))
+    with pytest.warns(RuntimeWarning):
+        result = evaluate([100, 50], [110, 50])
+    assert math.isnan(result["asue"]) and result["n_early"] == 0 and result["n_late"] == 2
 
 
 # --- the bundle and its guards ------------------------------------------
@@ -125,12 +130,14 @@ def test_asue_is_zero_when_the_model_never_underestimates():
 def test_evaluate_returns_every_measure():
     result = evaluate([100, 50, 30], [95, 55, 30])
     assert set(result) == {
-        "rmse", "score", "r2", "asue", "n_engines", "mean_error", "n_late"
+        "rmse", "score", "r2", "asue", "n_engines", "mean_error", "n_late", "n_early"
     }
     assert result["n_engines"] == 3
     # The 50 -> 55 engine is late, and so is the 30 -> 30 one: nasa_score puts
     # the boundary at d >= 0, and n_late must agree with it.
     assert result["n_late"] == 2
+    # The 100 -> 95 engine is the one early engine ASUE averages over.
+    assert result["n_early"] == 1 and result["asue"] == pytest.approx(5.0)
     assert result["mean_error"] == pytest.approx(0.0)
 
 

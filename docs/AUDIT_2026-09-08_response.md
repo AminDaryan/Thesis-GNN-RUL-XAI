@@ -32,8 +32,13 @@ whose own code does.
 - *Test engines*: the 100 FD001 engines whose true remaining life NASA
   publishes in `RUL_FD001.txt`. Every reported error is measured on them.
 - *Error*, or *RMSE*: the root mean square error in cycles, the square root of
-  the average squared difference between predicted and true remaining life.
-  Lower is better.
+  the average squared difference between the predicted remaining life and the
+  test label, which is NASA's remaining life capped at 125 cycles when the run
+  caps its test labels, as the default does (assumption A-02). Lower is
+  better. (Corrected 2026-10-03: this said the difference is taken from the
+  true remaining life; for the 11 test engines with more than 125 cycles left
+  the label is below it. Found by a review of the wording around the capped
+  label.)
 - *Held-back engines*: since 2026-09-08 the default sets a fifth of the 100
   training engines aside before training (assumption A-06). The network never
   learns from them; their error decides when training stops and which pass over
@@ -76,16 +81,16 @@ whose own code does.
 | Item | What the audit said | State on 2026-10-02 |
 |---|---|---|
 | D-1 | The paper's graph has rank 8, so the network sees eight numbers, not fourteen | Recorded as a finding (F-18) on 2026-09-26; its consequence for Shapley values added to it today |
-| D-2 | The "every sensor joined" control averages all sensors into one number | Measured and added to the entry on that control (A-19) today; random-graph controls never run here |
+| D-2 | The "every sensor joined" control averages all sensors into one number | Measured and added to the entry on that control (A-19) today; random and rewired graphs built on 2026-10-03 (A-41), not yet trained |
 | D-3 | Choices between settings were decided on the test engines | Held-back error set beside test error in every entry that made such a choice; the choice of row rescaling does not survive it |
-| D-4 | Two fields of each run's record describe an experiment that did not happen | One fixed on 2026-09-14; one still open, in a file that cannot change today |
-| D-5 | Nothing compares the network with an ordinary model | A comparison script is in progress; no figure quoted until it runs from a clean commit |
+| D-4 | Two fields of each run's record describe an experiment that did not happen | One fixed on 2026-09-14; one still open, in a file that cannot change today (fixed on 2026-10-03) |
+| D-5 | Nothing compares the network with an ordinary model | A comparison script is in progress; no figure quoted until it runs from a clean commit (run from a clean commit on 2026-10-03: finding F-22) |
 | D-6 | The default network is barely temporal | Confirmed and added to the entry on what each sensor node carries (A-07) today, with the measurement of the window average it asked for |
 | D-7 | The graph layers can only scale with their input | Recorded today as a finding (F-21) |
 | D-8 | Seed spread is not uncertainty over engines | Interval over engines added to the comparison with the paper's figures (F-06) and to `README.md` today; caution added beside the paired tests |
 | D-9 | Stale numbers presented as current | All three fixed; six more of the same kind found and fixed; two files still to correct (both corrected on 2026-10-03) |
 | D-10 | Per-pass training curves were thrown away | Saved by every run since 2026-09-14; the curves of the recurrent stage show the over-training the log had only inferred |
-| D-11 | An ASUE of 0 is called the best value; it is undefined | Agreed; not yet changed in the code |
+| D-11 | An ASUE of 0 is called the best value; it is undefined | Agreed; not yet changed in the code (changed on 2026-10-03, assumption A-39) |
 
 ---
 
@@ -200,6 +205,19 @@ for random graphs were measured outside the repository and name no commit
 here, so they are not quoted as this project's results. Running them needs a
 new graph option, in `config.py` and `scripts/train.py`, and **new training**.
 
+**Code done, 2026-10-03; training still to run.** `--graph random` joins 41
+sensor pairs picked at random, and `--graph rewired` swaps the ends of Table 3's
+connections so that every sensor keeps its number of connections. Each is
+drawn from the seed the data is prepared under, one graph per seed by default,
+and redrawn until every sensor can reach every other, which a random draw
+fails about once in 386 times; each seed folder records its graph by sensor
+name. The choices, why each was made, and the six five-seed runs that will
+measure them — Table 3, random and rewired, with the default last-reading stage
+and with the recurrent stage, all at one commit — are in the log's entry on
+these graphs (assumption A-41), with the comparisons decided before any of them
+is trained. Until those runs exist, nothing here says what the engineering
+knowledge is worth against these controls.
+
 ---
 
 ## D-3. Choices between settings were decided on the test engines
@@ -297,6 +315,55 @@ runs from this working tree is running. It must keep stored runs loadable:
 `training/stored.py` reads `split` to decide whether to rebuild each seed's
 held-back engines.
 
+**Done, 2026-10-03.** `scripts/train.py` now derives both from the engines each
+seed actually held back (its `split_record`): engines held back give `varsplit`
+and `"varies_with_seed"`, or `fixedsplit` and `"fixed"` under `--fixed-split`;
+none held back gives `nosplit` and `"none"`, whatever the option says. Stored
+runs keep what they recorded, and every reader handles both ages of record.
+`training/stored.py` rebuilds a run recorded as `"none"` under each seed, and
+`scripts/train.py` prepares every seed of such a run under its own seed, even
+under `--fixed-split`, so the two always agree; a sensor graph drawn at random
+cannot be combined with `--fixed-split` when nothing is held back, since each
+seed would then get its own. The playground lists such a run as holding none
+back and shows the recorded value beside it. `scripts/baselines.py` compares
+the `split` of two runs only when they held engines back. The notebooks select
+runs by `"varies_with_seed"` together with the fifth held back by
+`config/fd001.yaml`, which runs still record after the change, so none needed
+changing. `src/thesis_gnn_rul_xai/training/README.md`, under "The split part
+of a run folder's name", explains the three values, and
+`tests/test_run_records.py` reloads a stored run of each age, and a copy
+recording `"none"`, and checks each against its saved predictions. A run
+trained from a checkout of an older commit still records the old fields,
+because it runs that commit's code.
+
+**Correction, 2026-10-03.** The paragraph before the last said no run holding
+nothing back had been stored since `c8ba1f1`. One had:
+`fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`,
+finished at 18:39 UTC on 2026-10-02 from a clean `19dceb5`, with
+`validation_fraction` 0.0 and `"split": "varies_with_seed"` — the last-reading
+run with nothing held back that finding F-16 pairs against. It was found by the
+survey of every stored run's `split` and `validation_fraction` made for the
+fix: of the 136 stored runs, 17 held nothing back, and every one of them
+records `"varies_with_seed"`. Whether the paragraph was written before that run
+finished is not recorded.
+
+**Second correction, 2026-10-03.** The first version of the change kept
+`--fixed-split`'s single preparation when nothing was held back, recorded the
+run as `"none"` all the same, and said that was safe because "with nothing held
+back the seed changes no number of the data". It does change one. Under
+min-max scaling per operating condition the conditions are found by a
+clustering started from the seed, which numbers them differently for each
+seed. With the code at `6733d77`, `config/fd001.yaml` set to FD002, nothing
+held back and that scaling, seeds 42 and 43 give the same training and test
+inputs to the last digit but different scaling tables: the condition numbered
+0 covers 13,458 training rows under seed 42 and 8,122 under seed 43, and on
+FD004 15,395 and 9,224. Such a run would have saved the first seed's table in
+every seed's folder and been rebuilt under each seed, and the check that a
+rebuilt table matches the saved one would have failed from the second seed on.
+An independent review of the change found it the same day. No stored run is
+affected: none records `"fixed"` or `"none"`. `scripts/train.py` now prepares
+each seed under its own seed whenever nothing is held back.
+
 ---
 
 ## D-5. Nothing compares the network with an ordinary model
@@ -320,6 +387,67 @@ procedure: it used `features[:, :, 0]`, which was the last cycle when the
 pipeline handed over one cycle per sensor and has been the first cycle of the
 window, 29 cycles out of date, since 2026-09-09. The last cycle is
 `features[:, :, -1]`.
+
+**Done, 2026-10-03.** `scripts/baselines.py` was committed in `6733d77`,
+with the test that changes NASA's answer file and requires every input to stay
+identical, and its record run was made from a clean checkout of that commit:
+`reports/baselines_fd001_physics_row_cap_5seed_varsplit_cfgba82e3_6733d77_20261003T100207Z`.
+It sets the models beside the default re-trained from a clean `f4f40ad`
+(16.496 ± 0.415) and beside the network with the paper's recurrent stage,
+trained from a clean `19dceb5` with its best held-back pass restored
+(13.234 ± 0.723). It is written up as finding F-22 and added to `README.md`
+section 8. On the audit's own question, the same fourteen numbers: the default
+is ahead of gradient boosting by 0.756 cycles, of the network of 64 by 0.716
+and of the random forest by 1.566, on all five seeds each, but none of the
+three paired tests clears the bar for the table's 29 comparisons read together
+(0.05 / 29, assumption A-37), and no interval over the test engines excludes
+zero. The audit found the margin over gradient boosting, 0.12 cycles, smaller
+than the network's seed-to-seed spread; under today's default it is larger
+than that spread (0.415) and holds on every seed, and the test engines still
+cannot resolve it. The audit's figures came from an earlier default
+(16.82 ± 0.16, nothing held back), a forest of 200 trees and the best possible
+constant, so its rows are not this run's. Beyond the audit's question: gradient boosting
+given each sensor's latest reading, average and slope over the window beats
+the default by 4.356 cycles on every seed (p = 0.0001, interval over engines
++2.03 to +6.68), and the recurrent-stage network on every seed by 1.094
+(p = 0.0048, short of the bar). Still to come is the same ladder beside the
+recurrent stage trained the paper's way, nothing held back and the weights
+after 200 passes (finding F-16).
+
+**Added 2026-10-03, later the same day.** That ladder is now measured: record
+run
+`reports/baselines_fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_6733d77_20261003T150939Z`,
+from a clean `6733d77`, beside the default (16.818 ± 0.157) and the
+recurrent-stage network (16.052 ± 0.975), both holding nothing back and keeping
+the weights after 200 passes, both trained from a clean `19dceb5`, each giving
+back its stored arm of the finding on the recurrent stage (F-16) seed for seed.
+That default is the one the audit measured beside: its network row,
+16.82 ± 0.16, matches this run's, and its rows for gradient boosting and linear
+regression (RMSE, NASA score, R² and ASUE: 16.94, 860, 0.821 and 9.32; 20.39,
+1040, 0.741 and 14.25) are this run's to every digit it printed. Its forest of
+200 trees, 17.87 there, is not this run's, which has 100 trees and gives
+17.954 ± 0.428. Its network of 64, 17.68 there with a NASA score of 940, lies
+outside this run's five values for the network of 64 (RMSE 16.94 to 17.17,
+mean 17.100 ± 0.093; scores 740 to 830), and the audit gives no seed or other
+setting that would tell why. (Corrected 2026-10-03, later the same day: this
+said the audit's network of 64 is not this run's model. Only the forest's
+different number of trees shows that; for the network of 64 a review found
+nothing in the audit beyond its width.) So the
+audit's own question now has an answer from committed code in the audit's own
+setting: the default leads gradient boosting on the same fourteen numbers by
+0.118 cycles, on four seeds of five (p = 0.17), with an interval over the test
+engines of −1.93 to +1.84. With nothing held back every seed fits the ordinary
+models on the same 100 engines, so the booster scores 16.936 on every seed and
+the paired test measures only how much retraining moves the network. Trained
+the paper's way, the recurrent-stage network no longer clearly leads the
+flexible models on the same fourteen numbers (by 0.884 to 1.902 cycles, none
+established), and gradient boosting given each window's latest reading and
+slope beats it on every seed by 3.914 cycles (p = 0.00085, interval over the
+test engines +1.93 to +5.95), just inside the bar for the 58 comparisons the
+finding now reads together (0.05 / 58 = 0.000862); that row was added after the
+first results were seen. The 0.05 / 29 in the paragraph above was the bar
+before these rows were counted, and nothing in that paragraph changes side at
+0.05 / 58. Finding F-22 reports both tables, and `README.md` section 8 the rows.
 
 ---
 
@@ -569,6 +697,37 @@ because the paper does not say what Equation 24 gives in that case. It was not
 made today, because no stored figure depends on it and the change belongs to a
 module outside this response.
 
+**Done, 2026-10-03.** `asue` now returns "not a number" with a warning when no
+engine is predicted early, and `evaluate` reports `n_early`, the count of early
+engines, which Equation 24 calls `N_under` (Equation 24 rendered from the PDF
+at scale 8 the same day to confirm the reading above). Every results file a
+script writes from then on has the count beside each ASUE — each seed's row of
+a run's `results.csv`, the mean and spread in its `summary.json`, the table
+`scripts/train.py` prints, the comparison with ordinary models' `per_seed.csv`
+and `results.csv`, the sensitivity study's `summary.csv` — and a mean over
+seeds is left undefined, written as `null` in `summary.json`, when any seed has
+no ASUE; so is the playground's mean difference between two runs. Files stored
+before that day lack the count, and for them it is `n_engines` minus `n_late`.
+(Narrowed the same day: this said the count is written wherever ASUE is. A
+review found the comparison's `results.csv` without it, which now has it, and
+the playground's comparison of two runs averaging the seeds that had an ASUE
+and labelling the differences after a missing one with the wrong seeds, which
+is fixed.) The choice is assumption A-39, which works the case through on the real
+FD001 labels: a model predicting 125 cycles for every test engine is early on
+none and late on all 100, by 50.55 cycles on average, and under the old rule
+its ASUE was 0.0. `src/thesis_gnn_rul_xai/evaluation/README.md` carries a dated
+correction.
+
+The count above was repeated: at about 10:00 UTC on 2026-10-03, 464 per-seed
+prediction files were stored, counting the FD002 to FD004 part of the second
+study; the snippet under [Reproduce with](#reproduce-with), which counts the
+FD001 files only, now finds 204 where it found 179. The fewest engines
+predicted early in any one of them is still 25 of 100, in the same file; no
+stored `results.csv` holds an ASUE of exactly 0, and in the stored comparison
+with ordinary models the fewest early engines any model had on any seed is 36
+of 100. So no stored figure depended on the old behaviour (assumption A-39 has
+the breakdown).
+
 ---
 
 ## Beyond the eleven items
@@ -595,6 +754,16 @@ module outside this response.
   faithful; but it is still a choice the paper leaves open, and it has no entry.
   Writing one needs a matching comment where the optimiser is built, in
   `training/`, which cannot change while the training study runs.
+
+  **Done, 2026-10-03:** written as assumption A-40, with its comment where
+  `train` builds Adam in `training/run.py` and beside `gradient_clip` in
+  `training/config.py`. Section 3.4 and Table 6, rendered from the PDF at
+  scale 8, and a search of all 16 pages confirm the paper names no weight
+  decay, dropout, clipping or early stopping. The entry also measures how much
+  over-training there is for early stopping to catch, from two stored runs
+  trained all 200 passes with a fifth held back: the default's held-back error
+  rises 0.411 ± 0.398 cycles after its best pass, the recurrent stage's
+  3.574 ± 0.721. What a penalty or dropout would change was not measured.
 - **Per-condition z-score (the audit's Part 3).** The code still offers
   per-condition min-max and global min-max and z-score, and no per-condition
   z-score. It matters only for FD002 and FD004, where several operating
@@ -606,19 +775,26 @@ module outside this response.
 
 Needs new training:
 
-- random graphs with 41 edges, and rewirings of the paper's graph (item D-2),
-  after a new graph option is added;
+- random graphs with 41 edges, and rewirings of the paper's graph (item D-2);
+  the graph options were added on 2026-10-03 and the commands are in the log's
+  entry on them (assumption A-41);
 - the recurrent stage's full-length arm with its curves saved (item D-10).
 
 Needs a change in a file that waits for the running training study:
 
-- the `split` field and the `varsplit` name in `scripts/train.py` (item D-4);
-- an entry on regularisation, with its comment in `training/`.
+- the `split` field and the `varsplit` name in `scripts/train.py` (item D-4;
+  done on 2026-10-03: `nosplit` and `"none"` when nothing is held back, with
+  every seed of such a run prepared under its own seed, so that a reload
+  rebuilds what was trained on);
+- an entry on regularisation, with its comment in `training/` (done on
+  2026-10-03, assumption A-40).
 
 Needs neither, but is not done:
 
-- the comparison with ordinary models, from a clean commit (item D-5);
-- ASUE's undefined case in `evaluation/metrics.py` (item D-11).
+- the comparison with ordinary models, from a clean commit (item D-5; done on
+  2026-10-03, finding F-22);
+- ASUE's undefined case in `evaluation/metrics.py` (item D-11; done on
+  2026-10-03, assumption A-39).
 
 ---
 
@@ -780,6 +956,7 @@ interval over engines in the comparison with the paper's figures (F-06), the
 smoothing weights and shares in the entry on what each sensor node carries
 (A-07), the averaging table in the entry on the every-sensor control (A-19),
 the Shapley swap in the finding on indistinguishable sensors (F-18), the
-scaling of the graph layers in the finding on what they can compute (F-21), and
+scaling of the graph layers in the finding on what they can compute (F-21),
 the recurrent stage's per-pass curves in the finding on what that stage is
-worth (F-16).
+worth (F-16), and, added on 2026-10-03, the comparison with ordinary models in
+the finding on it (F-22).

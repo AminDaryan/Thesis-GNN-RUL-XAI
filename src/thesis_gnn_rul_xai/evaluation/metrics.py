@@ -8,11 +8,10 @@ Read README.md in this folder. It explains everything this file does.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 
 import numpy as np
-
-from ..utils.logging_setup import get_logger
 
 __all__ = [
     "EARLY_DIVISOR",
@@ -24,8 +23,6 @@ __all__ = [
     "r_squared",
     "rmse",
 ]
-
-logger = get_logger(__name__)
 
 # Divisor for a late prediction (predicted > actual). The smaller of the two,
 # so late predictions are punished harder. From the 2008 NASA PHM challenge.
@@ -121,20 +118,23 @@ def asue(
     actual: Sequence[float] | np.ndarray,
     predicted: Sequence[float] | np.ndarray,
 ) -> float:
-    """Average size of the safe errors, in cycles. The paper's Equation 24.
-
-    Only engines the model was pessimistic about count. 0.0 means it was never
-    pessimistic, which is the best value here, not a missing result.
-    """
+    """Average shortfall over the engines predicted early, in cycles. The paper's Equation 24."""
     truth, guess = _as_pair(actual, predicted)
-    underestimated = guess < truth
-    if not underestimated.any():
-        logger.info(
-            "ASUE is 0.0 because the model never underestimated. That is the "
-            "best value this measure can take, not a missing result."
+    early = guess < truth
+    if not early.any():
+        # ASSUMPTION A-39: with no engine predicted early, Equation 24 divides
+        # zero by zero, so the answer is "not a number", with a warning, rather
+        # than 0.0, which would read as the best value the measure can take. The
+        # paper never says what the measure gives then. Explained in README.md
+        # in this folder; written up in docs/ASSUMPTIONS.md.
+        warnings.warn(
+            "ASUE is undefined here: no engine was predicted early (below its true "
+            "remaining life), so Equation 24 divides 0 by 0. Returning nan.",
+            RuntimeWarning,
+            stacklevel=2,
         )
-        return 0.0
-    return float(np.mean(truth[underestimated] - guess[underestimated]))
+        return float("nan")
+    return float(np.mean(truth[early] - guess[early]))
 
 
 def evaluate(
@@ -154,4 +154,8 @@ def evaluate(
         # Same boundary nasa_score uses: d >= 0 is the late side. Counting
         # only d > 0 would disagree with the score on an exactly-zero error.
         "n_late": int((error >= 0).sum()),
+        # The engines ASUE averages over, Equation 24's N_under: the other side
+        # of the same boundary, so n_early + n_late = n_engines. When it is 0,
+        # ASUE is not a number (assumption A-39) and this count says why.
+        "n_early": int((error < 0).sum()),
     }

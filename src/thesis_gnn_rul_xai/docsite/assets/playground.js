@@ -332,7 +332,8 @@
   // A setting two runs differ in, named as the form names it, with its value in
   // the form's own words. A record the form has no field for keeps its name.
   var RECORD_LABELS = { seeds: "Seeds", split: "Held-back engines", commit: "Commit" };
-  var RECORD_WORDS = { varies_with_seed: "a different draw for every seed", fixed: "the same for every seed" };
+  var RECORD_WORDS = { varies_with_seed: "a different draw for every seed", fixed: "the same for every seed",
+    none: "none held back" };
 
   function settingLabel(setting) {
     var field = S.fields && S.fields[setting.split(".").pop()];
@@ -404,7 +405,8 @@
 
   // A plot of one or more series of points. Every number drawn is one given.
   // An area is a series filled down to zero, the way the paper's Fig. 7
-  // shades the error between the predicted and the true remaining life.
+  // shades the error between the prediction and its "True RUL" curve, which is
+  // the label, the remaining life capped at 125 (assumption A-01).
   function plot(spec) {
     var W = spec.width || 640, H = spec.height || 260;
     var left = 54, right = 14, top = 14, bottom = 40;
@@ -1114,13 +1116,35 @@
     selectExplanationIndex(Number(input.value));
   }
 
+  // What a stored "rul" column holds, in words. The windows of one engine carry
+  // the label the network trains toward, the remaining life capped at the
+  // ceiling (assumption A-01); test engines carry it capped only when the run
+  // capped its test labels (assumption A-02), true when it did not, and a run
+  // that recorded neither is not guessed at.
+  function lifeLabel(capped) {
+    return capped === true ? "capped remaining life" : capped === false ? "true remaining life" : "test label";
+  }
+
+  function lifeSeriesName(capped, ceiling) {
+    return capped === true && ceiling ? "remaining life capped at " + fixed(ceiling, 0) : lifeLabel(capped);
+  }
+
+  // The Fig. 8 chart's name for a screen reader, after the series it is drawn against.
+  function predictionsChartName(capped, ceiling) {
+    return "predictions against the " + lifeSeriesName(capped, ceiling);
+  }
+
+  function explanationCapped(data) {
+    return data.summary.scope === "engine" ? true : (S.explain.detail || {}).clip_test_labels;
+  }
+
   function explanationCaption(row) {
-    if (S.explain.values && S.explain.values.summary.scope === "test") {
-      return "engine " + row.unit + ", true remaining life " + fixed(row.rul, 0) +
-        ", predicted " + fixed(row.predicted, 1);
+    var data = S.explain.values;
+    var life = lifeLabel(data ? explanationCapped(data) : undefined) + " " + fixed(row.rul, 0);
+    if (data && data.summary.scope === "test") {
+      return "engine " + row.unit + ", " + life + ", predicted " + fixed(row.predicted, 1);
     }
-    return "cycle " + row.end_cycle + ", true remaining life " + fixed(row.rul, 0) +
-      ", predicted " + fixed(row.predicted, 1);
+    return "cycle " + row.end_cycle + ", " + life + ", predicted " + fixed(row.predicted, 1);
   }
 
   // ------------------------------------------------------------------ jobs
@@ -3010,12 +3034,14 @@
       zscore: "Subtract the mean and divide by the spread", minmax_global: "One range per sensor across training readings",
       minmax_per_condition: "Separate ranges per sensor and operating condition", physics: "Physics graph",
       complete: "Every sensor joined to every other", correlation: "Most correlated sensor pairs",
+      random: "41 sensor pairs picked at random", rewired: "The physics graph rewired, connection counts kept",
       row: "Divide each receiving row by its total", symmetric: "Rescale using both sensors' connection counts",
       lstm: "LSTM", gru: "GRU", last_cycle: "Keep the last reading", mean_window: "Average the window",
       raw_window: "Pass every cycle", window_summary: "Three numbers per sensor",
       adam: "Adam", mse: "Mean squared error", step: "One step down", exponential: "Exponential reduction",
       cosine: "Cosine reduction", plateau: "Reduce when validation stops improving", constant: "Constant rate",
       fixed: "Same engine split for every seed", varies_with_seed: "Engine split varies with the seed",
+      none: "No engines held back, so no split",
       best_validation_epoch: "Best pass on held-back engines", final_epoch: "Final training pass",
       auto: "Automatic device selection", cpu: "CPU", cuda: "CUDA graphics processor"
     };
@@ -3079,6 +3105,10 @@
       commit: "Code version", config_digest: "Configuration identifier", finished_utc: "Finished, UTC" };
     var record = {};
     Object.keys(recordLabels).forEach(function (key) { record[key] = summary[key]; });
+    // The split as it happened: a run that held nothing back before 2026-10-03
+    // was recorded as "varies_with_seed" (audit item D-4); the record is shown too.
+    var recordedSplit = summary.split;
+    if (d.split !== undefined && d.split !== recordedSplit) { record.split = d.split; }
     var raw = { "summary.json": summary, "preprocessing_config.yaml": d.preprocessing || {},
       "model_config.yaml": d.recorded_model || {} };
     seeds.forEach(function (seed) { raw['seed_' + seed + '/training_config.yaml'] = recordedSeeds[seed]; });
@@ -3112,7 +3142,14 @@
         min_improvement: "Minimum improvement to reset the wait", gradient_clip: "Gradient limit (loss derivatives)",
         seed: "Training seed", device: "Requested computing device", notes: "Saved notes"
       }, trainingKeys, trainingValue) + '</div>' +
-      savedSettingsGroup("Run record", "Saved run summary", recordLabels, record) +
+      savedSettingsGroup("Run record", "Saved run summary", recordLabels, record, function (key) {
+        // The value in brackets is the one in the file, so a split shown as it
+        // happened names what was recorded there instead of its own code.
+        var shown = savedSettingValue(key, record[key]);
+        return key === "split" && record.split !== recordedSplit ? shown.replace(
+          '<span class="pg-setting-raw">(' + esc(String(record.split)) + ")</span>",
+          '<span class="pg-setting-raw">(recorded as ' + esc(String(recordedSplit)) + ")</span>") : shown;
+      }) +
       '<details class="pg-recorded-files"><summary>Inspect the complete saved configuration and source record</summary>' +
       '<p>These are the recorded fields, including additional settings and the software environment when available. ' +
       'An empty object means no readable record was available.</p><pre><code>' +
@@ -3156,7 +3193,11 @@
         return '<div class="pg-metric"><div class="pg-metric-name">' + m[1] + '</div><div class="pg-metric-value">' + number(mean, m[2]) +
           (sd !== null && sd !== undefined ? "<span> ± " + number(sd, m[2]) + "</span>" : "") + "</div>" +
           (published ? '<div class="pg-faint">paper ' + shown.text +
-            (gap !== null ? " · gap " + (gap > 0 ? "+" : "") + number(gap, shown.places) : "") + "</div>" : "") + "</div>";
+            (gap !== null ? " · gap " + (gap > 0 ? "+" : "") + number(gap, shown.places) : "") + "</div>" : "") +
+          // ASUE averages over the engines predicted early; runs since 2026-10-03
+          // record how many, and with none it is not a number (assumption A-39).
+          (m[0] === "asue" && (d.mean || {}).n_early !== undefined && (d.mean || {}).n_early !== null ?
+            '<div class="pg-faint">over ' + number(d.mean.n_early, 1) + " engines predicted early</div>" : "") + "</div>";
       }).join("");
       var compared = paperRow
         ? '<p class="pg-faint">Compared with ' + esc(paperRow.label) + ", " + esc(paperRow.source) +
@@ -3188,18 +3229,19 @@
       }) : "";
       var seedChoice = S.predSeed && d.per_seed[S.predSeed] ? S.predSeed : seeds[0];
       // The paper's Fig. 8 puts the test engines in unit order and joins the
-      // points of each series; ordering them by true remaining life instead
+      // points of each series; ordering them by their label instead
       // shows how the error changes along the life, so both are offered.
       var byUnit = S.predOrder !== "rul";
+      var testLife = lifeSeriesName(d.clip_test_labels, d.rul_max);
       var predictions = seeds.length ? d.per_seed[seedChoice].predictions.slice().sort(byUnit
         ? function (a, b) { return a.unit - b.unit; } : function (a, b) { return a.rul - b.rul; }) : [];
       var predPlot = predictions.length ? plot({
-        width: W, height: chartHeight(W), ylabel: "remaining life (cycles)", label: "predictions against truth", xlabel: "test engine",
+        width: W, height: chartHeight(W), ylabel: "remaining life (cycles)", label: predictionsChartName(d.clip_test_labels, d.rul_max), xlabel: "test engine",
         series: byUnit ? [
-          { name: "true remaining life", colour: "var(--fig-burn)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.rul]; }) },
+          { name: testLife, colour: "var(--fig-burn)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.rul]; }) },
           { name: "predicted", colour: "var(--fig-accent)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.predicted]; }) }
         ] : [
-          { name: "true remaining life", colour: "var(--fig-ink)", points: predictions.map(function (p, i) { return [i + 1, p.rul]; }), width: 2 },
+          { name: testLife, colour: "var(--fig-ink)", points: predictions.map(function (p, i) { return [i + 1, p.rul]; }), width: 2 },
           { name: "predicted", colour: "var(--fig-warn)", dots: true, line: false, points: predictions.map(function (p, i) { return [i + 1, p.predicted]; }) }
         ]
       }) : "";
@@ -3223,7 +3265,7 @@
         (predPlot ? '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 8.</strong></figcaption>' +
           '<div class="pg-toolbar pg-figure-toolbar"><label for="pg-pred-seed">Seed</label>' +
           selectField("pg-pred-seed", seeds.map(function (s) { return { value: s, label: s }; }), seedChoice, "data-pred-seed") +
-          segmented("pg-pred-order", [{ value: "unit", label: "by unit number" }, { value: "rul", label: "by true remaining life" }],
+          segmented("pg-pred-order", [{ value: "unit", label: "by unit number" }, { value: "rul", label: "by " + lifeLabel(d.clip_test_labels) }],
             byUnit ? "unit" : "rul", 'data-pred-order') + "</div>" + predPlot + "</figure>" : "") +
         "</div></section>";
     }).catch(function (error) {
@@ -3252,6 +3294,17 @@
     if (d.lr_schedule) { s.lr_schedule = d.lr_schedule; }
     s.seeds = d.seeds || s.seeds;
     s.fixed_split = d.split === "fixed";
+    // A run trained from the command line can hold a value the form does not
+    // offer, such as a graph drawn at random (assumption A-41); the form keeps
+    // its default for it and says so.
+    Object.keys(s).forEach(function (k) {
+      var field = S.fields && S.fields[k];
+      if (field && field.choices && !field.choices.some(function (c) { return c.value === s[k]; })) {
+        T.toast(field.label + ": this run used “" + String(s[k]) + "”, which the form does not offer, " +
+          "so the form's default is set instead.", 7000);
+        s[k] = S.options.defaults[k];
+      }
+    });
     return s;
   }
 
@@ -3495,6 +3548,7 @@
     var rows = data.values, forEngine = data.summary.scope === "engine";
     var detail = S.explain.detail || {};
     var ceiling = (forEngine || detail.clip_test_labels) ? (data.summary.rul_max || detail.rul_max) : null;
+    var life = lifeLabel(explanationCapped(data));
     var label = forEngine ? "Engine cycle" : "Test engine";
     var item = forEngine ? "cycle" : "test engine";
     var name = function (row) { return (forEngine ? "Cycle " : "Engine ") + (forEngine ? row.end_cycle : row.unit); };
@@ -3504,7 +3558,7 @@
       '<select id="pg-explain-pick" data-explain-index>' + rows.map(function (row, index) {
         return '<option value="' + index + '"' + (index === S.explain.index ? ' selected' : '') + '>' + esc(name(row)) + '</option>';
       }).join("") + '</select><button type="button" class="button" data-action="explain-next" aria-label="Next saved ' + item + '">' + NEXT + '</button></div></div>' +
-      '<div class="pg-selection-metric"><span>Actual remaining life</span><strong><span data-selection-actual></span> <small>cycles</small></strong></div>' +
+      '<div class="pg-selection-metric"><span>' + esc(life.charAt(0).toUpperCase() + life.slice(1)) + '</span><strong><span data-selection-actual></span> <small>cycles</small></strong></div>' +
       '<div class="pg-selection-metric"><span>Predicted remaining life</span><strong><span data-selection-predicted></span> <small>cycles</small></strong></div>' +
       '<div class="pg-selection-track"><input type="range" data-explain-index min="0" max="' + (rows.length - 1) +
       '" step="1" value="' + S.explain.index + '" aria-label="' + label + '" aria-describedby="pg-selection-help">' +
@@ -3513,7 +3567,8 @@
         ? 'Engine ' + esc(rows[0].unit) + ': each position uses the readings ending at that cycle.'
         : 'Each position is a different test engine, using its last available readings—not a step in time.') +
       ' Drag to update the selected prediction live. Overview charts still show all saved ' + (forEngine ? 'cycles' : 'engines') + '.' +
-      (ceiling ? ' Actual life is limited to ' + esc(ceiling) + ' cycles for this comparison.' : '') + '</p></section>';
+      (ceiling ? ' The remaining life shown is capped at ' + esc(fixed(ceiling, 0)) + ' cycles, the ceiling of the labels the network learned from: where it reads ' +
+        esc(fixed(ceiling, 0)) + ', more may truly remain.' : '') + '</p></section>';
   }
 
   // Update labels without replacing the range while it is being dragged.
@@ -3685,17 +3740,18 @@
     }, e.engineView || (e.engineView = {}));
   }
 
-  // The paper's Fig. 7 for one engine: the true and the predicted remaining
+  // The paper's Fig. 7 for one engine: the capped and the predicted remaining
   // life at every window, the error between them shaded, the chosen window marked.
   function lifeFigure(rows, current, W) {
     var subset = S.explain.detail ? S.explain.detail.subset : "";
+    var ceiling = (S.explain.values && S.explain.values.summary.rul_max) || (S.explain.detail || {}).rul_max;
     var lifePlot = plot({
       width: W, height: chartHeight(W), xlabel: "cycle at the end of the window", ylabel: "remaining life, and error (cycles)",
       label: "the prediction along the engine's life",
-      areas: [{ name: "predicted minus true: the paper's \"new error area\"", colour: "var(--fig-lpc)", opacity: 0.35,
+      areas: [{ name: "predicted minus capped remaining life: the paper's \"new error area\"", colour: "var(--fig-lpc)", opacity: 0.35,
         points: rows.map(function (r) { return [r.end_cycle, r.predicted - r.rul]; }) }],
       series: [
-        { name: "true remaining life (capped)", colour: "var(--fig-accent)", dash: "7 4", width: 2, points: rows.map(function (r) { return [r.end_cycle, r.rul]; }) },
+        { name: lifeSeriesName(true, ceiling), colour: "var(--fig-accent)", dash: "7 4", width: 2, points: rows.map(function (r) { return [r.end_cycle, r.rul]; }) },
         { name: "predicted", colour: "var(--fig-lpt)", width: 1.8, points: rows.map(function (r) { return [r.end_cycle, r.predicted]; }) },
         { name: "selected engine cycle", colour: "var(--fig-ink)", line: false, dots: true, radius: 5.5, points: [[current.end_cycle, current.predicted]] }
       ]
@@ -4250,8 +4306,8 @@
     var largest = limit;
     limit = (limit || 1) * 1.08;
 
-    // The cycle at which the true remaining life first falls below its
-    // ceiling: before it the engine is flat, after it the label is falling.
+    // The cycle at which the capped remaining life first falls below its
+    // ceiling: before it the label is flat, after it the label is falling.
     var ceiling = Math.max.apply(null, rows.map(function (r) { return r.rul; }));
     var knee = null;
     for (var i = 0; i < rows.length; i++) {
@@ -4291,7 +4347,7 @@
       '<div class="pg-smalls">' + panels + "</div>" +
       '<div class="pg-faint">Blue raised the predicted remaining life, orange lowered it. ' +
       "Every panel shares one scale; the largest value is " + fixed(largest, 2) + (unit === undefined ? " cycles" : "") + "." +
-      (knee !== null ? " The dashed line is cycle " + knee + ", where the true remaining life starts falling." : "") +
+      (knee !== null ? " The dashed line is cycle " + knee + ", where the capped remaining life starts falling." : "") +
       "</div>";
   }
 

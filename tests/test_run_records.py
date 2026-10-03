@@ -254,3 +254,57 @@ def test_a_number_written_as_a_whole_number_or_a_decimal_gives_one_digest():
     assert PreprocessingConfig(validation_fraction=0).digest() == "2c9b5b"
     assert PreprocessingConfig(smoothing_alpha=1).digest() == "8ea41a"
 
+
+# --- The split a run records (audit item D-4, changed 2026-10-03) -------------
+# training/README.md, "The split part of a run folder's name", explains the three
+# values and why a run stored before the change keeps the one it wrote.
+
+HELD_BACK_RUN = "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z"
+NOTHING_HELD_BACK_RUN = "fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z"
+
+
+def test_a_stored_run_of_each_kind_of_split_still_loads_and_is_listed_as_it_happened(tmp_path, raw_dir):
+    """A run that held engines back, one that held none back but recorded "varies_with_seed", and a copy of it recording "none"."""
+    torch = pytest.importorskip("torch")
+    import shutil
+
+    from thesis_gnn_rul_xai.docsite.playground.runs import list_runs
+    from thesis_gnn_rul_xai.training import find_runs, load_seed, read_run
+    from thesis_gnn_rul_xai.training.run import predict
+
+    sources = {name: reports_dir() / name for name in (HELD_BACK_RUN, NOTHING_HELD_BACK_RUN)}
+    if not all((path / "seed_42" / "model.pt").is_file() for path in sources.values()):
+        pytest.skip("the two stored runs this test names are not in reports/")
+    # A copy of each run's records, never the run itself (working rule 3a); the
+    # third copy records "none", as a run with nothing held back does since the
+    # change, and carries seed 42's network so it can be loaded.
+    copies = tmp_path / "reports"
+    renamed = NOTHING_HELD_BACK_RUN.replace("_varsplit_", "_nosplit_")
+    for name, source in [*sources.items(), (renamed, sources[NOTHING_HELD_BACK_RUN])]:
+        (copies / name).mkdir(parents=True)
+        for record in ("summary.json", "results.csv", "preprocessing_config.yaml", "model_config.yaml"):
+            shutil.copy(source / record, copies / name / record)
+    shutil.copytree(sources[NOTHING_HELD_BACK_RUN] / "seed_42", copies / renamed / "seed_42")
+    summary = json.loads((copies / renamed / "summary.json").read_text(encoding="utf-8"))
+    (copies / renamed / "summary.json").write_text(json.dumps({**summary, "split": "none"}), encoding="utf-8")
+
+    # Recorded split, and how many engines seed 42 held back once rebuilt.
+    expected = {HELD_BACK_RUN: ("varies_with_seed", 20),
+                NOTHING_HELD_BACK_RUN: ("varies_with_seed", 0),
+                renamed: ("none", 0)}
+    for path in (sources[HELD_BACK_RUN], sources[NOTHING_HELD_BACK_RUN], copies / renamed):
+        run = read_run(path)
+        recorded, held_back = expected[path.name]
+        assert run.summary["split"] == recorded
+        with torch.no_grad():
+            model, prepared = load_seed(run, 42, data_dir=raw_dir)
+            predicted = predict(model, prepared.test, device="cpu")
+        saved = pd.read_csv(path / "seed_42" / "test_predictions.csv")
+        assert float(np.abs(predicted - saved["predicted"].to_numpy()).max()) < PREDICTION_TOLERANCE
+        assert len(set(prepared.validation.units.tolist())) == held_back
+
+    # The run finder matches the field as written; the playground lists what happened.
+    assert [run.name for run in find_runs(root=copies, split="none")] == [renamed]
+    listed = {run["name"]: run["split"] for run in list_runs(tmp_path)}
+    assert listed == {HELD_BACK_RUN: "varies_with_seed", NOTHING_HELD_BACK_RUN: "none", renamed: "none"}
+

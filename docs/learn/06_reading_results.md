@@ -1,8 +1,12 @@
 # Reading a result
 
-A prediction $\hat{y}$ is a number of cycles, and so is the true remaining life
-$y$. The error is the difference between them, positive when the model was
-optimistic:
+A prediction $\hat{y}$ is a number of cycles, and so is $y$, the remaining life
+it is scored against. In this project's scores $y$ is the test engine's label:
+its true remaining life, capped at 125 cycles like the training labels
+(assumption A-02), so 125 for the 11 FD001 test engines that have more than
+that left (the second warning under "What may and may not be compared with the
+paper", below, says what the cap does to each measure). The error is the
+difference between them, positive when the model was optimistic:
 
 $$d = \hat{y} - y$$
 
@@ -10,6 +14,10 @@ An optimistic model expects failure later than it comes, which leaves a failing
 engine flying. A pessimistic one, with a negative error, sends an engine for
 maintenance while it still had life in it. **The two are not equally bad**, and
 the measures below differ in whether they take that into account.
+
+(Corrected 2026-10-03: this page called $y$ the true remaining life, while
+every score it reads is computed against the capped label. Found by a review
+of the wording around the capped label.)
 
 ---
 
@@ -77,6 +85,21 @@ model was pessimistic about**. It is the cost of caution: how much life, on
 average, is thrown away on the engines serviced early. Because the NASA score
 charges early errors less, a model can lower that score by leaning early, and
 ASUE shows the price.
+
+Read it together with $N_{\text{under}}$, which every results file written
+since 2026-10-03 holds beside each ASUE as `n_early`. A file stored before then
+does not; for it, $N_{\text{under}}$ is the number of test engines minus
+`n_late`, the count of engines predicted late, which every stored run's
+`results.csv` holds.
+
+The real FD001 test labels show why the count matters. A model that predicts
+124 cycles for all 100 test engines is below the label only on the 11 engines
+whose labels were capped at 125, by one cycle each, so its ASUE is 1.0 over 11
+early engines. One cycle higher, at 125, it is below no label at all:
+$N_{\text{under}}$ is 0, the sum is 0, and the formula is 0 / 0, which has no
+value. The code then gives "not a number" with a warning, not 0, since this
+model is late on all 100 engines, the costly direction, and an ASUE of 0 would
+have ranked it the best there is (assumption A-39).
 
 ---
 

@@ -55,6 +55,10 @@ class TrainingConfig:
     # from it, not a reconstruction. Written up in docs/ASSUMPTIONS.md.
     early_stopping_patience: int | None = 20
     min_improvement: float = 1e-4
+    # ASSUMPTION A-40: no limit on the size of a step by default, because the
+    # paper names none, and nothing else keeps the weights small either (the
+    # comment where train() in run.py builds Adam). Written up in
+    # docs/ASSUMPTIONS.md.
     gradient_clip: float | None = None
 
     # --- execution ---------------------------------------------------------

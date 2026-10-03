@@ -354,3 +354,38 @@ def test_a_stage_that_mixes_sensors_is_refused(prepared, baseline):
     network = ESTGNN(prepared.adjacency_normalized, temporal=AddsTheAverageSensor(), rul_max=125)
     with pytest.raises(ValueError, match="reads more than each sensor's own window"):
         shap_values(network, prepared.test.features[0], baseline)
+
+
+# --- the figure's grey line is the capped label (added 2026-10-03) -------------
+
+
+def test_the_figure_names_its_grey_line_the_capped_label(model, prepared, baseline):
+    """Held-back engine 2 ran 287 cycles; its label is the remaining life capped at 125.
+
+    Its first window ends at cycle 20 with 267 cycles truly left and the label
+    125, and the label stays at 125 until cycle 163, where 124 remain. So in
+    142 of its 268 windows the line sits below the remaining life the engine
+    truly had, and the legend must not call it the true remaining life.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from thesis_gnn_rul_xai.explain import plot_contributions_over_time
+
+    engine = int(prepared.validation.units[0])
+    assert engine == 2
+    table = dynamic_shap(model, prepared.validation, baseline, unit=engine,
+                         symbols=prepared.sensor_symbols)
+    line = plot_contributions_over_time(table, list(prepared.sensor_symbols)).axes[0].get_lines()[0]
+    assert line.get_label() == "label: remaining life, capped"
+    np.testing.assert_array_equal(line.get_ydata(), table["rul"].to_numpy())
+
+    # A training engine runs to failure, so its last window ends at the failure
+    # cycle, and the life truly left at a window is the cycles from its end to that.
+    truly_left = table["end_cycle"].max() - table["end_cycle"]
+    assert (table["end_cycle"].iloc[0], truly_left.iloc[0], table["rul"].iloc[0]) == (20, 267, 125)
+    assert table["rul"].iloc[-1] == 0
+    np.testing.assert_array_equal(table["rul"], np.minimum(truly_left, 125))
+    assert table.loc[table["rul"] < 125, "end_cycle"].iloc[0] == 163
+    assert (len(table), int((table["rul"] < truly_left).sum())) == (268, 142)
+    matplotlib.pyplot.close("all")

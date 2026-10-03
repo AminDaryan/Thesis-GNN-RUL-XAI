@@ -241,7 +241,10 @@ def rebuild_and_verify(run: Any, seed: int, data_dir: Path) -> tuple[Any, np.nda
         rescored = evaluate(saved["rul"].to_numpy(float), saved["predicted"].to_numpy(float))
         for measure in MEASURES:
             stored = float(recorded.iloc[0][measure])
-            if not np.isclose(rescored[measure], stored, rtol=RESCORE_TOLERANCE, atol=RESCORE_TOLERANCE):
+            # equal_nan: an ASUE with no engine predicted early is not a number
+            # on both sides (assumption A-39), and that is agreement.
+            if not np.isclose(rescored[measure], stored, rtol=RESCORE_TOLERANCE,
+                              atol=RESCORE_TOLERANCE, equal_nan=True):
                 problems.append(
                     f"{measure} of the saved predictions is {rescored[measure]!r}, "
                     f"results.csv says {stored!r}"
@@ -282,7 +285,12 @@ def check_same_data(run: Any, other: Any, seeds: Sequence[int]) -> None:
         raise NotReproduced(f"{other.name} has no seed {missing}.")
     mine = settings_without_notes(run.preprocessing.to_dict())
     theirs = settings_without_notes(other.preprocessing.to_dict())
-    if mine != theirs or run.summary.get("split") != other.summary.get("split"):
+    # With nothing held back there is no split, and runs stored before
+    # 2026-10-03 recorded "varies_with_seed" for it anyway while later ones
+    # record "none" (audit item D-4); the field is compared only when engines
+    # were held back.
+    held_back = bool(mine.get("validation_fraction"))
+    if mine != theirs or (held_back and run.summary.get("split") != other.summary.get("split")):
         raise NotReproduced(
             f"{other.name} was prepared differently from {run.name}, so its "
             "engines and inputs are not the ones the ladder is fitted on."
@@ -312,7 +320,9 @@ def compare(
             "seeds": len(values),
             "rmse_mean": float(values.mean()),
             "rmse_std": float(values.std(ddof=1)) if len(values) > 1 else float("nan"),
-            **{f"{m}_mean": float(np.mean(row[f"{m}_by_seed"])) for m in MEASURES[1:]},
+            # n_early beside ASUE: the engines it averages over, and with none
+            # it is not a number and so is this mean (assumption A-39).
+            **{f"{m}_mean": float(np.mean(row[f"{m}_by_seed"])) for m in (*MEASURES[1:], "n_early")},
             "rmse_low": float(np.percentile(resampled[key], 2.5)),
             "rmse_high": float(np.percentile(resampled[key], 97.5)),
         }
@@ -474,7 +484,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for key, (predicted, raw, seconds) in outputs.items():
                 scored = evaluate(truth, predicted)
                 records.append({"model": key, "seed": seed, "seconds": round(seconds, 1),
-                                **{m: scored[m] for m in (*MEASURES, "mean_error", "n_late")},
+                                **{m: scored[m] for m in (*MEASURES, "mean_error", "n_late", "n_early")},
                                 "n_clipped": int((predicted != raw).sum()),
                                 "rmse_unclipped": rmse(truth, raw)})
                 predictions.append(pd.DataFrame({"model": key, "seed": seed, "unit": units,
@@ -497,7 +507,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "inputs": inputs[key],
             "seeds": seeds,
             **{f"{m}_by_seed": [float(per_seed.loc[(per_seed.model == key) & (per_seed.seed == s), m].iloc[0])
-                                for s in seeds] for m in MEASURES},
+                                for s in seeds] for m in (*MEASURES, "n_early")},
         }
         for key in keys
     }

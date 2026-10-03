@@ -284,14 +284,21 @@ def _aggregate(root: Path, selected: tuple[Variant, ...]) -> None:
                 values = current.loc[common, metric].astype(float)
                 baseline = reference.loc[common, metric].astype(float)
                 differences = values - baseline
-                row[f"{metric}_mean"] = values.mean()
-                row[f"{metric}_std"] = values.std(ddof=1)
-                row[f"{metric}_delta"] = differences.mean()
-                row[f"{metric}_delta_std"] = differences.std(ddof=1)
+                # A seed with no engine predicted early has no ASUE (assumption
+                # A-39), which leaves the mean undefined rather than taken over
+                # the other seeds.
+                row[f"{metric}_mean"] = values.mean(skipna=False)
+                row[f"{metric}_std"] = values.std(ddof=1, skipna=False)
+                row[f"{metric}_delta"] = differences.mean(skipna=False)
+                row[f"{metric}_delta_std"] = differences.std(ddof=1, skipna=False)
                 row[f"{metric}_paired_p"] = (
                     1.0 if np.allclose(differences, 0.0, rtol=0.0, atol=1e-12)
                     else float(ttest_rel(values, baseline).pvalue)
                 )
+            # The count ASUE divides by, beside it; empty for runs written
+            # before 2026-10-03, which did not record it.
+            if "n_early" in current.columns:
+                row["n_early_mean"] = current.loc[common, "n_early"].astype(float).mean(skipna=False)
             summary_rows.append(row)
     pd.DataFrame(summary_rows).to_csv(root / "summary.csv", index=False)
 

@@ -165,7 +165,10 @@ def _describe(path: Path, name: str | None = None) -> dict[str, Any] | None:
         "graph": summary.get("graph"),
         "adjacency_normalization": (summary.get("adjacency_normalization")
                                     or config.get("adjacency_normalization")),
-        "split": summary.get("split"),
+        # What happened, not only what was recorded: with nothing held back there
+        # is no split, which runs since 2026-10-03 record as "none" and runs
+        # before it recorded as "varies_with_seed" (audit item D-4).
+        "split": "none" if validation_fraction == 0 else summary.get("split"),
         "normalization": config.get("normalization"),
         "smoothing_alpha": config.get("smoothing_alpha"),
         "window_size": config.get("window_size"),
@@ -340,14 +343,19 @@ def compare_runs(root: Path, first: str, second: str) -> dict[str, Any]:
 
     measures: dict[str, Any] = {}
     for measure in _COMPARED:
-        pairs = [(by_seed_a[s][measure], by_seed_b[s][measure]) for s in shared
-                 if by_seed_a[s].get(measure) is not None
-                 and by_seed_b[s].get(measure) is not None]
+        # Each pair keeps its own seed. A seed missing the measure -- an ASUE
+        # with no engine predicted early is not a number, read here as None --
+        # leaves the mean difference and the test undefined, as a mean over
+        # seeds is (assumption A-39), rather than taken over the other seeds.
+        triples = [(s, by_seed_a[s].get(measure), by_seed_b[s].get(measure)) for s in shared]
         entry: dict[str, Any] = {
-            "per_seed": [{"seed": s, "first": x, "second": y, "difference": y - x}
-                         for s, (x, y) in zip(shared, pairs, strict=False)],
+            "per_seed": [{"seed": s, "first": x, "second": y,
+                          "difference": None if x is None or y is None else y - x}
+                         for s, x, y in triples],
             "mean_difference": None, "t": None, "p": None,
         }
+        defined = all(x is not None and y is not None for _, x, y in triples)
+        pairs = [(x, y) for _, x, y in triples] if defined else []
         if pairs:
             differences_here = [y - x for x, y in pairs]
             entry["mean_difference"] = sum(differences_here) / len(differences_here)

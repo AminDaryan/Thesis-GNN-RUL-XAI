@@ -21,6 +21,7 @@ from ...graph.adjacency import (
     build_physics_adjacency,
     normalize_adjacency,
 )
+from ...graph.controls import build_random_adjacency, build_rewired_adjacency
 from ...utils.logging_setup import get_logger
 from ...utils.paths import processed_data_dir, raw_data_dir
 from ..labeling import apply_piecewise_rul
@@ -249,24 +250,40 @@ def run_preprocessing(
         adjacency_raw, symbols = build_fully_connected_adjacency(
             len(PAPER_SENSOR_SYMBOLS)
         )
-    else:
+    elif config.graph == "random":
+        # ASSUMPTION A-41: join 41 sensor pairs chosen at random, the paper's
+        # count, drawn from this run's seed and drawn again until every sensor
+        # can reach every other. The paper never describes such a graph; the
+        # audit of 2026-09-08 asked for it. Written up in docs/ASSUMPTIONS.md.
+        adjacency_raw, symbols = build_random_adjacency(config.seed)
+    elif config.graph == "rewired":
+        # ASSUMPTION A-41: the paper's graph with the ends of its edges swapped
+        # at random, from this run's seed, so every sensor keeps its number of
+        # connections but which sensors are joined is no longer the engineer's
+        # choice. Written up in docs/ASSUMPTIONS.md.
+        adjacency_raw, symbols = build_rewired_adjacency(config.seed)
+    elif config.graph == "correlation":
         # ASSUMPTION A-27: join the sensor pairs whose readings move together
         # most strongly, as many pairs as the paper's graph has edges. Measured
         # on the training engines only, after smoothing and rescaling, so that
         # neither the held-back nor the test engines help decide the graph --
-        # the same rule the rescaling follows. The paper never builds such a
-        # graph. Written up in docs/ASSUMPTIONS.md.
+        # the same rule the rescaling follows. The paper describes no such graph
+        # for its network. Written up in docs/ASSUMPTIONS.md.
         physics_edges = int(build_physics_adjacency()[0].sum() // 2)
         adjacency_raw, symbols = build_correlation_adjacency(
             train[train[UNIT_COL].isin(train_units)],
             columns,
             n_edges=physics_edges,
         )
+    else:  # pragma: no cover - PreprocessingConfig refuses any other name
+        raise ValueError(f"Unknown sensor graph {config.graph!r}.")
     adjacency_normalized = normalize_adjacency(
         adjacency_raw, method=config.adjacency_normalization
     )
     diagnostics["graph"] = adjacency_report(adjacency_raw, symbols)
     diagnostics["graph_kind"] = config.graph
+    # The seed a random or rewired graph was drawn from; none for the others.
+    diagnostics["graph_seed"] = config.seed if config.graph in ("random", "rewired") else None
     diagnostics["adjacency_normalization"] = config.adjacency_normalization
 
     diagnostics["splits"] = {

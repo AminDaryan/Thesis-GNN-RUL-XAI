@@ -1329,3 +1329,95 @@ def test_example_the_lstm_multipliers_act_on_what_was_passed_on_not_on_the_memor
     assert torch.equal(start, other_passed_on)   # at every cycle, to the last digit
     # After the first cycle the starting memory still shows; the forgetting part shrinks it every cycle after.
     assert float((start[0, 0] - other_memory[0, 0]).abs().max()) > 0.1
+
+
+# --- scripts/train.py: the split a run records comes from the engines it held back ---
+
+
+def test_example_the_split_a_run_records_comes_from_the_engines_it_held_back(raw_dir):
+    """Audit item D-4: with no engine held back a run records "none" and `nosplit`, whatever --fixed-split said."""
+    import importlib.util
+    from dataclasses import replace
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.config import load_config
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("_train_script", root / "scripts" / "train.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    # config/fd001.yaml holds a fifth of the 100 training engines back; under
+    # seed 42 these 20, the list scripts/train.py writes into seed_42/split.json.
+    config = load_config(root / "config" / "fd001.yaml")
+    held = run_preprocessing(config, data_dir=raw_dir)
+    engines = sorted(int(unit) for unit in set(held.validation.units.tolist()))
+    assert engines == [3, 5, 19, 22, 25, 26, 28, 34, 43, 51, 52, 53, 57, 60, 62, 72, 82, 93, 98, 100]
+    assert script.split_record([engines], fixed_split=False) == ("varies_with_seed", "varsplit")
+    assert script.split_record([engines], fixed_split=True) == ("fixed", "fixedsplit")
+
+    # With validation_fraction 0.0 every seed holds back an empty list.
+    nothing = replace(config, validation_fraction=0.0)
+    first = run_preprocessing(nothing, data_dir=raw_dir)
+    assert len(first.validation) == 0
+    assert script.split_record([[], [], [], [], []], fixed_split=False) == ("none", "nosplit")
+    assert script.split_record([[]], fixed_split=True) == ("none", "nosplit")
+
+    # On FD001, which has one operating condition, the seed then changes
+    # nothing the preprocessing hands on, not even the scaling table. The next
+    # example is a case where it does change the table. (Corrected 2026-10-03:
+    # this comment said the FD001 case was why a run with nothing held back may
+    # be rebuilt under each seed whatever it was prepared under.)
+    second = run_preprocessing(replace(nothing, seed=43), data_dir=raw_dir)
+    for name in ("train", "test"):
+        a, b = getattr(first, name), getattr(second, name)
+        assert np.array_equal(a.features, b.features) and np.array_equal(a.targets, b.targets)
+    assert first.normalizer.statistics_.equals(second.normalizer.statistics_)
+
+
+def test_example_with_nothing_held_back_every_seed_is_prepared_under_its_own_seed(raw_dir):
+    """Audit item D-4: --fixed-split shares one preparation only when engines are held back."""
+    import importlib.util
+    from dataclasses import replace
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.config import load_config
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("_train_script", root / "scripts" / "train.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    # Engines held back: --fixed-split prepares the data once, under the first
+    # seed, holding back the same 20 engines for every seed.
+    config = load_config(root / "config" / "fd001.yaml")
+    shared = script.shared_preparation(config, True, raw_dir)
+    assert sorted(set(shared.validation.units.tolist()))[:5] == [3, 5, 19, 22, 25]
+    assert len(set(shared.validation.units.tolist())) == 20
+    # None held back: nothing is shared, and each seed is prepared under itself,
+    # exactly as a run recorded "none" is rebuilt.
+    assert script.shared_preparation(replace(config, validation_fraction=0.0), True, raw_dir) is None
+    assert script.shared_preparation(config, False, raw_dir) is None
+
+    # Why it matters. FD002 has six operating conditions; under min-max scaling
+    # per condition they are found by a clustering started from the seed, which
+    # numbers them differently for each seed. The inputs come out the same to
+    # the last digit, but the table of what was measured per condition does not.
+    if not (raw_dir / "train_FD002.txt").is_file():
+        pytest.skip("FD002 is not in data/raw")
+    fd002 = replace(config, subset="FD002", validation_fraction=0.0,
+                    normalization="minmax_per_condition")
+    under_42 = run_preprocessing(replace(fd002, seed=42), data_dir=raw_dir)
+    under_43 = run_preprocessing(replace(fd002, seed=43), data_dir=raw_dir)
+    for name in ("train", "test"):
+        a, b = getattr(under_42, name), getattr(under_43, name)
+        assert np.array_equal(a.features, b.features) and np.array_equal(a.targets, b.targets)
+    first_row = [table.statistics_.iloc[0] for table in (under_42.normalizer, under_43.normalizer)]
+    # Condition 0, sensor 2: the rows of one flight condition under seed 42,
+    # of another under seed 43.
+    assert [(row["condition"], row["column"], int(row["n_rows"]), row["min"]) for row in first_row] == [
+        (0, "sensor_2", 13458, pytest.approx(542.575)), (0, "sensor_2", 8122, pytest.approx(571.8475))]
+    # So one seed's saved table is not the one a reload under another rebuilds.
+    assert not under_42.normalizer.statistics_.equals(under_43.normalizer.statistics_)

@@ -32,9 +32,22 @@ edges::
 
     python scripts/train.py --graph correlation --seeds 5
 
-The paper's own procedure, with no validation set and a fixed 200 epochs::
+The paper's graph against graphs with its 41 edges but none of its
+engineering knowledge, one drawn at random for every seed: 41 sensor pairs
+chosen at random, or the paper's own edges rewired so every sensor keeps its
+number of connections::
 
-    python scripts/train.py --no-early-stopping
+    python scripts/train.py --graph random --seeds 5
+    python scripts/train.py --graph rewired --seeds 5
+
+The paper's own procedure, with no validation set and a fixed 200 epochs, comes
+from a configuration that holds no engine back, alone: with nothing to stop on,
+every pass runs and the last one's weights are kept, with or without
+--no-early-stopping. The option matters only when engines are held back, and
+then it runs all 200 passes but still restores the best held-back pass
+(A-18)::
+
+    python scripts/train.py --config <a copy of config/fd001.yaml with validation_fraction: 0.0>
 """
 
 from __future__ import annotations
@@ -52,9 +65,10 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from thesis_gnn_rul_xai.config import SENSOR_GRAPHS, PreprocessingConfig, load_config
-from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+from thesis_gnn_rul_xai.data.pipeline import PreparedData, run_preprocessing
 from thesis_gnn_rul_xai.evaluation import evaluate
 from thesis_gnn_rul_xai.evaluation.published import published_row
+from thesis_gnn_rul_xai.graph.adjacency import connections_of
 from thesis_gnn_rul_xai.models import ModelConfig, build_model
 from thesis_gnn_rul_xai.training import TrainingConfig, predict, train
 from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
@@ -88,6 +102,39 @@ class Progress:
         self.handle.flush()
 
 
+def split_record(validation_engines: list[list[int]], fixed_split: bool) -> tuple[str, str]:
+    """What summary.json's `split` and the run's folder name say about the engines held back."""
+    if not any(validation_engines):
+        return "none", "nosplit"
+    return ("fixed", "fixedsplit") if fixed_split else ("varies_with_seed", "varsplit")
+
+
+def shared_preparation(
+    preprocessing: PreprocessingConfig, fixed_split: bool, data_dir: Path | None
+) -> PreparedData | None:
+    """The data every seed reuses under --fixed-split, or None when each seed prepares its own."""
+    if not fixed_split:
+        return None
+    prepared = run_preprocessing(preprocessing, data_dir=data_dir)
+    # With no engine held back the run records its split as "none", which
+    # training/stored.py rebuilds under each seed, so every seed is prepared
+    # under its own seed here too. The seed still numbers the operating
+    # conditions of the per-condition scaling, so one shared table would not be
+    # the one a reload rebuilds (training/README.md, "The split part of a run
+    # folder's name").
+    return prepared if len(prepared.validation) else None
+
+
+def graph_record(prepared: PreparedData) -> dict[str, object]:
+    """The graph one seed was given: its kind, the seed it was drawn from, and every connection by name."""
+    symbols = prepared.sensor_symbols
+    return {
+        "graph": prepared.config.graph,
+        "drawn_from_seed": prepared.diagnostics.get("graph_seed"),
+        "connections": [[symbols[i], symbols[j]] for i, j in connections_of(prepared.adjacency_raw)],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Train the ESTGNN graph stage on C-MAPSS and score it.",
@@ -107,7 +154,11 @@ def main() -> int:
                              "sensor to every other, for the paper's 'without "
                              "physics prior' experiment (A-19); 'correlation' "
                              "joins the 41 most strongly correlated sensor "
-                             "pairs on the training engines (A-27)")
+                             "pairs on the training engines (A-27); 'random' "
+                             "joins 41 pairs chosen at random and 'rewired' "
+                             "rewires the paper's graph keeping every sensor's "
+                             "number of connections, each drawn from the seed "
+                             "the data is prepared under (A-41)")
     parser.add_argument("--adjacency-norm", choices=("symmetric", "row"),
                         default=None,
                         help="Overrides the config. See assumption A-21")
@@ -158,7 +209,9 @@ def main() -> int:
                         help="Passes over the training data without improvement "
                              "before stopping (A-18: 20)")
     parser.add_argument("--no-early-stopping", action="store_true",
-                        help="Train the full epoch count, as the paper describes")
+                        help="Train the full epoch count with engines held back; "
+                             "the best held-back pass is still restored (A-18). "
+                             "With none held back every pass runs anyway")
     parser.add_argument("--progress", type=Path, default=None,
                         help="Append one JSON line per event to this file, for "
                              "the documentation site's playground to follow")
@@ -182,6 +235,20 @@ def main() -> int:
     if arguments.subset is not None:
         preprocessing.subset = arguments.subset
     preprocessing.__post_init__()          # re-validate after the overrides
+    # ASSUMPTION A-41: a random or rewired graph is drawn from the seed the
+    # data is prepared under, so --fixed-split holds one graph for every seed.
+    # With no engine held back, though, every seed is prepared under its own
+    # seed whatever --fixed-split says (shared_preparation), so the one graph
+    # asked for could not be given. Refused rather than silently ignored; the
+    # same check runs again below for a fraction too small to hold one engine.
+    fixed_graph_refusal = (
+        f"--fixed-split with --graph {preprocessing.graph} needs engines held "
+        "back (validation_fraction above 0): with none, every seed is prepared "
+        "under its own seed and would be given a graph of its own."
+    )
+    if (arguments.fixed_split and preprocessing.graph in ("random", "rewired")
+            and not preprocessing.validation_fraction):
+        parser.error(fixed_graph_refusal)
 
     model_config = ModelConfig(
         temporal=arguments.temporal,
@@ -216,18 +283,20 @@ def main() -> int:
     code_state = capture_code_state()
     print(f"commit {commit}   graph {preprocessing.graph}   "
           f"normalisation {preprocessing.adjacency_normalization}   "
-          f"split {'fixed' if arguments.fixed_split else 'varies with seed'}")
+          f"split {'none, nothing held back' if not preprocessing.validation_fraction else 'fixed' if arguments.fixed_split else 'varies with seed'}")
 
     # With --fixed-split the split is prepared once and reused, which is what
     # this script used to do unconditionally. That understates the spread:
     # five seeds then vary only the weight initialisation and the batch
     # order, while a real repetition of the experiment would also draw a
-    # different set of validation engines.
-    shared = (
-        run_preprocessing(preprocessing, data_dir=arguments.data_dir)
-        if arguments.fixed_split
-        else None
-    )
+    # different set of validation engines. With no engine held back there is
+    # no split to hold, and every seed is prepared under its own seed.
+    shared = shared_preparation(preprocessing, arguments.fixed_split, arguments.data_dir)
+    if arguments.fixed_split and shared is None:
+        if preprocessing.graph in ("random", "rewired"):
+            parser.error(fixed_graph_refusal)
+        print("No engine is held back, so --fixed-split has no split to hold: every "
+              "seed is prepared under its own seed, and the run records its split as none.")
 
     runs: list[dict[str, float]] = []
     # What each seed leaves behind besides its four numbers. Held until every
@@ -282,6 +351,9 @@ def main() -> int:
                                       ("test", prepared.test))
             },
             "scaling": prepared.normalizer.statistics_,
+            # The graph this seed was given, written out by sensor name: a
+            # random or rewired graph differs from seed to seed (A-41).
+            "graph": graph_record(prepared),
             "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
             "predictions": pd.DataFrame({
                 "unit": prepared.test.units,
@@ -291,14 +363,18 @@ def main() -> int:
             }),
         })
         progress("seed_done", seed=seed,
-                 **{k: result[k] for k in ("rmse", "score", "r2", "asue")})
+                 **{k: result[k] for k in ("rmse", "score", "r2", "asue", "n_early")})
         print(
             f"  test: RMSE {result['rmse']:.3f}  score {result['score']:.1f}  "
-            f"R2 {result['r2']:.3f}  ASUE {result['asue']:.3f}"
+            f"R2 {result['r2']:.3f}  ASUE {result['asue']:.3f} "
+            f"over {result['n_early']} engines predicted early"
         )
 
     table = pd.DataFrame(runs)
     columns = ["rmse", "score", "r2", "asue"]
+    # The count ASUE divides by goes wherever ASUE is reported: without it an
+    # ASUE cannot be read, and with none it is not a number (assumption A-39).
+    reported = [*columns, "n_early"]
 
     # With no engines held back -- the default -- nothing was measured between
     # epochs, so validation_rmse is NaN for every seed and best_epoch is just
@@ -306,7 +382,7 @@ def main() -> int:
     # honestly means "not measured", but printing them invites the reader to
     # compare numbers that were never computed.
     held_back = table["validation_rmse"].notna().any()
-    shown = ["seed"] + (["best_epoch", "validation_rmse"] if held_back else []) + columns
+    shown = ["seed"] + (["best_epoch", "validation_rmse"] if held_back else []) + reported
 
     print(f"\n{'=' * 72}")
     print(f"{preprocessing.subset}, {preprocessing.graph} graph, "
@@ -321,11 +397,18 @@ def main() -> int:
             "state of\nthe model at the epoch limit."
         )
 
+    # A seed with no ASUE leaves the mean over seeds undefined too, rather than
+    # quietly averaging the seeds that have one (assumption A-39).
+    means = table[reported].mean(skipna=False)
+    spreads = table[reported].std(ddof=1, skipna=False)
+    undefined = table.loc[table["asue"].isna(), "seed"].tolist()
+    if undefined:
+        print(f"\nASUE is not a number on seed(s) {undefined}: no engine was predicted "
+              "early, so Equation 24 divides 0 by 0 (assumption A-39).")
     if arguments.seeds > 1:
         print("\nmean +/- standard deviation across seeds:")
-        for column in columns:
-            values = table[column]
-            print(f"  {column:>6}: {values.mean():9.3f} +/- {values.std(ddof=1):.3f}")
+        for column in reported:
+            print(f"  {column:>7}: {means[column]:9.3f} +/- {spreads[column]:.3f}")
     else:
         print(
             "\nOne seed is not evidence. Re-run with --seeds 5 before quoting "
@@ -349,6 +432,16 @@ def main() -> int:
         "See docs/ASSUMPTIONS.md for every way this pipeline differs from the\n"
         "paper."
     )
+    # The paper never says what its "w/o Physics prior" row used in place of
+    # its graph, so it cannot be said that it never trained on one of these;
+    # what keeps them from that row is this project's choice (A-19, A-41).
+    undescribed = {"correlation": "graph built from correlations",
+                   "random": "graph drawn at random", "rewired": "rewiring of its graph"}
+    if preprocessing.graph in undescribed:
+        print(f"For its network the paper describes no {undescribed[preprocessing.graph]}, "
+              "and its\n'w/o Physics prior' row never says what replaced its graph. Only the\n"
+              "every-sensor graph is set beside that row (A-19), so no row above applies\n"
+              "to this run.")
 
     # The node feature mode belongs in the name: two runs that differ only in
     # it are different experiments, and without it the second silently
@@ -377,6 +470,16 @@ def main() -> int:
     # stay silent; anything else adds a digest of the whole block, `net` for
     # the shape of the network and `train` for how it was trained, and the
     # blocks themselves are written out in full beside the results.
+    #
+    # Whether the held-back engines change with the seed comes from the
+    # engines each seed actually held back, not from --fixed-split alone: with
+    # none held back there is no split to vary or to fix, so the name says
+    # `nosplit` and summary.json says "none". Until 2026-10-03 such a run was
+    # named `varsplit` and recorded "varies_with_seed" (audit item D-4); stored
+    # runs keep what they recorded, and training/README.md says how to read it.
+    split, split_name = split_record(
+        [kept["split"]["validation"] for kept in artefacts], arguments.fixed_split
+    )
     stamp = utc_stamp()
     default_model = ModelConfig(
         temporal=arguments.temporal, temporal_hidden=arguments.temporal_hidden
@@ -399,7 +502,7 @@ def main() -> int:
         f"_{preprocessing.adjacency_normalization}"
         f"_{'cap' if preprocessing.clip_test_labels else 'uncap'}"
         f"_{arguments.seeds}seed"
-        f"_{'fixedsplit' if arguments.fixed_split else 'varsplit'}"
+        f"_{split_name}"
         + ("" if arguments.temporal == "last_cycle"
            else f"_{arguments.temporal}{arguments.temporal_hidden}"
            if arguments.temporal in ("lstm", "gru")
@@ -426,6 +529,7 @@ def main() -> int:
         torch.save(kept["state"], folder / "model.pt")
         kept["predictions"].to_csv(folder / "test_predictions.csv", index=False)
         (folder / "split.json").write_text(json.dumps(kept["split"]), encoding="utf-8")
+        (folder / "graph.json").write_text(json.dumps(kept["graph"]), encoding="utf-8")
         if kept["scaling"] is not None:
             kept["scaling"].to_csv(folder / "scaling.csv", index=False)
     # A "-dirty" commit says the code differed from the commit, not how. The
@@ -448,7 +552,7 @@ def main() -> int:
                 "graph": preprocessing.graph,
                 "adjacency_normalization": preprocessing.adjacency_normalization,
                 "seeds": arguments.seeds,
-                "split": "fixed" if arguments.fixed_split else "varies_with_seed",
+                "split": split,
                 "clip_test_labels": preprocessing.clip_test_labels,
                 # Whether early stopping could fire, not only whether it was
                 # asked for: with nothing held back there is nothing to stop on.
@@ -469,10 +573,18 @@ def main() -> int:
                 "model": model_config.to_dict(),
                 "training": {**training_settings, "lr_schedule": arguments.lr_schedule},
                 "seed_folders": [f"seed_{kept['seed']}" for kept in artefacts],
-                "mean": {c: float(table[c].mean()) for c in columns},
+                # The seed each seed folder's graph was drawn from, in the same
+                # order; null for a graph that is not drawn at random (A-41).
+                "graph_seeds": (
+                    [kept["graph"]["drawn_from_seed"] for kept in artefacts]
+                    if preprocessing.graph in ("random", "rewired") else None
+                ),
+                # An undefined value is written as null, which every JSON reader
+                # accepts; NaN is not JSON (assumption A-39 for ASUE).
+                "mean": {c: None if pd.isna(means[c]) else float(means[c]) for c in reported},
                 "std": {
-                    c: (float(table[c].std(ddof=1)) if arguments.seeds > 1 else None)
-                    for c in columns
+                    c: None if arguments.seeds < 2 or pd.isna(spreads[c]) else float(spreads[c])
+                    for c in reported
                 },
             },
             indent=2,

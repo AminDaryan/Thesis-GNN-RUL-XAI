@@ -9,7 +9,13 @@ from typing import Any
 
 from ...evaluation.published import DATASET_DESCRIPTION, SUBSETS
 from .commands import preprocessing_settings
-from .settings import _BY_KEY, RESULT_SEEDS, SettingsError, read_more
+from .settings import (
+    _BY_KEY,
+    RESULT_SEEDS,
+    SettingsError,
+    fixed_graph_refusal,
+    read_more,
+)
 
 
 def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -58,6 +64,19 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     if settings.get("graph") == "correlation" and varies:
         add("info", "A-27", "The graph is rebuilt from each seed's own training engines, "
             "so two seeds can be given slightly different graphs.")
+    # A random or rewired graph is drawn from the seed the data is prepared
+    # under: one for every seed only when the same engines are held back for
+    # all of them, as in scripts/train.py, which refuses the same held-back
+    # engines with none held back. The Design tab never shows that refusal as
+    # a caution: validate_settings refuses the request before it is drawn.
+    if settings.get("graph") in ("random", "rewired"):
+        refusal = fixed_graph_refusal(settings)
+        if refusal:
+            add("warn", "A-41", refusal)
+        else:
+            add("info", "A-41", "The graph is drawn at random from "
+                + ("one seed and serves every seed." if settings.get("fixed_split")
+                   else "each seed, so every seed is given a different graph."))
     subset, window = settings.get("subset"), settings.get("window_size")
     if subset in SUBSETS and isinstance(window, int) and not isinstance(window, bool):
         counted = dataset_facts(str(subset), window)["counted"]
