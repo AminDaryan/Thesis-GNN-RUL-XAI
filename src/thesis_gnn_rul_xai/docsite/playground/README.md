@@ -596,14 +596,17 @@ Some things need no training, and the page shows them as the settings change:
   many numbers it learns and, folded under it, each layer's output shape and
   count. For the paper's LSTM stage at hidden size 32 that is 124 482; for the
   w/o LSTM network, which keeps only each window's last cycle, it is 61 729.
-  `ESTGNN.layer_summary()` lists the temporal stage and then Table 4's "Input"
-  row, but both describe the same array of shape `(B, 14, 1)`, one number per
-  sensor for each of the `B` windows in a batch — Table 4's Input row, which
-  learns nothing of its own, is what the stage hands to the first graph layer —
-  so the page shows them as one Input row and counts the stage's learned
-  numbers there. Settings the network refuses — thirty raw cycles handed
-  straight to a graph layer, for one — are refused with the network's own
-  message.
+  The rows are `ESTGNN.layer_summary()` as it comes, one per row of Table 4.
+  The temporal stage has no row of its own there. What it hands to the first
+  graph layer — for the paper's stage and for the w/o LSTM network, one number
+  per sensor for each of the `B` windows in a batch — is what Table 4's Input
+  row lists, so `layer_summary()` counts the stage's learned numbers on that
+  row and, when the stage is the LSTM or the GRU, names it; the page shows
+  that as "Input from LSTM" (`models/README.md` explains the row). Until
+  2026-10-03 the summary listed the stage as a row of its own and this page
+  joined the two rows itself; the rows it shows did not change. Settings the
+  network refuses — thirty raw cycles handed straight to a graph layer, for
+  one — are refused with the network's own message.
 - **What stops or qualifies the run**, directly above the Train button: that
   PyTorch or the NASA files are missing, the network's refusal, how many test
   engines are shorter than the window and will be left out (counted from the
@@ -1064,6 +1067,84 @@ section names the rule's setting γ the explanation was made with; one made at
 γ 0, before the authors' own setting became the default, says that it is their
 simpler baseline, GNN-GI, and has no stored check.
 
+**The rule's setting can be chosen**, since 2026-10-02. A walk explanation
+divides each graph layer's numbers among the sensors that sent them, and γ
+(gamma) is the number that decides how much extra weight a positive
+contribution gets in that division before the layer's shares are rescaled back
+to the total it computed. Negative shares shrink; the total stays the same,
+and so does the prediction. `explain/README.md` works one node through it by
+hand, under "The setting gamma: the authors' own". When walks are the method,
+a row named "How walk shares are divided (γ)" appears under Method, with four
+options. Each has a label, which the form shows, and a short name, which is
+what the page sends to the server, what `scripts/explain.py --gamma` takes and
+what a stored explanation's folder name carries:
+
+| Option | Short name | γ at the three graph layers | Where it comes from |
+|---|---|---|---|
+| The authors' setting, the default | `authors` | 0, 1.5, 0 | the default of the method's published code, 3 falling to 0, with the first replaced by 0 (assumption A-29) |
+| No extra weight | `gnn-gi` | 0, 0, 0 | the method's simpler baseline, which its authors call GNN-GI |
+| Halving extra weight | `falling` | 0, 0.5, 0.25 | the halving the GNN-LRP paper uses for VGG-16 (its Section 5.3), started here at the second graph layer; the numbers for this network are ours |
+| Equal extra weight after the first layer | `flat` | 0, 1, 1 | ours |
+
+The last two are the settings that the log's walk measurements set beside the
+authors' to see how far a ranking of connections moves with γ, in the text
+under their table of stored runs (assumption A-29). Explaining the same
+windows under two options shows a reader what that comparison measures, one
+window at a time.
+
+The page sends the short name, never numbers, and the server refuses any name
+it does not list (`validate_explain` in `runs.py`). `scripts/explain.py` turns
+the name into one γ per graph layer, and every name gives the first graph
+layer 0: that layer receives rescaled readings, which are negative below their
+training average, and the rule's derivation assumes the numbers entering a
+layer never are (assumption A-29). The row's i gives this reason once, rather
+than each option repeating it; of the options, only the authors' names the
+first layer, because its label would otherwise claim the authors' 3 there.
+For a network with another number of graph layers, halving goes on halving and
+the equal option stays at 1.
+`test_no_positive_gamma_reaches_the_first_graph_layer` in
+`tests/test_playground.py` records every γ the rule is run with, at the one
+place it is applied, under all four options, and finds the first always 0.
+`test_a_gamma_at_the_first_layer_would_change_the_walks_of_that_network` shows
+that on the network it uses, which hands the graph three numbers per sensor, a
+3 at the first layer would move the walks, so the guard protects something
+that matters there. With one number per sensor it would cancel.
+
+The stored explanation records the short name (`gamma_setting` in its
+`summary.json`) and its numbers (`gamma`). Only when the option is not the
+authors' does the explanation's row in the tables of stored explanations and
+its job's name in the queue add the option's label, and its folder name the
+short name (`_gamma-falling`, for example); the calculation section then gives
+its numbers, not its name again. One made with no extra weight, from the form
+or with `--gamma gnn-gi`, says that setting was chosen when it was made and
+has the stored check, unlike the γ 0 explanations from before 2026-10-01.
+**Authors' check** always compares the authors' setting with their baseline;
+an option that is neither is checked beside them, drawn in gold and named as
+the form names it. Not in orange, because orange already means a negative
+share in this view: the guide above the explanation and the legend of the
+connections say so. Not in the accent blue either, because it sits close to
+the baseline's blue-green. Gold means no sign anywhere here; it names the
+model-added part in the Score parts tab, whose own legend says so. Measured as
+the straight-line distance between two colours in the CIE Lab colour space,
+which is built so that equal distances look roughly equally different, the
+accent blue is 32 from the baseline's colour in light mode and 23 in dark;
+gold is 78 and 83 from it, and 69 and 63 from the ink colour that draws the
+authors' setting. Against the figure's background a gold line has a contrast of 4.9 to
+1 in light mode and 9.2 in dark, above the 3 to 1 a drawn line needs
+(`test_a_chosen_setting_s_check_is_drawn_in_a_colour_far_from_the_baseline`
+recomputes all of these from the colours `assets/app.css` defines).
+
+**Wording correction, 2026-10-02.** From the commit that made the authors'
+setting the default (f1adb1e, 2026-10-02) until the setting became
+selectable, the paragraph headed “The rule.” in the calculation section said
+that a walk explanation counts positive contributions more heavily, as the
+method's authors do. That was false for the explanations made at γ 0 between
+2026-09-26 and 2026-09-28, which are still listed, and the sentence after it,
+which named their setting, contradicted it. It was found on 2026-10-02 while
+the setting was being made selectable, and confirmed by the review of that
+change. The paragraph now says that γ decides how much more heavily positive
+contributions count, and the sentence after it gives the setting used.
+
 **Wording correction, 2026-09-27.** The previous introduction began “Each value”
 without saying which values it meant, and mixed chart instructions with
 calculation checks. The revised text points to the visible sensor labels and
@@ -1199,7 +1280,8 @@ correlation graph comes from the selected network rather than the paper.
 **Beside the paper's Fig. 10.** For an engine explained with Shapley values,
 the page redraws the paper's Fig. 10 from the numbers of its Table 12, above
 the stored engine at the same graph numbers, where graph `g` is the engine's
-`g`-th window, and counts **how often a sensor joins the red four**, the four
+`g`-th window, ending at its cycle `g` + 29 (our reading; the paper never says
+which cycle a graph is, assumption A-35), and counts **how often a sensor joins the red four**, the four
 largest values, from one graph to the next. Within the three stages there are
 12 such steps. At graph 190 of Table 12 the four largest are Nc 2.37, Ps30
 2.29, BPR 1.84 and T50 1.65, with phi fifth at 1.59. At graph 191 BPR has

@@ -82,9 +82,12 @@ ABLATION_ROWS: dict[str, dict[str, float]] = {
 
 # Table 12, "SHAP importance values for 14 sensors across degradation phases",
 # for one engine the paper does not name. Its columns G1 to G191 are the numbers
-# of Fig. 10's graphs, one per window of that engine. Transcribed from the PDF's
-# text layer on 2026-09-14, with the paper's "Phi" spelt as this project spells
-# it. Every cell is positive, which signed Shapley values cannot all be (F-08).
+# of Fig. 10's graphs. Transcribed from the PDF's text layer on 2026-09-14, with
+# the paper's "Phi" spelt as this project spells it. Every cell is positive,
+# which signed Shapley values cannot all be (F-08).
+# ASSUMPTION A-35: graph g is read as the engine's g-th window, the one ending
+# at cycle g + 29, so graph 1 ends at cycle 30 and graph 191 at cycle 220. The
+# paper heads the columns "Time" and never says which cycle a graph is.
 SHAP_TABLE_12_GRAPHS: tuple[int, ...] = (1, 2, 3, 4, 5, 78, 79, 80, 81, 82, 187, 188, 189, 190, 191)
 SHAP_TABLE_12: dict[str, tuple[float, ...]] = {
     "T24": (3.39, 3.18, 2.94, 2.69, 2.44, 2.20, 1.99, 1.81, 1.81, 1.68, 1.47, 1.46, 1.36, 1.22, 0.76),

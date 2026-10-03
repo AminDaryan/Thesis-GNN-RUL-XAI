@@ -71,6 +71,68 @@ def _masked_batch(
     return np.where(keep, features[None, :, :], baseline[None, :, :])
 
 
+def _after_stage(model: ESTGNN, nodes: torch.Tensor) -> torch.Tensor:
+    """The prediction in cycles from what the temporal stage hands the graph layers."""
+    # The steps of ESTGNN.forward after its temporal stage, in the same order;
+    # _check_shortcut refuses a network for which the two stop agreeing.
+    hidden = nodes
+    for layer in model.graph_layers:
+        hidden = torch.relu(layer(hidden, model.adjacency))
+    dense = torch.relu(model.fc1(torch.flatten(hidden, start_dim=1)))
+    return torch.sigmoid(model.fc2(dense)).squeeze(-1) * float(model.rul_max)
+
+
+def _group_predictions(
+    model: ESTGNN,
+    example: np.ndarray,
+    stand_in: torch.Tensor,
+    masks: np.ndarray,
+    batch_size: int,
+    device: torch.device,
+) -> np.ndarray:
+    """The prediction for every group, running the temporal stage once on the real window."""
+    # Every temporal stage reads each sensor's own window and nothing else, so
+    # in a window mixing real and stand-in readings, a sensor's stage output is
+    # its output on the real window or on the stand-in, whichever the group
+    # gives it. The stage then runs once per window rather than once per group.
+    real = model.temporal(torch.from_numpy(example[None]).to(device))[0]
+    keep = torch.from_numpy(masks[:, :, None]).to(device)
+    predictions = np.empty(len(masks), dtype=np.float64)
+    for start in range(0, len(masks), batch_size):
+        nodes = torch.where(keep[start : start + batch_size], real, stand_in)
+        predictions[start : start + batch_size] = _after_stage(model, nodes).cpu().numpy()
+    return predictions
+
+
+def _check_shortcut(
+    model: ESTGNN,
+    example: np.ndarray,
+    baseline: np.ndarray,
+    stand_in: torch.Tensor,
+    masks: np.ndarray,
+    device: torch.device,
+) -> None:
+    """Refuse a network whose full run disagrees with the stage-once route on a few groups."""
+    n_nodes = masks.shape[1]
+    every = (1 << n_nodes) - 1
+    alternate = sum(1 << i for i in range(0, n_nodes, 2))
+    first_half = (1 << (n_nodes // 2)) - 1
+    sample = masks[[0, every, alternate, every ^ alternate, first_half, every ^ first_half]]
+    whole = torch.from_numpy(_masked_batch(example, baseline, sample)).to(device)
+    direct = model.predict_cycles(whole).cpu().numpy()
+    shortcut = _group_predictions(model, example, stand_in, sample, len(sample), device)
+    gap = float(np.max(np.abs(direct - shortcut)))
+    if gap > 1e-3:
+        raise ValueError(
+            f"Running the whole network and running its temporal stage once per "
+            f"window disagree by {gap:.2e} cycles on the same groups of sensors. "
+            "Either the temporal stage reads more than each sensor's own window, "
+            "or ESTGNN.forward has changed and _after_stage in this file no "
+            "longer repeats it. Either way these would not be Shapley values of "
+            "this network."
+        )
+
+
 @torch.no_grad()
 def shap_values(
     model: ESTGNN,
@@ -82,8 +144,8 @@ def shap_values(
 ) -> np.ndarray:
     """How many cycles each sensor added to the prediction, for each window.
 
-    Runs the network 16,384 times per window: once for every combination of
-    the 14 sensors.
+    Predicts 16,384 times per window, once for every combination of the 14
+    sensors; the temporal stage runs once per window and once for the stand-in.
     """
     single = features.ndim == 2
     batch = features[None, ...] if single else features
@@ -125,15 +187,16 @@ def shap_values(
     lacking = [np.flatnonzero(~masks[:, i]) for i in range(n_nodes)]
     holding = [lacking[i] | (1 << i) for i in range(n_nodes)]
 
+    # What the temporal stage hands the graph layers for the stand-in window,
+    # once for the whole call.
+    stand_in = model.temporal(torch.from_numpy(baseline[None]).to(device))[0]
+    _check_shortcut(model, batch[0].astype(np.float32), baseline, stand_in, masks, device)
+
     results = np.empty((batch.shape[0], n_nodes), dtype=np.float64)
     for index, example in enumerate(batch):
-        inputs = _masked_batch(example.astype(np.float32), baseline, masks)
-        predictions = np.empty(len(inputs), dtype=np.float64)
-        for start in range(0, len(inputs), batch_size):
-            chunk = torch.from_numpy(inputs[start : start + batch_size]).to(device)
-            predictions[start : start + batch_size] = (
-                model.predict_cycles(chunk).cpu().numpy()
-            )
+        predictions = _group_predictions(
+            model, example.astype(np.float32), stand_in, masks, batch_size, device
+        )
         for i in range(n_nodes):
             without, with_i = lacking[i], holding[i]
             marginal = predictions[with_i] - predictions[without]

@@ -481,6 +481,46 @@ https://doi.org/10.1016/j.patter.2023.100804
 > (CC BY 4.0) but has to be saved from a web browser,
 > https://www.cell.com/patterns/fulltext/S2666-3899(23)00159-9.
 
+**Dunn, O. J. (1961).** Multiple comparisons among means. *Journal of the
+American Statistical Association*, *56*(293), 52–64.
+https://doi.org/10.1080/01621459.1961.10482090
+
+> Sets out what is now called the Bonferroni correction for many comparisons
+> read at once: hold each one to the overall bar divided by their number, so
+> that the chance of any false alarm among them stays within the overall bar
+> whatever the comparisons have in common. Assumption A-37 uses it as this
+> project's bar.
+>
+> Not held: a publisher's article, through a university library. The
+> description above has not been checked against the article; the citation was
+> checked against its publisher's record on 2026-10-03.
+
+**Holm, S. (1979).** A simple sequentially rejective multiple test procedure.
+*Scandinavian Journal of Statistics*, *6*(2), 65–70.
+https://www.jstor.org/stable/4615733
+
+> The procedure that tests the smallest p against the overall bar divided by
+> the number of comparisons, the next against the bar divided by one fewer, and
+> so on, stopping at the first that fails. It keeps the Bonferroni correction's
+> guarantee and never calls fewer differences real. Assumption A-37 sets it
+> beside this project's bar.
+>
+> Not held: a journal article on JSTOR, through a university library. The
+> description above has not been checked against the article.
+
+**Benjamini, Y., & Hochberg, Y. (1995).** Controlling the false discovery
+rate: A practical and powerful approach to multiple testing. *Journal of the
+Royal Statistical Society: Series B (Methodological)*, *57*(1), 289–300.
+https://doi.org/10.1111/j.2517-6161.1995.tb02031.x
+
+> The procedure that bounds the expected share of false alarms among the
+> differences called real, rather than the chance of any false alarm at all.
+> Assumption A-37 sets it beside this project's bar.
+>
+> Not held: a publisher's article, through a university library. The
+> description above has not been checked against the article; the citation was
+> checked against its publisher's record on 2026-10-03.
+
 ---
 
 ## Comparable work on the same dataset
@@ -512,6 +552,21 @@ System Safety*, *172*, 1–11. https://doi.org/10.1016/j.ress.2017.11.021
 >
 > Not held: a publisher's article, through a university library. A pre-review
 > preprint with different pages is at https://escholarship.org/uc/item/5ns8r3fs.
+
+**Zou, J., & Lin, P. (2025).** Multichannel attention-based TCN-GRU network for
+remaining useful life prediction of aero-engines. *Energies*, *18*(8), 1899.
+https://doi.org/10.3390/en18081899
+
+> Wen et al.'s reference [55], the source of the row "GRU [55]" in their
+> Tables 7 to 10. Its title names a network that joins a temporal
+> convolutional network (TCN), attention and a gated recurrent unit (GRU), so
+> by its title alone it is not a plain GRU, and it is not Wen et al.'s network
+> with another recurrent cell; assumption A-36 says why no published row may
+> be set beside this project's GRU stage. The citation is the one Wen et al.
+> print, with the DOI from the publisher's record, checked on 2026-10-03.
+>
+> Not held: free under CC BY 4.0 from the publisher; nothing in it has been
+> checked against the article.
 
 **Dida, M., Cheriet, A., & Belhadj, M. (2025).** Remaining useful life
 prediction using attention-LSTM neural network of aircraft engines.

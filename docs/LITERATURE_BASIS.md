@@ -436,6 +436,45 @@ The lead came up when the cited papers were collected into
 `docs/references/` and checked against the places that cite them; the
 paper's experimental setup and results were then read in full in the copy.
 
+**Another paper in the corpus names what its search scored (R-squared), but
+not on which data.** IMTSO-GCN (Yuan et al. 2025), one of the twelve, chooses
+its window length, learning rate, number of neurons, number of graph layers
+and the threshold that decides which connections its graph keeps by a swarm
+search: a population of candidate settings, each trained and scored, moved
+round after round towards the best-scoring ones. Its scoring step reads: "A
+trained model is obtained by training the training set according to the
+hyperparameters in U. The results obtained from the trained model are compared
+with the real results. In this paper, R2 is used as the fitness function" (PDF
+page 7, journal page 180). R-squared is the share of the spread of the true
+values around their mean that the predictions account for, 1 when every
+prediction is exact. The paper never says which data "the real results" are.
+It names a training set and a testing set and nothing else (PDF pages 8 and
+9, journal pages 181 and 182); its Fig. 7 shows its FD002 testing set to be
+NASA's test file, predicted at every cycle; and its Fig. 3 (PDF page 8,
+journal page 181) prints a box labelled "Training sets" beside the one arrow
+into the search. That leaves three possibilities open: the training engines
+themselves (as Fig. 3's label suggests), a part of them held back without
+mention, or the testing set, the only other data it describes. The last would
+be consistent with choosing the settings on the test set, and the paper does
+not say it did. Unlike GLSTGN, HAGCN and Jin et al., it prints nothing from
+its search but the settings chosen (its Table 4, PDF page 12, journal page
+185), so its test results cannot be checked against the search either way.
+How Figs. 3 and 7 were read, and two further problems with this paper's
+results, are in the finding about what other papers put on a graph node
+(finding F-12 in `docs/ASSUMPTIONS.md`).
+
+**Added 2026-10-02.** IMTSO-GCN was counted among the twelve above, but its
+search was not discussed in this passage until this date. The question came up
+when its Fig. 6 was checked for that finding; the paper was then read in full
+in the copy, with Fig. 3 rendered at eight times its printed size and Fig. 7
+measured in the picture embedded in the page, at its own size. In that copy a
+journal page number is the PDF page number plus 173. A review the same day,
+before the passage was first committed, found that its first version called
+this "a third paper" (it is not the third of anything above: GLSTGN never
+says what its search scored, and DVGTformer's search is described earlier in
+this section) and put the question of where the search was scored as a choice
+between two possibilities when the paper leaves three open.
+
 ---
 
 ## Where the rest of the list stands

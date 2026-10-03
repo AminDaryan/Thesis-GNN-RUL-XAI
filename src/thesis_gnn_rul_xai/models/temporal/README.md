@@ -58,7 +58,7 @@ follows from the stage.
 | `window_summary` | the last reading, the average, and the change across the window | no | 3 |
 | `raw_window` | every cycle, untouched | no | 30 |
 | `lstm` | what a recurrent network read out of the window | yes | 1 by default |
-| `gru` | the same, with a simpler recurrent cell | yes | 1 by default |
+| `gru` | the same, with a simpler recurrent cell, which the paper does not have (assumption A-36) | yes | 1 by default |
 
 `last_cycle` is the default and is what every result in this project before
 2026-09-09 was produced with. It is this project's choice (assumption A-07):

@@ -38,13 +38,18 @@ pip install -e ".[model]"
   connection of the sensor graph at a time, rescale, and record how far the
   prediction moves, in cycles
   ([Removing a connection](#removing-a-connection-a-different-question)).
-- `__init__.py` — re-exports the public names from all six.
+- `seeds.py` — the Shapley values of `shap.py` for every saved network of a
+  stored run, one network at a time, each checked against the test error its
+  run recorded before it is explained
+  ([Every saved network of a stored run](#every-saved-network-of-a-stored-run)).
+- `__init__.py` — re-exports the public names from all seven.
 
 The notebooks in `notebooks/xai/` use these on a stored trained network, one
 method per notebook; `03_walks_fd001.ipynb` covers walks and removing a
-connection. The playground's Explain tab offers Shapley values, occlusion and
-walks, and `scripts/measure_walks.py` measures walks over every saved seed of a
-stored run.
+connection, and step 8 of `01_shap_fd001.ipynb` uses `seeds.py` on the five
+seeds of two runs. The playground's Explain tab offers Shapley values,
+occlusion and walks, and `scripts/measure_walks.py` measures walks over every
+saved seed of a stored run.
 
 ## What a Shapley value is
 
@@ -99,6 +104,70 @@ stops being reasonable (2^20 is about a million evaluations per window).
 Ask for more nodes than that and `shap_values` raises instead of quietly
 switching to an approximation. This module deliberately does not provide one.
 
+### Why the temporal stage runs only once per window
+
+Each of the 16,384 evaluations is the network run on a mixed window: the real
+30 readings of the sensors in the group, and for the rest the 30 readings of
+the **stand-in**, the average training window that takes the place of a sensor
+left out (explained under
+[What "removing a sensor" means here](#what-removing-a-sensor-means-here)).
+The network's first part, the **temporal stage**, turns each sensor's 30
+readings into the number (or numbers) that sensor's graph node carries. Every
+stage this project has reads one sensor's readings and nothing else: the last
+one, their average, a three-number summary of them, all thirty unchanged, or
+that sensor's own recurrent network. So in a mixed window, a kept sensor's
+stage output is what it was on the real window, and a replaced sensor's is what
+it was on the stand-in. `shap_values` therefore runs the stage on the real
+window once, and on the stand-in once per call, and builds the 16,384 mixtures
+out of those two results; only the graph layers and the two fully connected
+layers after them run 16,384 times. The default stage only picks out the last
+reading, so for it this saves little. For the recurrent stage it stops fourteen
+recurrent networks from being run 16,384 times over windows of which each sees
+only two different versions.
+
+A worked example on real data: the recurrent network of seed 42 in the stored
+run `fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`,
+on held-back engine 5's window ending at cycle 30. What the stage hands two of
+the graph nodes:
+
+```
+                                              T50 hands over   Nc hands over
+real window                                       0.8140          0.2757
+stand-in window                                  -0.0085         -0.0234
+T50 real, every other sensor a stand-in           0.8140         -0.0234
+T50 a stand-in, every other sensor real          -0.0085          0.2757
+```
+
+The last two rows are the stage run on the mixed windows themselves, and they
+repeat the first two exactly, to the last bit, for all fourteen sensors
+(`tests/test_examples_torch.py::test_example_the_temporal_stage_runs_once_per_window_on_the_stored_recurrent_network`).
+
+**It is checked, not assumed.** A stage that read other sensors' readings as
+well would make the shortcut wrong. So `shap_values` first runs the whole
+network on six of the mixed windows — no sensor kept, every sensor kept, every
+other sensor, the rest, the first seven, the last seven — and refuses to return
+anything if those six predictions and the shortcut's differ by more than a
+thousandth of a cycle. The same check catches `ESTGNN.forward` changing while
+the shortcut's copy of its last steps (`_after_stage` in `shap.py`) does not.
+`tests/test_shap.py` requires the values to equal those from running the whole
+network on all 16,384 mixed windows, for all six temporal stages, and requires
+a stage that adds the average of every sensor's reading to each sensor's own to
+be refused.
+
+**Do not confuse the method with this shortcut.** The Shapley value is still a
+method that needs only the network's inputs and outputs: the numbers are those
+of Equation 15 whatever is inside the network. The shortcut belongs to this
+implementation, which reads how the network is built (its temporal stage
+first, its graph layers after) to reach the same numbers with less work, and
+the check above refuses any network for which it would not.
+
+(Added 2026-10-02. Until then every mixed window went through the whole
+network, the recurrent networks included. On held-back engine 5 of the stored
+recurrent run above, seed 42, the values computed the new way differ by at most
+3.6e-15 cycles, which is rounding, from those the old way stored in that run's
+`explanations/shap_engine_unit5_seed42_f386291-dirty_20260914T135414Z`, and
+equally from the two later copies beside it.)
+
 ## What "removing a sensor" means here
 
 Equation 15 needs `f(S)`, "the ESTGNN prediction when only sensors in subset S
@@ -145,14 +214,177 @@ would leak into the scaling.
 ## Dynamic: the same calculation at every cycle
 
 Equation 16 of the paper is Equation 15 applied to the window ending at each
-cycle in turn. An engine that ran for 220 cycles yields 191 windows at a window
-size of 30, so it yields 191 sets of 14 Shapley values — a table of how the
-model's attention moved as the engine wore out. `dynamic_shap` produces that
-table for one engine.
+cycle in turn. An engine that ran for 220 cycles yields 220 − 30 + 1 = 191
+windows at a window size of 30, so it yields 191 sets of 14 Shapley values.
+`dynamic_shap` returns them for one engine as a table with one row per window,
+in the order of the cycle each window ends at. A row holds, in this order:
+
+- that cycle;
+- the window's label, the kind of number the network is trained to predict:
+  the engine's remaining life there, capped at 125 cycles (assumption A-01),
+  so early in a long engine's life it is 125 and not the true remaining life;
+- the network's prediction, in cycles;
+- the prediction for the stand-in window, the same in every row;
+- then one number per sensor, its Shapley value in cycles.
+
+That last number is the sensor's share of the gap between the prediction and
+the stand-in's prediction. It is the change the sensor's actual readings make
+when they join, averaged over every order in which the fourteen sensors could
+join, as "What a Shapley value is" above describes, and the fourteen shares add
+up to the whole gap. Reading one sensor's column from top to bottom shows how
+its share changed as the engine wore out. The columns are listed by name under
+"What each name means", at the end of this file.
+
+**Do not confuse a Shapley value with a single swap.** Putting one sensor's
+actual readings into the stand-in window, with every other sensor left at its
+stand-in, changes the prediction by some number of cycles; so does taking them
+out of the real window, with every other sensor left real. Those are the change
+the sensor makes when it joins first and when it joins last, two of the orders
+the Shapley value averages over, and they can be far apart, because what one
+sensor's readings do depends on which others are already real. Seed 42 of the
+stored default run
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`
+(commit `f386291-dirty`, described under "Every saved network of a stored run"
+below), held-back engine 5, the window ending at cycle 30:
+
+```
+prediction 121.628, stand-in's prediction 91.885, gap +29.743
+sum of the fourteen Shapley values            +29.743
+
+T30, joining first: its readings alone into the stand-in window   +19.543
+T30, joining last: the other thirteen already real                  +2.132
+T30's Shapley value, the average over every order                 +14.061
+
+label in the row: 125. Engine 5 ran 269 cycles, so 239 truly remain.
+In 114 of engine 5's 240 windows the label is 125 where more remain.
+```
+
+`tests/test_examples_torch.py::test_example_a_dynamic_shap_row_on_the_stored_default_run`
+computes every number above.
+
+(Corrected 2026-10-03: this called the table one "of how the model's attention
+moved". That was a figure of speech, and a misleading one: the network has no
+part that computes weights for where to look, and the table holds predictions
+and each sensor's contribution in cycles, nothing else. It was found on
+2026-10-02, in a reading of this file while the component notebooks were being
+built. The first rewrite, the same day, called the label column the true
+remaining life, as the column table at the end of this file had done since it
+was written, and described each sensor's number as a single swap rather than an
+average over orders; an independent review recomputed both on the window
+above.)
 
 Give it the training or validation set. Those keep every window of every
 engine. The test set holds only one window per engine, so it cannot show a
 trajectory.
+
+## Every saved network of a stored run
+
+**Why one network is not enough.** A trained network is one draw. Training
+starts from random numbers and visits the training windows in a random order,
+and in this project the seed also decides which 20 engines are held back from
+training. A second seed trains a different network, and its Shapley values can
+differ, so a figure computed on one network says nothing yet about how far
+another seed would move it. Working rule 3 asks for five seeds and their spread
+before anything is called a result. `scripts/train.py --seeds 5` saves each
+seed's trained network (its `model.pt`) beside the run's results in
+`reports/`, so the five networks can be explained afterwards without training
+again.
+
+**What `shap_for_each_seed` does, for each seed in turn.**
+
+1. It loads the saved network and rebuilds the data with the settings and the
+   seed stored beside it (`load_seed` in `training/stored.py`). The seed
+   matters for the data too: it decides which engines were held back, so
+   rebuilding with another seed would hand the network engines it learned from
+   and call them unseen.
+2. It scores the 100 test engines again and compares the error with the one
+   the run recorded for that seed. The error is the root-mean-square error in
+   cycles: the square root of the average squared miss. If the two differ by
+   more than 0.0001 cycles it raises, because either the network or the rebuilt
+   data is not what the run trained, and the explanation would describe
+   something else.
+3. It builds the stand-in from that seed's own training windows
+   (`mean_window_baseline`) and predicts on it once. That prediction is the
+   **reference** that every window's fourteen values add up from.
+4. It explains whole engines with `dynamic_shap`: the engines named in
+   `units`, or, when none are named, the held-back engine with the most windows
+   (`longest_engine`), which the network never learned from and which shows the
+   most of an engine's life.
+5. It hands back a `SeedExplanation`, the record of that one seed, and only
+   then loads the next network.
+
+It is a **generator**: a function that hands back one result each time a loop
+asks for the next, and builds the next one only when asked. So one network at a
+time is built and handed over, and at most two are in memory at once, not all
+five: while the next seed's network is being loaded, the loop variable still
+holds the record of the seed before it. (A loop that stores the records it is
+handed keeps those as well.) A loop can also stop after the first seed.
+
+```python
+from thesis_gnn_rul_xai.explain import shap_for_each_seed
+from thesis_gnn_rul_xai.training import read_run
+
+run = read_run("fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z")
+for explained in shap_for_each_seed(run):
+    for engine, table in explained.tables.items():
+        print(explained.seed, engine, len(table))   # one row per window
+```
+
+`split` says which set the engines come from:
+
+- `"validation"`, the default: the held-back engines, every window of each.
+- `"train"`: the training engines, every window of each. A run trained with
+  nothing held back has an empty validation set, so there pass
+  `split="train"` and name the engines. The three engines on which the log
+  follows what `P15` contributes over a whole life (finding F-05) would be
+  `units=[5, 25, 82]`.
+- `"test"`: the test engines, which keep only their last window, so each named
+  engine gives a table of one row, and `units` is required. The twenty test
+  windows on which the log compares stand-ins for a left-out sensor
+  (assumption A-20) are `units=range(1, 21)`.
+
+`units=[]` explains nothing: each network is only loaded and checked, for a
+caller that explains other windows, or uses another stand-in, with the `model`
+and `prepared` data the record hands back.
+
+**A worked example on real data**: seed 42 of the stored run
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`
+(commit `f386291-dirty`; the default network, whose temporal stage passes on
+each sensor's last reading; 20 % of engines held back; at most 200 passes over
+the training data, with early stopping after 20 passes without a lower
+validation error. Seed 42 stopped after pass 71 and keeps the weights of pass
+51, the one with the lowest validation error, so the drop of the learning rate
+that the step schedule makes after pass 100 never happened).
+
+```
+held-back engines       20; the three longest: 5 (240 windows), 25 (201), 82 (185)
+engine explained        5, the longest
+reference prediction    91.885 cycles, for the stand-in window
+
+engine 5, first window  ends at cycle 30, label 125 (239 truly left), predicted 121.628
+four largest by size    T30 +14.061   P15 +10.703   phi -9.475   P30 -9.235
+sum of all fourteen     +29.743  =  121.628 - 91.885
+```
+
+The last line is efficiency: the fourteen values add up to the prediction
+minus the reference prediction. With `split="test"` and `units=[1, 2, 3]` the
+same network gives one row per engine: test engine 1's last window ends at
+cycle 31 with 112 cycles truly left, the network predicts 108.619, and the
+fourteen values add up to +16.733, the prediction minus the reference
+prediction. Raising every seed's recorded error by 0.01 cycles makes the
+function refuse seed 42 before it explains anything
+(`tests/test_examples_torch.py::test_example_shap_for_each_seed_on_the_stored_default_run`).
+
+(Corrected 2026-10-03: the block above said "true remaining life 125" for
+engine 5's first window. 125 is the window's label, the remaining life capped
+at 125 cycles (assumption A-01); engine 5 ran 269 cycles, so 239 truly remain.
+Found by an independent review that set the label column beside
+`train_FD001.txt`.)
+
+**Do not confuse the two checks.** The recorded error asks whether this is the
+network the run trained. Efficiency asks whether the arithmetic of the
+explanation is right. Passing the second says nothing about the first: an
+untrained network's values add up just as exactly.
 
 ## Trap: our table and the paper's Table 12 are not comparable
 
@@ -176,6 +408,177 @@ the paper never states.
 `shap_summary` also returns `mean`, the average signed contribution (a large
 negative value means the sensor consistently pulled the predicted life *down*),
 and `max_abs`, the single largest contribution the sensor ever made.
+
+## Trap: on the default network, the four largest values change almost every window
+
+**What a reader sees.** The paper's Fig. 10 draws one small graph of the
+sensors per time step of one engine, fifteen in all: graphs 1 to 5, 78 to 82
+and 187 to 191. In each, the four sensors with the largest values, by size,
+are red; call them the **red four**. Table 12 prints the numbers behind the
+graphs, and inside each stretch of five the red four hardly changes. The
+playground draws the same picture for a stored engine, and step 8 of
+`notebooks/xai/01_shap_fd001.ipynb` draws it for this project's networks. On
+the default network, whose temporal stage passes on each sensor's most recent
+reading (assumption A-07), the red four is different at almost every window. A
+sensor that turns red at one cycle and blue at the next has not, on that
+evidence, told you anything about the engine at that cycle: for this network it
+is the normal case.
+
+**How it is counted.** The paper does not say which window of the engine a
+time step is. Table 12 heads its columns "Time", and the paper computes its
+dynamic explanation "on each time step" (its Section 2.4, in the paragraph
+introducing Equation 16). We read graph *g* as the engine's *g*-th window, the
+window ending at its (*g* + 29)-th cycle; that is our choice, not the paper's
+statement (assumption A-35), and the playground reads it the same way. Moving
+every graph to a later window by the same number of cycles, as far as putting
+graph 191 at the engine's last window, still leaves the default network with
+more joins than the recurrent one and than Table 12 at every such placement;
+that assumption's entry counts them all.
+
+A **join** is a sensor that is in the red four of one window and was not in the
+red four of the window before, so one step between neighbouring windows can
+have from zero to four. A made-up example: if one window's red four is {Nc,
+T24, W31, T30} and the next window's is {Nc, T24, W31, T50}, T50 has joined and
+T30 has left, which is one join. The **step-to-size ratio** is taken on
+**sizes**, each value with its sign dropped: for one sensor, the average change
+in its size from one window to the next, divided by its average size; the table
+gives the median over the 14 sensors. Sizes, because Table 12 holds positive
+numbers only (finding F-08), so it cannot show a value changing sign, and the
+red four is chosen by size anyway; a value going from +2 to −2 adds a step of
+0 on sizes and would add 4 on the signed values. And the **stage jitter** is
+the same idea one stage earlier, for the number the temporal stage hands the
+graph layers: per sensor, its average change between neighbouring windows
+divided by its standard deviation over the engine's life, then the median over
+the sensors.
+
+**What was measured.** Two stored runs that differ only in the temporal stage:
+
+- `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`,
+  the default network (`last_cycle`);
+- `fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`,
+  the recurrent network (`lstm`): one recurrent network of hidden size 32 per
+  sensor, the stage of the paper's Section 2.2 at a size the paper does not
+  give (assumption A-26).
+
+Both were trained at commit `f386291-dirty` on FD001, with the paper's sensor
+graph rescaled by rows, test labels capped at 125, a fifth of the training
+engines held back (which ones depends on the seed), three graph layers of 32,
+64 and 32 numbers per sensor and a fully connected layer of 128, batches of 32
+windows, at most 200 passes over the training data with early stopping after 20
+passes without a lower validation error, and the weights kept from the pass
+with the lowest validation error. Every seed of both runs stopped between
+passes 28 and 75, so the step learning-rate schedule they name never took
+effect: its one drop of the rate comes after pass 100, and every pass used the
+first rate, 0.001.
+
+Their folder names carry two different configuration digests, `ba82e3` and
+`72f506`. A configuration digest is a six-character code computed from the
+recorded preprocessing settings alone; the temporal stage and the training
+settings are not part of it, which is why a change of stage leaves it alone.
+When these runs were named, the code also counted a one-sentence description
+stored with the settings, and the two differ because the recurrent run,
+started from the playground, stored a different sentence: with the default
+run's sentence in its place, the recurrent run's preprocessing settings give
+`ba82e3`. Since 2026-10-03 the description is left out, and both runs' settings
+give `818b40`; the folder names keep the codes they were given
+(`training/README.md` lists every old code beside its new one).
+
+For each of the five seeds, the held-back engine with the most windows — the
+same engine in both runs, because the seed decides which engines are held back
+— was explained at every window with `shap_for_each_seed`. The explaining code
+is at commit `19dceb5-dirty`: `explain/seeds.py`, which holds
+`shap_for_each_seed`, and the change to `explain/shap.py` that runs the
+temporal stage once per window were not yet committed when step 8 was
+executed. They are the code that arrived in the same change as this section,
+and once it is committed, step 8 re-executed names a commit without `-dirty`.
+Mean ± standard deviation over the five seeds:
+
+| | Joins over the 12 steps inside graphs 1–5, 78–82, 187–191 | Step-to-size ratio over those 12 steps, on sizes | Share of steps with at least one join, every window | Share of steps with two or more joins, every window | Joins per step, every window | Stage jitter |
+|---|---|---|---|---|---|---|
+| The paper's Table 12 | 1 | 0.084 | — | — | — | — |
+| Recurrent network (`lstm`) | 4.6 ± 2.1 | 0.152 ± 0.059 | 0.364 ± 0.093 | 0.021 ± 0.017 | 0.384 ± 0.110 | 0.119 ± 0.005 |
+| Default network (`last_cycle`) | 20.2 ± 4.8 | 0.394 ± 0.107 | 0.917 ± 0.027 | 0.453 ± 0.060 | 1.469 ± 0.119 | 0.281 ± 0.021 |
+
+Table 12 holds only its fifteen graphs, so only the first two measures can be
+counted on it. Its one join is `phi` at graph 191, and every seed of both
+networks has more than that one. Over every window the step-to-size ratio is
+0.365 ± 0.081 on the default network and 0.134 ± 0.035 on the recurrent one.
+
+Read the shares together. On the default network at least one sensor joins at
+0.917 ± 0.027 of the steps, but two or more join at 0.453 ± 0.060, and the
+median step has one join on seeds 42, 43 and 44 and two on seeds 45 and 46. So
+the red four is different at almost every window, but on three of the five
+seeds the median step brings only one new sensor into it.
+
+The step-to-size ratio separates the two networks, and the test below compares
+only them. Whether the recurrent network's sizes move more than Table 12's is
+not tested, and the seeds do not all say so: on seed 42 its ratio over the 12
+steps is 0.078, below Table 12's 0.084, and on the other four seeds it is
+above.
+
+**It is far larger than the seed-to-seed spread.** The same seed holds back
+the same engines in both runs, so the two can be compared seed by seed, as five
+differences, default minus recurrent. A paired t-test asks whether those five
+differences sit far enough from zero, given how much they vary among
+themselves, that seed-to-seed chance is an unlikely explanation; its p is the
+probability of differences at least that far from zero if the two stages did
+not differ on average. The default network has 15.6 more joins in the 12 steps
+(p = 4.9e-04), a join at 0.553 more of its steps (p = 5.3e-05), two or more
+joins at 0.433 more of its steps (p = 2.9e-05), 1.085 more joins per step
+(p = 2.0e-07) and a step-to-size ratio over the 12 steps higher by 0.242
+(p = 1.7e-03), and it is the higher of the two on every seed, on all seven
+measures the notebook compares.
+
+**A worked example**, the first four windows of seed 42's default network on
+held-back engine 5, each with its red four and its value in cycles:
+
+```
+cycle 30   T30 +14.06   P15 +10.70       phi -9.48    P30 -9.24
+cycle 31   T30 +13.24   htBleed +11.28   W31 -11.11   Ps30 +10.20   joins: Ps30, W31, htBleed (3)
+cycle 32   htBleed +13.89   T30 +11.44   W31 -10.97   W32 -8.69     joins: W32 (1)
+cycle 33   T24 +12.95   htBleed +12.90   W31 -11.84   Ps30 +10.00   joins: Ps30, T24 (2)
+```
+
+Six joins in three steps, where Table 12 has one in twelve. These windows, the
+T50 numbers below and Table 12's one join are checked by
+`tests/test_examples_torch.py::test_example_the_red_four_changes_almost_every_window_on_the_stored_default_network`.
+
+**Why, as far as it has been measured.** The graph layers receive one number
+per sensor from the temporal stage, and a Shapley value measures how far the
+prediction moves when that sensor's readings are swapped for the stand-in's.
+The default stage hands over the window's last reading. Neighbouring windows
+share 29 of their 30 cycles, but the last cycle is a new one every time, and a
+single reading still carries whatever noise the smoothing left in it. The
+recurrent stage computes its number from all 30 readings, 29 of which the
+previous window also had. For T50 on seed 42's engine 5, the windows ending at
+cycles 30 to 34:
+
+```
+default network     -1.444  -1.115  -1.266  -1.020  -1.515
+recurrent network   +0.814  +0.786  +0.782  +0.756  +0.787
+```
+
+This goes with the joins, as the stage jitter in the table shows, but it is
+not shown to cause them: the two runs also differ in the whole network trained
+on each stage's numbers.
+
+**What it does not settle.** Even the recurrent network's red four changes
+more often than Table 12's: 4.6 ± 2.1 joins in the 12 steps against 1, and more
+than 1 on every seed. That much depends on the reading of the graph numbers:
+of the 447 placements of the graphs counted for the five seeds, ours and
+every later one, it has one join or none at 27 (assumption A-35). Table 12
+holds positive magnitudes computed in a way the paper never states (finding
+F-08), so that remaining gap cannot be put down to the network. Neither network
+is the paper's, so none of this is a reproduction of Fig. 10. And seed 42, the
+seed the playground's stored explanations and the notebooks follow, gave the
+fewest recurrent joins of the five, 2: its picture is the calmest of the five,
+not a typical one.
+
+**What to do with it.** Before reading a change of the red four on the default
+network as a change in the engine, count the joins on neighbouring windows of
+the same engine, and read the values over stretches of windows, as step 6 of
+the Shapley-value notebook does by thirds of the engine's life, rather than
+from one window to the next.
 
 ## The one property to check
 
@@ -253,9 +656,11 @@ checks the one-term relationship on a three-sensor network.
 ## The figure: contributions over an engine's life
 
 `plot_contributions_over_time` draws what `dynamic_shap` returns. The top panel
-is the prediction being explained: the true remaining life, the predicted one,
-the prediction at the baseline, and a line at the cycle where the true remaining
-life first drops below its ceiling. Below it is one small panel per sensor,
+is the prediction being explained: each window's label, the remaining life
+capped at 125 cycles (assumption A-01), which the legend calls "true remaining
+life"; the predicted remaining life; the prediction at the baseline; and a line
+at the cycle where the label first drops below its ceiling. Below it is one
+small panel per sensor,
 holding that sensor's contribution at every window, ordered by average size with
 the largest first, and all on **one vertical scale**, so that a tall panel is a
 large contribution and not just a large axis.
@@ -493,9 +898,11 @@ in `walks.py`:
   test engine, giving the first layer the authors' 3 instead of 0 changes no
   walk at all on the default, correlation-graph, complete-graph and recurrent
   networks; on the three-number window summary it moves the walks by a median
-  of 103 ± 40 % of their total size (mean and spread over the five seeds of
-  each seed's median). The choice matters only there, and for the raw window
-  (`first_layer_gamma_change` in `scripts/measure_walks.py`; the
+  of 106 ± 42 % of their total size (mean and spread over the five seeds of
+  each seed's median, stored with the run's walk measurements on 2026-10-02;
+  this said 103 ± 40 % until then, a figure measured before the measure was
+  stored, as assumption A-29 records). The choice matters only there, and for
+  the raw window (`first_layer_gamma_change` in `scripts/measure_walks.py`; the
   cancellation is `test_gamma_at_the_first_layer_cancels_with_one_number_per_sensor`).
 
 For three graph layers the setting is therefore 0, 1.5 and 0. It matters: on
@@ -510,7 +917,16 @@ a node at layer 2 come from the same side, the extra weight from gamma scales
 the top and bottom of every share alike and cancels.
 
 Any other setting can be passed, one number per graph layer with 0 first, to
-see how far a conclusion depends on gamma.
+see how far a conclusion depends on gamma. `scripts/explain.py` and the
+playground's Explain tab offer three by name beside the authors' (the
+script's `--gamma`): `gnn-gi`, gamma 0 at every layer; `falling`, 0 and then
+0.5 halving at each later layer, (0, 0.5, 0.25) for three; and `flat`, 0 and
+then 1, (0, 1, 1) for three. The last two, for three graph layers, are the
+settings the log's walk measurements compare with the authors' (assumption
+A-29).
+Every name gives the first graph layer 0, and the script always checks the
+authors' setting and their baseline beside the one chosen. The playground's
+README, under "Explanations", says how the page offers them.
 
 One small difference from the authors' code: it adds `1e-6` to every layer's
 rule-weighted total before dividing by it, so that a total of zero cannot
@@ -966,13 +1382,17 @@ F-08, also in `docs/ASSUMPTIONS.md`).
 
 ## What each name means
 
-Everything `shap.py`, `occlusion.py`, `plots.py` and `walks.py` offer.
+Everything the files listed at the top offer.
 
 | Name | What it is |
 |---|---|
 | `mean_window_baseline(dataset)` | The average reading of each sensor, which stands in for a sensor left out of the calculation. **Training windows only.** |
 | `shap_values(model, features, baseline)` | How many cycles each sensor added to the prediction. Takes one window or many, and returns one number per sensor, or one row per window. Raises above `MAX_EXACT_NODES` sensors rather than silently switching to an estimate. |
 | `dynamic_shap(model, dataset, baseline, unit=..., symbols=...)` | The same calculation at every cycle of one engine's life. Returns one row per cycle; the columns are listed below. |
+| `shap_for_each_seed(run, units=None, split="validation", seeds=None, data_dir=None, device=None)` | From `seeds.py`. For each saved seed of a stored run (a `StoredRun`, the record `read_run` makes of a finished training run in `reports/`), one at a time: loads the network, refuses it unless it scores the test error its run recorded, and explains whole engines with `dynamic_shap`. Hands back one `SeedExplanation` per seed. `split` is `"validation"`, `"train"` or `"test"`; `units` left out means the set's longest engine, and must be given for `"test"`; `units=[]` only loads and checks. |
+| `SeedExplanation` | From `seeds.py`. One seed's record: `seed`; `model`, the loaded network; `prepared`, the data rebuilt for it; `baseline`, the stand-in window, shaped `(14, 30)`; `reference`, the prediction for that window, in cycles; `tables`, each explained engine's number mapped to its `dynamic_shap` table. |
+| `longest_engine(dataset)` | From `seeds.py`. The engine with the most windows in a set, the lowest-numbered on a tie. Refuses an empty set. |
+| `SPLITS` | From `seeds.py`, and only there: `__init__.py` does not re-export it. The three sets `shap_for_each_seed` explains engines from. |
 | `shap_summary(values, symbols)` | Ranks the sensors by how much they mattered. One row per sensor; the columns are listed below. |
 | `efficiency_error(model, features, baseline, values)` | The largest amount by which the numbers fail to add up, in cycles. Anything above rounding noise means a bug. |
 | `coalition_weights(n_nodes)` | How much a group of each size counts, from Equation 15. Element `s` is the weight for groups of `s` sensors. |
@@ -1005,10 +1425,17 @@ Everything `shap.py`, `occlusion.py`, `plots.py` and `walks.py` offer.
 | Column | What it holds |
 |---|---|
 | `end_cycle` | The cycle the window ends at. |
-| `rul` | The true remaining life at that cycle. |
+| `rul` | The window's label: the remaining life at that cycle, capped at 125 cycles (assumption A-01). Early in a long engine's life it is 125 while more truly remain. |
 | `predicted` | What the model predicted there, in cycles. |
 | `baseline` | What the model predicts for a wholly typical engine. Constant down the column. |
 | one per sensor | That sensor's contribution at that cycle, in cycles. |
+
+(Corrected 2026-10-03: the `rul` row said "the true remaining life at that
+cycle", and the figure section above called the same line the true remaining
+life. The column is `dataset.targets`, the capped label; for held-back engine 5
+of seed 42 of the stored default run it differs from the true remaining life in
+114 of 240 windows. Found by an independent review of the dynamic-explanation
+section.)
 
 `shap_summary` returns one row per sensor, sorted by `mean_abs` downwards:
 

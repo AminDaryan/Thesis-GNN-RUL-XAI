@@ -56,6 +56,7 @@ def test_parameter_counts_match_table_4(adjacency):
     model = ESTGNN(adjacency)
     summary = {row["layer"]: row for row in model.layer_summary()}
 
+    assert summary["Input"]["parameters"] == 0      # Table 4 prints a dash
     assert summary["GCN-1"]["parameters"] == 1 * 32
     assert summary["GCN-2"]["parameters"] == 32 * 64
     assert summary["GCN-3"]["parameters"] == 64 * 32
@@ -66,21 +67,32 @@ def test_parameter_counts_match_table_4(adjacency):
 
 
 def test_activations_and_shapes_match_table_4(adjacency):
-    """Table 4, plus the temporal row the paper prints no line for.
+    """Table 4's seven rows, with the temporal stage folded into its Input row.
 
-    Table 4 begins at "Input | Node features | [batch, 14, 1]", so the paper's
-    own table starts where the recurrent stage has already finished. The
-    summary here lists that stage first and then reproduces Table 4 exactly.
+    Table 4 begins at "Input | Node features | [batch size,14,1]", where the
+    paper's recurrent stage has already finished, and prints no row for that
+    stage. The summary counts the stage on the Input row (decided by the author
+    on 2026-10-02), so with a one-cycle window and the default stage, which
+    learns nothing, every row has Table 4's shapes and activation.
     """
     model = ESTGNN(adjacency)
     rows = model.layer_summary()
-    assert rows[0]["layer"] == "Temporal"
-    assert rows[0]["parameters"] == 0          # LastCycle learns nothing
-    table4 = rows[1:]
-    assert [row["activation"] for row in table4] == [
+    assert [row["layer"] for row in rows] == [
+        "Input", "GCN-1", "GCN-2", "GCN-3", "Flatten", "FC-1", "FC-2"
+    ]
+    assert [row["type"] for row in rows] == [
+        "Node features", "GCN", "GCN", "GCN", "Tensor reshape",
+        "Fully connected", "Fully connected",
+    ]
+    assert rows[0]["parameters"] == 0 and rows[0]["from"] == ""   # LastCycle learns nothing
+    assert [row["activation"] for row in rows] == [
         "-", "ReLU", "ReLU", "ReLU", "-", "ReLU", "Sigmoid"
     ]
-    assert [row["out"] for row in table4] == [
+    assert [row["in"] for row in rows] == [
+        "(B, 14, 1)", "(B, 14, 1)", "(B, 14, 32)", "(B, 14, 64)", "(B, 14, 32)",
+        "(B, 448)", "(B, 128)",
+    ]
+    assert [row["out"] for row in rows] == [
         "(B, 14, 1)", "(B, 14, 32)", "(B, 14, 64)", "(B, 14, 32)",
         "(B, 448)", "(B, 128)", "(B, 1)",
     ]
@@ -312,3 +324,29 @@ def test_layer_rejects_mismatched_shapes(adjacency):
         layer(torch.randn(2, 9, 30), matrix)
     with pytest.raises(ValueError, match="batch, nodes, in_features"):
         layer(torch.randn(14, 30), matrix)
+
+
+# --- the temporal stage folded into Table 4's Input row (2026-10-03) ------
+
+
+@pytest.mark.parametrize(
+    "name", ["last_cycle", "mean_window", "window_summary", "raw_window", "lstm", "gru"]
+)
+def test_the_input_row_carries_the_stage_and_every_learned_number_appears_once(adjacency, name):
+    """The Input row counts the stage and names it only when it learns; the rows add up to the model."""
+    from thesis_gnn_rul_xai.models import build_temporal_stage
+
+    stage = build_temporal_stage(name, window_size=30, n_nodes=14, hidden_size=8)
+    # The two stages that widen a node are refused unless asked for in words.
+    model = ESTGNN(adjacency, temporal=stage,
+                   allow_time_in_the_graph_layer=name in ("window_summary", "raw_window"))
+    rows = model.layer_summary()
+    first = rows[0]
+    learned = sum(p.numel() for p in stage.parameters())
+    assert (learned > 0) == (name in ("lstm", "gru"))
+    assert len(rows) == 7 and first["layer"] == "Input"
+    assert first["in"] == "(B, 14, 30)"
+    assert first["out"] == f"(B, 14, {stage.out_features})"
+    assert first["parameters"] == learned
+    assert first["from"] == {"lstm": "LSTM", "gru": "GRU"}.get(name, "")
+    assert sum(int(row["parameters"]) for row in rows) == model.count_parameters()

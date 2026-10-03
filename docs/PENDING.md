@@ -107,72 +107,23 @@ quotes.
 
 ---
 
-## P-12 — What the data-driven graph shows is measured for one architecture only
+## P-12 — The data-driven graph on FD002 and FD004
 
-Assumption A-27 (added 2026-09-14) sets the paper's Table 3 beside a graph of
-the 41 most strongly correlated sensor pairs. Under the current default — the
-last-cycle temporal stage, so no recurrent stage — the two cannot be told apart
-by test RMSE (+0.096, p = 0.655), the correlation graph is 2.0 cycles better on
-the held-back engines (p = 0.012), and its test predictions run later. That
-reads against the paper's claim that its graph goes beyond correlations, and it
-is the most consequential measurement this project has for the thesis's
-question about the graph. Three things keep it from being settled.
+Assumption A-27 sets the paper's Table 3 beside a graph of the 41 most strongly
+correlated sensor pairs. On FD001 it is now measured with and without the
+recurrent stage, at one commit each, and on held-back summaries no pass was
+chosen by (both added to A-27 on 2026-10-02): the two graphs cannot be told
+apart on the test engines either way. What is left:
 
-1. **It is one architecture.** Two of this project's comparisons reversed when
-   the architecture moved (working rule 3). The paper's claim is about the full
-   model. **Finishing:** run both graphs with the recurrent stage, at one commit,
-   and add the table to A-27:
+**FD002 and FD004 are untouched by A-27.** There the correlations are measured
+after per-condition scaling. The sensitivity study (entry P-26) trains the
+correlation graph beside its reference on FD002, FD003 and FD004 with the
+recurrent stage; its FD002 and FD004 cells are finished.
 
-   ```bash
-   python scripts/train.py --config config/fd001.yaml --temporal lstm --seeds 5
-   python scripts/train.py --config config/fd001.yaml --temporal lstm --graph correlation --seeds 5
-   ```
-
-2. **The held-back comparison is flattered by selection.** The recorded
-   held-back error is the lowest reached over all passes, and it also chose
-   which pass to keep, so it favours whichever network's error wanders more.
-   Runs since 2026-09-14 save every pass's error in each seed's
-   `training_history.csv`. **Finishing:** compare the two graphs on a statistic
-   no pass was chosen by — the held-back error averaged over the last 20 passes
-   run, say — and replace the caution in A-27 with the result.
-
-3. **FD002 and FD004 are untouched.** There the correlations are measured after
-   per-condition scaling, and no run exists.
-
----
-
-## P-23 — Walks through the sensor graph: measured on uncommitted code, and one setting in the playground
-
-`explain/walks.py` (assumption A-29), `explain/connections.py` (assumption
-A-30) and `explain/flipping.py` (assumption A-33) are wired into
-`scripts/explain.py` and the playground's Explain tab, taught in
-`docs/learn/11_gnn_lrp.md`, and shown in `notebooks/xai/03_walks_fd001.ipynb`.
-On 2026-10-01 an audit against the GNN-LRP paper and its authors' code made the
-authors' own setting of gamma the default (it had been gamma 0, their simpler
-baseline) and added their node-flipping check; every walk measurement in the log
-was redone under that setting. What is left:
-
-1. **The measurements are at `692d2d4-dirty`.** The walk code was committed
-   on 2026-10-02 (f1adb1e). Rerun `scripts/measure_walks.py` on the five runs
-   named in A-29 from a committed state, replace the folder names in A-29,
-   A-30 and A-33 if any figure moves, and re-execute
-   `notebooks/xai/03_walks_fd001.ipynb`, which reads the newest folder. The
-   rerun also stores `first_layer_gamma_change`, added on 2026-10-02: A-29
-   quotes it (0 on four runs, 103 ± 40 % on the window summary) from the code
-   at ce7e305-dirty, run outside any run folder, so replace that sentence's
-   source with the new folder.
-2. **Other settings of gamma in the playground.** The Explain tab always uses
-   the authors' setting. Offering others would let a reader see what the A-29
-   table measures; if added, a positive value must never reach the first graph
-   layer.
-3. **Four walk explanations stored before 2026-10-01 were made at gamma 0** and
-   carry no stored check (two in the default run, two in recurrent-stage runs
-   made from the playground). The page labels them as GNN-GI; they can be
-   explained again when wanted.
-
-The suggestion of 2026-09-26 to measure walks from the average training window
-was dropped on 2026-10-01: it borrows the Shapley explanation's point of
-comparison, which the GNN-LRP paper does not use.
+**What finishing looks like:** once the study is complete and its code state
+checked (entry P-26), the correlation-graph cells set beside the reference
+cells, paired by seed, with held-back error beside test error, added to A-27,
+and this entry deleted.
 
 ---
 
@@ -205,229 +156,67 @@ been tested against two trainings rather than against the spread of five
 
 ---
 
-## P-08 — The swappable-stages design: the temporal seam is built, the rest is not
+## P-10 — The audit of 2026-09-08: four items still need code or training
 
-`docs/DESIGN_swappable_stages.md` sets out nine steps. **Steps 1, 2, 3, 4 and 7
-are done**: `models/temporal/` exists with five stages, `ESTGNN` takes one and
-derives its width from it, `data/windowing/` hands over the whole window,
-`LSTMStage` builds the paper's Section 2.2 stage, and since 2026-09-14
-`scripts/train.py` writes `model_config.yaml` beside every run, names a
-non-default network by its digest, and saves each seed's weights, per-pass
-record and test predictions.
+`docs/AUDIT_2026-09-08_response.md` (2026-10-02) answers every one of the audit's
+eleven items, D-1 to D-11, in plain words, with pointers to where each was
+written into the log or why it does not apply; finding F-21 and dated
+amendments in the entries concerned carry the measurements. On 2026-10-03 the
+offset in the graph layers was trained with the default's last-reading stage
+(finding F-21), the parameter-count wording was corrected in the models README
+and notebook 02, and the recurrent stage's curves to pass 200 were stored
+(finding F-16). Still open, as the response's last section lists them:
 
-**What is not done:** step 5 (`models/spatial/`), step 6 (`raw_window`
-re-measured at today's configuration, and recorded as the next free finding —
-the design's "F-17" was provisional and that number now belongs to Fig. 10),
-step 8 (`GATStage` and
-`NoSpatialStage`, which would make the paper's "w/o GCN" row of 16.42
-addressable for the first time), and step 9 (edge and subgraph attributions;
-walk attributions and removing a connection now exist, A-29 and A-30, but the
-design's `Attribution.target` has no "walk" and its A-32 sampling over edges
-is not built). The design's assumption numbers from A-27 on were provisional and
-have been overtaken; a note in the design says so, and A-29 is now taken by
-the walk explanation rather than the attention stage the design gave it to.
+- **D-2:** random graphs with 41 edges and rewirings of the paper's graph, which
+  need a new graph option in `config.py` and `scripts/train.py`, then five-seed
+  runs.
+- **D-4:** `split` and the `varsplit` in a run's directory name still come from
+  the `--fixed-split` option alone, so a run that holds nothing back is
+  recorded as varying its split (`scripts/train.py`); `training/stored.py` reads
+  `split`, so the fix must keep stored runs loadable.
+- **Regularisation:** an assumption entry for the training's regularisation,
+  with its comment in `training/`.
+- **D-11:** `evaluation/metrics.py` returns an ASUE of 0 when no engine is
+  predicted late, and calls 0 the best value; it is undefined. Return "not a
+  number" with a warning, report the count of early engines beside it, and
+  record the choice as an assumption.
 
-**A defect it turned up, still open:** `PreprocessingConfig.notes` is inside
-the run digest. `to_dict()` is `dataclasses.asdict`, so a prose field is hashed.
-`PreprocessingConfig()` and `load_config("config/fd001.yaml")` agree on every
-setting and still digest differently — `e3a331` against `ba82e3` — because of
-one sentence of English. Editing a comment renames a run. `training/stored.py`
-already ignores `notes` when matching runs, which is the right rule; the digest
-does not.
-
-**What finishing looks like:** a decision on the remaining steps, and the digest
-fixed. Fixing it gives future runs a different `cfg` value than stored runs
-with identical settings, so it is a one-time discontinuity that needs a line in
-the log.
+**What finishing looks like:** each of the four done or answered in the
+response, and this entry deleted.
 
 ---
 
-## P-10 — The audit of 2026-09-08 is written but not triaged
+## P-11 — F-16's pairing crosses a refactor
 
-`docs/AUDIT_2026-09-08_scientific_validity.md` is an independent audit run from
-outside the repository. It reports eleven defects, D-1 to D-11, ranked by what
-they do to a conclusion. Its opening three are the heaviest:
+**The over-training is now observed** (finding F-16, 2026-10-03): arm C trained
+again from a clean `19dceb5`, all 200 passes stored, the held-back error rising
+on every seed after the kept pass. **The last-cycle arm reproduces:**
+`fd001_physics_row_cap_5seed_varsplit_noearlystop_cfg00be26_19dceb5_20261002T183904Z`
+gives 16.818 ± 0.157 at a clean `19dceb5`, the figure F-16 pairs against. What
+is left is its partner: the recurrent arm with nothing held back and all 200
+passes (`--temporal lstm --no-early-stopping`, the same configuration copy), at
+the same commit, on the processor, which was still training on 2026-10-03.
 
-- **D-1.** The paper's own adjacency matrix normalises to rank 8, so part of the
-  fourteen-number input is structurally invisible to any graph convolution
-  built on it. It says this applies to the per-sensor LSTM model as well, since
-  that stage also hands the graph layers one number per sensor.
-  **Written up on 2026-09-26 as finding F-18**, with a consequence the audit
-  did not state: the three groups of sensors with identical rows keep the
-  differences between their `fc1` weights that the random start gave them.
-  `scripts/verify_claims.py --only same_rows` checks the groups and the 8.
-- **D-2.** The "without physics prior" control is degenerate: the fully
-  connected graph normalises to a rank-1 averaging operator. **Evidence now
-  exists:** A-27's correlation graph keeps the edge count and costs 0.096 cycles
-  where the fully connected graph costs 2.784 under the same configuration, and
-  A-19 carries a correction saying so. What is left is to write the audit's
-  point up as the next finding, or fold it into A-27.
-- **D-3.** Every configuration comparison since 2026-08-29 was decided on the
-  test set. Notebook 02 section 5 and A-27 now show held-back error beside test
-  error for the graph comparison; the earlier comparisons are unchanged.
-
-**A numbering collision to avoid.** The audit's recommendations say to *"write
-the rank finding up as F-16"*. It was written against a tree in which F-16 did
-not yet exist. **F-16 is now taken** by the recurrent-stage finding, so the rank
-finding must take the next free identifier. `tests/test_docsite.py` requires
-findings to be numbered consecutively from F-01, so skipping a number fails the
-suite.
-
-**A trap in re-running it, created after it was written.** The audit's
-non-graph baselines (D-5) are specified as scikit-learn on
-`prepared.train.features[:, :, 0]`. When the audit ran, the pipeline handed over
-`(N, 14, 1)`, so index 0 was the one cycle there was — the last. Since
-2026-09-09 the pipeline hands over `(N, 14, 30)` and the temporal stage reduces
-it, so **index 0 is now the first cycle of the window, 29 cycles out of date**,
-and the same command runs without complaint and measures something else. Use
-`features[:, :, -1]` to reproduce what the audit measured. D-5 now has its own
-entry, P-17, with a measurement at today's configuration.
-
-**What finishing looks like:** each D-item either written into
-`docs/ASSUMPTIONS.md` as a finding or an amendment, or answered in writing with
-the reason it does not apply. Two of them already bear on F-16 and are cited
-there: D-8, that seed spread is not uncertainty over engines, and D-10, that the
-per-epoch training curves were not saved (they are for runs from 2026-09-14 on).
+**What finishing looks like:** the two paired by seed at one commit, the pairing
+in F-16 replaced with a dated note, and this entry deleted.
 
 ---
 
-## P-11 — F-16's pairing crosses a refactor, and its central inference is unobserved
+## P-13 — The matrix explorer, deferred
 
-Two loose ends in F-16, both cheap to close.
+The component notebooks are built: `notebooks/temporal/` and `notebooks/graph/`
+(2026-10-02 and 2026-10-03), each reading stored five-seed runs, and notebook
+02's graph comparison moved into the graph folder. On 2026-10-02 the author
+decided to build the notebooks and not, for now, the documentation site's
+matrix explorer: a grid of temporal stage x sensor graph x graph rescaling in
+which every cell shows the stored five-seed result with its commit, and every
+unmeasured cell is visibly empty and shows the command that would fill it. The
+playground must not train for it (argued on 2026-09-09: a number shown in a
+browser and never written to `reports/` with its commit cannot be quoted or
+reproduced).
 
-**The pairing crosses the 2026-09-09 refactor.** The `last_cycle` run with
-nothing held back is at commit `ae59bc1-dirty`; the recurrent run it is paired
-against is at `c703693-dirty`, after the temporal stage became a component. The
-refactor was gated on reproducing the previous five-seed run bit-identically and
-did, so the training path is the same, but a reader should not have to take
-that on trust. **Finishing:** re-run
-
-```bash
-python scripts/train.py --config <a copy of config/fd001.yaml with validation_fraction: 0.0> --no-early-stopping --seeds 5
-```
-
-at one commit, confirm it reproduces 16.818 ± 0.157, and replace the pairing.
-
-**That the recurrent model over-trains is inferred, not seen.** F-16 infers it
-from where the best epochs fall (9 to 21) and from how much worse the epoch-200
-weights are. Since 2026-09-14 every run saves each seed's per-pass curves in
-`training_history.csv`. **Finishing:** re-run the recurrent arm with
-`--temporal lstm`, and put the held-back curve of one seed into F-16 in place of
-the inference.
-
----
-
-## P-18 — Without the recurrent stage, the red four of a dynamic explanation changes almost every window; measured only in a scratch script
-
-On 2026-09-14 the author saw that in the playground's sensor graph, sensors
-change colour between neighbouring windows far more than in the paper's Fig. 10.
-It was measured that day on the longest held-back engine of each of the five
-seeds of two stored runs, both at `f386291-dirty` with the step learning-rate
-schedule — `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z`
-(`last_cycle`) and
-`fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z`
-(`lstm`, hidden 32) — with `dynamic_shap` run at `563c390-dirty`. For each seed
-both runs explain the same engine. "Joins" counts sensors entering the four
-largest by size from one window to the next:
-
-| | Joins over the 12 steps inside graphs 1–5, 78–82, 187–191 | Joins per step, every window | Mean step ÷ mean size, median over sensors |
-|---|---|---|---|
-| The paper's Table 12 | 1 | — | 0.084 |
-| `lstm` | 4.6 ± 2.1 | 0.38 ± 0.11 | 0.142 ± 0.041 |
-| `last_cycle` | 20.2 ± 4.8 | 1.47 ± 0.12 | 0.390 ± 0.094 |
-
-Paired by seed, `last_cycle` has 15.6 more joins in the 12 steps (p = 0.0005)
-and 1.09 more per step (p = 2e-7). What each stage hands the graph layers was
-measured alongside: its change between neighbouring windows, as a share of its
-spread over the engine's life, is 0.281 ± 0.021 for `last_cycle`, which passes on
-each window's last smoothed reading, and 0.119 ± 0.005 for `lstm`. For T50 on
-seed 42's engine 5, windows ending at cycles 30 to 34, `last_cycle` hands over
-−1.444, −1.115, −1.266, −1.020, −1.515 and `lstm` 0.814, 0.786, 0.782, 0.756,
-0.787.
-
-**What it does not settle.** Even the `lstm` network changes its red four more
-often than Table 12 does, and Table 12 holds positive magnitudes computed in a
-way the paper never states (F-08), so that remaining gap cannot be put down to
-the network. Seed 42, the one the playground's stored explanation uses, gave the
-fewest `lstm` joins of the five (2).
-
-**Why it is here and not in the log.** The numbers came from a script in a
-session scratchpad, not from committed code (working rule 3a).
-
-**What finishing looks like:** the calculation in the repository — a section of
-`notebooks/xai/01_shap_fd001.ipynb` that reads both stored runs, draws the
-paper's Fig. 10 from `evaluation/published.py` beside the engine the way the
-playground now does, and counts the joins — re-run at one commit, and the result
-written into `explain/README.md` as a trap for anyone reading a dynamic
-explanation of the default network. P-20 needs the same loop — Shapley values
-for every saved seed of a stored run — on networks trained with nothing held
-back, so one piece of code can serve both.
-
----
-
-## P-19 — Notebook 02 still shows the temporal stage as a row before Table 4's
-
-`ESTGNN.layer_summary()` returns a "Temporal" row and then Table 4's "Input" row,
-and both describe the same `(B, 14, 1)` tensor: Table 4's Input row, which lists
-no parameters, is what the recurrent stage hands to the first graph layer. On
-2026-09-14 the author pointed this out on the playground, which now shows the two
-as one Input row naming the stage. The site's separate network page has since
-been removed, and `figures.py`'s `draw_architecture` now folds the two rows into
-one Input box the same way. One place still shows both: notebook 02,
-cells 16 and 20, which display `layer_summary()` as it is, and whose text says
-"the first row is the stage. Every row below it is Table 4, unchanged". (Its
-cell 11 showed an older figure with a separate Temporal box until the notebook
-was re-executed on 2026-09-17.)
-
-`tests/test_models.py::test_activations_and_shapes_match_table_4` asserts the
-separate row, and `docs/DESIGN_swappable_stages.md` chose it on purpose.
-
-**What finishing looks like:** a decision on whether `layer_summary()` itself
-should fold the stage into the Input row. If yes: change it and that test,
-re-execute notebook 02 (it trains, so it takes minutes), and add a dated line to
-the design. If no: leave the notebook's framing, which says in words what it is
-doing.
-
----
-
-## P-13 — Notebooks by component: `temporal/` and `graph/`, and the matrix explorer
-
-On 2026-09-14 the author proposed organising the notebooks the way `xai/` now
-is: a folder per swappable part of the model, one notebook per alternative.
-`notebooks/xai/` is built that way, and `notebooks/README.md` names the two
-folders still to come.
-
-- **`notebooks/temporal/`** — one notebook per temporal stage (`last_cycle`,
-  `mean_window`, `window_summary`, `lstm`, `gru`, and the gated `raw_window`), each showing on
-  the real windows what the stage does to one sensor's 30 readings and what it
-  costs in parameters.
-- **`notebooks/graph/`** — one per sensor graph: the paper's Table 3, every
-  sensor joined, and the 41 strongest correlations. Notebook 02 section 5 is
-  the seed of it and would move there.
-
-**Two rules for them, and both matter.** First, a component cannot produce a
-result on its own — a temporal stage needs graph layers and training — so these
-notebooks **read five-seed results from `reports/` rather than training
-inline**; a number trained in a notebook is one seed and records no commit
-(working rules 3 and 3a). Second, every comparison in them names the whole
-configuration it was measured under, because this project's comparisons have
-reversed when the rest of the configuration moved. Each folder gets a README
-holding what its notebooks share, as `xai/README.md` does, and a comparison
-notebook that lays the stored runs side by side with their spread and a paired
-test.
-
-**The documentation site's matrix explorer** belongs with this: a grid of
-temporal stage x sensor graph x graph rescaling where every cell shows the
-stored five-seed result with its commit, and every unmeasured cell is visibly
-empty and shows the command that would fill it. The playground must not train
-for this — the reasons were argued on 2026-09-09: a number shown in a browser
-and never written to `reports/` with its commit cannot be quoted or reproduced.
-
-**What finishing looks like:** the two folders built on that pattern, notebook
-02's section 5 moved into `graph/`, and the explorer built into the playground,
-which is now the site's only page not made from a file. The separate
-`#/explore/` pages this entry once put it beside, the stored runs among them,
-were removed because each repeated another page.
+**What finishing looks like:** a decision by the author to build it, then the
+grid in the playground reading `training/stored.py`.
 
 ---
 
@@ -450,27 +239,6 @@ thing in words and put the code after it in parentheses, as a link to the entry.
 **What finishing looks like:** the log's cross-references rewritten with the
 thing said in words; the check extended to `docs/ASSUMPTIONS.md` with entry
 headings and table identifier columns exempt.
-
----
-
-## P-03 — One of A-21's quoted rows names no commit
-
-The quotations of 0.35 cycles at p = 0.047 as the current figure, in
-`config.py`, `config/fd001.yaml` and the package README, were corrected on
-2026-10-02: each now names its schedule, 0.25 cycles at p = 0.068 under the
-current single step and 0.35 at p = 0.047 under the schedule used until
-2026-09-01, both re-derived that day from the stored runs. What remains:
-
-- A-21's row "z-score, 20 % held back, early stopping" gives row rescaling
-  16.616 ± 0.289, while the stored run of the current default — the same
-  settings — gives 16.496 ± 0.415 at `f386291-dirty`. The row names no commit,
-  so it cannot be told which schedule or code produced it.
-  `docs/learn/06_reading_results.md`'s "no difference survives under either"
-  schedule with engines held back rests on these rows.
-
-**What finishing looks like:** the 20 %-held-back rows of A-21 re-run at one
-commit, under both schedules, and the row and the taught page's sentence
-replaced with the result.
 
 ---
 
@@ -534,25 +302,8 @@ and Young (the uniqueness conditions) are unchecked against their sources.
   with more than the preprint's sentence says; check it against the 2023
   article once held.
 
-**Three leads about IMTSO-GCN (Yuan et al. 2025), raised on 2026-10-02 and not
-yet pursued.** Checking the two earlier leads (both confirmed and written into
-`docs/LITERATURE_BASIS.md` and finding F-12 that day) turned up these:
-- Its Fig. 6B (PDF page 12, journal page 185) keeps a column named RUL, the
-  quantity it predicts, joined to nine sensors in the graph it learns, and its
-  text says all raw parameters are node features (PDF page 11, journal page
-  184). It never says whether RUL was an input. If it was, its FD002 RMSE of
-  2.8577 would rest on the answer. Whether this deserves a finding of its own
-  is the author's decision.
-- Its swarm search over window length, learning rate, depth and the edge
-  threshold scores each candidate by R-squared against "the real results"
-  (PDF page 7, journal page 180) without saying on which data, and the paper
-  names only a training set and a testing set (PDF pages 8 and 9).
-- Its Tables 9 and 10 (PDF page 13, journal page 186) print identical rows for
-  two other methods on FD002 and FD004, and in Table 10 its own FD004 result
-  is worse than both, against what its text says.
-
 **What finishing looks like:** the missing works obtained and added to
 `manifest.json` and `docs/REFERENCES.md` (or the claims resting on them marked
-as unchecked), the Kapoor sentence checked, the IMTSO-GCN leads confirmed in
-the copy and either written into finding F-12 or answered in writing, and this
-entry deleted.
+as unchecked), the Kapoor sentence checked, and this entry deleted. (The IMTSO-GCN leads this
+entry also held were confirmed in the copy and written into finding F-12 and
+`docs/LITERATURE_BASIS.md` on 2026-10-02 and 2026-10-03.)

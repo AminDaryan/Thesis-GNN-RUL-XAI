@@ -338,7 +338,7 @@ Each sensor still has its own output at every cycle. The example verifies that T
 
 ### One GRU per sensor
 
-A GRU carries one memory list, its hidden state. A **reset gate** controls how much old memory enters a proposed replacement. An **update gate** blends the old memory with that proposal. GRU is a project alternative, not the paper's LSTM stage.
+A GRU carries one memory list, its hidden state. A **reset gate** controls how much old memory enters a proposed replacement. An **update gate** blends the old memory with that proposal. GRU is a project alternative, not the paper's LSTM stage, and it borrows the LSTM stage's sizes (assumption A-36).
 
 #### Process
 

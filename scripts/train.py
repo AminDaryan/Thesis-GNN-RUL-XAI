@@ -128,7 +128,9 @@ def main() -> int:
                              "'lstm' is the paper's own Section 2.2 stage, one "
                              "network per sensor; 'window_summary' gives each "
                              "sensor its last reading, average and change over "
-                             "the window, which the paper does not (A-28)")
+                             "the window, which the paper does not (A-28); 'gru' "
+                             "puts a gated recurrent unit where each LSTM goes, "
+                             "a stage the paper does not have (A-36)")
     parser.add_argument("--temporal-hidden", type=int, default=32,
                         help="Hidden size of the recurrent stage (A-26; the "
                              "paper states none)")
@@ -365,9 +367,11 @@ def main() -> int:
     # Naming the fields that happen to matter today is not enough, because a
     # setting reachable only from a YAML file -- the normalisation method, the
     # smoothing parameter, the label ceiling -- changes the number just as
-    # much and would collide again. `cfg` is a digest of the whole
-    # preprocessing configuration, so two runs whose settings differ anywhere
-    # get different names whether or not anyone remembered to add the field.
+    # much and would collide again. `cfg` is a digest of every preprocessing
+    # setting, so two runs whose settings differ anywhere get different names
+    # whether or not anyone remembered to add the field. Since 2026-10-03 it
+    # leaves out the prose `notes`, which once gave runs with identical
+    # settings different names; stored runs keep the names they were given.
     #
     # The same goes for the network and the training settings. Their defaults
     # stay silent; anything else adds a digest of the whole block, `net` for
@@ -388,9 +392,7 @@ def main() -> int:
     training_digest = hashlib.sha256(
         json.dumps(training_settings, sort_keys=True).encode()
     ).hexdigest()[:6]
-    config_digest = hashlib.sha256(
-        json.dumps(preprocessing.to_dict(), sort_keys=True, default=str).encode()
-    ).hexdigest()[:6]
+    config_digest = preprocessing.digest()
     name = (
         f"{preprocessing.subset.lower()}"
         f"_{preprocessing.graph}"

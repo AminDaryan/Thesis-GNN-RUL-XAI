@@ -17,6 +17,7 @@ from .flipping import (
 )
 from .occlusion import occlusion_values
 from .plots import plot_contributions_over_time
+from .seeds import SeedExplanation, longest_engine, shap_for_each_seed
 from .shap import (
     MAX_EXACT_NODES,
     coalition_weights,
@@ -48,6 +49,7 @@ __all__ = [
     "MAX_WALKS_PER_EXAMPLE",
     "PAPER_GAMMA_START",
     "RANDOM_ORDERS",
+    "SeedExplanation",
     "WalkRelevance",
     "aufc",
     "coalition_weights",
@@ -60,12 +62,14 @@ __all__ = [
     "dynamic_shap",
     "efficiency_error",
     "indistinguishable_sensors",
+    "longest_engine",
     "mean_window_baseline",
     "node_flipping",
     "node_relevance",
     "occlusion_values",
     "paper_gammas",
     "plot_contributions_over_time",
+    "shap_for_each_seed",
     "shap_summary",
     "shap_values",
     "step_relevance",

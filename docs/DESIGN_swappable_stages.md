@@ -5,9 +5,68 @@ migration in section 6 were carried out the same day: `models/temporal/` with
 five stages, `ESTGNN` taking one and reading its width from it, the pipeline
 handing over the whole window, and the paper's per-sensor LSTM. The step-3
 gate held — the five-seed run reproduced bit-identically, `best_epoch`
-included. Steps 4, 5, 6, 8 and 9 are not built; `docs/PENDING.md` P-08 lists
-them. Everything below is as first written, so read section 6 as the plan it
-was rather than as a record of what happened.
+included. Everything below is as first written, so read section 6 as the plan
+it was rather than as a record of what happened.
+
+*Note added 2026-10-03: what was built, what was deferred, and one fix.* This
+paragraph said until today that steps 4, 5, 6, 8 and 9 were not built, and
+pointed at an entry of the pending-work list. Step 4 had been built on
+2026-09-14 (commit `c8ba1f1`), in a narrower form than section 6 describes:
+`models/config.py` records the network's shape, a run whose network differs
+from Table 4's sizes carries `_net` and a digest in its folder name (not
+`mdl`), and every seed's weights, per-pass record and test predictions are
+saved; there is no `config/model/table4.yaml`, and `matches_table_4()` and
+`comparable_paper_row()` were never written. The error was found on
+2026-10-03 by setting this paragraph beside the pending-work list in
+`docs/PENDING.md`, which recorded step 4 as done, and confirmed in the
+repository's history: `models/config.py` first appears in commit `c8ba1f1`,
+dated 2026-09-14. On 2026-10-02 the author decided
+to build none of the remaining steps for now. Each is deferred, not dropped,
+and building it would take the following:
+
+- **Step 5, the graph layers as a named stage.** Moving the three graph layers,
+  and the check that refuses a graph with a zero on its diagonal, out of
+  `ESTGNN` into a `models/spatial/` package, then showing with a test of the
+  starting weights and a second five-seed run that no number moved; it adds no
+  new capability on its own.
+- **Step 6, the stage that hands every cycle to the graph layers, measured
+  again.** The stage and its gate already exist as `--temporal raw_window`,
+  marked `_raw_window` in the folder name; what is missing is a five-seed run of
+  it under today's configuration and an entry under the next free finding
+  number recording the result, because the measurements of it recorded under
+  assumption A-07 were made under settings that have since changed.
+- **Step 8, a graph-attention stage and a stage with no graph layers.** Two new
+  classes, an assumption entry under the next free number for each (how many
+  attention heads, and which graph decides who attends to whom; what feeds the
+  fully connected layers once the graph layers are gone), and five-seed runs of
+  both, after which the paper's "ESTGNN w/o GCN" row of Table 11 (16.42 RMSE
+  on FD001) could be set beside a measured number for the first time.
+- **Step 9, explanations of connections and of parts of the graph.** A common
+  record saying what each explanation is about, a sensor, a connection or a
+  walk, so that values of different kinds are never compared, and Shapley
+  values over the paper graph's 41 connections; those cannot be computed
+  exactly, since 41 connections have 2 to the power 41 (2,199,023,255,552)
+  subsets, so they need sampling, a standard error reported beside each value,
+  and an assumption entry of their own. Three pieces of it were built since
+  this design was written: `scripts/explain.py`, which explains the
+  predictions of one seed of a stored run, sensor by sensor or walk by walk,
+  and saves the result in that run's folder (first added in commit `ffdaad6`,
+  2026-09-14); explaining walks through the
+  graph (assumption A-29); and removing one connection by deleting it from the
+  graph before rescaling, the choice section 5 proposed as a provisional A-31
+  (assumption A-30), in `explain/connections.py` rather than the
+  `explain/edges.py` section 6 names. What remains is the common record
+  (`Attribution` and `compare_attributions` in section 6, neither of which
+  exists) and the sampled Shapley values over connections. The provisional
+  A-32, the sampling over connections, takes the next free number if step 9 is
+  ever built.
+
+The fix: the defect in section 7, `PreprocessingConfig.notes` inside the run
+digest, was fixed on 2026-10-03 at the author's decision of 2026-10-02. The
+digest now leaves the notes out, so `PreprocessingConfig()` and
+`config/fd001.yaml` both give `818b40`; the `e3a331` and `ba82e3` quoted in
+sections 0, 4, 6 and 7 come from the rule before then. The log's entry on how
+runs are named (finding F-09 in `docs/ASSUMPTIONS.md`) records the change.
 
 ## What this is
 
@@ -653,6 +712,8 @@ The gate is on the configuration and the command line, not on the class. `tests/
 ### Guard 4 — the run says whether it is Table 4
 
 `matches_table_4()` and `comparable_paper_row()` from §4 turn rule 5 into something a file records rather than something a person remembers. `layer_summary()` gains a first row for the temporal stage, so notebook 02's side-by-side against Table 4 keeps working and starts showing the extra row explicitly.
+
+*Reversed by the author on 2026-10-02, carried out 2026-10-03.* The separate row was built, and it described the same `(B, 14, 1)` array as Table 4's Input row beneath it: what the stage hands on is that row, which learns nothing of its own. The author pointed this out on the playground on 2026-09-14; the playground and the site's figures then each joined the two rows themselves, and only notebook 02 still showed both. The author decided that `layer_summary()` itself should fold the stage into the Input row, so that every place showing it shows the same thing without joining rows of its own: the Input row now runs from the window the stage receives to the `(B, 14, 1)` it hands on, counts what the stage learns, and names the stage when it learns anything. The default network's summary has seven rows again, the count §0 measured before the stage existed (re-measured 2026-10-03, torch 2.13.0+cpu: 7 rows, 61,729 parameters). `models/README.md` explains the row.
 
 ### Assumption entries to write or amend
 

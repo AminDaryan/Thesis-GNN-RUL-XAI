@@ -20,6 +20,8 @@ from .runs import (
 from .settings import (
     ABLATIONS,  # ablations: the paper's Table 11 variants, each with one part taken out
     FIELDS,
+    GAMMA_ABOUT,
+    GAMMA_SETTINGS,
     GROUPS,
     PROCEDURE_ABOUT,
     PROCEDURES,
@@ -32,6 +34,8 @@ from .settings import (
 __all__ = [
     "ABLATIONS",
     "FIELDS",
+    "GAMMA_ABOUT",
+    "GAMMA_SETTINGS",
     "GROUPS",
     "PROCEDURES",
     "PROCEDURE_ABOUT",

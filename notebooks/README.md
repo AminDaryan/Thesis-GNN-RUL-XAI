@@ -12,9 +12,23 @@ where the code they call actually lives.
 01_preprocessing_fd001.ipynb    steps 1 to 8    the raw text files become examples
         │                                       and a sensor graph
         ▼
-02_model_fd001.ipynb            steps 9 to 11   build the network, train it, score it,
-        │                                       and put the sensor graph to the test
+02_model_fd001.ipynb            steps 9 to 11   build the network, train it and score it
+        │
         ▼
+temporal/                       one notebook per temporal stage, and one comparing
+                                them; read temporal/README.md first
+  ├── 01_last_cycle_fd001.ipynb
+  ├── 02_mean_window_fd001.ipynb
+  ├── 03_window_summary_fd001.ipynb
+  ├── 04_lstm_fd001.ipynb
+  ├── 05_gru_fd001.ipynb
+  ├── 06_raw_window_fd001.ipynb
+  └── 07_comparison_fd001.ipynb
+graph/                          one notebook per sensor graph, and one comparing
+  ├── 01_physics_fd001.ipynb    them; read graph/README.md first
+  ├── 02_complete_fd001.ipynb
+  ├── 03_correlation_fd001.ipynb
+  └── 04_comparison_fd001.ipynb
 xai/                            one notebook per explanation method, each explaining
   ├── 01_shap_fd001.ipynb       the same trained network; read xai/README.md first
   ├── 02_occlusion_fd001.ipynb
@@ -23,7 +37,14 @@ xai/                            one notebook per explanation method, each explai
 
 Read 01 and 02 in order: 02 starts from exactly what 01 produces. The step
 numbers carry on from one to the other, so step 9 is the first step of notebook
-02.
+02. Each folder after it starts from notebook 02, and none of them depends on
+another.
+
+The notebooks in `graph/` each show one sensor graph on the real data, beside
+the stored five-seed result of the networks trained on it, and the last of them
+compares the three graphs. Like the `xai/` notebooks they number their steps
+from 1 again and read stored runs instead of training; `graph/README.md` says
+what they share and which runs they read.
 
 The notebooks in `xai/` are not a sequence. Each is one way of explaining a
 trained network's predictions, and each can be read on its own once notebook 02
@@ -33,9 +54,13 @@ says what they have in common and why they load a stored network instead of
 training their own. The Shapley-value notebook, the paper's own method, is the
 one to read first.
 
-Two more folders are planned and not yet written: `temporal/`, one notebook per
-way of turning a sensor's 30-cycle window into what the graph layers read, and
-`graph/`, one per sensor graph. `docs/PENDING.md` describes them.
+The notebooks in `temporal/` each show one temporal stage — one way of turning
+a sensor's 30-cycle window into what the graph layers read — on one real
+window, worked through by hand with what it costs in learned numbers, beside
+the stored five-seed results of the networks trained with it; the last of them
+compares the stages. Like the other two folders they number their steps from 1
+again and read stored runs instead of training; `temporal/README.md` says what
+they share and which runs they read.
 
 ## How every notebook is laid out
 
@@ -115,12 +140,24 @@ Two ways to find out more about anything a notebook calls:
 - **Put the NASA files in `data/raw/`.** The notebooks run on the real
   measurements and nothing else; without them the loading cell stops with a
   link to the download. `data/raw/README.md` says how the files are checked.
-- **Notebook 02 and the `xai/` notebooks need PyTorch**, included in the
-  `model` extra above. Notebook 01 does not.
+- **Notebook 02 and the `temporal/`, `graph/` and `xai/` notebooks need
+  PyTorch**, included in the `model` extra above. Notebook 01 does not.
 - **The `xai/` notebooks need a stored five-seed run** of `config/fd001.yaml`
   that saved its trained networks. Make one with
   `python scripts/train.py --config config/fd001.yaml --seeds 5`; the notebooks
   stop with that command if none exists.
+- **The `graph/` notebooks need three such runs from one commit**, one per
+  sensor graph: the same command with `--graph physics`, `--graph complete` and
+  `--graph correlation`. They stop with those commands if they find none. The
+  comparison notebook also reads the three graphs trained with the recurrent
+  stage, which a study that changed one setting at a time stored (finding
+  F-19), and stops with the same commands plus `--temporal lstm` if it finds
+  none.
+- **The `temporal/` notebooks 04, 05 and 06 load trained networks** from
+  three stored runs that `temporal/README.md` names, and stop with the command
+  that makes a replacement if one is missing. Every notebook in that folder
+  lists the stored runs of its own stage, and prints the command that makes
+  one where it finds none.
 
 Every notebook is saved with its outputs filled in, so all of them can be read
 without running anything. After changing one, run it again from the top so the

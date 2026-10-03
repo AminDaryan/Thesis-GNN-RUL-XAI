@@ -92,9 +92,11 @@ class MeanWindow(TemporalStage):
         self.window_size = int(window_size)
         self.out_features = 1
 
-    # ASSUMPTION A-07: the other reduction that keeps Table 4's printed shape.
-    # Never measured against the last cycle; docs/EXPERIMENT_A-07_mean_window.md
-    # is the standing instruction for measuring it.
+    # ASSUMPTION A-07: the other reduction that keeps Table 4's printed shape,
+    # each sensor's average over its 30 readings. Measured against the last
+    # cycle in the sensitivity study of 2026-09-29 (finding F-19): 5.744 cycles
+    # worse on the test engines over five seeds, indistinguishable on the
+    # held-back ones.
     def forward(self, windows: Tensor) -> Tensor:
         self._check(windows)
         return windows.mean(dim=2, keepdim=True)
@@ -188,6 +190,11 @@ class LSTMStage(TemporalStage):
         # each forget gate starts near one half; Gers et al. (2000) start theirs
         # above one half (0.62 and 0.73 for their first two blocks). The paper
         # gives no starting values. Written up in docs/ASSUMPTIONS.md.
+        # ASSUMPTION A-36: cell="gru" puts a gated recurrent unit where each
+        # LSTM goes. The paper has no such stage; it borrows the LSTM stage's
+        # width, single layer and projection (A-26), and PyTorch's GRU applies
+        # its reset gate after the memory's multipliers, where Cho et al. (2014)
+        # print it before them.
         maker = nn.LSTM if cell == "lstm" else nn.GRU
         count = 1 if self.shared_across_sensors else self.n_nodes
         self.cells = nn.ModuleList(

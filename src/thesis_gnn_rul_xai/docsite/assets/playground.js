@@ -39,7 +39,7 @@
       "the model, not the causes of engine failure.",
     walks: "Splits the model's score, before conversion to remaining-life cycles, into shares along graph routes. " +
       "A route takes one connection per graph layer, starting from a sensor's temporal output. Each layer's numbers " +
-      "are divided among their sources by the rule of the method's authors, with their own setting. Route shares and a " +
+      "are divided among their sources by the rule of the method's authors, under the setting chosen below. Route shares and a " +
       "separate share from added constants sum to the score within rounding error. The authors' own check, adding and " +
       "removing sensors in the order the routes rank them, is run beside it. They do not establish physical causes.",
     engine: "Explains successive windows of one engine's history to show how sensor contributions change " +
@@ -781,7 +781,7 @@
       filter: { subset: "all", temporal: "all", graph: "all", pass: "all", state: "any", results: false, files: false },
       xfilter: { method: "all", scope: "all", subset: "all", state: "any" },
       explain: { run: null, detail: null, seed: null, method: "shap", scope: "engine", engine: "",
-        every: 1, shown: null, values: null, index: 0, chart: "engine" } };
+        every: 1, gamma: null, shown: null, values: null, index: 0, chart: "engine" } };
 
     // The browser tab is named by app.js, from the menu, as every page is.
     return tools.get("/api/playground/options").then(function (options) {
@@ -2575,19 +2575,6 @@
     }).join("") + "</ul>";
   }
 
-  // layer_summary() lists the temporal stage, then Table 4's "Input" row. Both
-  // describe the same tensor: Table 4's Input row is the stage's output, with
-  // no parameters of its own. Shown as one row, as Table 4 has, and named by
-  // the stage only when the stage learns numbers of its own.
-  function table4Rows(layers) {
-    if (layers.length > 1 && layers[0].layer === "Temporal" && layers[1].layer === "Input") {
-      var temporal = S.settings.temporal;
-      var from = temporal === "lstm" || temporal === "gru" ? TEMPORAL[temporal] : "";
-      return [{ layer: "Input", from: from, out: layers[0].out, parameters: layers[0].parameters }].concat(layers.slice(2));
-    }
-    return layers;
-  }
-
   // The card that ends the form: the network these settings build, then only
   // what stops the run or qualifies it, then the one action, so each caution
   // sits directly above the button it is about.
@@ -2621,7 +2608,8 @@
         '<div class="pg-big">' + count(preview.parameters) + " <span>learned numbers</span></div>" +
         '<section class="pg-layers" aria-labelledby="pg-layers-title"><h4 id="pg-layers-title">Layer by layer</h4>' +
         '<table class="pg-mini"><thead><tr><th>Layer</th><th>Out</th><th class="num">Learned numbers</th></tr></thead><tbody>' +
-        table4Rows(preview.layers).map(function (l) {
+        // layer_summary() already folds the temporal stage into Table 4's Input row.
+        preview.layers.map(function (l) {
           return "<tr><td>" + esc(l.layer) + (l.from ? ' <span class="pg-faint">from ' + esc(l.from) + "</span>" : "") +
             "</td><td><code>" + esc(l.out) + '</code></td><td class="num">' + count(Number(l.parameters)) + "</td></tr>";
         }).join("") + "</tbody></table>" +
@@ -2926,7 +2914,7 @@
         var x = row.item;
         return '<tr data-action="open-explanation" data-run="' + esc(x.run) + '" data-name="' + esc(x.name) + '" tabindex="0">' +
           '<td title="' + esc(when(x.finished_utc)) + '">' + whenShort(x.finished_utc) + "</td><td>" +
-          esc(METHODS[x.method] || x.method) + "</td><td>" + esc(explainedWhat(x)) + "</td><td>" + esc(x.seed) + "</td>" +
+          esc(methodLabel(x)) + "</td><td>" + esc(explainedWhat(x)) + "</td><td>" + esc(x.seed) + "</td>" +
           '<td class="num">' + count(x.windows) + "</td><td>" + esc(x.run_subset || "") + "</td><td>" +
           esc([stageName(x.run_temporal, x.run_temporal_hidden), graphName(x.run_graph)].filter(Boolean).join(" · ")) +
           ' <span class="pg-faint">' + esc(whenShort(x.run_finished)) + "</span></td></tr>";
@@ -3340,10 +3328,16 @@
           { value: "occlusion", label: "Occlusion, one sensor at a time", about: EXPLAIN_ABOUT.occlusion, note: sourceTag({ kind: "extension" }) +
             " Evaluates the original input and one replacement per sensor. Replacement readings are averaged across training windows separately at each window position (" + refLink("A-20") + ")." },
           { value: "walks", label: METHODS.walks, about: EXPLAIN_ABOUT.walks, note: sourceTag({ kind: "extension" }) +
-            " GNN-LRP of Schnake et al. (2022) with the authors' own rule setting: \u03b3 0 at the first graph layer, whose inputs can be negative, " +
-            "then their default schedule (" + refLink("A-29") + "). Their node-flipping check is stored with every explanation (" + refLink("A-33") +
+            " GNN-LRP of Schnake et al. (2022) (" + refLink("A-29") + "). " +
+            "Their node-flipping check is stored with every explanation (" + refLink("A-33") +
             "). Identical graph outputs are grouped where routes end (" + refLink("F-18") + ")." }
         ], e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) }) +
+      // The walk rule's setting, for walks only; the server takes its name,
+      // never numbers, and every name gives the first graph layer 0.
+      cell({ key: "pg-e-gamma", label: "How walk shares are divided (γ)", size: "wide", hidden: e.method !== "walks",
+        hint: infoCard(S.options.gamma_about, "", S.options.explain_more.gamma),
+        control: optionList("pg-e-gamma", S.options.gamma_settings, explainGamma(), 'data-explain="gamma"', optionNote,
+          nameIds("pg-e-gamma")) }) +
       cell({ key: "pg-e-scope", label: "What is explained", size: "wide",
         control: optionList("pg-e-scope", [
           { value: "engine", label: "One engine over time", about: EXPLAIN_ABOUT.engine, note: sourceTag({ kind: "paper", ref: "Section 4.4" }) +
@@ -3368,6 +3362,30 @@
   // the technical detail under the line.
   function explainNote(c) { return infoCard(c.about, c.note, S.options.explain_more[c.value]); }
 
+  // The walk rule's setting chosen in the form: the first the server lists, until another is chosen.
+  function explainGamma() {
+    var e = S.explain;
+    if (!e.gamma) { e.gamma = S.options.gamma_settings[0].value; }
+    return e.gamma;
+  }
+
+  // A setting of the walk rule by its name in the form, or "" for one the form does not offer.
+  function gammaLabel(value) {
+    var setting = (S.options.gamma_settings || []).filter(function (s) { return s.value === value; })[0];
+    return setting ? setting.label : "";
+  }
+
+  function lowerFirst(text) { return text.charAt(0).toLowerCase() + text.slice(1); }
+
+  // A stored explanation's method in the page's words. A walk explanation made
+  // with another setting of the rule than the first the form offers names it.
+  function methodLabel(x) {
+    var name = METHODS[x.method] || x.method;
+    var setting = x.method === "walks" ? gammaSettingOf(x) : null;
+    var label = setting && setting !== S.options.gamma_settings[0].value ? gammaLabel(setting) : "";
+    return label ? name + " · " + lowerFirst(label) : name;
+  }
+
   // What one stored explanation covers, in the page's words: "held-back engine 5, one window in 20".
   function explainedWhat(x) {
     if (x.scope !== "engine") { return "test engines"; }
@@ -3381,7 +3399,7 @@
       '<th class="num">Windows</th><th>Finished</th></tr></thead><tbody>' +
       explanations.map(function (x) {
         return '<tr data-explanation="' + esc(x.name) + '"' + (x.name === e.shown ? ' class="is-selected"' : "") + "><td>" +
-          esc(METHODS[x.method] || x.method) + "</td><td>" + esc(explainedWhat(x)) + "</td><td>" + esc(x.seed) +
+          esc(methodLabel(x)) + "</td><td>" + esc(explainedWhat(x)) + "</td><td>" + esc(x.seed) +
           '</td><td class="num">' + count(x.windows) + "</td><td>" + when(x.finished_utc) + "</td></tr>";
       }).join("") + "</tbody></table></div>";
   }
@@ -3402,12 +3420,16 @@
     if (which === "every") { e.every = Number(input.value) || 1; return; }
     if (which === "method") { e.method = input.value; }
     if (which === "scope") { e.scope = input.value; }
-    // The engine rows apply to one scope only; the option lists show their pick.
+    if (which === "gamma") { e.gamma = input.value; }
+    // The engine rows apply to one scope only, the rule's setting to walks
+    // only; the option lists show their pick.
     var forEngine = e.scope === "engine";
     ["pg-e-engine-row", "pg-e-every-row"].forEach(function (key) {
       var box = $('[data-row="' + key + '"]');
       if (box) { box.hidden = !forEngine; }
     });
+    var rule = $('[data-row="pg-e-gamma"]');
+    if (rule) { rule.hidden = e.method !== "walks"; }
     $all(".pg-explain .opt").forEach(function (option) {
       option.classList.toggle("is-active", option.querySelector("input").checked);
     });
@@ -3420,6 +3442,7 @@
     var request = { run: e.run, seed: Number(e.seed), method: e.method, scope: e.scope,
       engine: e.scope === "engine" && e.engine !== "" ? Number(e.engine) : null,
       every: e.scope === "engine" ? Number(e.every) || 1 : 1 };
+    if (e.method === "walks") { request.gamma = explainGamma(); }
     post("/api/playground/explain", request).then(function (job) {
       if (job && job.id) { S.mine[job.id] = true; }
       return repoll();
@@ -3698,20 +3721,41 @@
     return sum.sensors || Object.keys(sum.mean_abs_start || {});
   }
 
-  // Which setting of the rule a saved walk explanation used, in words.
-  function gammaNote(sum) {
+  // Which setting of the rule a saved walk explanation used, by the value the
+  // Explain form gives it. One saved before the setting was recorded, on
+  // 2026-10-02, is recognised by its numbers: the authors' default schedule,
+  // or gamma 0 everywhere; anything else gives null.
+  function gammaSettingOf(sum) {
+    if (sum.gamma_setting) { return sum.gamma_setting; }
     var gamma = sum.gamma || [];
+    if (gamma.length && gamma.every(function (g) { return g === 0; })) { return "gnn-gi"; }
     var authors = gamma.length > 1 && gamma[0] === 0 && gamma.every(function (g, i) {
       return Math.abs(g - 3 * (1 - i / (gamma.length - 1))) < 1e-9 || i === 0;
     });
-    var listed = gamma.map(function (g) { return fixed(g, 2); }).join(", ");
-    if (authors) {
+    return authors ? "authors" : null;
+  }
+
+  // Which setting of the rule a saved walk explanation used, in words.
+  function gammaNote(sum) {
+    var setting = gammaSettingOf(sum);
+    var listed = (sum.gamma || []).map(function (g) { return fixed(g, 2); }).join(", ");
+    if (setting === "authors") {
       return "The rule's setting \u03b3 is " + listed + " at the graph layers in order: the authors' default schedule, falling from 3 to 0, " +
         "with 0 at the first layer because its inputs can be negative (" + refLink("A-29") + ").";
     }
-    if (gamma.length && gamma.every(function (g) { return g === 0; })) {
+    if (setting === "gnn-gi" && sum.gamma_setting) {
+      return "This explanation was made with \u03b3 0 at every graph layer, the simpler baseline the authors call GNN-GI, " +
+        "chosen when it was made in place of their own setting (" + refLink("A-29") + ").";
+    }
+    if (setting === "gnn-gi") {
       return "This saved explanation used \u03b3 0 at every graph layer, the simpler baseline the authors call GNN-GI, not their own setting. " +
         "Explain the run again for the authors' setting (" + refLink("A-29") + ").";
+    }
+    // The option's name is in this explanation's row of the table above, so
+    // only its numbers are given here.
+    if (gammaLabel(setting)) {
+      return "The rule's setting \u03b3 is " + listed + " at the graph layers in order, chosen when this explanation was made in place of the authors' own, " +
+        "with 0 at the first layer because its inputs can be negative (" + refLink("A-29") + ").";
     }
     return "The rule's setting \u03b3 is " + listed + " at the graph layers in order, which is not the authors' default (" + refLink("A-29") + ").";
   }
@@ -3764,7 +3808,7 @@
       'of those parts and the model\'s internal score is ' + Number(sum.conservation_error_max).toExponential(1) +
       ' score units. This checks the explanation\'s arithmetic; it does not check whether the prediction is correct (' + refLink("A-29") + ').</p>' +
       '<p><strong>The rule.</strong> At each graph layer, a sensor\'s number is divided among the sensors it came from in proportion to what each sent, ' +
-      'with positive contributions counted more heavily by a setting called \u03b3, as the method\'s authors do (Schnake et al., 2022). ' + gammaNote(sum) + '</p>';
+      'and a setting called \u03b3 decides how much more heavily positive contributions count (Schnake et al., 2022). ' + gammaNote(sum) + '</p>';
     if (groups.length === 1 && groups[0].length === symbols.length) {
       methodNotes += '<p><strong>Why sensor names are grouped.</strong> In this model every sensor is connected to every other sensor. ' +
         'The steps that combine connected sensors therefore produce the same result at every sensor position. ' +
@@ -3857,6 +3901,32 @@
     "random": "random orders, averaged"
   };
 
+  // A third setting of the rule, chosen when the explanation was made, is
+  // checked under the name "GNN-LRP <setting>" (scripts/explain.py) and named
+  // as the form names it. It is drawn in gold, a colour this view never uses
+  // for a sign: orange already means a negative share here, and the accent
+  // blue sits too close to the baseline's blue-green (CIE76 colour difference
+  // 32 in light mode and 23 in dark; gold is 78 and 83 from it, and 69 and 63
+  // from the authors' ink).
+  function chosenRanking(ranking) {
+    var m = /^GNN-LRP (\S+), (walks|starting sensors)$/.exec(ranking);
+    return m && gammaLabel(m[1]) ? { label: gammaLabel(m[1]), walks: m[2] === "walks" } : null;
+  }
+
+  function flipName(ranking) {
+    var chosen = chosenRanking(ranking);
+    // Named in full on both lines, since the baseline's line already reads
+    // "its starting sensors only".
+    if (chosen) { return chosen.walks ? "walks, " + lowerFirst(chosen.label) : lowerFirst(chosen.label) + ", starting sensors only"; }
+    return FLIP_NAMES[ranking] || ranking;
+  }
+
+  function flipStyle(ranking) {
+    var chosen = chosenRanking(ranking);
+    if (chosen) { return chosen.walks ? { colour: "var(--fig-core)", width: 2.2 } : { colour: "var(--fig-core)", dash: "6 4" }; }
+    return FLIP_STYLES[ranking] || { colour: "var(--fig-axis)" };
+  }
+
   function flippingFigure(data, index, W) {
     var rows = (data.flipping || []).filter(function (r) { return Number(r.window) === index; });
     if (!rows.length) {
@@ -3866,10 +3936,10 @@
     var H = chartHeight(W);
     function chart(task) {
       var series = rows.filter(function (r) { return r.task === task; }).map(function (r) {
-        var style = FLIP_STYLES[r.ranking] || { colour: "var(--fig-axis)" };
+        var style = flipStyle(r.ranking);
         var points = [];
         for (var k = 0; k < steps; k++) { points.push([k, Number(r["step_" + k])]); }
-        return { name: FLIP_NAMES[r.ranking] || r.ranking, colour: style.colour, width: style.width, dash: style.dash, points: points };
+        return { name: flipName(r.ranking), colour: style.colour, width: style.width, dash: style.dash, points: points };
       });
       return plot({ width: W, height: H, series: series,
         label: task === "activation" ? "Score as sensors are added" : "Change in score as sensors are removed",
@@ -3879,8 +3949,10 @@
     var averages = (data.summary.flipping_aufc || []);
     var table = "";
     if (averages.length) {
-      var names = Object.keys(FLIP_NAMES).filter(function (name) {
-        return averages.some(function (a) { return a.ranking === name; });
+      // In the order the check stored them: the authors' setting, their
+      // baseline, a third setting chosen when it was made, then random orders.
+      var names = averages.map(function (a) { return a.ranking; }).filter(function (name, i, all) {
+        return all.indexOf(name) === i;
       });
       table = '<table class="pg-mini"><thead><tr><th>Order from</th><th class="num">Adding: higher is better</th>' +
         '<th class="num">Removing: lower is better</th></tr></thead><tbody>' + names.map(function (name) {
@@ -3888,7 +3960,7 @@
             var a = averages.filter(function (x) { return x.ranking === name && x.task === task; })[0];
             return a ? fixed(a.mean, 3) + (a.std !== null && a.std !== undefined ? " \u00b1 " + fixed(a.std, 3) : "") : "";
           };
-          return "<tr><td>" + esc(FLIP_NAMES[name]) + '</td><td class="num">' + cell("activation") +
+          return "<tr><td>" + esc(flipName(name)) + '</td><td class="num">' + cell("activation") +
             '</td><td class="num">' + cell("pruning") + "</td></tr>";
         }).join("") + "</tbody></table>";
     }
@@ -4399,8 +4471,9 @@
   }
 
   // The paper's Fig. 10, redrawn from Table 12, above this engine at the same
-  // graph numbers. Graph g is the g-th window, so with every n-th window
-  // explained only graphs 1, 1 + n, 1 + 2n ... exist here.
+  // graph numbers. ASSUMPTION A-35: graph g is the engine's g-th window, the
+  // one ending at cycle g + 29; the paper never says which cycle a graph is.
+  // So with every n-th window explained only graphs 1, 1 + n, 1 + 2n ... exist here.
   function paperComparison(rows, sensors, sum) {
     var t = S.options.table12, every = Number(sum.every) || 1;
     if (!t || !t.graphs) {

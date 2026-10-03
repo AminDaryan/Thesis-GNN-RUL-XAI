@@ -834,7 +834,7 @@ that is how the author reviews it.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 570 tests; must all pass
+pytest                # 646 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -858,7 +858,11 @@ more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
 With everything present — the data, PyTorch, the stored runs and the cited
-papers in `docs/references/` — 570 were collected in the evening of
+papers in `docs/references/` — 646 were collected on 2026-10-03, after the
+baselines script, the component notebooks, the per-seed explanation helper,
+the folded layer summary and the digest fix brought their tests, and 645
+passed, the one failure again the stored sensitivity run below. Before that,
+570 were collected in the evening of
 2026-10-02, after the tests added with the corrections to the overstated
 guarantees, the citations and the figure module, and 569 passed, the one
 failure again the stored sensitivity run below. Before that, 536 were

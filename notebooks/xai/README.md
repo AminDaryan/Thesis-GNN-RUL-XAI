@@ -38,6 +38,12 @@ its own, for three reasons:
 The loading cell checks the network it loaded against the run: it scores the
 test engines again and requires the same error the run recorded for that seed.
 
+One step departs from this on purpose. Step 8 of the Shapley-value notebook
+asks how often the four largest contributions change from one window to the
+next, and whether that depends on the temporal stage, so it explains all five
+seeds of two older stored runs, named in its first cell, that differ only in
+that stage. Every network it loads goes through the same check.
+
 **The same data**, rebuilt from the settings saved beside the run with that
 seed. The seed decides which 20 engines were held back from training, so
 rebuilding with a different seed would hand the network engines it learned

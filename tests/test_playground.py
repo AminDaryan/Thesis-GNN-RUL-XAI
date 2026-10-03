@@ -1235,3 +1235,358 @@ def test_a_playground_run_stores_everything_the_page_reads_back(raw_dir, tmp_pat
     assert len(walks["flipping"]) == summary["windows"] * 2 * len(rankings)
     assert {(a["task"], a["ranking"]) for a in summary["flipping_aufc"]} == {
         (task, ranking) for task in ("activation", "pruning") for ranking in rankings}
+
+
+# -- the walk rule's setting in the Explain tab ------------------------------------
+
+
+def _script(name: str):
+    """One of the scripts in scripts/, imported as a module so its names can be read."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(f"_script_{name}", ROOT / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_walk_rule_settings_say_what_they_are_for_in_plain_words():
+    """The setting and each of its options carry an i: what it is for in plain
+    words first, never citing, then under a line where it comes from, and a
+    Read more that the test above checks leads to a heading that exists."""
+    import re
+
+    cited = re.compile(r"\b[ADFP]-\d+\b|\bTable \d|\bEq\. ?\d|\bSection \d|\bFig\. ?\d")
+    texts = [("gamma", playground.GAMMA_ABOUT)]
+    texts += [(f"gamma={s['value']}", s["about"]) for s in playground.GAMMA_SETTINGS]
+    for name, about in texts:
+        assert about and about == about.strip(), name
+        assert not cited.search(about), (name, cited.search(about).group(0))
+        assert len(about.split()) <= 100, (name, len(about.split()))
+    for setting in playground.GAMMA_SETTINGS:
+        assert setting["source"]["kind"] in ("assumption", "extension"), setting["value"]
+        assert setting["source"]["ref"] == "A-29", setting["value"]
+    # The options come from different places, so, as for the Design tab's
+    # temporal stage and graph, each carries a source and the row none; why
+    # the first graph layer gets 0 is said once, in the row's words, not again
+    # in every option's. Only the authors' option names that layer, so that
+    # its label does not claim the authors' own number there.
+    assert sum("can be negative" in about for _, about in texts) == 1
+    assert "first graph layer" in playground.GAMMA_ABOUT and "can be negative" in playground.GAMMA_ABOUT
+    assert [s["value"] for s in playground.GAMMA_SETTINGS if "first graph layer" in s["about"]] == ["authors"]
+    offered = playground.options()
+    assert offered["gamma_about"] == playground.GAMMA_ABOUT
+    assert "gamma_source" not in offered
+    assert offered["explain_more"]["gamma"] == playground.read_more("explain=gamma")
+    assert all(s["more"] == offered["explain_more"]["gamma"] for s in offered["gamma_settings"])
+    assert [s["value"] for s in offered["gamma_settings"]] == [
+        s["value"] for s in playground.GAMMA_SETTINGS]
+
+
+def test_the_page_offers_exactly_the_settings_the_script_takes():
+    """One list on each side of the command line, the authors' setting first on both."""
+    explain = _script("explain")
+    assert tuple(s["value"] for s in playground.GAMMA_SETTINGS) == explain.GAMMA_SETTINGS
+    assert explain.GAMMA_SETTINGS[0] == "authors"
+    assert set(explain.FLIPPING_NAMES) == set(explain.GAMMA_SETTINGS)
+    # The page draws the setting from the server's list, sends it for walks
+    # only, and names a third setting's check by the label the form uses.
+    script = (ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets" / "playground.js").read_text(
+        encoding="utf-8")
+    assert 'optionList("pg-e-gamma", S.options.gamma_settings' in script
+    assert 'if (e.method === "walks") { request.gamma = explainGamma(); }' in script
+    assert all(name.startswith("GNN-LRP ") for key, name in explain.FLIPPING_NAMES.items()
+               if key not in ("authors", "gnn-gi"))
+    assert "/^GNN-LRP (\\S+), (walks|starting sensors)$/" in script
+
+
+def test_a_walk_request_carries_a_named_setting_and_never_numbers(tmp_path: Path):
+    run = tmp_path / "reports" / "somerun"
+    (run / "seed_42").mkdir(parents=True)
+    (run / "summary.json").write_text("{}", encoding="utf-8")
+    (run / "seed_42" / "model.pt").write_bytes(b"")
+    base = {"run": "somerun", "seed": 42, "method": "walks", "scope": "engine", "engine": 7, "every": 1}
+
+    default = playground.validate_explain(base, tmp_path)
+    assert default["gamma"] == "authors"
+    assert "--gamma" not in playground.commands.explain_arguments(default, None)
+    assert playground.explanation_label(default) == "Walks through the sensor graph · engine 7 · seed 42"
+
+    chosen = playground.validate_explain({**base, "gamma": "flat"}, tmp_path)
+    command = playground.commands.explain_arguments(chosen, None, display=True)
+    assert command[-2:] == ["--gamma", "flat"]
+    assert playground.explanation_label(chosen) == (
+        "Walks through the sensor graph · engine 7 · seed 42 · equal extra weight after the first layer")
+    # Read back from a job's folder, the command names the same setting.
+    read = playground.jobs._explain_request(tmp_path, " ".join(command), {})
+    assert read["gamma"] == "flat"
+
+    # Numbers, the authors' unmodified 3 at the first layer among them, are refused.
+    for refused in ([3.0, 1.5, 0.0], [0.0, 1.0, 1.0], 3, "3", "0 1 1", "linspace"):
+        with pytest.raises(playground.SettingsError, match="gamma must be one of"):
+            playground.validate_explain({**base, "gamma": refused}, tmp_path)
+    with pytest.raises(playground.SettingsError, match="walk explanations only"):
+        playground.validate_explain({**base, "method": "shap", "gamma": "flat"}, tmp_path)
+    assert playground.validate_explain({**base, "method": "shap"}, tmp_path)["gamma"] is None
+
+
+def test_every_named_setting_gives_the_first_graph_layer_zero():
+    """Whatever the name and however many graph layers, the first gets 0; for
+    three layers the settings are the ones scripts/measure_walks.py compares."""
+    pytest.importorskip("torch")
+    explain = _script("explain")
+    measured = _script("measure_walks").GAMMAS
+    for setting in explain.GAMMA_SETTINGS:
+        for layers in range(1, 7):
+            values = explain.gamma_values(setting, layers)
+            assert len(values) == layers
+            assert values[0] == 0.0, (setting, layers, values)
+            assert min(values) >= 0.0
+    assert explain.gamma_values("authors", 3) == [0.0, 1.5, 0.0]
+    assert explain.gamma_values("gnn-gi", 3) == list(measured["0"])
+    assert explain.gamma_values("falling", 3) == list(measured["0_0.5_0.25"])
+    assert explain.gamma_values("flat", 3) == list(measured["0_1_1"])
+    with pytest.raises(ValueError, match="gamma must be one of"):
+        explain.gamma_values("0 1 1", 3)
+
+
+@pytest.fixture(scope="module")
+def summary_run(tmp_path_factory, raw_dir):
+    """A stored run of one untrained network whose temporal stage hands the
+    graph three numbers per sensor, so a gamma at the first graph layer would
+    change its walks; written the way train.py writes a run, never trained."""
+    torch = pytest.importorskip("torch")
+    import pandas as pd
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    run = tmp_path_factory.mktemp("reports") / "fd001_physics_row_cap_1seed_varsplit_window_summary_test"
+    run.mkdir()
+    settings = PreprocessingConfig(window_size=20, validation_fraction=0.25, seed=42)
+    settings.save(run / "preprocessing_config.yaml")
+    config = ModelConfig(temporal="window_summary")
+    config.save(run / "model_config.yaml")
+    pd.DataFrame({"seed": [42], "rmse": [20.0]}).to_csv(run / "results.csv", index=False)
+    (run / "summary.json").write_text(json.dumps({
+        "seeds": 1, "split": "varies_with_seed", "temporal_stage": "window_summary",
+        "finished_utc": "20261002T000000Z"}), encoding="utf-8")
+    prepared = run_preprocessing(settings, data_dir=raw_dir)
+    torch.manual_seed(42)
+    model = build_model(prepared.adjacency_normalized, config, window_size=20, rul_max=125)
+    (run / "seed_42").mkdir()
+    torch.save(model.state_dict(), run / "seed_42" / "model.pt")
+    return run
+
+
+@pytest.mark.parametrize("setting", ["authors", "gnn-gi", "falling", "flat"])
+def test_no_positive_gamma_reaches_the_first_graph_layer(summary_run, raw_dir, monkeypatch, setting):
+    """Every gamma the rule is ever run with, recorded where it is applied, is 0
+    at the first graph layer; the stored explanation records the setting."""
+    pytest.importorskip("torch")
+    from thesis_gnn_rul_xai.explain import walks
+
+    explain = _script("explain")
+    monkeypatch.setattr(explain, "capture_code_state", lambda: {"status": [], "patch": "", "untracked": {}})
+    monkeypatch.setattr(explain, "current_commit", lambda: "test")
+    applied: list[list[float]] = []
+    original = walks._rule_forward
+
+    def recording(model, nodes, gammas):
+        applied.append([float(g) for g in gammas])
+        return original(model, nodes, gammas)
+
+    monkeypatch.setattr(walks, "_rule_forward", recording)
+    arguments = ["explain.py", "--run", str(summary_run), "--method", "walks", "--scope", "engine",
+                 "--every", "100", "--device", "cpu", "--data-dir", str(raw_dir), "--quiet"]
+    if setting != "authors":
+        arguments += ["--gamma", setting]
+    monkeypatch.setattr(sys, "argv", arguments)
+    assert explain.main() == 0
+
+    chosen = explain.gamma_values(setting, 3)
+    assert applied and all(gammas[0] == 0.0 for gammas in applied), applied
+    assert chosen in applied
+
+    folder = max((summary_run / "explanations").glob("walks_*"), key=lambda p: p.stat().st_mtime)
+    assert ("_gamma-" + setting + "_" in folder.name) == (setting != "authors")
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    assert summary["gamma_setting"] == setting
+    assert summary["gamma"] == chosen
+    assert summary["conservation_error_max"] < 1e-9
+    rankings = {r["ranking"] for r in summary["flipping_aufc"]}
+    expected = {"GNN-LRP", "GNN-GI"} | ({explain.FLIPPING_NAMES[setting]} if setting in ("falling", "flat") else set())
+    assert rankings == {f"{name}, {what}" for name in expected for what in ("walks", "starting sensors")} | {"random"}
+
+
+def test_a_gamma_at_the_first_layer_would_change_the_walks_of_that_network(summary_run, raw_dir):
+    """The guard above has teeth: on this network the authors' unmodified 3 at
+    the first graph layer, which walk_relevance refuses, moves the walks."""
+    torch = pytest.importorskip("torch")
+    import numpy as np
+
+    from thesis_gnn_rul_xai.explain import walk_relevance
+    from thesis_gnn_rul_xai.explain.walks import _chunk
+    from thesis_gnn_rul_xai.training import load_seed, read_run
+
+    model, prepared = load_seed(read_run(summary_run), 42, data_dir=raw_dir)
+    windows = prepared.test.features[:4]
+    with torch.no_grad():
+        guarded = _chunk(model, torch.from_numpy(windows.astype(np.float32)), [0.0, 1.0, 1.0])[0].numpy()
+        unguarded = _chunk(model, torch.from_numpy(windows.astype(np.float32)), [3.0, 1.0, 1.0])[0].numpy()
+    assert not np.allclose(guarded, unguarded)
+    with pytest.raises(ValueError, match="must be 0 at the first graph layer"):
+        walk_relevance(model, windows, gamma=[3.0, 1.0, 1.0])
+
+
+def test_the_explain_form_offers_the_rule_for_walks_only_and_names_the_choice_once():
+    """Run in Node: the setting's row is hidden unless walks are chosen, the
+    request carries its name only for walks, and a stored explanation, its
+    table row and its check name the setting in the form's own words."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to run the page's script.")
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const options = JSON.parse(fs.readFileSync(0, 'utf8'));
+const sent = [];
+const context = {window: {}, fetch(url, init) { sent.push([url, JSON.parse(init.body)]); return new Promise(() => {}); }};
+vm.createContext(context);
+const source = fs.readFileSync('./src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {S, explainForm, submitExplanation, gammaNote, methodLabel, flipName,
+    setup: function (helpers) { T = helpers; }};`), context);
+const P = context.window.test;
+const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+P.setup({escapeHtml: escape, fixed: (x, places) => Number(x).toFixed(places), toast() {}});
+P.S.options = options; P.S.infos = 0;
+const run = {name: 'r', finished: '20261002T000000Z', subset: 'FD001', temporal: 'last_cycle', graph: 'physics', seeds: 5};
+P.S.explain = {run: 'r', seed: '42', method: 'shap', scope: 'engine', engine: '', every: 1, gamma: null};
+let html = P.explainForm(run, ['42'], [run]);
+assert.ok(html.includes('data-row="pg-e-gamma" hidden'), 'the rule is hidden for Shapley values');
+P.submitExplanation();
+assert.equal(sent.at(-1)[1].gamma, undefined);
+P.S.explain.method = 'walks';
+html = P.explainForm(run, ['42'], [run]);
+assert.ok(html.includes('data-row="pg-e-gamma">'), 'the rule is shown for walks');
+for (const s of options.gamma_settings) {
+  assert.ok(html.includes('name="pg-e-gamma" value="' + s.value + '"' + (s.value === 'authors' ? ' checked' : '')), s.value);
+  assert.equal(html.split(escape(s.about)).length - 1, 1, 'each option says what it does once: ' + s.value);
+}
+assert.equal(html.split(escape(options.gamma_about)).length - 1, 1);
+for (const s of options.gamma_settings) {
+  assert.equal(html.split(escape(s.source.text)).length - 1, 1, 'each option names its source once: ' + s.value);
+}
+P.submitExplanation();
+assert.equal(sent.at(-1)[1].gamma, 'authors');
+P.S.explain.gamma = 'flat'; P.submitExplanation();
+assert.deepEqual([sent.at(-1)[0], sent.at(-1)[1].gamma], ['/api/playground/explain', 'flat']);
+
+assert.equal(P.methodLabel({method: 'walks', gamma_setting: 'falling', gamma: [0, 0.5, 0.25]}),
+  'Walks through the sensor graph · halving extra weight');
+assert.equal(P.methodLabel({method: 'walks', gamma_setting: 'authors', gamma: [0, 1.5, 0]}), 'Walks through the sensor graph');
+assert.equal(P.methodLabel({method: 'walks', gamma: [0, 1.5, 0]}), 'Walks through the sensor graph');
+assert.equal(P.methodLabel({method: 'walks', gamma: [0, 0, 0]}), 'Walks through the sensor graph · no extra weight');
+assert.equal(P.methodLabel({method: 'shap'}), 'Exact Shapley values');
+// The option's name is in the explanation's table row; the note gives its numbers.
+const note = P.gammaNote({gamma_setting: 'flat', gamma: [0, 1, 1]});
+// A setting is recorded whether the form or the command line chose it, so
+// the note never says which of the two did.
+assert.ok(note.includes('0.00, 1.00, 1.00') && note.includes('chosen when this explanation was made'), note);
+assert.ok(!note.toLowerCase().includes('equal extra weight'), note);
+assert.ok(P.gammaNote({gamma: [0, 0, 0]}).includes('Explain the run again'));
+const baseline = P.gammaNote({gamma_setting: 'gnn-gi', gamma: [0, 0, 0]});
+assert.ok(baseline.includes('chosen when it was made'), baseline);
+for (const text of [note, baseline]) { assert.ok(!text.includes('Explain form'), text); }
+assert.equal(P.flipName('GNN-LRP flat, walks'), 'walks, equal extra weight after the first layer');
+assert.equal(P.flipName('GNN-LRP falling, starting sensors'), 'halving extra weight, starting sensors only');
+assert.notEqual(P.flipName('GNN-LRP falling, starting sensors'), P.flipName('GNN-GI, starting sensors'));
+assert.equal(P.flipName('GNN-LRP, walks'), "walks, the authors' setting");
+console.log('The rule setting passed.');
+"""
+    result = subprocess.run([node, "-e", script], cwd=ROOT, input=json.dumps(playground.options()),
+                            text=True, encoding="utf-8", capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_chosen_setting_s_check_is_drawn_in_a_colour_far_from_the_baseline():
+    """The flipping curves of a third setting are gold: not orange, which the
+    walk view already uses for a negative share, and not the accent blue,
+    which sits close to the baseline's blue-green. The distances the
+    playground README quotes are the straight-line distance in CIE Lab
+    between the colours app.css defines, light mode first, and the contrasts
+    are against the figure's own background."""
+    import math
+    import re
+
+    assets = ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets"
+    css = (assets / "app.css").read_text(encoding="utf-8")
+
+    def colours(name: str) -> list[str]:
+        return re.findall(rf"--{name}:\s*(#[0-9a-fA-F]{{6}})", css)
+
+    def linear(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    def channels(hex_colour: str) -> tuple[float, float, float]:
+        return tuple(linear(int(hex_colour[i:i + 2], 16) / 255) for i in (1, 3, 5))
+
+    def lab(hex_colour: str) -> tuple[float, float, float]:
+        r, g, b = channels(hex_colour)
+        x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+        y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+
+        def f(t: float) -> float:
+            return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+
+        return 116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))
+
+    def contrast(one: str, other: str) -> float:
+        lighter, darker = sorted((0.2126 * r + 0.7152 * g + 0.0722 * b
+                                  for r, g, b in (channels(one), channels(other))), reverse=True)
+        return (lighter + 0.05) / (darker + 0.05)
+
+    def distances(name: str, to: str) -> list[int]:
+        return [round(math.dist(lab(a), lab(b))) for a, b in zip(colours(name), colours(to), strict=True)]
+
+    named = ("fig-cool", "fig-accent", "fig-core", "fig-ink", "page")
+    assert all(len(colours(name)) == 2 for name in named), {name: colours(name) for name in named}
+    assert distances("fig-accent", "fig-cool") == [32, 23]
+    assert distances("fig-core", "fig-cool") == [78, 83]
+    assert distances("fig-core", "fig-ink") == [69, 63]
+    # A drawn line needs 3 to 1 against what it is drawn on: a figure's .pg-figure box has --page.
+    ratios = [round(contrast(line, ground), 1) for line, ground in zip(colours("fig-core"), colours("page"),
+                                                                       strict=True)]
+    assert ratios == [4.9, 9.2] and min(ratios) >= 3
+    assert ".pg-figure { margin: 0;" in css and "background: var(--page)" in css.split(".pg-figure { margin: 0;")[1].split("}")[0]
+
+    script = (assets / "playground.js").read_text(encoding="utf-8")
+    assert '{ colour: "var(--fig-core)", width: 2.2 } : { colour: "var(--fig-core)", dash: "6 4" }' in script
+    # Orange keeps its one meaning in this view: a negative share.
+    assert "orange, negative numbers subtract from it" in script
+    flip_style = script.split("function flipStyle(ranking) {")[1].split("\n  }\n")[0]
+    assert "fig-warn" not in flip_style and "fig-accent" not in flip_style
+
+
+# --- the network table: layer_summary() as it comes (2026-10-03) ----------
+
+
+@pytest.mark.parametrize(
+    ("temporal", "source", "learned"), [("lstm", "LSTM", 62_753), ("gru", "GRU", 47_073), ("last_cycle", "", 0)]
+)
+def test_the_network_table_is_layer_summary_with_the_stage_in_the_input_row(temporal, source, learned):
+    """The page draws the rows the network gives, so the stage's count and name must already be on Input."""
+    pytest.importorskip("torch")
+    answer = playground.preview(playground.validate_settings({"temporal": temporal}))
+    layers = answer["layers"]
+    assert [row["layer"] for row in layers] == ["Input", "GCN-1", "GCN-2", "GCN-3", "Flatten", "FC-1", "FC-2"]
+    assert (layers[0]["from"], layers[0]["out"], layers[0]["parameters"]) == (source, "(B, 14, 1)", learned)
+    assert sum(int(row["parameters"]) for row in layers) == answer["parameters"]
+    # The page joins no rows of its own any more; it shows each row's name, its "from", its shape and count.
+    script = (ROOT / "src/thesis_gnn_rul_xai/docsite/assets/playground.js").read_text(encoding="utf-8")
+    assert "table4Rows" not in script and '"Temporal"' not in script
+    assert "preview.layers.map(function (l) {" in script and "esc(l.from)" in script

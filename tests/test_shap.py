@@ -287,3 +287,70 @@ def test_summary_ranks_by_average_size_of_contribution(prepared):
 def test_summary_rejects_a_mismatched_label_list():
     with pytest.raises(ValueError, match="symbol"):
         shap_summary(np.zeros((2, 3)), ["a", "b"])
+
+
+# --- the temporal stage runs once per window ----------------------------
+
+
+def _every_group_through_the_whole_network(network, window, baseline):
+    """Equation 15 with the whole network run on every one of the 16,384 mixed windows."""
+    from thesis_gnn_rul_xai.explain.shap import _masked_batch
+
+    n = window.shape[0]
+    masks = ((np.arange(2**n)[:, None] >> np.arange(n)[None, :]) & 1).astype(bool)
+    inputs = torch.from_numpy(_masked_batch(window, baseline, masks))
+    with torch.no_grad():
+        predictions = np.concatenate([
+            network.predict_cycles(inputs[start:start + 2048]).double().numpy()
+            for start in range(0, len(inputs), 2048)
+        ])
+    weights, sizes = coalition_weights(n), masks.sum(axis=1)
+    values = np.empty(n)
+    for i in range(n):
+        without = np.flatnonzero(~masks[:, i])
+        values[i] = np.sum(weights[sizes[without]]
+                           * (predictions[without | (1 << i)] - predictions[without]))
+    return values
+
+
+@pytest.mark.parametrize(
+    "stage", ["last_cycle", "mean_window", "window_summary", "raw_window", "lstm", "gru"]
+)
+def test_running_the_stage_once_per_window_changes_no_value(prepared, baseline, stage):
+    """Each stage reads only its own sensor's window, so the shortcut is exact."""
+    from thesis_gnn_rul_xai.models.temporal import build_temporal_stage
+
+    torch.manual_seed(3)
+    network = ESTGNN(
+        prepared.adjacency_normalized,
+        temporal=build_temporal_stage(stage, window_size=20, n_nodes=14),
+        rul_max=125,
+        allow_time_in_the_graph_layer=stage in ("window_summary", "raw_window"),
+    )
+    window = prepared.test.features[0]
+    np.testing.assert_allclose(
+        shap_values(network, window, baseline),
+        _every_group_through_the_whole_network(network, window, baseline),
+        rtol=0, atol=1e-5,
+    )
+
+
+def test_a_stage_that_mixes_sensors_is_refused(prepared, baseline):
+    """The shortcut would be wrong for it, so no values are returned at all."""
+    from thesis_gnn_rul_xai.models.temporal import TemporalStage
+
+    class AddsTheAverageSensor(TemporalStage):
+        """Each sensor's last reading plus the average of every sensor's last reading."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.window_size, self.out_features = 20, 1
+
+        def forward(self, windows):
+            last = windows[:, :, -1:]
+            return last + last.mean(dim=1, keepdim=True)
+
+    torch.manual_seed(3)
+    network = ESTGNN(prepared.adjacency_normalized, temporal=AddsTheAverageSensor(), rul_max=125)
+    with pytest.raises(ValueError, match="reads more than each sensor's own window"):
+        shap_values(network, prepared.test.features[0], baseline)

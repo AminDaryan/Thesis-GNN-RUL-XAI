@@ -60,7 +60,7 @@ def test_example_architecture_overview_follows_a_real_fd001_window(raw_dir):
         '(' + ', '.join(map(str, shape)) + ')' for shape in shapes
     ]
     summary = model.layer_summary()
-    expected_counts = [summary[0]['parameters'], *(row['parameters'] for row in summary[2:])]
+    expected_counts = [row['parameters'] for row in summary]
     assert [int(layer.attrib['data-parameters']) for layer in layers] == expected_counts
     assert sum(expected_counts) == model.count_parameters()
     assert shapes[3] == (14, 32) and shapes[4] == (14 * 32,)
@@ -156,7 +156,8 @@ def test_example_graph_convolution():
 
 def test_example_estgnn():
     """Build the network on the paper's own graph, push four examples through
-    it, and confirm it has exactly the number of weights Table 4 implies."""
+    it, and confirm its count: Table 4's five weight matrices, 61,600, plus the
+    129 offsets Equations 12 and 13 print for the two dense layers."""
     raw, _ = build_physics_adjacency()
     model = ESTGNN(normalize_adjacency(raw))
 
@@ -164,6 +165,13 @@ def test_example_estgnn():
 
     assert model(batch).shape == torch.Size([4])
     assert sum(p.numel() for p in model.parameters()) == 61729
+
+    # Table 4's five weight matrices, then the two offsets of Equations 12 and 13.
+    sizes = {name: p.numel() for name, p in model.named_parameters()}
+    weights = [sizes[f"graph_layers.{i}.weight"] for i in range(3)] + [sizes["fc1.weight"], sizes["fc2.weight"]]
+    assert weights == [1 * 32, 32 * 64, 64 * 32, 448 * 128, 128 * 1] and sum(weights) == 61_600
+    assert [sizes["fc1.bias"], sizes["fc2.bias"]] == [128, 1] and len(sizes) == 7
+    assert 61_600 + 128 + 1 == 61_729
 
 
 # --- models/config.py ---------------------------------------------------
@@ -909,3 +917,415 @@ def test_example_temporal_readme_on_two_real_sensors(raw_dir, playground_tempora
             assert rows.size == 0 and 1 in other.validation.units
         else:
             assert round(float(other.train.features[rows[0], pair[0], 0]), 6) == first
+
+
+# --- the audit of 2026-09-08: what the graph layers can and cannot compute ---
+
+
+def test_example_the_graph_layers_scale_with_their_input_and_keep_two_directions(raw_dir):
+    """With no offset and one number per sensor, the graph layers only scale with their input (finding F-21)."""
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    prepared = run_preprocessing(PreprocessingConfig(), data_dir=raw_dir)
+    torch.manual_seed(42)
+    model = ESTGNN(prepared.adjacency_normalized, window_size=30).eval()
+    x = torch.from_numpy(prepared.test.features.astype(np.float32))  # (100 engines, 14, 30)
+
+    def graph_stage(inputs):
+        hidden = model.temporal(inputs)
+        for layer in model.graph_layers:
+            hidden = torch.relu(layer(hidden, model.adjacency))
+        return hidden
+
+    with torch.no_grad():
+        g = graph_stage(x)
+        assert tuple(g.shape) == (100, 14, 32)
+        for c in (0.5, 2.0):
+            assert torch.allclose(graph_stage(c * x), c * g, atol=1e-6)
+        assert not torch.allclose(graph_stage(-x), -g, atol=1e-3)
+
+        # The first layer: one number s per sensor, times relu(w) or relu(-w).
+        s = (model.adjacency @ model.temporal(x)).squeeze(-1)  # (100, 14)
+        w = model.graph_layers[0].weight.reshape(-1)  # (32,)
+        rays = torch.where(
+            s[..., None] >= 0, s[..., None] * torch.relu(w), -s[..., None] * torch.relu(-w)
+        )
+        first = torch.relu(model.graph_layers[0](model.temporal(x), model.adjacency))
+        assert torch.allclose(first, rays, atol=1e-6)
+        assert 0 < int((s < 0).sum()) < s.numel()
+
+        # The whole network does not scale, because its dense layers have offsets.
+        assert not torch.allclose(model.predict_cycles(2 * x), 2 * model.predict_cycles(x))
+
+
+def test_example_swapping_two_group_members_swaps_their_shapley_values(raw_dir):
+    """P15 and Nf reach the network only as a sum, so swapping their displacements swaps their Shapley values (finding F-18)."""
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.explain.shap import mean_window_baseline, shap_values
+
+    prepared = run_preprocessing(PreprocessingConfig(), data_dir=raw_dir)
+    torch.manual_seed(42)
+    model = ESTGNN(prepared.adjacency_normalized, window_size=30).eval()
+    stand_in = mean_window_baseline(prepared.train)  # (14, 30), the average training window
+    window = prepared.test.features[0].astype(np.float32)  # test engine 1, (14, 30)
+    symbols = list(prepared.sensor_symbols)
+
+    def swap(a, b):
+        moved = window.copy()
+        moved[a] = stand_in[a] + (window[b] - stand_in[b])
+        moved[b] = stand_in[b] + (window[a] - stand_in[a])
+        return moved
+
+    i, j = symbols.index("P15"), symbols.index("Nf")
+    # How far each last reading sits from its stand-in: the values in finding F-18.
+    assert round(float(window[i, -1] - stand_in[i, -1]), 6) == 0.174072
+    assert round(float(window[j, -1] - stand_in[j, -1]), 6) == -0.301754
+    swapped = swap(i, j)
+
+    with torch.no_grad():
+        first = [
+            torch.relu(model.graph_layers[0](model.temporal(torch.from_numpy(w[None])), model.adjacency))
+            for w in (window, swapped, swap(symbols.index("T24"), symbols.index("T30")))
+        ]
+        before, after = model.predict_cycles(torch.from_numpy(np.stack([window, swapped])))
+    # P15 and Nf share a row and a column of the rescaled graph: nothing moves.
+    assert torch.allclose(first[0], first[1], atol=1e-6)
+    assert abs(float(before) - float(after)) < 1e-4
+    # T24 and T30 do not, so swapping theirs changes what the first layer hands on.
+    assert float((first[2] - first[0]).abs().max()) > 1e-2
+
+    phi_before = shap_values(model, window, stand_in)
+    phi_after = shap_values(model, swapped, stand_in)
+    np.testing.assert_allclose(phi_after[[i, j]], phi_before[[j, i]], atol=1e-6)
+    others = [k for k in range(len(symbols)) if k not in (i, j)]
+    np.testing.assert_allclose(phi_after[others], phi_before[others], atol=1e-6)
+    assert abs(phi_before[i] - phi_before[j]) > 1e-3
+
+
+# --- explain/seeds.py, and the temporal stage run once per window -------
+
+
+_STORED_DEFAULT = "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z"
+_STORED_RECURRENT = "fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z"
+
+
+def _stored_run(name):
+    """One of the two stored runs explain/README.md quotes, or skip."""
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.training import read_run
+
+    folder = Path(__file__).resolve().parents[1] / "reports" / name
+    if not (folder / "seed_42" / "model.pt").is_file():
+        pytest.skip(f"The stored run {name} is needed for this example; stored runs are not committed.")
+    return read_run(folder)
+
+
+def test_example_shap_for_each_seed_on_the_stored_default_run(raw_dir):
+    """explain/README.md: seed 42 of the stored default run, held-back engine 5, its first window."""
+    import dataclasses
+
+    from thesis_gnn_rul_xai.explain import longest_engine, shap_for_each_seed
+
+    run = _stored_run(_STORED_DEFAULT)
+    (explained,) = list(shap_for_each_seed(run, seeds=[42], data_dir=raw_dir))
+    assert explained.seed == 42
+    held = explained.prepared.validation
+    units, counts = np.unique(held.units, return_counts=True)
+    assert len(units) == 20
+    assert [(int(c), int(u)) for c, u in sorted(zip(counts, units, strict=True), reverse=True)[:3]] == [
+        (240, 5), (201, 25), (185, 82)]
+    assert longest_engine(held) == 5 and list(explained.tables) == [5]
+
+    table = explained.tables[5]
+    assert len(table) == 240
+    assert round(explained.reference, 3) == 91.885
+    first = table.iloc[0]
+    assert (int(first["end_cycle"]), float(first["rul"])) == (30, 125.0)
+    assert round(float(first["predicted"]), 3) == 121.628
+    values = first[list(explained.prepared.sensor_symbols)].astype(float)
+    largest = values.abs().sort_values(ascending=False).index[:4].tolist()
+    assert largest == ["T30", "P15", "phi", "P30"]
+    assert [round(values[s], 3) for s in largest] == [14.061, 10.703, -9.475, -9.235]
+    assert round(values.sum(), 3) == 29.743
+    assert values.sum() == pytest.approx(float(first["predicted"]) - explained.reference, abs=1e-4)
+
+    # The test set keeps only each engine's last window: one row per named engine.
+    (on_test,) = list(shap_for_each_seed(run, seeds=[42], split="test", units=[1, 2, 3], data_dir=raw_dir))
+    rows = [on_test.tables[unit].iloc[0] for unit in (1, 2, 3)]
+    assert [len(on_test.tables[unit]) for unit in (1, 2, 3)] == [1, 1, 1]
+    assert [(int(r["end_cycle"]), float(r["rul"]), round(float(r["predicted"]), 3)) for r in rows] == [
+        (31, 112.0, 108.619), (49, 98.0, 108.083), (126, 69.0, 59.271)]
+    symbols = list(on_test.prepared.sensor_symbols)
+    assert [round(float(r[symbols].astype(float).sum()), 3) for r in rows] == [16.733, 16.198, -32.615]
+    # No engines named: each network is only loaded and checked, for a caller explaining other windows.
+    (checked,) = list(shap_for_each_seed(run, seeds=[42], units=[], data_dir=raw_dir))
+    assert checked.tables == {} and round(checked.reference, 3) == 91.885
+
+    # A record that disagrees with the saved network is refused before anything is explained.
+    altered = dataclasses.replace(run, results=run.results.assign(rmse=run.results["rmse"] + 0.01))
+    with pytest.raises(ValueError, match="where the run recorded"):
+        next(shap_for_each_seed(altered, seeds=[42], data_dir=raw_dir))
+    with pytest.raises(ValueError, match="split must be one of"):
+        next(shap_for_each_seed(run, split="everything"))
+    with pytest.raises(ValueError, match="name the engines with units="):
+        next(shap_for_each_seed(run, split="test"))
+    with pytest.raises(ValueError, match="not \\[7\\]"):
+        next(shap_for_each_seed(run, seeds=[7]))
+    with pytest.raises(ValueError, match="split='train'"):
+        longest_engine(held.subset_by_units([]))
+
+
+def test_example_the_temporal_stage_runs_once_per_window_on_the_stored_recurrent_network(raw_dir):
+    """explain/README.md: T50 and Nc of seed 42's recurrent network, engine 5's window ending at cycle 30."""
+    from thesis_gnn_rul_xai.explain import mean_window_baseline
+    from thesis_gnn_rul_xai.training import load_seed
+
+    model, prepared = load_seed(_stored_run(_STORED_RECURRENT), 42, data_dir=raw_dir)
+    stand_in_window = mean_window_baseline(prepared.train)
+    held = prepared.validation
+    rows = np.flatnonzero(held.units == 5)
+    first = rows[np.argmin(held.end_cycles[rows])]
+    assert held.end_cycles[first] == 30
+    window = held.features[first]
+    symbols = list(prepared.sensor_symbols)
+    t50, nc = symbols.index("T50"), symbols.index("Nc")
+
+    only_t50, all_but_t50 = stand_in_window.copy(), window.copy()
+    only_t50[t50], all_but_t50[t50] = window[t50], stand_in_window[t50]
+    with torch.no_grad():
+        real, stand_in, kept, replaced = (
+            model.temporal(torch.from_numpy(w[None]))[0, :, 0].numpy()
+            for w in (window, stand_in_window, only_t50, all_but_t50)
+        )
+    assert [round(float(real[t50]), 4), round(float(real[nc]), 4)] == [0.8140, 0.2757]
+    assert [round(float(stand_in[t50]), 4), round(float(stand_in[nc]), 4)] == [-0.0085, -0.0234]
+    # Each sensor's recurrent network reads its own readings only, so a mixed
+    # window hands over each sensor's real or stand-in number, unchanged.
+    is_t50 = np.arange(len(symbols)) == t50
+    np.testing.assert_array_equal(kept, np.where(is_t50, real, stand_in))
+    np.testing.assert_array_equal(replaced, np.where(is_t50, stand_in, real))
+
+
+def test_example_the_red_four_changes_almost_every_window_on_the_stored_default_network(raw_dir):
+    """explain/README.md, the red-four trap: seed 42's first four windows of engine 5, T50 handed over, Table 12 recounted."""
+    from itertools import pairwise
+
+    from thesis_gnn_rul_xai.evaluation.published import (
+        SHAP_TABLE_12,
+        SHAP_TABLE_12_GRAPHS,
+    )
+    from thesis_gnn_rul_xai.explain import mean_window_baseline, shap_values
+    from thesis_gnn_rul_xai.training import load_seed
+
+    def red_four(values, symbols):
+        order = sorted(range(len(symbols)), key=lambda i: -abs(values[i]))
+        return [symbols[i] for i in order[:4]]
+
+    model, prepared = load_seed(_stored_run(_STORED_DEFAULT), 42, data_dir=raw_dir)
+    symbols = list(prepared.sensor_symbols)
+    held = prepared.validation
+    rows = np.flatnonzero(held.units == 5)
+    rows = rows[np.argsort(held.end_cycles[rows])][:5]
+    assert held.end_cycles[rows].tolist() == [30, 31, 32, 33, 34]
+    values = shap_values(model, held.features[rows[:4]], mean_window_baseline(prepared.train))
+    fours = [red_four(v, symbols) for v in values]
+    assert [[(s, round(float(v[symbols.index(s)]), 2)) for s in four] for v, four in zip(values, fours, strict=True)] == [
+        [("T30", 14.06), ("P15", 10.70), ("phi", -9.48), ("P30", -9.24)],
+        [("T30", 13.24), ("htBleed", 11.28), ("W31", -11.11), ("Ps30", 10.20)],
+        [("htBleed", 13.89), ("T30", 11.44), ("W31", -10.97), ("W32", -8.69)],
+        [("T24", 12.95), ("htBleed", 12.90), ("W31", -11.84), ("Ps30", 10.00)],
+    ]
+    joined = [sorted(set(after) - set(before)) for before, after in pairwise(fours)]
+    assert joined == [["Ps30", "W31", "htBleed"], ["W32"], ["Ps30", "T24"]]  # six joins in three steps
+
+    # What the two temporal stages hand the graph layers for T50 on the same five windows.
+    t50 = symbols.index("T50")
+    recurrent, _ = load_seed(_stored_run(_STORED_RECURRENT), 42, data_dir=raw_dir)
+    with torch.no_grad():
+        windows = torch.from_numpy(held.features[rows])
+        default_t50 = model.temporal(windows)[:, t50, 0].numpy()
+        recurrent_t50 = recurrent.temporal(windows)[:, t50, 0].numpy()
+    assert [round(float(v), 3) for v in default_t50] == [-1.444, -1.115, -1.266, -1.020, -1.515]
+    assert [round(float(v), 3) for v in recurrent_t50] == [0.814, 0.786, 0.782, 0.756, 0.787]
+
+    # The paper's Table 12 counted the same way: one join in its 12 steps, phi at graph 191.
+    table = [[SHAP_TABLE_12[s][k] for s in symbols] for k in range(len(SHAP_TABLE_12_GRAPHS))]
+    steps = [(k, k + 1) for start in (0, 5, 10) for k in range(start, start + 4)]
+    entered = {SHAP_TABLE_12_GRAPHS[b]: sorted(set(red_four(table[b], symbols)) - set(red_four(table[a], symbols)))
+               for a, b in steps}
+    assert {graph: names for graph, names in entered.items() if names} == {191: ["phi"]}
+
+
+# --- models/estgnn.py: the temporal stage folded into Table 4's Input row ---
+
+
+def test_example_the_input_row_holds_the_temporal_stage():
+    """models/README.md's table: the Input row of the default and of the paper's recurrent stage."""
+    adjacency = normalize_adjacency(build_physics_adjacency()[0], method="row")
+    default = ESTGNN(adjacency, temporal=LastCycle(30))
+    recurrent = ESTGNN(adjacency, temporal=LSTMStage(window_size=30, n_nodes=14, hidden_size=32))
+    plain, learned = default.layer_summary(), recurrent.layer_summary()
+
+    first = {key: plain[0][key] for key in ("layer", "from", "in", "out", "parameters")}
+    assert first == {"layer": "Input", "from": "", "in": "(B, 14, 30)", "out": "(B, 14, 1)", "parameters": 0}
+    first = {key: learned[0][key] for key in ("layer", "from", "in", "out", "parameters")}
+    assert first == {"layer": "Input", "from": "LSTM", "in": "(B, 14, 30)", "out": "(B, 14, 1)",
+                     "parameters": 62_753}
+
+    # Fourteen recurrent networks of 4,480 numbers, and the 32 multipliers and one offset after them.
+    stage = recurrent.temporal
+    per_sensor = [sum(p.numel() for p in cell.parameters()) for cell in stage.cells]
+    assert per_sensor == [4_480] * 14 and sum(per_sensor) == 62_720
+    # Four parts of 32 rows each: one multiplier for the reading, 32 for the 32 numbers passed on at the
+    # cycle before (not the memory: the last test in this file shows that), two offsets.
+    shapes = {name: tuple(p.shape) for name, p in stage.cells[0].named_parameters()}
+    assert shapes == {"weight_ih_l0": (4 * 32, 1), "weight_hh_l0": (4 * 32, 32),
+                      "bias_ih_l0": (4 * 32,), "bias_hh_l0": (4 * 32,)}
+    assert 4 * (32 + 32 * 32 + 2 * 32) == 4_480
+    assert sum(p.numel() for p in stage.project.parameters()) == 32 + 1
+    assert 62_720 + 33 == 62_753
+
+    # The six rows below the Input row are the same, and the seven add up to the whole network.
+    assert plain[1:] == learned[1:] and len(plain) == len(learned) == 7
+    assert sum(row["parameters"] for row in plain) == default.count_parameters() == 61_729
+    assert sum(row["parameters"] for row in learned) == recurrent.count_parameters() == 61_729 + 62_753 == 124_482
+
+
+# --- explain/shap.py: one row of dynamic_shap, a label and fourteen averages ---
+
+
+def test_example_a_dynamic_shap_row_on_the_stored_default_run(raw_dir):
+    """explain/README.md, Dynamic: the label is capped, and a Shapley value is not a single swap."""
+    import dataclasses
+
+    from thesis_gnn_rul_xai.explain.shap import dynamic_shap, mean_window_baseline
+    from thesis_gnn_rul_xai.training import load_seed
+
+    model, prepared = load_seed(_stored_run(_STORED_DEFAULT), 42, data_dir=raw_dir)
+    held, symbols = prepared.validation, list(prepared.sensor_symbols)
+    baseline = mean_window_baseline(prepared.train)
+    rows = np.flatnonzero(held.units == 5)
+    rows = rows[np.argsort(held.end_cycles[rows])]
+    first = rows[:1]
+    one = dataclasses.replace(held, features=held.features[first], targets=held.targets[first],
+                              units=held.units[first], end_cycles=held.end_cycles[first])
+    row = dynamic_shap(model, one, baseline, unit=5, symbols=symbols).iloc[0]
+
+    # The row: cycle, label, prediction, stand-in's prediction, and fourteen values adding up to the gap.
+    assert (int(row["end_cycle"]), float(row["rul"])) == (30, 125.0)
+    assert (round(float(row["predicted"]), 3), round(float(row["baseline"]), 3)) == (121.628, 91.885)
+    values = row[symbols].astype(float)
+    assert round(float(row["predicted"]) - float(row["baseline"]), 3) == round(values.sum(), 3) == 29.743
+
+    # T30 joining first (alone into the stand-in window) and last (the other thirteen real).
+    def predict(window):
+        with torch.no_grad():
+            return float(model.predict_cycles(torch.from_numpy(window[None].astype(np.float32)))[0])
+
+    real, t30 = held.features[first[0]], symbols.index("T30")
+    alone, last = baseline.copy(), real.copy()
+    alone[t30], last[t30] = real[t30], baseline[t30]
+    assert round(predict(alone) - predict(baseline), 3) == 19.543
+    assert round(predict(real) - predict(last), 3) == 2.132
+    assert round(float(values["T30"]), 3) == 14.061
+
+    # The label is capped at 125: engine 5 ran 269 cycles, and 114 of its 240 labels sit below the truth.
+    raw = np.loadtxt(raw_dir / "train_FD001.txt")
+    lasted = int(raw[raw[:, 0] == 5, 1].max())
+    assert lasted == 269 and lasted - 30 == 239
+    truth = lasted - held.end_cycles[rows]
+    assert len(rows) == 240 and float(held.targets[rows].max()) == 125.0
+    assert int(np.sum(held.targets[rows] != truth)) == 114
+
+
+# --- docs/ASSUMPTIONS.md, A-36: PyTorch's GRU against Cho et al.'s Equation 8 ---
+
+
+def test_example_pytorch_gru_multiplies_the_reset_gate_in_after_the_memory_multipliers(raw_dir):
+    """T50's trained GRU, seed 42 of the stored GRU run, on held-back engine 5's last window."""
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.training import load_seed, read_run
+
+    folder = (Path(__file__).resolve().parents[1] / "reports" / "sensitivity_fd65a3b-dirty_20260929T101059Z"
+              / "runs" / "FD001" / "temporal_gru")
+    if not (folder / "seed_42" / "model.pt").is_file():
+        pytest.skip("The sensitivity study's stored GRU run is needed for this example; stored runs are not committed.")
+    model, prepared = load_seed(read_run(folder), 42, data_dir=raw_dir)
+    held = prepared.validation
+    rows = np.flatnonzero(held.units == 5)
+    last = rows[np.argmax(held.end_cycles[rows])]
+    assert held.end_cycles[last] == 269
+    t50 = list(prepared.sensor_symbols).index("T50")
+    x = held.features[last][t50].astype(np.float64)        # T50's 30 readings, cycles 240 to 269
+    assert [round(float(v), 6) for v in x[:2]] == [1.292245, 1.830854]
+
+    cell = model.temporal.cells[t50]                       # T50's own GRU, 32 memory slots
+    h_size = cell.hidden_size
+    w_reading = cell.weight_ih_l0.detach().double().numpy()[:, 0]
+    w_memory = cell.weight_hh_l0.detach().double().numpy()
+    b_reading = cell.bias_ih_l0.detach().double().numpy()
+    b_memory = cell.bias_hh_l0.detach().double().numpy()
+    reset_part, update_part, proposal_part = (slice(i * h_size, (i + 1) * h_size) for i in range(3))
+
+    def sigmoid(z):
+        return 1.0 / (1.0 + np.exp(-z))
+
+    def memories(reset_after):
+        h, out = np.zeros(h_size), []
+        for reading in x:
+            from_reading = w_reading * reading + b_reading
+            from_memory = w_memory @ h + b_memory
+            r = sigmoid(from_reading[reset_part] + from_memory[reset_part])
+            z = sigmoid(from_reading[update_part] + from_memory[update_part])
+            if reset_after:   # PyTorch: r times (U h + c)
+                proposal = np.tanh(from_reading[proposal_part] + r * from_memory[proposal_part])
+            else:             # Cho et al., Equation 8: U times (r times h)
+                proposal = np.tanh(from_reading[proposal_part]
+                                   + w_memory[proposal_part] @ (r * h) + b_memory[proposal_part])
+            h = z * h + (1 - z) * proposal
+            out.append(h)
+        return np.array(out)
+
+    with torch.no_grad():
+        library, _ = cell(torch.from_numpy(x.astype(np.float32)).reshape(1, 30, 1))
+    library = library[0].double().numpy()
+    after, before = memories(True), memories(False)
+    assert np.abs(after - library).max() < 1e-6
+    assert round(float(np.abs(before - library).max()), 3) == 0.505
+    w_project = model.temporal.project.weight.detach().double().numpy()[0]
+    b_project = float(model.temporal.project.bias.detach())
+    handed_on = [round(float(w_project @ m[-1] + b_project), 3) for m in (after, before)]
+    assert handed_on == [2.072, 2.267]
+
+
+# --- models/README.md: which of an LSTM's two carried lists its 1,024 multipliers act on ---
+
+
+def test_example_the_lstm_multipliers_act_on_what_was_passed_on_not_on_the_memory(raw_dir):
+    """models/README.md: with weight_hh zeroed, the numbers passed on at the start stop mattering; the memory does not."""
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    prepared = run_preprocessing(PreprocessingConfig(), data_dir=raw_dir)
+    t30 = list(prepared.sensor_symbols).index("T30")
+    window = torch.from_numpy(prepared.train.features[:1, t30, :, None].astype(np.float32))
+    assert tuple(window.shape) == (1, 30, 1)   # one window, 30 cycles, one reading per cycle
+    torch.manual_seed(0)
+    cell = LSTMStage(window_size=30, n_nodes=14, hidden_size=32).cells[t30]
+    assert tuple(cell.weight_hh_l0.shape) == (4 * 32, 32)   # the 4 x 1,024 multipliers
+
+    zeros, ones = torch.zeros(1, 1, 32), torch.ones(1, 1, 32)
+    with torch.no_grad():
+        cell.weight_hh_l0.zero_()
+        # The starting state is (what is passed on, the memory); change one at a time.
+        start = cell(window, (zeros, zeros))[0]
+        other_passed_on = cell(window, (ones, zeros))[0]
+        other_memory = cell(window, (zeros, ones))[0]
+    assert tuple(start.shape) == (1, 30, 32)   # what is passed on after each of the 30 cycles
+    assert torch.equal(start, other_passed_on)   # at every cycle, to the last digit
+    # After the first cycle the starting memory still shows; the forgetting part shrinks it every cycle after.
+    assert float((start[0, 0] - other_memory[0, 0]).abs().max()) > 0.1

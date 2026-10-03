@@ -162,7 +162,7 @@ FIELDS: tuple[dict[str, Any], ...] = (
                     "each reading with a numerical memory of earlier readings. It carries one memory vector, "
                     "a list of numbers, between cycles; the LSTM carries two. Memory starts afresh for each "
                     "window. This is an alternative model added by this project."),
-          "source": _extension("an alternative to the paper's LSTM")},
+          "source": _source("extension", "A-36", "an alternative to the paper's LSTM, at the LSTM stage's size")},
          {"value": "mean_window", "label": "Average over the window",
           "about": ("Passes the ordinary average of each sensor's preprocessed readings in the window to the "
                     "graph: add them and divide by the window length. Each sensor contributes one number. "
@@ -415,6 +415,58 @@ PROCEDURES = (
 )
 
 
+# The Greek letter gamma, the name the GNN-LRP paper gives the rule's setting,
+# made from its code point because ruff reads the letter itself as a Latin y.
+_GAMMA = chr(0x03B3)
+
+# What the Explain tab's setting of the walk rule is for, behind the i beside
+# its name. Its options come from different places, so, as for the temporal
+# stage and the graph in the Design tab, each option carries its own source
+# and the row none. Why the first graph layer gets 0 is said here once, not
+# again in every option; only the authors' option names that layer, because
+# its label would otherwise claim the authors' numbers there too.
+GAMMA_ABOUT = ("Decides how a walk explanation divides each graph layer's numbers among the sensors that "
+               "sent them. Extra weight for positive contributions shrinks the negative shares, while every "
+               "option keeps the same total and leaves the prediction unchanged. Explaining the same windows "
+               "under two options shows how far the largest walks depend on this choice. Under every option "
+               "the first graph layer gets no extra weight, because its inputs can be negative.")
+
+# The settings of the walk rule a reader may choose, the first the default.
+# The value is what scripts/explain.py takes as --gamma, which turns it into
+# one number per graph layer, always 0 at the first. The two after the
+# baseline are the two that assumption A-29 compares with the authors' when
+# it measures how far a ranking of connections moves with gamma.
+GAMMA_SETTINGS = (
+    {"value": "authors", "label": "The authors' setting",
+     "about": ("The default of the method's authors, except that the first graph layer gets no extra weight: "
+               "positive contributions get extra weight that falls in equal steps to none at the last graph "
+               "layer, so with three graph layers only the middle one is weighted."),
+     "source": _choice("A-29", f"{_GAMMA} 0, 1.5 and 0 for three graph layers: the default of the authors' "
+                               "published code, 3 falling in equal steps to 0, with its first value replaced")},
+    {"value": "gnn-gi", "label": "No extra weight",
+     "about": ("Gives positive contributions no extra weight at any graph layer, so each walk's share is its "
+               "starting number times the multipliers along it. The method's authors call this their simpler "
+               "baseline and report it as noisier."),
+     "source": _source("extension", "A-29", f"{_GAMMA} 0 at every graph layer: the baseline the GNN-LRP paper "
+                                            "calls GNN-GI")},
+    {"value": "falling", "label": "Halving extra weight",
+     "about": ("Counts a positive contribution half again as much at the second graph layer, then halves "
+               "that extra at each later layer: a quarter more at the third. With three graph layers it "
+               "weights the middle one less than the authors' setting and the last one more."),
+     "source": _source("extension", "A-29", f"{_GAMMA} 0, 0.5 and 0.25 for three graph layers: the halving "
+                                            "the GNN-LRP paper uses for VGG-16 (its Section 5.3), started here "
+                                            "at the second graph layer; the numbers for this network are ours, "
+                                            "one of the two settings the assumptions log compares with the "
+                                            "authors'")},
+    {"value": "flat", "label": "Equal extra weight after the first layer",
+     "about": ("Counts a positive contribution twice at every graph layer after the first. Unlike the "
+               "authors' setting, it also weights the last graph layer."),
+     "source": _source("extension", "A-29", f"{_GAMMA} 0, then 1 at every later graph layer: ours, the other "
+                                            "setting the assumptions log compares with the authors'")},
+)
+_GAMMA_LABELS = {setting["value"]: setting["label"] for setting in GAMMA_SETTINGS}
+
+
 # Where the "Read more" at the foot of an i leads, opened in a new tab: the part
 # of the documentation that explains a setting (by its key), an option
 # ("key=value") or an option of
@@ -465,6 +517,7 @@ _READ_MORE: dict[str, tuple[str, str]] = {
     "explain=shap": ("docs/learn/10_dynamic_shap.md", "3 — Average what each sensor adds"),
     "explain=occlusion": ("docs/learn/10_dynamic_shap.md", "3 — Average what each sensor adds"),
     "explain=walks": ("docs/learn/11_gnn_lrp.md", "1 — Follow the graph calculation"),
+    "explain=gamma": ("docs/learn/11_gnn_lrp.md", f"The rule, and its setting {_GAMMA}"),
     "explain=engine": ("docs/learn/10_dynamic_shap.md", "5 — Repeat along an engine's history"),
     "explain=test": ("docs/learn/03_explainability.md", "Why a number is not enough"),
     "explain=every": ("docs/learn/10_dynamic_shap.md", "5 — Repeat along an engine's history"),

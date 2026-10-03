@@ -163,26 +163,23 @@ class ESTGNN(nn.Module):
         )
 
     def layer_summary(self) -> list[dict[str, object]]:
-        """List every layer in the same form as the paper's Table 4."""
+        """List every layer in the form of the paper's Table 4, the temporal stage folded into its Input row."""
         rows: list[dict[str, object]] = []
         width = self.in_features
-        rows.append(
-            {
-                "layer": "Temporal",
-                "type": type(self.temporal).__name__,
-                "in": f"(B, {self.n_nodes}, {self.temporal.window_size})",
-                "out": f"(B, {self.n_nodes}, {self.temporal.out_features})",
-                "parameters": sum(p.numel() for p in self.temporal.parameters()),
-                "activation": "-",
-            }
-        )
+        learned = sum(p.numel() for p in self.temporal.parameters())
+        # The stage is named only when it learns numbers; README.md says why.
+        source = ""
+        if learned:
+            kind = getattr(self.temporal, "cell_kind", None)
+            source = str(kind).upper() if kind else type(self.temporal).__name__
         rows.append(
             {
                 "layer": "Input",
                 "type": "Node features",
-                "in": f"(B, {self.n_nodes}, {width})",
+                "from": source,
+                "in": f"(B, {self.n_nodes}, {self.temporal.window_size})",
                 "out": f"(B, {self.n_nodes}, {width})",
-                "parameters": 0,
+                "parameters": learned,
                 "activation": "-",
             }
         )

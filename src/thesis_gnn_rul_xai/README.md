@@ -246,10 +246,74 @@ The section above explains the ones that need more than a line.
 | `adjacency_normalization` | `"row"` | How that graph is rescaled before use (assumption A-21). |
 | `validation_fraction` | `0.2` | What share of the **engines** to hold back. `0.0` holds nothing back, which is the paper's arrangement; 0.2 is this project's addition. Never split by window (assumption A-06). |
 | `seed` | `42` | Fixes which engines get held back. |
-| `notes` | — | Free text saved with the settings. |
+| `notes` | — | Free text saved with the settings. It changes no number, so the digest below leaves it out. |
 
 `save(path)` writes them to a YAML file, `to_dict()` returns them as a plain
 dictionary, and `load_config(path)` reads a file back.
+
+### The six characters that name a configuration: `digest()`
+
+`scripts/train.py` saves every run in a folder whose name carries `cfg`
+followed by six characters, such as `cfg818b40`. Those six characters are the
+configuration's **digest**: a short code computed from the settings, the same
+every time for the same settings and different when any one of them changes.
+It is there so that two runs whose settings differ anywhere get different
+folder names, even when nobody thought of writing the setting that differs into
+the name in words.
+
+`digest()` makes it in three steps. For `config/fd001.yaml`:
+
+1. `settings_without_notes(config.to_dict())` keeps the eleven settings and
+   leaves out `notes`, the one field of free prose. A sentence changes no
+   number, so it must not change the name.
+2. Those eleven are written as JSON text, a standard way of writing data as
+   characters, with the names in alphabetical order so that the same settings
+   always become the same text:
+
+   ```text
+   {"adjacency_normalization": "row", "clip_test_labels": true, "graph": "physics", "normalization": "zscore", "rul_max": 125, "seed": 42, "smoothing_alpha": 0.5, "subset": "FD001", "validation_fraction": 0.2, "window_size": 30, "window_stride": 1}
+   ```
+
+3. SHA-256, a standard function that turns any text into 64 hexadecimal
+   characters (the digits 0 to 9 and the letters a to f), turns that line into
+   `818b40380ec2c6a8...`; change a single character of the text and the output
+   changes beyond recognition. The first six characters, `818b40`, are the
+   digest.
+
+`PreprocessingConfig()`, built without a file, carries a different sentence in
+`notes` and the same eleven settings, so it gives `818b40` as well.
+`config/fd001_uncapped.yaml` differs in one setting, `clip_test_labels`, and
+gives `7c2c29`.
+
+`settings_without_notes(values)` is the one place in the package and its
+scripts that decides which saved fields count as settings. The digest uses it,
+and so do the four places that ask whether two sets of settings are alike:
+`find_runs` in `training/stored.py`, the playground's comparison of two runs,
+`scripts/baselines.py`'s check of a second run, and the store in
+`scripts/verify_claims.py` that trains one network per set of settings and
+hands it to every check that asks for the same settings again.
+
+Two settings can also be written differently and still be equal. A YAML file
+may hold `validation_fraction: 0` where another holds `0.0`; Python counts the
+two as equal, so `find_runs` would match them, but as JSON text they are `0`
+and `0.0`, and the digest would differ. So `PreprocessingConfig` stores every
+number as the type its field declares the moment it is built:
+`PreprocessingConfig(validation_fraction=0)` holds `0.0` and gives `2c9b5b`,
+the same as `validation_fraction=0.0`; until that was added on 2026-10-03 it
+kept the `0` and gave `e950d9`. Whole-number fields go the other way, so
+`rul_max=125.0` is held as `125`. With both in place, the saved settings of a
+run that `find_runs` returns give the same digest as the settings it was asked
+for, whatever code that run's folder name carries. All 141 saved settings
+files under `reports/` on 2026-10-03 already held every number as its declared
+type, so this changed none of their digests.
+
+**Until 2026-10-03 the notes were hashed too**, so editing a sentence renamed
+every run made afterwards: `PreprocessingConfig()` gave `e3a331` and
+`config/fd001.yaml` gave `ba82e3` for the same eleven settings. Stored runs
+keep the names they were given, so a run made since then can carry a
+different `cfg` part from a stored run with identical settings.
+`training/README.md` lists every old code found in a stored folder name beside
+its new one.
 
 ## Reading order
 

@@ -366,6 +366,50 @@ older runs lack it, and nothing reads it as required.
 | `seed_N/split.json` | The engine numbers this seed trained on, held back and was scored on. |
 | `seed_N/scaling.csv` | The average, spread, lowest and highest value the scaling measured for each sensor on this seed's training engines. |
 
+#### The `cfg` code in a run folder's name, and its change of 2026-10-03
+
+A run folder's name reads like
+`fd001_physics_row_cap_5seed_varsplit_cfg818b40_<commit>_<time>`: the
+sub-dataset, the sensor graph, how the graph is rescaled, whether the test
+labels are capped, the number of seeds, whether the held-back engines change
+with the seed, a mark for each network or training choice away from its
+default (such as `_lstm32` for the recurrent stage of hidden size 32), then
+`cfg` and six characters, then the commit and the time it finished. The six
+characters are the digest of the preprocessing settings, a short code that
+changes whenever any setting does; the package's own `README.md`, one folder
+up, works one out by hand. The same code is written into `summary.json` as
+`config_digest`.
+
+**On 2026-10-03 the code stopped counting the `notes`**, the sentence of free
+prose saved with the settings. Before that, a run's code changed whenever the
+sentence did, so runs with identical settings were filed under different codes.
+Stored runs keep their names, since a stored result is never renamed, so the
+same settings now appear under an old code in folders written by the code from
+before the change and under the new one in folders written by the code since.
+A run trained from a checkout of an older commit still gets an old code.
+Measured on 2026-10-03 over the 50 runs stored in `reports/` whose names carry
+a code: they used 16 old codes for 10 different sets of settings, and none yet
+carried a new one.
+
+| New code | Old codes in stored folder names (how many runs) | How the settings differ from `config/fd001.yaml` |
+|---|---|---|
+| `818b40` | `ba82e3` (15), `72f506` (4) | none; `PreprocessingConfig()` gave `e3a331` |
+| `2c9b5b` | `00be26` (6), `722cd2` (4), `ee5482` (1) | nothing held back (`validation_fraction` 0.0) |
+| `5ebd59` | `5d7c10` (6), `31648f` (1) | graph rescaled `symmetric` |
+| `c9dec2` | `7fdfce` (2), `c7e4ad` (1) | `correlation` graph |
+| `9ea488` | `b017ba` (2), `2b37a4` (1) | `symmetric`, and nothing held back |
+| `25dd1e` | `d20b12` (2) | `complete` graph, and nothing held back |
+| `7b9a7b` | `f21547` (2) | `complete` graph |
+| `a82754` | `8ff2ea` (1) | `minmax_per_condition` scaling |
+| `d53000` | `d3d83e` (1) | `minmax_per_condition`, and nothing held back |
+| `7c2c29` | `e49671` (1) | test labels not capped (`config/fd001_uncapped.yaml`) |
+
+So two runs belong together when their saved settings agree, not when their
+names do. `find_runs` compares the saved settings, never the name, and is the
+way to collect every run of one configuration across the change.
+`tests/test_run_records.py` checks that every stored name carries the code of
+the settings saved beside it, under one rule or the other.
+
 #### A stored run must still reproduce
 
 A number in the documents is quoted from a stored run, and a stored run is a

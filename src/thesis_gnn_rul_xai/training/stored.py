@@ -14,7 +14,7 @@ from typing import Any
 import pandas as pd
 import torch
 
-from ..config import PreprocessingConfig, load_config
+from ..config import PreprocessingConfig, load_config, settings_without_notes
 from ..data.pipeline import PreparedData, run_preprocessing
 from ..models import ESTGNN, ModelConfig, build_model, load_model_config
 from ..utils.paths import reports_dir
@@ -91,9 +91,7 @@ def find_runs(
     """Every stored run matching the given settings, oldest first."""
     root = Path(root) if root is not None else reports_dir()
     wanted = (
-        {k: v for k, v in preprocessing.to_dict().items() if k != "notes"}
-        if preprocessing is not None
-        else {}
+        settings_without_notes(preprocessing.to_dict()) if preprocessing is not None else {}
     )
     found: list[StoredRun] = []
     for path in sorted(root.iterdir()) if root.is_dir() else []:

@@ -22,7 +22,13 @@ import yaml
 from ...utils.logging_setup import get_logger
 from .commands import explain_arguments, preprocessing_settings, train_arguments
 from .runs import _clean
-from .settings import _METHOD_NAMES, _STAGE_NAMES, SettingsError
+from .settings import (
+    _GAMMA_LABELS,
+    _METHOD_NAMES,
+    _STAGE_NAMES,
+    GAMMA_SETTINGS,
+    SettingsError,
+)
 
 logger = get_logger(__name__)
 
@@ -72,6 +78,12 @@ def explanation_label(request: Mapping[str, Any]) -> str:
         parts.append("longest engine" if engine is None else f"engine {engine}")
     if request.get("seed") is not None:
         parts.append(f"seed {request['seed']}")
+    # The default setting of the walk rule goes unnamed; any other is named,
+    # so two walk explanations of the same windows can be told apart.
+    gamma = request.get("gamma")
+    if method == "walks" and gamma in _GAMMA_LABELS and gamma != GAMMA_SETTINGS[0]["value"]:
+        label = _GAMMA_LABELS[gamma]
+        parts.append(label[:1].lower() + label[1:])
     return " · ".join(parts)
 
 
@@ -86,7 +98,7 @@ def _explain_request(folder: Path, command: str, progress: Mapping[str, Any]) ->
     request: dict[str, Any] = {"method": progress.get("method"), "scope": progress.get("scope")}
     words = command.split()
     for flag, key in (("--method", "method"), ("--scope", "scope"),
-                      ("--seed", "seed"), ("--engine", "engine")):
+                      ("--seed", "seed"), ("--engine", "engine"), ("--gamma", "gamma")):
         if flag in words[:-1]:
             value = words[words.index(flag) + 1]
             request[key] = int(value) if value.isdigit() else value
@@ -106,6 +118,8 @@ def _explain_request(folder: Path, command: str, progress: Mapping[str, Any]) ->
                             if summary.get(key) is not None})
             if summary.get("unit") is not None:
                 request["engine"] = summary["unit"]
+            if summary.get("gamma_setting") is not None:
+                request["gamma"] = summary["gamma_setting"]
     return request
 
 

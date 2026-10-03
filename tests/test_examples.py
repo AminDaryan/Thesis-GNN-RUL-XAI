@@ -59,8 +59,11 @@ def test_example_engine_overlay_preserves_real_walk_values_and_grouped_paths():
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is needed to check the browser's engine drawing.")
+    # A short check made at another setting of the walk rule (explain.py
+    # --gamma) is not an explanation these examples read; a full one is.
     stored = next((p for p in sorted((root / "reports").glob("*/explanations/*/summary.json"))
-                   if json.loads(p.read_text(encoding="utf-8")).get("method") == "walks"), None)
+                   if (s := json.loads(p.read_text(encoding="utf-8"))).get("method") == "walks"
+                   and s.get("windows", 0) >= 3 and s.get("gamma_setting", "authors") == "authors"), None)
     if stored is None:
         pytest.skip("A stored graph-walk explanation of the real FD001 data is needed.")
     data = playground.explanation_detail(root, stored.parents[2].name, stored.parent.name)
@@ -139,9 +142,12 @@ def test_example_shared_selection_updates_on_input_without_replacing_controls(sc
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is needed to check the browser's live selection.")
+    # At least three windows, since the slider moves to the third; and not a
+    # short check made at another setting of the walk rule (explain.py --gamma).
     stored = next((p for p in sorted((root / "reports").glob("*/explanations/*/summary.json"))
                    if (s := json.loads(p.read_text(encoding="utf-8"))).get("method") == "walks"
-                   and s.get("scope") == scope), None)
+                   and s.get("scope") == scope and s.get("windows", 0) >= 3
+                   and s.get("gamma_setting", "authors") == "authors"), None)
     if stored is None:
         pytest.skip("A stored graph-walk explanation of the real FD001 data is needed.")
     data = playground.explanation_detail(root, stored.parents[2].name, stored.parent.name)
@@ -755,7 +761,6 @@ def test_example_stored_predictions_obey_the_two_capping_guarantees(raw_dir):
 def test_example_a_different_constant_breaks_the_adding_up_or_the_order(loaded):
     """Measuring stored Shapley values from the mean label breaks either the adding-up or the order by size."""
     # Assumption A-24 in docs/ASSUMPTIONS.md, corrected 2026-10-02.
-    import hashlib
     import json
     from pathlib import Path
 
@@ -770,10 +775,11 @@ def test_example_a_different_constant_breaks_the_adding_up_or_the_order(loaded):
     assert len(labels) == 17731
     mean_label = float(labels.mean())
     assert mean_label == pytest.approx(80.638, abs=5e-4)
-    # The run-name digest scripts/train.py writes; runs carrying it share these labels.
-    digest = hashlib.sha256(
-        json.dumps(config.to_dict(), sort_keys=True, default=str).encode()
-    ).hexdigest()[:6]
+    # Runs prepared with these settings share these labels. They are picked by
+    # the settings each run saved, not by the digest in its folder name: until
+    # 2026-10-03 that digest also hashed the prose notes, so runs with these
+    # settings carry cfgba82e3 or cfg72f506 depending on their notes.
+    digest = config.digest()
     named = ("fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z",
              "shap_engine_unit5_seed42_c2bf7d4-dirty_20260916T070850Z")
 
@@ -797,7 +803,11 @@ def test_example_a_different_constant_breaks_the_adding_up_or_the_order(loaded):
         assert np.ptp(miss) < 1e-3
         assert miss[0] == pytest.approx(table["baseline"].iloc[0] - mean_label, abs=1e-3)
         checked += 1
-        if f"_cfg{digest}_" not in path.parents[2].name:
+        try:
+            saved = load_config(path.parents[2] / "preprocessing_config.yaml")
+        except (FileNotFoundError, ValueError, TypeError):
+            continue  # no settings file, or a setting renamed since; find_runs skips both
+        if saved.digest() != digest:
             continue
         # Reading 2: a fourteenth of the gap added to every value adds up again,
         # but values of both signs change size in opposite directions.
@@ -875,3 +885,321 @@ def test_example_occlusion_can_equal_the_shapley_value_despite_interactions():
         assert shapley == occlusion == 2.0
     # So here the three occlusion values happen to add up to the whole change.
     assert 3 * 2.0 == value({0, 1, 2}) - value(set()) == 6.0
+
+
+# --- scripts/baselines.py ---------------------------------------------
+
+
+def test_example_the_three_summaries_an_ordinary_model_gets_for_one_window(raw_dir):
+    """T50 of engine 1 over its cycles 1 to 30, smoothed and scaled under seed 42: last, average, slope."""
+    # The window of the window-summary stage's example in models/temporal/README.md;
+    # the baselines script gives its slope per cycle, where the stage multiplies by 29.
+    import importlib.util
+    import sys
+    from dataclasses import replace
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    name = "baselines_script"
+    if name not in sys.modules:
+        path = Path(__file__).resolve().parents[1] / "scripts" / "baselines.py"
+        spec = importlib.util.spec_from_file_location(name, path)
+        sys.modules[name] = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sys.modules[name])
+    script = sys.modules[name]
+
+    prepared = run_preprocessing(replace(PreprocessingConfig(), seed=42), data_dir=raw_dir)
+    first = int(np.where(prepared.train.units == 1)[0][0])
+    assert prepared.train.end_cycles[first] == 30
+    sensor = list(prepared.sensor_symbols).index("T50")
+    readings = prepared.train.features[first, sensor].astype(np.float64)
+
+    # slope = sum(t x reading) / sum(t x t), with t = -14.5, -13.5, ..., +14.5
+    steps = np.arange(30) - 14.5
+    assert (steps * steps).sum() == 2247.5
+    assert round(float((steps * readings).sum()), 6) == -27.887838
+    slope = float((steps * readings).sum()) / 2247.5
+    assert round(slope, 6) == -0.012408
+    assert slope == pytest.approx(np.polyfit(np.arange(30), readings, 1)[0], abs=1e-12)
+
+    # One row per window and 42 columns: 14 last readings, 14 averages, 14 slopes.
+    summaries = script.model_inputs(prepared.train, "last+mean+slope")
+    assert summaries.shape == (len(prepared.train), 42)
+    row = summaries[first, [sensor, 14 + sensor, 28 + sensor]]
+    assert [round(float(value), 4) for value in row[:2]] == [-1.2938, -1.0449]
+    assert row[2] == pytest.approx(slope, abs=1e-12)
+
+
+def test_example_a_paired_t_test_over_five_seeds_worked_by_hand():
+    """The last-cycle network minus the recurrent one, seed by seed: t = 8.978, p = 0.00085, as the log records."""
+    from scipy.stats import t as student_t
+    from scipy.stats import ttest_rel
+
+    from thesis_gnn_rul_xai.utils.paths import reports_dir
+
+    names = {
+        "last": "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z",
+        "recurrent": "fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z",
+    }
+    paths = {key: reports_dir() / name / "results.csv" for key, name in names.items()}
+    if not all(path.is_file() for path in paths.values()):
+        pytest.skip("the two stored runs of 2026-09-14 are not in reports/")
+    stored = {key: pd.read_csv(path).set_index("seed")["rmse"] for key, path in paths.items()}
+    assert list(stored["last"].index) == list(stored["recurrent"].index) == [42, 43, 44, 45, 46]
+
+    # The RMSE of each seed as printed in evaluation/README.md, to four places.
+    last = np.array([round(float(v), 4) for v in stored["last"]])
+    recurrent = np.array([round(float(v), 4) for v in stored["recurrent"]])
+    assert last.tolist() == [16.6949, 16.1311, 16.8432, 15.9704, 16.8427]
+    assert recurrent.tolist() == [12.4274, 13.8228, 13.2695, 13.4379, 13.5790]
+
+    differences = last - recurrent  # the network's RMSE minus the other row's
+    assert differences.round(4).tolist() == [4.2675, 2.3083, 3.5737, 2.5325, 3.2637]
+    average = differences.sum() / 5
+    assert round(average, 4) == 3.1891
+    squares = (differences - average) ** 2
+    assert squares.round(4).tolist() == [1.1629, 0.7759, 0.1479, 0.4312, 0.0056]
+    spread = np.sqrt(squares.sum() / (5 - 1))
+    assert round(spread, 4) == 0.7943
+    standard_error = spread / np.sqrt(5)
+    assert round(standard_error, 4) == 0.3552
+    t = average / standard_error
+    assert round(t, 3) == 8.978
+
+    # Five differences whose true average is zero give a t between -2.776 and
+    # +2.776 in 95 % of repetitions; 8.978 lies far outside.
+    assert round(float(student_t.ppf(0.975, 5 - 1)), 3) == 2.776
+    p = 2 * float(student_t.sf(abs(t), 5 - 1))
+    assert round(p, 5) == 0.00085
+
+    # The same from the unrounded scores, by scipy, which scripts/baselines.py uses.
+    unrounded = ttest_rel(stored["last"].to_numpy(), stored["recurrent"].to_numpy())
+    assert round(float(unrounded.statistic), 3) == 8.978
+    assert round(float(unrounded.pvalue), 5) == 0.00085
+
+
+# --- the audit of 2026-09-08: the every-sensor graph -----------------------
+
+
+def test_example_the_every_sensor_graph_hands_every_sensor_the_same_average(raw_dir):
+    """Joined to every other sensor, every sensor receives the plain average (assumption A-19)."""
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.graph.adjacency import build_fully_connected_adjacency
+
+    prepared = run_preprocessing(PreprocessingConfig(), data_dir=raw_dir)
+    readings = prepared.test.features[0, :, -1].astype(np.float64)  # engine 1, last cycle, 14 sensors
+    assert prepared.test.units[0] == 1
+    assert [round(float(v), 6) for v in readings[:3]] == [-0.427191, -1.224639, -1.10717]
+    assert round(float(readings.mean()), 6) == -0.22801
+
+    for method in ("row", "symmetric"):
+        every = normalize_adjacency(build_fully_connected_adjacency()[0], method=method)
+        every = every.astype(np.float64)
+        np.testing.assert_allclose(every, np.full((14, 14), 1 / 14))
+        assert np.linalg.matrix_rank(every) == 1
+        np.testing.assert_allclose(every @ readings, np.full(14, readings.mean()))
+
+        # The paper's graph, for contrast: nine distinct rows, eight independent (finding F-18).
+        paper = normalize_adjacency(build_physics_adjacency()[0], method=method).astype(np.float64)
+        assert len({tuple(np.round(row, 12)) for row in paper}) == 9
+        assert np.linalg.matrix_rank(paper) == 8
+
+
+# --- scripts/baselines.py: a tree model sees its inputs in single precision ---
+
+
+def test_example_a_tree_model_rounds_its_inputs_to_single_precision(raw_dir):
+    """Default settings, seed 42: rescaling the slope or re-rounding the average moves gradient boosting, not linear regression."""
+    import importlib.util
+    import sys
+    from dataclasses import replace
+    from pathlib import Path
+
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.linear_model import LinearRegression
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+
+    name = "baselines_script"
+    if name not in sys.modules:
+        path = Path(__file__).resolve().parents[1] / "scripts" / "baselines.py"
+        spec = importlib.util.spec_from_file_location(name, path)
+        sys.modules[name] = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sys.modules[name])
+    script = sys.modules[name]
+
+    # The settings and first seed of the stored default run of 2026-09-14.
+    prepared = run_preprocessing(replace(PreprocessingConfig(), seed=42), data_dir=raw_dir)
+    assert prepared.train.features.shape == (14459, 14, 30)
+    assert prepared.train.features.dtype == np.float32
+    assert (len(set(prepared.train.units)), len(set(prepared.validation.units))) == (80, 20)
+    labels = prepared.train.targets.astype(np.float64)
+    truth = prepared.test.targets.astype(np.float64)
+
+    def predicted(model, train_inputs, test_inputs):
+        model.fit(train_inputs, labels)
+        return np.clip(model.predict(test_inputs), 0, 125)
+
+    # The slope per cycle, and the same slope times 29 as the window-summary stage gives it.
+    slope_train = script.model_inputs(prepared.train, "slope")
+    slope_test = script.model_inputs(prepared.test, "slope")
+    per_cycle = predicted(GradientBoostingRegressor(random_state=42), slope_train, slope_test)
+    whole_window = predicted(GradientBoostingRegressor(random_state=42), 29 * slope_train, 29 * slope_test)
+    assert round(rmse(truth, per_cycle), 3) == 13.320
+    assert round(rmse(truth, whole_window), 3) == 13.238
+    assert round(float(np.abs(per_cycle - whole_window).max()), 1) == 5.4
+    # Linear regression takes a weight 29 times smaller instead, and predicts the same.
+    linear_per_cycle = predicted(LinearRegression(), slope_train, slope_test)
+    linear_whole_window = predicted(LinearRegression(), 29 * slope_train, 29 * slope_test)
+    assert float(np.abs(linear_per_cycle - linear_whole_window).max()) < 1e-13
+
+    # The average as the script takes it, in double precision, and as NumPy takes it in single.
+    double = script.model_inputs(prepared.train, "mean")
+    single = prepared.train.features.mean(axis=2)
+    assert (double.dtype, single.dtype) == (np.float64, np.float32)
+    differ = double.astype(np.float32) != single
+    assert (int(differ.sum()), differ.size) == (106726, 202426)
+    largest = float(np.abs(double.astype(np.float32).astype(np.float64) - single).max())
+    assert largest == pytest.approx(7.2e-7, abs=5e-9)
+
+    test_double = script.model_inputs(prepared.test, "mean")
+    from_double = predicted(GradientBoostingRegressor(random_state=42), double, test_double)
+    from_single = predicted(GradientBoostingRegressor(random_state=42), single, prepared.test.features.mean(axis=2))
+    assert round(rmse(truth, from_double), 3) == 21.842
+    assert round(rmse(truth, from_single), 3) == 21.689
+    # Gradient boosting rounds the double-precision average to single precision itself:
+    # rounding it by hand first changes no prediction.
+    rounded_by_hand = predicted(
+        GradientBoostingRegressor(random_state=42), double.astype(np.float32), test_double.astype(np.float32)
+    )
+    np.testing.assert_array_equal(rounded_by_hand, from_double)
+
+
+# --- config.py: the six characters after "cfg" in a run's folder name ------
+
+
+def test_example_the_configuration_digest_is_built_from_the_settings_without_the_notes():
+    """The digest of config/fd001.yaml, by hand in three steps, and the default object giving the same."""
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from thesis_gnn_rul_xai.config import (
+        PreprocessingConfig,
+        load_config,
+        settings_without_notes,
+    )
+
+    config = load_config(Path(__file__).resolve().parents[1] / "config" / "fd001.yaml")
+    # Step 1: the twelve saved fields with the prose notes left out, eleven settings.
+    settings = settings_without_notes(config.to_dict())
+    assert (len(config.to_dict()), len(settings)) == (12, 11)
+    # Step 2: those settings as one line of text, the names in alphabetical order.
+    text = json.dumps(settings, sort_keys=True, default=str)
+    assert text == (
+        '{"adjacency_normalization": "row", "clip_test_labels": true, "graph": "physics", '
+        '"normalization": "zscore", "rul_max": 125, "seed": 42, "smoothing_alpha": 0.5, '
+        '"subset": "FD001", "validation_fraction": 0.2, "window_size": 30, "window_stride": 1}'
+    )
+    # Step 3: the SHA-256 code of that text, and its first six characters.
+    by_hand = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert by_hand.startswith("818b40380ec2c6a8")
+    assert by_hand[:6] == config.digest() == "818b40"
+    # The object built with no file has other notes and the same eleven settings.
+    default = PreprocessingConfig()
+    assert default.notes != config.notes
+    assert default.digest() == "818b40"
+    # config/fd001_uncapped.yaml differs in one setting, the cap on the test labels.
+    uncapped = load_config(Path(__file__).resolve().parents[1] / "config" / "fd001_uncapped.yaml")
+    assert [k for k in settings if settings[k] != settings_without_notes(uncapped.to_dict())[k]] == [
+        "clip_test_labels"
+    ]
+    assert uncapped.digest() == "7c2c29"
+
+
+# --- docs/ASSUMPTIONS.md, A-35: which window graph g of Table 12 is ---------
+
+
+def test_example_reading_graph_g_as_another_window_moves_the_red_four_count_but_not_its_order():
+    """The joins over Table 12's 12 steps on stored engine 5, at every shift of graph g's window."""
+    import json
+
+    from thesis_gnn_rul_xai.evaluation.published import (
+        SHAP_TABLE_12,
+        SHAP_TABLE_12_GRAPHS,
+    )
+    from thesis_gnn_rul_xai.utils.paths import reports_dir
+
+    stored = {
+        "last_cycle": ("fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f386291-dirty_20260914T150004Z",
+                       "shap_engine_unit5_seed42_f386291-dirty_20260914T161425Z"),
+        "lstm": ("fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z",
+                 "shap_engine_unit5_seed42_f386291-dirty_20260914T135414Z"),
+    }
+    folders = {stage: reports_dir() / run / "explanations" / name for stage, (run, name) in stored.items()}
+    if not all((folder / "values.csv").is_file() for folder in folders.values()):
+        pytest.skip("The two stored Shapley explanations of engine 5 made on 2026-09-14 are not in reports/.")
+    sensors = list(SHAP_TABLE_12)
+
+    def red_four(values):
+        order = sorted(range(len(sensors)), key=lambda i: -abs(values[i]))
+        return {sensors[i] for i in order[:4]}
+
+    # The 12 steps inside graphs 1-5, 78-82 and 187-191, as pairs of Table 12's fifteen columns.
+    steps = [(k, k + 1) for start in (0, 5, 10) for k in range(start, start + 4)]
+    assert len(steps) == 12
+
+    def joins(rows):
+        return sum(len(red_four(rows[after]) - red_four(rows[before])) for before, after in steps)
+
+    paper = [[SHAP_TABLE_12[s][column] for s in sensors] for column in range(15)]
+    assert joins(paper) == 1
+
+    counted = {}
+    for stage, folder in folders.items():
+        summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+        assert (summary["unit"], summary["seed"], summary["every"]) == (5, 42, 1)
+        table = pd.read_csv(folder / "values.csv").sort_values("end_cycle")
+        # Every window of engine 5, one cycle apart, the first ending at cycle 30.
+        assert table["end_cycle"].tolist() == list(range(30, 270))
+        values = table[sensors].to_numpy()
+        # The reading used: graph g is row g - 1, the window ending at cycle g + 29.
+        assert table["end_cycle"].iloc[SHAP_TABLE_12_GRAPHS[-1] - 1] == 220
+        # Shift k puts graph g at the window ending at cycle g + 29 + k; the
+        # last shift puts graph 191 at the engine's last window, cycle 269.
+        shifts = range(len(values) - SHAP_TABLE_12_GRAPHS[-1] + 1)
+        counted[stage] = np.array([joins(values[[g - 1 + k for g in SHAP_TABLE_12_GRAPHS]]) for k in shifts])
+    assert {stage: len(c) for stage, c in counted.items()} == {"last_cycle": 50, "lstm": 50}
+    # Our reading, the reading from the engine's failure, and the fewest and most over every shift.
+    assert {stage: (c[0], c[-1], c.min(), c.max()) for stage, c in counted.items()} == {
+        "last_cycle": (17, 9, 9, 19), "lstm": (2, 2, 0, 7)}
+    # At every shift the default network has more joins than the recurrent one and than Table 12.
+    assert (counted["last_cycle"] > counted["lstm"]).all() and counted["last_cycle"].min() > joins(paper)
+    # The recurrent network has one join or none at 15 of the 50 shifts on this seed.
+    assert int((counted["lstm"] <= joins(paper)).sum()) == 15
+
+
+# --- config.py: a setting written as 0 or as 0.0 gives one digest ------------
+
+
+def test_example_a_whole_number_where_a_decimal_is_declared_is_held_as_the_decimal():
+    """validation_fraction 0 is held as 0.0, so its JSON text and its digest are those of 0.0."""
+    import json
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig, settings_without_notes
+
+    # Python counts the two as equal, which is how find_runs compares settings,
+    # but as JSON text, which is what the digest reads, they are two lines.
+    assert 0 == 0.0
+    assert (json.dumps(0), json.dumps(0.0)) == ("0", "0.0")
+    written = PreprocessingConfig(validation_fraction=0)
+    assert type(written.validation_fraction) is float
+    text = json.dumps(settings_without_notes(written.to_dict()), sort_keys=True, default=str)
+    assert '"validation_fraction": 0.0' in text
+    assert written.digest() == PreprocessingConfig(validation_fraction=0.0).digest() == "2c9b5b"
+    # A whole-number field goes the other way: 125.0 is held as 125.
+    assert type(PreprocessingConfig(rul_max=125.0).rul_max) is int

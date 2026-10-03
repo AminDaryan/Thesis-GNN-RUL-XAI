@@ -42,12 +42,96 @@ the number of sensors, which is fixed by the paper's sensor list.
 | FC-1 | `(B, 448)` → `(B, 128)` | ReLU |
 | FC-2 | `(B, 128)` → `(B, 1)` | Sigmoid |
 
-Built with those defaults the model has 61,729 trainable parameters, which is
-the count Table 4's printed shapes imply. Table 4 lists no total of its own:
-its five weight matrices come to 61,600, and the remaining 129 are the two
-biases Equations 12 and 13 print for the dense layers. `ESTGNN.count_parameters()` returns that number and
+Built with those defaults the model has 61,729 trainable parameters. Table 4
+lists no total of its own: its five weight matrices come to 61,600, and the
+remaining 129 are the two biases Equations 12 and 13 print for the dense
+layers. (Corrected 2026-10-03: this said 61,729 is "the count Table 4's printed
+shapes imply", and then corrected itself in the next sentence; the shapes alone
+give 61,600. Found by the search for that wording in answering the audit of
+2026-09-08, `docs/AUDIT_2026-09-08_response.md`.) `ESTGNN.count_parameters()` returns that number and
 `ESTGNN.layer_summary()` returns one dictionary per layer in the same form as
-Table 4, so the transcription can be checked line by line.
+Table 4, so the transcription can be checked line by line: the row's name
+(`layer`), its kind (`type`), the shape going in and coming out (`in`, `out`),
+how many numbers it learns (`parameters`) and its activation.
+
+### The Input row holds the temporal stage
+
+Table 4 begins with a row the table above leaves out: `Input | Node features |
+[batch size,14,1] | [batch size,14,1] | – | –`, one number per sensor and
+nothing learned. In the paper that one number has already come out of a
+recurrent stage: one small network per sensor, an LSTM (long short-term
+memory, one kind of recurrent network), that reads the sensor's cycles one at
+a time and carries numbers forward from each cycle to the next. Table 4 gives
+that stage no row of its own. Here the
+network receives each sensor's whole 30-cycle window, and a temporal stage from
+`models/temporal/` makes the one number ([One number per sensor, and why 30
+would be wrong](#one-number-per-sensor-and-why-30-would-be-wrong) says why it
+lives in the model). For the paper's stage and for the default, what the stage
+hands on is exactly the array Table 4's Input row lists, so `layer_summary()`
+gives the two as one row, Table 4's Input row with the stage folded into it:
+
+- `in` is what the stage receives, the window, `(B, 14, 30)`;
+- `out` is what it hands to the first graph layer: Table 4's `(B, 14, 1)`,
+  or three or thirty numbers per sensor for the two stages that hand on more
+  (`window_summary` and `raw_window`, which `models/temporal/README.md`
+  describes);
+- `parameters` counts the numbers the stage learns;
+- `from` names the stage, but only when it learns numbers of its own: `"LSTM"`
+  for the paper's recurrent stage; `"GRU"` for a gated recurrent unit, a
+  recurrent network with three parts where the LSTM has four and no separate
+  memory, which this project offers in the LSTM's place and the paper's network
+  does not have (assumption A-36); and an empty string for a fixed rule such as
+  keeping the last cycle.
+
+`from` says where the row's count comes from. A fixed rule leaves the count at
+0, Table 4's "–", so there is nothing on the row to attribute; which rule a
+run used is recorded in its `summary.json` as `temporal_stage`.
+
+Built on the paper's sensor graph with a 30-cycle window, the first row reads,
+for the two stages notebook 02 compares:
+
+| Stage | `from` | `in` | `out` | `parameters` |
+|---|---|---|---|---|
+| `LastCycle(30)`, the default | `""` | `(B, 14, 30)` | `(B, 14, 1)` | 0 |
+| `LSTMStage(window_size=30, n_nodes=14, hidden_size=32)` | `"LSTM"` | `(B, 14, 30)` | `(B, 14, 1)` | 62,753 |
+
+The 62,753 is fourteen recurrent networks, one per sensor, of 4,480 numbers
+each, which makes 62,720, plus the 33 of the layer that turns each network's
+32 numbers into the one Table 4 wants: 32 multipliers and one offset.
+
+The 4,480 needs one distinction first. Each of those networks carries two
+lists of 32 numbers from one cycle to the next, and they are easy to confuse:
+its memory (PyTorch calls it the cell state), and the 32 numbers it passed on
+at the cycle before (the hidden state). The 32 it passes on at the last cycle
+are the ones the layer after it turns into one number. Inside each network are
+four parts. At every cycle each part looks at the new reading and at the 32
+numbers passed on last time, and produces 32 numbers: one part proposes new
+values for the memory, one decides how much of that proposal to write in, one
+how much of the old memory to forget, and one how much of the memory to pass
+on. So each part holds 32 multipliers for the one incoming reading,
+32 × 32 = 1,024 for the 32 numbers passed on at the cycle before, and
+2 × 32 = 64 offsets, because PyTorch keeps two sets of them:
+4 × (32 + 1,024 + 64) = 4,480. No learned multiplier acts on the memory
+itself: from one cycle to the next it is only scaled, number by number, by what
+the forgetting part produced, and the written-in proposal is added to it. Set
+all four parts' 1,024 multipliers to zero and what a network passes on no
+longer changes,
+at any cycle, when the 32 numbers it starts out passing on change; change the
+memory it starts with instead, and what it passes on after the first cycle
+does change (the forgetting part then shrinks that difference cycle by cycle).
+
+The six rows below the Input row are the same for both stages, and the seven
+rows add up to `count_parameters()`: 61,729 for the default, and
+61,729 + 62,753 = 124,482 with the recurrent stage.
+`tests/test_examples_torch.py` builds both networks, checks every one of these
+numbers, and sets the four parts' 1,024 multipliers to zero on a real FD001
+window to show which of the two lists they act on.
+
+(Changed 2026-10-03: until then the summary listed the stage as a row of its
+own, "Temporal", above Table 4's Input row, and both rows described the same
+array. The playground and the site's figures already showed the two as one
+Input row; the author decided on 2026-10-02 that the summary itself should, so
+that everything showing it shows the same seven rows.)
 
 ## What a graph convolution does
 
@@ -439,7 +523,7 @@ enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
 | `forward(features)` | The prediction as a fraction between 0 and 1, one per example. This is what training uses. |
 | `predict_cycles(features)` | The same thing multiplied by `rul_max`, so it is in flight cycles. This is what scoring uses. |
 | `count_parameters()` | How many numbers the network learns. Compare it with Table 4. |
-| `layer_summary()` | One dictionary per layer — its name, the shape going in and out, how many weights it holds, and its activation — in the same form as Table 4. |
+| `layer_summary()` | One dictionary per row of Table 4 — its name, the shape going in and out, how many numbers it learns, and its activation. The temporal stage is folded into the Input row, which counts what the stage learns and names it when it learns anything; see [The Input row holds the temporal stage](#the-input-row-holds-the-temporal-stage). |
 
 `adjacency` is stored as a **buffer** — a number the model carries but training
 never changes, explained under

@@ -62,7 +62,11 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
+from thesis_gnn_rul_xai.config import (
+    PreprocessingConfig,
+    load_config,
+    settings_without_notes,
+)
 from thesis_gnn_rul_xai.data.loading import load_subset
 from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
 from thesis_gnn_rul_xai.data.sensors import (
@@ -443,7 +447,8 @@ def _trained_model(config: PreprocessingConfig, lr_schedule: str):
     from thesis_gnn_rul_xai.training import TrainingConfig, train
 
     config = replace(config, **_SHAPLEY_SETTINGS)
-    key = (json.dumps(config.to_dict(), sort_keys=True, default=str), lr_schedule)
+    key = (json.dumps(settings_without_notes(config.to_dict()), sort_keys=True, default=str),
+           lr_schedule)
     if key in _TRAINED:
         return _TRAINED[key]
 

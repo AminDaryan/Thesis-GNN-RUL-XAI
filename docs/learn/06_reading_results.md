@@ -161,7 +161,10 @@ changes. With no engines held back, the row form of the graph's rescaling beat
 the symmetric form by 0.35 cycles at *p* = 0.047 when the rate shrank after
 every pass, and by 0.25 at *p* = 0.068 under the single drop at the halfway
 point that the project now uses. With a fifth of the engines held back, no
-difference survives under either (assumption A-21).
+difference survives under either, with or without early stopping: the four
+comparisons, all re-run at one commit on 2026-10-02, give differences between
+0.091 and 0.199 cycles at *p* between 0.276 and 0.735, and which form comes out
+nominally ahead changes from one to the next (assumption A-21).
 
 So a comparison must name the configuration it was made under, and be re-run
 whenever any part of it changes.
@@ -196,9 +199,10 @@ Even that comparison carries three warnings:
    charged exactly 20 cycles less whatever the model predicted. The NASA
    score can only fall for the same reason, but R-squared and ASUE are not
    guaranteed to improve; page 4 notes in general that capping does not
-   guarantee every measure improves. In an earlier configuration capping
-   lowered the RMSE by 1.31 cycles, so measured without it the gap to 14.93
-   would be wider (assumption A-02). (Corrected 2026-10-02: this said capping
+   guarantee every measure improves. On the current default capping lowers
+   the RMSE by 1.51 cycles, from 18.01 to 16.50 (1.31 in an earlier
+   configuration), so measured without it the gap to 14.93 would be wider
+   (assumption A-02; the current figure added 2026-10-02). (Corrected 2026-10-02: this said capping
    can only lower "the error", for a reason page 4 does not give; found by the
    search for that claim after the review of the playground's information
    cards on 2026-09-26.)

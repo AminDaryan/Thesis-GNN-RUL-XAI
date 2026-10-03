@@ -228,7 +228,7 @@ as 1 + 1.5 × 1 = 2.5 before that rescaling. This changes the explanation rule,
 not the prediction. [The method's Table 1](https://arxiv.org/html/2006.03589v3)
 defines the rule.
 
-The project's three graph layers use **0, 1.5, 0**. The
+By default the project's three graph layers use **0, 1.5, 0**. The
 [authors' implementation](https://git.tu-berlin.de/thomas_schnake/paper_gnn_lrp)
 starts at 3 and falls evenly to 0. Here the first value is replaced by 0
 because rescaled readings can be negative, while the rule's derivation
@@ -239,11 +239,21 @@ the rescaling undoes it: the replacement changes nothing there. It matters
 when each sensor hands the graph several numbers. The layers after the graph
 use 0 too (assumption A-29).
 
+The playground's Explain tab and `scripts/explain.py --gamma` also offer three
+other settings, for comparison only, each with 0 at the first layer: no extra
+weight (**0, 0, 0**); halving extra weight (**0, 0.5, 0.25**), the halving the
+method's authors use for their image-recognition network, started here at the
+second graph layer; and equal extra weight after the first layer
+(**0, 1, 1**). Explaining the same windows under two of them shows how far the
+largest walks depend on this choice.
+
 This demonstration has only one graph layer, also its first, so its gamma is
 **0**. That is the GNN-GI special case: no extra weighting. It makes every
-multiplication visible; the larger network uses the schedule above. Older
-saved explanations made entirely at gamma 0 are labelled GNN-GI, distinguishing
-them from the current setting.
+multiplication visible; the larger network uses the default above unless
+another setting is chosen. A saved explanation made at gamma 0 everywhere,
+whether an older one from before the authors' setting became the default or a
+new one made with no extra weight, is named GNN-GI on the page and "no extra
+weight" in the list of saved explanations.
 
 ### Process
 

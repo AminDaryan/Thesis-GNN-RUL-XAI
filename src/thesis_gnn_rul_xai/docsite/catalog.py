@@ -58,6 +58,19 @@ _NOTEBOOKS: tuple[_Entry, ...] = (
     ("notebooks/README.md", "About the notebooks", "reference", 0),
     ("notebooks/01_preprocessing_fd001.ipynb", "Preprocessing FD001", "notebook", 0),
     ("notebooks/02_model_fd001.ipynb", "Building and training the network", "notebook", 0),
+    ("notebooks/temporal/README.md", "About the temporal notebooks", "reference", 0),
+    ("notebooks/temporal/01_last_cycle_fd001.ipynb", "Keeping the last reading", "notebook", 0),
+    ("notebooks/temporal/02_mean_window_fd001.ipynb", "Averaging the window", "notebook", 0),
+    ("notebooks/temporal/03_window_summary_fd001.ipynb", "Three numbers per sensor", "notebook", 0),
+    ("notebooks/temporal/04_lstm_fd001.ipynb", "One LSTM per sensor", "notebook", 0),
+    ("notebooks/temporal/05_gru_fd001.ipynb", "One GRU per sensor", "notebook", 0),
+    ("notebooks/temporal/06_raw_window_fd001.ipynb", "Every cycle, handed on", "notebook", 0),
+    ("notebooks/temporal/07_comparison_fd001.ipynb", "The temporal stages compared", "notebook", 0),
+    ("notebooks/graph/README.md", "About the graph notebooks", "reference", 0),
+    ("notebooks/graph/01_physics_fd001.ipynb", "The paper's graph, Table 3", "notebook", 0),
+    ("notebooks/graph/02_complete_fd001.ipynb", "Every sensor joined", "notebook", 0),
+    ("notebooks/graph/03_correlation_fd001.ipynb", "The 41 strongest correlations", "notebook", 0),
+    ("notebooks/graph/04_comparison_fd001.ipynb", "The three graphs compared", "notebook", 0),
     ("notebooks/xai/README.md", "About the explanation notebooks", "reference", 0),
     ("notebooks/xai/01_shap_fd001.ipynb", "Exact Shapley values", "notebook", 0),
     ("notebooks/xai/02_occlusion_fd001.ipynb", "Occlusion: hiding one sensor", "notebook", 0),
@@ -121,6 +134,8 @@ _DATED_NAMES = {
     "REVIEW": "Outside review",
     "AUDIT": "Audit",
     "AUDIT_scientific_validity": "Validity audit",
+    # The project's answer to that audit carries the audit's date, so the two sit together.
+    "AUDIT_response": "Response to the validity audit",
 }
 
 # Dated files kept in docs/ but not listed. The paper-against-code audit is the

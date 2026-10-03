@@ -799,7 +799,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 570 tests; must all pass
+pytest                # 646 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -823,8 +823,8 @@ more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
 With everything present — the data, PyTorch, the stored runs and the cited
-papers in `docs/references/` — 570 were collected in the evening of
-2026-10-02, and 569 passed; the one failure is a stored sensitivity run whose
+papers in `docs/references/` — 646 were collected on 2026-10-03, and 645
+passed; the one failure is a stored sensitivity run whose
 folder name and recorded commit disagree, written up in `docs/PENDING.md`.
 Before that, all 288 passed (measured 2026-09-15, after the run-record and
 paper-to-code tests were added). `CLAUDE.md` keeps the full history of these

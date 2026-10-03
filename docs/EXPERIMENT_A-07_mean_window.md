@@ -2,6 +2,17 @@
 
 **Status:** not started. Written 2026-08-31.
 
+**Status, 2026-10-02: measured another way.** The comparison this plan asks
+for was made on 2026-09-29 by the sensitivity study (finding F-19, stored at
+`reports/sensitivity_fd65a3b-dirty_20260929T101059Z`), through the parameter-free
+`mean_window` temporal stage that has existed since 2026-09-09
+(`scripts/train.py --temporal mean_window`), not through the code changes in
+section 4, which that stage made unnecessary. With every other setting at the
+default, the average of the window is worse than the last reading by 5.744
+cycles of test error (p = 0.000019, all five seeds) and cannot be told apart
+from it on held-back error (p = 0.399). Assumption A-07 records the result. The
+plan below is kept as it was written.
+
 **Instruction to a future session:** carry out exactly what is below. Do not
 improvise a different comparison, and do not change the default.
 

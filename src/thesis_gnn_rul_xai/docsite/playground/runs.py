@@ -10,9 +10,16 @@ from typing import Any
 
 import yaml
 
+from ...config import settings_without_notes
 from ...evaluation.published import SUBSETS
 from .design import caveats
-from .settings import _METHOD_NAMES, RESULT_SEEDS, SettingsError, paper_row_for
+from .settings import (
+    _METHOD_NAMES,
+    GAMMA_SETTINGS,
+    RESULT_SEEDS,
+    SettingsError,
+    paper_row_for,
+)
 
 
 def validate_explain(payload: Mapping[str, Any], root: Path) -> dict[str, Any]:
@@ -42,8 +49,19 @@ def validate_explain(payload: Mapping[str, Any], root: Path) -> dict[str, Any]:
     every = payload.get("every", 1)
     if isinstance(every, bool) or not isinstance(every, int) or not 1 <= every <= 100:
         raise SettingsError(f"every must be a whole number from 1 to 100, got {every!r}.")
+    # Only a name from the list is taken, never numbers, so no request can
+    # hand the first graph layer a gamma: each name gives it 0.
+    gamma = payload.get("gamma")
+    names = [setting["value"] for setting in GAMMA_SETTINGS]
+    if method != "walks":
+        if gamma is not None:
+            raise SettingsError("gamma is a setting of walk explanations only.")
+    elif gamma is None:
+        gamma = names[0]
+    elif gamma not in names:
+        raise SettingsError(f"gamma must be one of {names}, got {gamma!r}.")
     return {"run": run.name, "method": method, "scope": scope, "seed": seed,
-            "engine": engine, "every": every}
+            "engine": engine, "every": every, "gamma": gamma}
 
 
 # -- stored runs ------------------------------------------------------------
@@ -294,8 +312,8 @@ _COMPARED = ("rmse", "score", "r2", "asue")
 def _flat_settings(detail: Mapping[str, Any]) -> dict[str, Any]:
     """Every setting of a run on one level, for spotting what two runs change."""
     flat: dict[str, Any] = {}
-    for key, value in (detail.get("preprocessing") or {}).items():
-        if key not in ("notes", "seed"):
+    for key, value in settings_without_notes(detail.get("preprocessing") or {}).items():
+        if key != "seed":
             flat[f"preprocessing.{key}"] = value
     for key, value in (detail.get("model") or {"temporal": detail.get("temporal")}).items():
         flat[f"model.{key}"] = value

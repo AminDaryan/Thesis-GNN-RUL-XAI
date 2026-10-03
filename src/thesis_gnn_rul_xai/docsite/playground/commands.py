@@ -17,6 +17,8 @@ from .settings import (
     _READ_MORE,
     _STEP_DOCUMENTS,
     FIELDS,
+    GAMMA_ABOUT,
+    GAMMA_SETTINGS,
     GROUPS,
     PROCEDURE_ABOUT,
     PROCEDURES,
@@ -99,6 +101,10 @@ def explain_arguments(request: Mapping[str, Any], progress_path: Path | None,
             arguments += ["--engine", str(request["engine"])]
         if int(request.get("every") or 1) > 1:
             arguments += ["--every", str(request["every"])]
+    # A named setting only, never numbers: the script turns the name into one
+    # gamma per graph layer, and every name gives the first layer 0.
+    if request["method"] == "walks" and request.get("gamma") not in (None, GAMMA_SETTINGS[0]["value"]):
+        arguments += ["--gamma", str(request["gamma"])]
     if progress_path is not None:
         arguments += ["--progress", str(progress_path)]
     return arguments
@@ -149,6 +155,8 @@ def options() -> dict[str, Any]:
         "procedure_more": read_more("procedure"),
         "operation_more": {name: read_more(f"operation={name}") for name in _STEP_DOCUMENTS},
         "explain_more": {key.split("=")[1]: read_more(key) for key in _READ_MORE if key.startswith("explain=")},
+        "gamma_about": GAMMA_ABOUT,
+        "gamma_settings": [_with_more(setting, "explain=gamma") for setting in GAMMA_SETTINGS],
         "defaults": {spec["key"]: spec["default"] for spec in FIELDS},
         "result_seeds": RESULT_SEEDS,
         "dataset": DATASET_DESCRIPTION,

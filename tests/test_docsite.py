@@ -659,7 +659,7 @@ def test_the_message_passing_figure_stops_where_the_graph_stops():
 
 
 def test_the_architecture_figure_prints_the_real_parameter_counts():
-    """Each box's count is read from the built network, with the stage and Table 4's Input as one box."""
+    """Each box's count is read from the built network, one box per row of layer_summary, the stage inside Input."""
     import re
 
     pytest.importorskip("torch")
@@ -676,10 +676,8 @@ def test_the_architecture_figure_prints_the_real_parameter_counts():
         window_size=PreprocessingConfig().window_size,
     )
     rows = model.layer_summary()
-    assert [rows[0]["layer"], rows[1]["layer"]] == ["Temporal", "Input"]
-    expected = [("Input", rows[0]["parameters"])] + [
-        (row["layer"], row["parameters"]) for row in rows[2:]
-    ]
+    assert rows[0]["layer"] == "Input"
+    expected = [(row["layer"], row["parameters"]) for row in rows]
 
     drawn = figures.render_figure("architecture")
     assert "figure-notice" not in drawn

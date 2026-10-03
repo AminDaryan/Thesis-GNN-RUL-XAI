@@ -133,3 +133,124 @@ def test_a_new_run_records_its_command_environment_data_and_split():
             assert (path / folder / "split.json").is_file()
             assert (path / folder / "scaling.csv").is_file()
 
+
+# --- The "cfg" part of a run's folder name ------------------------------------
+# training/README.md explains the digest, and the change of 2026-10-03 that
+# took the prose notes out of it.
+
+
+def test_two_configurations_that_differ_only_in_their_notes_share_a_digest():
+    """Notes are prose: rewriting them must not rename a run."""
+    from dataclasses import replace
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig, load_config
+
+    default = PreprocessingConfig()
+    assert replace(default, notes="Any other sentence at all.").digest() == default.digest()
+    assert replace(default, notes="").digest() == default.digest()
+    # The case that was found: the same eleven settings, two different sentences.
+    from_file = load_config(Path(__file__).resolve().parents[1] / "config" / "fd001.yaml")
+    assert from_file.notes != default.notes
+    assert from_file.digest() == default.digest() == "818b40"
+
+
+def test_a_change_to_any_setting_changes_the_digest():
+    """Every one of the eleven settings is inside the digest."""
+    from dataclasses import replace
+
+    from thesis_gnn_rul_xai.config import PreprocessingConfig, settings_without_notes
+
+    default = PreprocessingConfig()
+    changed = {
+        "subset": "FD002", "window_size": 31, "window_stride": 2, "rul_max": 130,
+        "clip_test_labels": False, "normalization": "minmax_global", "smoothing_alpha": None,
+        "graph": "complete", "adjacency_normalization": "symmetric",
+        "validation_fraction": 0.0, "seed": 43,
+    }
+    assert set(changed) == set(settings_without_notes(default.to_dict()))
+    digests = {key: replace(default, **{key: value}).digest() for key, value in changed.items()}
+    assert default.digest() not in digests.values()
+    assert len(set(digests.values())) == len(changed)
+
+
+def test_the_training_script_and_the_run_finder_use_the_shared_rule():
+    """train.py names a run with PreprocessingConfig.digest(), and hashes no preprocessing settings itself."""
+    import ast
+
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse((root / "scripts" / "train.py").read_text(encoding="utf-8"))
+    assigned = [
+        ast.unparse(node.value) for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "config_digest" for target in node.targets)
+    ]
+    assert assigned == ["preprocessing.digest()"]
+    hashed = [ast.unparse(node) for node in ast.walk(tree)
+              if isinstance(node, ast.Call) and ast.unparse(node.func) == "hashlib.sha256"]
+    assert hashed and not any("preprocessing" in call for call in hashed)
+    # The run finder, the playground's comparison of two runs, the baselines
+    # script's check of a second run and the claim checker's store of trained
+    # networks leave the notes out with the same function.
+    for module in ("src/thesis_gnn_rul_xai/training/stored.py",
+                   "src/thesis_gnn_rul_xai/docsite/playground/runs.py",
+                   "scripts/baselines.py",
+                   "scripts/verify_claims.py"):
+        source = (root / module).read_text(encoding="utf-8")
+        assert "settings_without_notes(" in source and '"notes"' not in source, module
+
+
+def test_a_stored_run_name_carries_the_digest_of_the_settings_it_saved():
+    """Code from before 2026-10-03 hashed the notes as well, code since leaves them out; each name fits one rule."""
+    import hashlib
+    import re
+
+    from thesis_gnn_rul_xai.config import load_config
+
+    root = reports_dir()
+    counted = {"notes hashed": 0, "notes left out": 0}
+    for path in sorted(root.iterdir()) if root.is_dir() else []:
+        named = re.search(r"_cfg([0-9a-f]{6})_", path.name)
+        if not named or not (path / "preprocessing_config.yaml").is_file():
+            continue
+        try:
+            config = load_config(path / "preprocessing_config.yaml")
+        except (ValueError, TypeError):
+            continue  # a setting renamed since; find_runs skips such a run too
+        if (path / "summary.json").is_file():  # absent while a run is still training
+            summary = json.loads((path / "summary.json").read_text(encoding="utf-8"))
+            assert summary.get("config_digest", named.group(1)) == named.group(1), path.name
+        if named.group(1) == config.digest():
+            counted["notes left out"] += 1
+            continue
+        # The rule scripts/train.py used until 2026-10-03, kept here only to read old names.
+        before = hashlib.sha256(
+            json.dumps(config.to_dict(), sort_keys=True, default=str).encode()
+        ).hexdigest()[:6]
+        assert named.group(1) == before, path.name
+        counted["notes hashed"] += 1
+    if not any(counted.values()):
+        pytest.skip("no stored run with a configuration digest in its name in reports/")
+
+
+def test_a_number_written_as_a_whole_number_or_a_decimal_gives_one_digest():
+    """0 and 0.0 are equal to find_runs, so they must be equal to the digest too."""
+    from thesis_gnn_rul_xai.config import PreprocessingConfig, settings_without_notes
+
+    pairs = [
+        ({"validation_fraction": 0}, {"validation_fraction": 0.0}),
+        ({"smoothing_alpha": 1}, {"smoothing_alpha": 1.0}),
+        ({"rul_max": 125.0}, {"rul_max": 125}),
+        ({"window_size": 30.0}, {"window_size": 30}),
+        ({"clip_test_labels": 1}, {"clip_test_labels": True}),
+    ]
+    for written, declared in pairs:
+        first, second = PreprocessingConfig(**written), PreprocessingConfig(**declared)
+        assert settings_without_notes(first.to_dict()) == settings_without_notes(second.to_dict())
+        assert first.digest() == second.digest(), written
+        (name,) = written
+        assert type(getattr(first, name)) is type(declared[name]), name
+    # Measured 2026-10-03; before the types were made to agree, validation_fraction
+    # 0 gave e950d9 and 0.0 gave 2c9b5b.
+    assert PreprocessingConfig(validation_fraction=0).digest() == "2c9b5b"
+    assert PreprocessingConfig(smoothing_alpha=1).digest() == "8ea41a"
+

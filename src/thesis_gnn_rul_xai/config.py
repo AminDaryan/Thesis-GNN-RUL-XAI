@@ -10,6 +10,10 @@ what the defaults do, and which of them will catch you out.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
+import numbers
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -23,6 +27,7 @@ __all__ = [
     "PreprocessingConfig",
     "SensorGraph",
     "load_config",
+    "settings_without_notes",
 ]
 
 # The three ways of putting the sensors on a comparable scale. README.md.
@@ -136,7 +141,19 @@ class PreprocessingConfig:
     )
 
     def __post_init__(self) -> None:
-        """Reject any setting that is out of range or misspelled."""
+        """Hold each number as its declared type, and reject any setting out of range or misspelled."""
+        # Store each number as the type its field declares, so that 0 and 0.0,
+        # which Python counts as equal, cannot give one setting two digests.
+        for name in ("window_size", "window_stride", "rul_max", "seed"):
+            value = getattr(self, name)
+            if isinstance(value, numbers.Real) and float(value).is_integer():
+                setattr(self, name, int(value))
+        for name in ("validation_fraction", "smoothing_alpha"):
+            value = getattr(self, name)
+            if isinstance(value, numbers.Real):
+                setattr(self, name, float(value))
+        if isinstance(self.clip_test_labels, numbers.Real) and self.clip_test_labels in (0, 1):
+            self.clip_test_labels = bool(self.clip_test_labels)
         valid_subsets = {"FD001", "FD002", "FD003", "FD004"}
         if self.subset not in valid_subsets:
             raise ValueError(
@@ -174,6 +191,11 @@ class PreprocessingConfig:
         """Return the configuration as a plain dictionary, ready to be saved."""
         return dataclasses.asdict(self)
 
+    def digest(self) -> str:
+        """Six hexadecimal characters that change with any setting and never with the notes."""
+        text = json.dumps(settings_without_notes(self.to_dict()), sort_keys=True, default=str)
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:6]
+
     def save(self, path: str | Path) -> Path:
         """Write the configuration to a YAML file and return the path."""
         path = Path(path)
@@ -183,6 +205,11 @@ class PreprocessingConfig:
             encoding="utf-8",
         )
         return path
+
+
+def settings_without_notes(values: Mapping[str, Any]) -> dict[str, Any]:
+    """Saved preprocessing settings with the prose notes left out, since they change no number."""
+    return {key: value for key, value in values.items() if key != "notes"}
 
 
 def load_config(path: str | Path) -> PreprocessingConfig:

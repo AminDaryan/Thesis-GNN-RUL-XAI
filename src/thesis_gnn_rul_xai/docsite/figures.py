@@ -622,20 +622,14 @@ def draw_architecture() -> str:
         normalize_adjacency(matrix, method="row"),
         window_size=PreprocessingConfig().window_size,
     )
-    summary = model.layer_summary()
-    # layer_summary lists the temporal stage and then Table 4's Input row, and
-    # both describe the same tensor, so they are drawn as one Input box that
-    # names the stage its numbers come from and counts what that stage learns.
-    stage, first = summary[0], summary[1]
-    if (stage["layer"], first["layer"]) != ("Temporal", "Input"):
+    rows = model.layer_summary()
+    # layer_summary folds the temporal stage into Table 4's Input row, which
+    # learns nothing here; its box names the configuration on its second line.
+    if rows[0]["layer"] != "Input":
         raise ValueError(
-            "layer_summary no longer starts with the temporal stage and then the "
-            f"Input row, but with {stage['layer']} and {first['layer']}."
+            f"layer_summary no longer starts with the Input row, but with {rows[0]['layer']}."
         )
-    rows = [
-        {**first, "activation": "w/o LSTM", "parameters": stage["parameters"]},
-        *summary[2:],
-    ]
+    rows[0] = {**rows[0], "activation": "w/o LSTM"}
 
     # The boxes shrink to fit the figure's width, because the number of layers
     # depends on how many graph layers the network has.
@@ -725,8 +719,7 @@ def draw_architecture_overview() -> str:
     matrix, symbols = build_physics_adjacency()
     model = ESTGNN(normalize_adjacency(matrix, method="row"),
                    window_size=PreprocessingConfig().window_size)
-    summary = model.layer_summary()
-    rows = [{**summary[1], "parameters": summary[0]["parameters"]}, *summary[2:]]
+    rows = model.layer_summary()
     blue, rose, purple, gold, green = "#6f9fc7", "#d69ba8", "#b294d2", "#d6b74f", "#99b66a"
     centres = [70, 220, 373, 526, 680, 842, 979]
     defs = ('<title id="architecture-overview-title">From sensor readings to remaining life</title>'

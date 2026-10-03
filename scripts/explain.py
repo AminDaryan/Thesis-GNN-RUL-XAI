@@ -35,6 +35,13 @@ Three methods are available, and only the first is the paper's:
     sensor, with the authors' own setting of its rule. Nothing is replaced. The
     shares are parts of that score, not cycles. The authors' own check of an
     explanation, node flipping (A-33), is run on every window beside it.
+    ``--gamma`` names another setting of the rule: ``gnn-gi`` (gamma 0 at
+    every graph layer, the authors' simpler baseline), ``falling`` (0, then
+    0.5 halving at each later layer) or ``flat`` (0, then 1). Every setting
+    gives the first graph layer 0, whose inputs can be negative. For three
+    graph layers the last two are (0, 0.5, 0.25) and (0, 1, 1), the settings
+    A-29 compares with the authors' when it measures how far a ranking of
+    connections moves with gamma.
 
 and two things can be explained:
 
@@ -76,11 +83,13 @@ graph has, in each direction and including each sensor's connection to itself
 columns. ``top_walks.csv`` holds the ten walks with the largest average share.
 ``flipping.csv`` holds, for every window, both of the paper's flipping tasks
 and every ranking checked -- the walks and their starting sensors, at the
-authors' setting and at their simpler baseline, and random orders -- the order
-the sensors were flipped in and the curve the paper plots, one column per step.
-Its ``summary.json`` holds no ``mean_abs`` and no ``baseline``; it holds the
-sensors, the largest miss of walks plus constant against the score, and the
-area under each flipping curve averaged over the windows.
+authors' setting and at their simpler baseline, at the setting chosen when it
+is neither, and random orders -- the order the sensors were flipped in and the
+curve the paper plots, one column per step. Its ``summary.json`` holds no
+``mean_abs`` and no ``baseline``; it holds the sensors, the setting chosen
+(``gamma_setting``) and its gamma at each graph layer (``gamma``), the largest
+miss of walks plus constant against the score, and the area under each
+flipping curve averaged over the windows.
 
 Examples
 --------
@@ -91,6 +100,10 @@ The paper's dynamic explanation, for the engine with the longest history::
 A quick first look across the test engines::
 
     python scripts/explain.py --run reports/<run directory> --method occlusion --scope test
+
+The same walks without the rule's extra weight, to set beside the default::
+
+    python scripts/explain.py --run reports/<run directory> --method walks --scope test --gamma gnn-gi
 """
 
 from __future__ import annotations
@@ -118,6 +131,62 @@ from thesis_gnn_rul_xai.utils.provenance import (
 METHODS = ("shap", "occlusion", "walks")
 SCOPES = ("engine", "test")
 
+# The settings of the walk rule's gamma, by the names --gamma and the
+# playground take, the authors' own first; gamma_values turns one into numbers.
+GAMMA_SETTINGS = ("authors", "gnn-gi", "falling", "flat")
+
+# What each setting's ranking is called in flipping.csv: the GNN-LRP paper's
+# own names for its method and its simpler baseline, then the method's name
+# with the setting's for the other two.
+FLIPPING_NAMES = {"authors": "GNN-LRP", "gnn-gi": "GNN-GI",
+                  "falling": "GNN-LRP falling", "flat": "GNN-LRP flat"}
+
+
+def gamma_values(setting: str, n_layers: int) -> list[float]:
+    """One gamma per graph layer for a named setting, 0 at the first whatever the name."""
+    from thesis_gnn_rul_xai.explain import paper_gammas
+
+    if setting not in GAMMA_SETTINGS:
+        raise ValueError(f"gamma must be one of {list(GAMMA_SETTINGS)}, got {setting!r}.")
+    if n_layers < 1:
+        raise ValueError(f"n_layers must be at least 1, got {n_layers}.")
+    later = n_layers - 1
+    if setting == "authors":
+        values = paper_gammas(n_layers)
+    elif setting == "gnn-gi":
+        values = [0.0] * n_layers
+    elif setting == "falling":
+        # ASSUMPTION A-29: 0.5 at the second graph layer, halving at each later
+        # one: the halving the GNN-LRP paper uses for VGG-16 (its Section 5.3),
+        # started here at the second graph layer. Its numbers for this network
+        # are ours, like "flat" below (1 at every layer after the first), and
+        # both are offered only to see how far the walks move with gamma. For
+        # three graph layers they are the settings scripts/measure_walks.py
+        # compares with the authors'; for any other number of layers this
+        # halving and that constant 1 are how we carry them over, not a
+        # measured choice.
+        values = [0.0] + [0.5**step for step in range(1, later + 1)]
+    else:
+        values = [0.0] + [1.0] * later
+    # ASSUMPTION A-29: gamma is 0 at the first graph layer whatever the setting.
+    # The rule's derivation needs every number entering a layer to be at least 0,
+    # and this network's first graph layer receives rescaled readings, which are
+    # negative below their training average.
+    values[0] = 0.0
+    return values
+
+
+def walk_settings(model, features: np.ndarray, setting: str) -> dict:
+    """The walks under the authors' setting, their baseline and the one chosen, each once."""
+    from thesis_gnn_rul_xai.explain import walk_relevance
+
+    n_layers = len(model.graph_layers)
+    # The authors' own check sets their method beside their simpler baseline,
+    # so both are always computed; a third setting is checked beside them.
+    names = dict.fromkeys((GAMMA_SETTINGS[0], "gnn-gi", setting))
+    return {name: walk_relevance(model, features, gamma=gamma_values(name, n_layers))
+            for name in names}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -136,6 +205,9 @@ def main() -> int:
                              "the one with the most windows)")
     parser.add_argument("--every", type=int, default=1,
                         help="With --scope engine: explain every n-th window")
+    parser.add_argument("--gamma", choices=GAMMA_SETTINGS, default=None,
+                        help="With --method walks: the setting of the rule's gamma "
+                             "(default: authors, their own)")
     parser.add_argument("--data-dir", type=Path, default=None)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--progress", type=Path, default=None,
@@ -144,6 +216,10 @@ def main() -> int:
     arguments = parser.parse_args()
     if arguments.every < 1:
         raise SystemExit("--every must be at least 1.")
+    if arguments.gamma is not None and arguments.method != "walks":
+        raise SystemExit("--gamma is a setting of --method walks only.")
+    if arguments.method == "walks" and arguments.gamma is None:
+        arguments.gamma = GAMMA_SETTINGS[0]
 
     configure_logging(logging.WARNING if arguments.quiet else logging.INFO)
 
@@ -295,6 +371,8 @@ def _output_folder(arguments, run: Path, unit, seed: int, commit: str) -> Path:
         f"{arguments.method}_{arguments.scope}"
         + (f"_unit{unit}" if unit is not None else "")
         + (f"_every{arguments.every}" if arguments.every > 1 else "")
+        + (f"_gamma-{arguments.gamma}"
+           if arguments.gamma not in (None, GAMMA_SETTINGS[0]) else "")
         + f"_seed{seed}_{commit}_{utc_stamp()}"
     )
     output = run / "explanations" / name
@@ -316,17 +394,13 @@ def _explain_walks(
         node_flipping,
         node_relevance,
         top_walks,
-        walk_relevance,
     )
 
     try:
-        # The authors' own protocol: gamma per their default schedule, 0 at the
-        # first graph layer (explain/README.md). GNN-GI, the same split at gamma
-        # 0 everywhere, is the baseline their own check sets beside it.
-        result = walk_relevance(model, features)
-        baseline_result = walk_relevance(model, features, gamma=0.0)
+        results = walk_settings(model, features, arguments.gamma)
     except (ValueError, RuntimeError, TypeError) as refused:
         raise SystemExit(str(refused)) from refused
+    result = results[arguments.gamma]
     progress("window", done=len(order), total=len(order),
              seconds=time.perf_counter() - started)
     groups = indistinguishable_sensors(model, symbols)
@@ -334,7 +408,9 @@ def _explain_walks(
     links = connection_relevance(result, symbols, pool=groups)
     parts = crossing_relevance(result, symbols, pool=groups)
     top = top_walks(result, symbols, count=10, pool=groups)
-    flipping = node_flipping(model, features, {"GNN-LRP": result, "GNN-GI": baseline_result})
+    flipping = node_flipping(
+        model, features, {FLIPPING_NAMES[name]: walks for name, walks in results.items()}
+    )
     checked = aufc(flipping)
     seconds = time.perf_counter() - started
 
@@ -383,6 +459,7 @@ def _explain_walks(
                 "value_unit": "score before the sigmoid",
                 "rul_max": float(model.rul_max),
                 "steps": result.n_steps,
+                "gamma_setting": arguments.gamma,
                 "gamma": list(result.gamma),
                 "score_at_zero": result.score_at_zero,
                 "conservation_error_max": error,

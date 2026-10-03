@@ -16,7 +16,10 @@ switched in and out; it is not the default. See
 **Where that gets to.** On FD001, **RMSE 16.50 ± 0.42** across five seeds
 under the current default settings, against the 14.93 the paper reports for
 its own "ESTGNN w/o LSTM" ablation — on an architecture that matches the
-paper's Table 4 exactly, down to the 61,729 parameters its printed shapes imply.
+paper's Table 4 exactly: its printed weight shapes give 61,600 learned
+numbers, and the two offsets its Equations 12 and 13 print for the dense
+layers add 129, for 61,729 in all. (Corrected 2026-10-02: this said "the
+61,729 parameters its printed shapes imply"; the shapes alone give 61,600.)
 
 **Read how the settings were chosen before quoting that number.** The settings
 the paper leaves unspecified were deliberately chosen to land near its figure
@@ -435,14 +438,23 @@ Read `notebooks/README.md` first: it holds what every notebook shares. Then:
 | Notebook | Covers |
 |----------|--------|
 | `01_preprocessing_fd001.ipynb` | steps 1 to 8: the raw text files become model-ready arrays |
-| `02_model_fd001.ipynb` | steps 9 to 11: build the network, train it and score it; then the paper's sensor graph against two others |
-| `xai/01_shap_fd001.ipynb` | the paper's explanation method, exact Shapley values, for one prediction and then at every cycle of one engine's life |
+| `02_model_fd001.ipynb` | steps 9 to 11: build the network, train it and score it |
+| `graph/01_physics_fd001.ipynb` | the paper's sensor graph on the real data: its table, the rescaled table, one graph layer worked by hand, how far three layers reach, and its stored five-seed result |
+| `graph/02_complete_fd001.ipynb` | every sensor joined to every other, and why it leaves the network predicting from one number |
+| `graph/03_correlation_fd001.ipynb` | the 41 sensor pairs whose readings move together most strongly, built step by step from the training engines |
+| `graph/04_comparison_fd001.ipynb` | the three graphs' stored five-seed runs side by side, on the test and held-back engines, paired by seed |
+| `xai/01_shap_fd001.ipynb` | the paper's explanation method, exact Shapley values, for one prediction and then at every cycle of one engine's life; then how often the four sensors whose contributions are largest in size, sign set aside, change from one window to the next, on five seeds of the default network and five of one with the recurrent stage of the paper's Section 2.2, at a size the paper does not give (assumption A-26), beside the paper's Fig. 10 |
 | `xai/02_occlusion_fd001.ipynb` | a cheaper explanation method that is not in the paper, set beside the Shapley values |
 | `xai/03_walks_fd001.ipynb` | a method not in the paper that splits a prediction into the routes it took through the sensor graph, beside what removing each connection does |
 
-The first two are read in order. The `xai/` notebooks each explain the same
+The first two are read in order. The `graph/` notebooks read the stored runs of
+three sensor graphs from one commit; `notebooks/graph/README.md` says which.
+The `xai/` notebooks each explain the same
 stored trained network, one method per notebook; `notebooks/xai/README.md` says
-why. Each notebook explains every step, shows the intermediate tables and
+why. One step departs from that on purpose: step 8 of the Shapley-value
+notebook loads all five seeds of two other stored runs, alike except in their
+temporal stage, because its question is whether that stage changes the answer.
+Each notebook explains every step, shows the intermediate tables and
 figures, and verifies the stage as it goes. Together they are the intended
 entry point for a reader who wants to understand what happens and why.
 
@@ -634,21 +646,34 @@ so the matching row is "w/o LSTM", and the comparison is 16.50 ± 0.42 against
 14.93 — a 1.57-cycle shortfall. The paper's ablation table reports RMSE only,
 which is why the other three columns are blank for it.
 
+**The test set is too small to establish that shortfall.** The ± is the
+spread over five seeds, and all five are scored on the same 100 test engines.
+Drawing 100 engines at random from those 100, repeats allowed, 20,000 times,
+and recomputing the five-seed average each time, gives a 95 % interval of
+13.98 to 18.91 cycles, and 14.93 lies inside it. So 1.57 cycles describes these
+100 engines; it is not a difference this test set can show between this network
+and the paper's (finding F-06; added 2026-10-02).
+
 ### What that comparison does and does not show
 
 The architecture matches: input `[batch, 14, 1]`, `W(1) ∈ ℝ^(1×32)`, the same
-layer widths, and **61,729 parameters — exactly what Table 4's printed shapes
-imply**, asserted by a test. Table 4 prints no total; the arithmetic is in
-`docs/ASSUMPTIONS.md` (assumption A-07). The only thing removed is the LSTM,
+layer widths, and **61,729 parameters — Table 4's printed weight shapes
+(61,600 numbers) plus the two offsets of the dense layers that Equations 12 and
+13 print (129)**, with none in the graph layers (assumption A-12), asserted by a
+test. Table 4 prints no total; the arithmetic is in `docs/ASSUMPTIONS.md`
+(assumption A-07). (Corrected 2026-10-02: this said "exactly what Table 4's
+printed shapes imply"; the shapes alone give 61,600.) The only thing removed is the LSTM,
 which is what "w/o LSTM" means. So the **1.57-cycle gap has no shape mismatch
 to hide behind**, and what is left to explain it is the documented choices:
 the input rescaling was picked for landing nearest the paper's own figure
 rather than read from the paper (assumptions A-03 and A-22), holding engines
 back and stopping early are additions (assumptions A-06 and A-18), the target
 scaling, weight initialisation and learning-rate schedule are all unstated
-(assumptions A-13, A-14 and A-17), and capping the test labels moved an earlier
-configuration's figure *favourably* by a measured 1.311 cycles (assumption
-A-02), so the underlying gap is wider than it looks.
+(assumptions A-13, A-14 and A-17), and capping the test labels lowers the
+current default's figure by a measured 1.508 cycles, from 18.01 uncapped
+(assumption A-02), so the underlying gap is wider than it looks. (Updated
+2026-10-02: this gave only the 1.311 cycles measured on the configuration of
+2026-08-28.)
 
 [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records this in full (finding
 F-06), together with what the sensor graph is worth (finding F-04 and
@@ -691,6 +716,12 @@ Thesis GNN RUL XAI/
 │   ├── README.md                 What every notebook shares; read it first
 │   ├── 01_preprocessing_fd001.ipynb
 │   ├── 02_model_fd001.ipynb
+│   ├── graph/                    One notebook per sensor graph, and a comparison
+│   │   ├── README.md
+│   │   ├── 01_physics_fd001.ipynb
+│   │   ├── 02_complete_fd001.ipynb
+│   │   ├── 03_correlation_fd001.ipynb
+│   │   └── 04_comparison_fd001.ipynb
 │   └── xai/                      One notebook per explanation method
 │       ├── README.md
 │       ├── 01_shap_fd001.ipynb
@@ -702,6 +733,8 @@ Thesis GNN RUL XAI/
 │   ├── train.py                  Train, score, and average over seeds
 │   ├── explain.py                Explain a stored run's trained network
 │   ├── measure_walks.py          Measure walk explanations over every seed of a stored run
+│   ├── baselines.py              Score ordinary models beside a stored run's networks,
+│   │                             on the same engines (explained in evaluation/README.md)
 │   ├── verify_claims.py          Recompute the figures the assumptions log quotes
 │   ├── check_prose.py            Catch unexplained jargon and codes used as words
 │   ├── fetch_references.py       Download the cited papers that are free
@@ -719,8 +752,13 @@ Thesis GNN RUL XAI/
 │       ├── utils/
 │       └── docsite/              The documentation website (computes nothing)
 │
-└── tests/                        268 tests
+└── tests/                        646 tests, counted on 2026-10-03
 ```
+
+(Corrected 2026-10-03: the last line said 268 tests, the size of the suite in
+mid-September, and was found stale when the suite was counted again with
+`python -m pytest --collect-only -q`. The count grows whenever a test is
+added, so count again before quoting it.)
 
 ### Why there is a folder inside a folder: `src/thesis_gnn_rul_xai/`
 
@@ -903,6 +941,7 @@ is defended.
 | Understand the method from nothing, in eight short pages | `docs/learn/`, or the **Learn** section of that site |
 | Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
 | Understand the model and the training | `notebooks/02_model_fd001.ipynb` |
+| See what the sensor graph does, and whether the paper's beats two others | `notebooks/graph/` |
 | Understand which sensors a prediction came from, and how that changes over an engine's life | `notebooks/xai/01_shap_fd001.ipynb` |
 | Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
 | Know *why* a step is computed that way | the `README.md` in the same folder |
@@ -966,8 +1005,11 @@ nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
 
-With the data and the stored runs, all 268 tests are collected and all 268
-pass, measured on 2026-09-15.
+With the data, the stored runs and the cited papers, 646 tests are collected
+and 645 pass, measured on 2026-10-03; the one failure is a stored run of the
+sensitivity study whose folder name and recorded commit disagree, written up in
+`docs/PENDING.md`. (Until 2026-10-03 this said all 268 pass, measured on
+2026-09-15.)
 
 The suite covers each preprocessing step, the sensor graph, the network, the
 training loop, the four measures, the Shapley values, occlusion and the walk
@@ -975,7 +1017,8 @@ shares, loading a stored run back, and the pipeline end to end. The model, train
 explanation tests need PyTorch; without it they are not collected at all rather
 than failing. On 2026-09-14, when the suite had 260 tests, that left 195 of
 them collected: 191 passed, three skipped and one, since fixed, failed. That
-count has not been re-measured since eight tests were added.
+count has not been re-measured since, and the suite has grown by several
+hundred tests. (Until 2026-10-03 this said "since eight tests were added".)
 
 `tests/test_examples.py` and `tests/test_examples_torch.py` hold one small
 worked example of each function — the kind of thing that would once have gone
