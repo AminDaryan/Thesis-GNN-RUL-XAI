@@ -159,7 +159,7 @@ constant on the way back out, so everything a reader sees is in cycles again.
 
 The constant is the same for every window, so this cannot change any
 comparison. It is nonetheless a decision, because the paper never states it
-(assumption A-13 in `docs/ASSUMPTIONS.md`).
+(assumption A-13, in `docs/assumptions/A-13.md`).
 
 **Three — pair each window with its label, and hand out batches.**
 
@@ -236,8 +236,8 @@ how the rate travels between them. `lr_schedule` offers four ways:
 ## The judgement calls made in this folder
 
 Each of these is a place where the paper does not say what to do and we had to
-choose. All are written up in `docs/ASSUMPTIONS.md` under the codes given in
-parentheses.
+choose. All are written up in `docs/assumptions/`, each in the file named after
+the code given in parentheses.
 
 - **Scaling the targets.** The paper's final layer is a sigmoid, but it never
   states the arithmetic that turns that number back into flight cycles or what

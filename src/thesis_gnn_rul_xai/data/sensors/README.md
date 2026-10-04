@@ -410,7 +410,7 @@ NRc is **not** flat. So it was not dropped for being uninformative — it must
 have been dropped for some other reason, most plausibly redundancy, since
 corrected core speed is derived from the physical core speed `Nc`, which the
 paper keeps. Identifying it is an elimination, not a measurement, and the full
-entry is in [the assumptions log](../../../../docs/ASSUMPTIONS.md) (assumption
+entry is in [the assumptions log](../../../../docs/assumptions/A-10.md) (assumption
 A-10).
 
 ### A finding, not an assumption: P15 is kept but carries almost nothing

@@ -16,8 +16,9 @@
   // page of its own to name.
   var BRAND = document.title;
 
-  // The log whose page carries the result of the last re-check of its numbers.
-  var LOG_PATH = "docs/ASSUMPTIONS.md";
+  // The page that carries the result of the last re-check of the log's numbers:
+  // the index of the assumptions, one file per entry beside it.
+  var LOG_PATH = "docs/assumptions/README.md";
 
   // Addresses of pages that were removed, and the page that now says the same
   // thing. A bookmark or an old link lands there instead of on an error.
@@ -26,7 +27,19 @@
     "figures": "#/doc/docs/learn/02_graphs.md",
     "explore/architecture": "#/doc/docs/learn/05_the_model.md",
     "explore/results": "#/explore/playground",
-    "explore/assumptions": "#/doc/docs/ASSUMPTIONS.md"
+    "explore/assumptions": "#/doc/docs/assumptions/README.md"
+  };
+
+  // Documents that moved on 2026-10-03, and where each one went. The single
+  // log, docs/ASSUMPTIONS.md, became one file per entry: navigate() sends an
+  // old link to one of its entries to that entry, and any other to the index.
+  var OLD_LOG = "docs/ASSUMPTIONS.md";
+  var MOVED_DOCS = {
+    "docs/AUDIT_2026-08-31_paper_against_code.md": "docs/audits/AUDIT_2026-08-31_paper_against_code.md",
+    "docs/AUDIT_2026-09-08_scientific_validity.md": "docs/audits/AUDIT_2026-09-08_scientific_validity.md",
+    "docs/AUDIT_2026-09-08_response.md": "docs/audits/AUDIT_2026-09-08_response.md",
+    "docs/REVIEW_2026-08-27.md": "docs/audits/REVIEW_2026-08-27.md",
+    "docs/REVIEW_2026-08-29.md": "docs/audits/REVIEW_2026-08-29.md"
   };
 
   // ------------------------------------------------------------- utilities
@@ -633,6 +646,18 @@
       return;
     }
 
+    if (route.view === "doc" && argument === OLD_LOG) {
+      var entry = /^([af])-(\d{2})-/.exec(fragment);
+      window.location.replace(entry
+        ? "#/entry/" + entry[1].toUpperCase() + "-" + entry[2]
+        : "#/doc/" + LOG_PATH);
+      return;
+    }
+    if (route.view === "doc" && MOVED_DOCS[argument]) {
+      window.location.replace("#/doc/" + MOVED_DOCS[argument] + (fragment ? "#" + fragment : ""));
+      return;
+    }
+
     var mergedSection = DATA_MOVED_SECTIONS[argument.replace(/^docs\/learn\//, "") + "#" + fragment];
     if (route.view === "doc" && mergedSection) {
       window.location.replace("#/doc/docs/learn/" + mergedSection);
@@ -754,7 +779,7 @@
         showError("No entry called " + identifier, "The log holds " + data.entries.length + " entries.");
         return;
       }
-      window.location.replace("#/doc/" + LOG_PATH + "#" + entry.anchor);
+      window.location.replace("#/doc/" + entry.path);
     });
   }
 

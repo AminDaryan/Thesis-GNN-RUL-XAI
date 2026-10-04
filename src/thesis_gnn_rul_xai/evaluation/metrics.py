@@ -81,7 +81,7 @@ def nasa_score(
     ASSUMPTION A-15: punish late predictions harder than early ones. The
     paper's Equations 20 and 21 disagree with each other about which direction
     is the dangerous one, so we follow the words next to them. Explained in
-    README.md in this folder; written up in docs/ASSUMPTIONS.md.
+    README.md in this folder; written up in docs/assumptions/A-15.md.
     """
     error = prediction_error(actual, predicted)
     penalties = np.where(
@@ -101,7 +101,7 @@ def r_squared(
     ASSUMPTION A-16: use the standard formula. The paper's Equation 23 divides
     by the spread of the predictions instead of the spread of the labels, which
     is not this measure. Explained in README.md in this folder; written up in
-    docs/ASSUMPTIONS.md.
+    docs/assumptions/A-16.md.
     """
     truth, guess = _as_pair(actual, predicted)
     total = float(np.sum((truth - truth.mean()) ** 2))
@@ -126,7 +126,7 @@ def asue(
         # zero by zero, so the answer is "not a number", with a warning, rather
         # than 0.0, which would read as the best value the measure can take. The
         # paper never says what the measure gives then. Explained in README.md
-        # in this folder; written up in docs/ASSUMPTIONS.md.
+        # in this folder; written up in docs/assumptions/A-39.md.
         warnings.warn(
             "ASUE is undefined here: no engine was predicted early (below its true "
             "remaining life), so Equation 24 divides 0 by 0. Returning nan.",

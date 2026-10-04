@@ -88,7 +88,7 @@ def _extract_one_unit(
         # is affected (its shortest test history is 31 cycles, see F-03), but
         # 6 FD002 and 11 FD004 test engines are, and dropping a test engine
         # changes the NASA score, which is a sum. Written up in
-        # docs/ASSUMPTIONS.md and docs/LITERATURE_BASIS.md.
+        # docs/assumptions/A-23.md and docs/LITERATURE_BASIS.md.
         logger.warning(
             "Engine %s has %d row(s), fewer than the window size of %d, so it "
             "is left out. Its readings are not padded: that would invent data. "

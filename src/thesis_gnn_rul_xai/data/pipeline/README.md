@@ -212,7 +212,7 @@ finding is that it looks better than it really is. (Corrected 2026-10-02: this
 said it would look better, which is the usual direction but not a certain one;
 found by the search for that claim after the review of the playground's
 information cards on 2026-09-26. Assumption A-25 in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md) has the argument.)
+[the assumptions log](../../../../docs/assumptions/A-25.md) has the argument.)
 
 ### Step 7 — fit on training engines only, apply to everything
 
@@ -482,7 +482,7 @@ the fitting set. This pipeline splits first and fits on the training engines
 only, because the alternative lets held-back engines influence the numbers used
 to rescale them.
 
-Both entries are in [the assumptions log](../../../../docs/ASSUMPTIONS.md).
+Both entries are in [the assumptions log](../../../../docs/assumptions/README.md).
 
 ---
 

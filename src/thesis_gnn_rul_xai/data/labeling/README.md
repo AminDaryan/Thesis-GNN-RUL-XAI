@@ -340,7 +340,7 @@ measurement made from a figure, not a number the paper printed — and the
 paper's schematic figure appears to disagree with its experimental one.
 
 The full argument, including the disagreement between the two figures, is in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md) (assumption A-01).
+[the assumptions log](../../../../docs/assumptions/A-01.md) (assumption A-01).
 
 ### A-02 — the ceiling is applied to the test labels too
 
@@ -388,7 +388,7 @@ more the larger it is. The other two have no such guarantee:
 So any number from this project compared against a published one must carry
 that caveat, naming which measure it is. This is settled and not up for
 re-litigation (assumption A-02 in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md), which holds the
+[the assumptions log](../../../../docs/assumptions/A-02.md), which holds the
 measured effect and the full argument). (Corrected 2026-10-02: this said
 capping can only move the reported error favourably because it removes the
 cases the model was going to be furthest from. It removes no engine, and the

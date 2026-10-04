@@ -1241,7 +1241,7 @@ def test_example_a_dynamic_shap_row_on_the_stored_default_run(raw_dir):
     assert int(np.sum(held.targets[rows] != truth)) == 114
 
 
-# --- docs/ASSUMPTIONS.md, A-36: PyTorch's GRU against Cho et al.'s Equation 8 ---
+# --- docs/assumptions/A-36.md: PyTorch's GRU against Cho et al.'s Equation 8 ---
 
 
 def test_example_pytorch_gru_multiplies_the_reset_gate_in_after_the_memory_multipliers(raw_dir):

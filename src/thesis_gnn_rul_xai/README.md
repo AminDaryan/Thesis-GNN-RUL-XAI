@@ -16,7 +16,7 @@ That paper does not publish source code and does not specify every
 implementation detail. Wherever a value or a procedure had to be chosen by us
 rather than read from the paper, the choice is marked in the code with a
 comment starting `ASSUMPTION` and is written up, with its reasoning, in
-`docs/ASSUMPTIONS.md`. Nothing in this package is an undocumented guess.
+`docs/assumptions/`, one file per choice. Nothing in this package is an undocumented guess.
 
 > **Where the explanation lives.** The `.py` files in this package carry one
 > line of description per function, and nothing more. Every folder has a
@@ -164,8 +164,8 @@ error message instead of a confusing failure deep inside the pipeline.
 ## The judgement calls made in this folder
 
 Each of these is a place where the paper does not say what to do. The code in
-parentheses after each one (such as "assumption A-05") points at the entry in
-`docs/ASSUMPTIONS.md` that gives the full reasoning; nothing here needs it to
+parentheses after each one (such as "assumption A-05") points at the file in
+`docs/assumptions/` that gives the full reasoning (`A-05.md` for that one); nothing here needs it to
 be understood.
 
 Several of these settings were not chosen independently. Where the paper is

@@ -52,6 +52,8 @@ _INLINE_MATH = re.compile(r"(?<![\\$])\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\$)")
 # An assumption or finding identifier mentioned in prose, such as "A-07" or
 # "F-11", which the website turns into a link to that entry.
 _IDENTIFIER = re.compile(r"\b([AF]-\d{2})\b")
+# The words of a link that are only such a code, struck through when the entry is withdrawn.
+_LINKED_IDENTIFIER = re.compile(r"(<del>)?[AF]-\d{2}(</del>)?")
 
 # Anything that is not a letter, a digit, a space or a hyphen. GitHub drops
 # these when it builds a heading anchor, and this project's documents contain
@@ -257,6 +259,9 @@ class _SiteRenderer(HTMLRenderer):
         if target.startswith("/api/paper?"):
             # A paper opens in the browser's own PDF viewer, beside the page that cites it.
             return f'<a href="{html.escape(target)}" target="_blank" rel="noopener">{text}</a>'
+        if _LINKED_IDENTIFIER.fullmatch(text):
+            # A link whose words are only a code, as in the index tables, looks like the codes in prose.
+            return f'<a class="identifier" href="{html.escape(target)}">{text}</a>'
         return super().link(text, target, title)
 
     def image(self, text: str, url: str, title: str | None = None) -> str:

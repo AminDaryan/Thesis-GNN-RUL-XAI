@@ -597,7 +597,7 @@ The choices start immediately afterwards. The `rul` column this file produces
 counts all the way up — 191 for training engine 1 at cycle 1 — and the very
 next step, [`labeling`](../labeling/README.md), stops it at a ceiling. The
 value of that ceiling and applying it to the test labels as well are both
-choices, and both are in [the assumptions log](../../../../docs/ASSUMPTIONS.md)
+choices, and both are in [the assumptions log](../../../../docs/assumptions/README.md)
 (assumptions A-01 and A-02).
 
 ---

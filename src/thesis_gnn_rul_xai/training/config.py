@@ -46,19 +46,19 @@ class TrainingConfig:
     # ("multiplying 0.1 in epochs 120 and 160"); no C-MAPSS paper found decays
     # exponentially. Where the step falls is not stated either, so the halfway
     # point is used: it spends equal time at each of the two rates the paper
-    # does state. Written up in docs/ASSUMPTIONS.md and docs/LITERATURE_BASIS.md.
+    # does state. Written up in docs/assumptions/A-17.md and docs/LITERATURE_BASIS.md.
     lr_schedule: LearningRateSchedule = "step"
     # Which epoch the step happens on. None means halfway through the run.
     lr_step_epoch: int | None = None
     # ASSUMPTION A-18: stop early once the held-out error stops improving. The
     # paper holds nothing out and never stops early, so this is a departure
-    # from it, not a reconstruction. Written up in docs/ASSUMPTIONS.md.
+    # from it, not a reconstruction. Written up in docs/assumptions/A-18.md.
     early_stopping_patience: int | None = 20
     min_improvement: float = 1e-4
     # ASSUMPTION A-40: no limit on the size of a step by default, because the
     # paper names none, and nothing else keeps the weights small either (the
     # comment where train() in run.py builds Adam). Written up in
-    # docs/ASSUMPTIONS.md.
+    # docs/assumptions/A-40.md.
     gradient_clip: float | None = None
 
     # --- execution ---------------------------------------------------------
@@ -70,7 +70,7 @@ class TrainingConfig:
             "Training settings. The values under 'from Table 6' come from "
             "Wen et al. (2026). lr_schedule and early_stopping_patience are "
             "our own choices, written up as A-17 and A-18 in "
-            "docs/ASSUMPTIONS.md."
+            "docs/assumptions/."
         )
     )
 

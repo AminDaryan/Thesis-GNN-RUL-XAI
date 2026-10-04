@@ -76,7 +76,7 @@ the assumption comment rule 4 requires:
     # the first layer; in the paper that number leaves a stage this project
     # does not implement (A-11). Set to "mean" to average the window instead,
     # which keeps the same shape and the same parameter count.
-    # Written up in docs/ASSUMPTIONS.md.
+    # Written up in docs/assumptions/A-07.md.
     node_feature: NodeFeature = "last"
 ```
 
@@ -234,7 +234,7 @@ pair. Those are separate questions and each would need its own entry.
 
 ## 8. What to write when it is finished
 
-1. **Update A-07** in `docs/ASSUMPTIONS.md`. Its "How much it matters" section
+1. **Update A-07** in `docs/assumptions/A-07.md`. Its "How much it matters" section
    currently answers a different question; give it the mean-versus-last number,
    with both standard deviations and the command that produced it. Delete the
    sentence saying the mean has never been measured.

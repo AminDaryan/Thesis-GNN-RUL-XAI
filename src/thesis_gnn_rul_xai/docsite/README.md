@@ -5,7 +5,8 @@ playground, where a run of the network is designed, trained, set beside the
 paper and explained. Its menu holds everything written here that a reader
 needs: taught pages ordered as Data, Preprocessing, Temporal algorithm, GNN and
 XAI (with Dynamic SHAP and GNN-LRP beneath it), the notebooks,
-one page per folder of the code, the assumptions log, the audits and reviews,
+one page per folder of the code, the assumptions and the findings, the audits
+and reviews,
 and, under Resources, the dataset, the LSTM, the GCN, SHAP and GNN-LRP each
 explained from its original paper, ending with the reading list.
 It runs on your own machine, reads the files from disk as you ask for them,
@@ -50,7 +51,7 @@ and `scripts/explain.py`, but what they compute is theirs, stored by them in
 | `markup.py` | Turns one Markdown file into the HTML the browser displays. |
 | `figures.py` | Draws the diagrams the taught pages and the notebooks show, each from this repository's own data. |
 | `worked_example.py` | Follows one real FD001 window through a named saved network and exposes its additions for inspection. |
-| `results.py` | Reads the entries of `docs/ASSUMPTIONS.md`, and the last re-check of the numbers the log quotes. |
+| `results.py` | Reads the entries in `docs/assumptions/` and `docs/findings/`, one file each, and the last re-check of the numbers they quote. |
 | `notebooks.py` | Turns a notebook into HTML for reading, and starts JupyterLab for running. |
 | `playground/` | The playground's Python, in five files: its settings and their checks, what the Design tab shows, the commands, the stored runs, and the job queue. Its own README says which file holds what. |
 | `assets/playground.js` | The playground page: its form, its job list, its charts. |
@@ -71,8 +72,8 @@ of Markdown into a folder of HTML, and then serve the HTML. The trouble is that
 the HTML is a *copy*. Edit a Markdown file, forget to run the tool, and the
 website now says something the repository does not. This project has already
 been bitten by a stored copy disagreeing with the code it described — a results
-file survived that no committed code could produce (finding F-09 in the
-assumptions log) — so a second copy of the documentation was not worth the risk.
+file survived that no committed code could produce (finding F-09, in
+`docs/findings/`) — so a second copy of the documentation was not worth the risk.
 
 Reading a file from disk on every request costs a few milliseconds and removes
 the failure mode entirely. There is no build step, nothing to regenerate, and
@@ -89,18 +90,18 @@ changes the layer widths, the diagram changes with them.
 
 ## How a page reaches your screen
 
-Say you click on the assumptions log. Six things happen.
+Say you click on Assumptions in the menu. Six things happen.
 
-1. The browser's address becomes `#/doc/docs/ASSUMPTIONS.md`. Nothing is
+1. The browser's address becomes `#/doc/docs/assumptions/README.md`. Nothing is
    requested from the server yet — that part after the `#` never leaves the
    browser.
 2. `app.js` notices the change and asks the server for
-   `/api/doc?path=docs/ASSUMPTIONS.md`.
+   `/api/doc?path=docs/assumptions/README.md`.
 3. `server.py` checks the path is inside the project directory, refuses it if
    not, and reads the file.
 4. `markup.py` converts the Markdown to HTML, gives every heading an anchor,
    rewrites the links, and returns the headings as a list.
-5. The server puts the page's menu name, "Assumptions log", in place of the
+5. The server puts the page's menu name, "Assumptions", in place of the
    words of its first heading, and sends back a small parcel: the HTML, that
    name, the headings, and how long the document takes to read.
 6. `app.js` puts the HTML in the middle of the page, names the browser tab with
@@ -163,7 +164,7 @@ both.
 
 ### The links have to keep working
 
-The documents link to each other the way GitHub expects: `docs/ASSUMPTIONS.md`,
+The documents link to each other the way GitHub expects: `docs/assumptions/A-07.md`,
 or `../README.md`, or `#8-results-so-far`. Those are paths on disk, and they
 mean nothing to a browser looking at a single-page website.
 
@@ -609,19 +610,27 @@ before the first paint so a closed menu does not flash open while the page
 loads.
 
 **"About n minutes" is a word count, not a promise.** It divides the prose word
-count by 220 words a minute. It is there to warn you that the assumptions log
-is an hour's reading, not to be accurate about you.
+count by 220 words a minute. It is there to warn you that a page such as the
+playground's README ("The playground" in the menu) is more than an hour's reading (73 minutes on 2026-10-03), not to
+be accurate about you. (Corrected 2026-10-03: this named the assumptions log as
+an hour's reading. As one file it came to 339 minutes by the same count; since
+that day it is a folder of pages, one per entry.)
 
-**The assumptions log is parsed, not just displayed.** `results.py` reads the
-headings of `docs/ASSUMPTIONS.md`, picking out each entry's identifier, title
-and anchor, so that a link such as `#/entry/A-07` lands on that entry's heading
-in the log. That parsing depends on the log's existing heading style —
-`## A-01 — The label ceiling is 125 cycles`. A test checks that the entries come
-out numbered consecutively with no gaps, so if a future entry is written
-differently the test fails rather than the link quietly going nowhere. The log's
-page also shows, under its title, the result of the last run of
-`scripts/verify_claims.py`, which recomputes the numbers the log quotes: how
-many it re-checked, how many disagree, and when.
+**The assumptions log is parsed, not just displayed.** Each assumption and
+each finding is a file of its own, such as `docs/assumptions/A-07.md` or
+`docs/findings/F-16.md`. `results.py` lists those files with
+`log_entry_files()` from `utils/paths.py` and reads the first line of each,
+picking out the entry's identifier and title, so that a link such as
+`#/entry/A-07` opens that entry's own page. That parsing depends on the first
+line keeping its style — `# A-01 — The label ceiling is 125 cycles`. A test
+checks that the entries come out numbered consecutively with no gaps, so if a
+future entry is written differently the test fails rather than the link
+quietly going nowhere. The entry pages are not in the menu, which lists the
+two folders' README pages, Assumptions and Findings, instead; each entry opens
+from the table on its folder's page, and the site's search reads every one of
+them. The Assumptions page also shows, under its title, the result of the last
+run of `scripts/verify_claims.py`, which recomputes the numbers the log quotes,
+the findings' included: how many it re-checked, how many disagree, and when.
 
 **The site adds nothing to what the repository says.** Everything on it is
 either a file from the repository, a number computed by the package's own code,
@@ -687,7 +696,10 @@ there.
 
 Every place a phrase appears across the documents in the menu, as a list of
 dictionaries holding the document's path, its menu name and the surrounding
-text. The notebooks and the playground are not searched. It is a plain
+text. The assumptions and findings are searched as well, although each is a
+page of its own outside the menu; a match in one is named by the entry's own
+heading, such as `A-14 — Weights are initialised with Glorot uniform sampling`
+for the entry on the network's starting weights. The notebooks and the playground are not searched. It is a plain
 substring search over the raw Markdown — no index, no ranking. On this
 repository's 300 kB of prose it takes long enough to notice and not long enough
 to mind. The page names each document once, over the lines that matched in it.
@@ -723,7 +735,9 @@ the page down with it.
 ### `load_entries(root)` and `latest_verification(root)`
 
 The first returns every assumption and finding in the log as an `Entry`, with
-its identifier, title, status and the anchor to link to. The second returns the
+its identifier, title, status and the path of its own file, such as
+`docs/assumptions/A-07.md`: every assumption in number order, then every
+finding. The second returns the
 most recent run of `scripts/verify_claims.py` stored in `reports/`, as a
 `Verification` holding how many claims it re-checked and how many failed, or
 `None` if it never ran.

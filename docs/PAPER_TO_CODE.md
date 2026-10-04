@@ -8,9 +8,9 @@ does it, which automated check fails if the code stops doing it, and where the
 two part company.
 
 It replaces nothing. The audit of 2026-08-31
-(`docs/AUDIT_2026-08-31_paper_against_code.md`) is the record of how each row
-was first checked, and `docs/ASSUMPTIONS.md` holds the reasoning behind every
-departure. This file is the part that stays true as the code changes.
+(`docs/audits/AUDIT_2026-08-31_paper_against_code.md`) is the record of how
+each row was first checked, and `docs/assumptions/` holds the reasoning behind
+every departure. This file is the part that stays true as the code changes.
 
 ## Why it is called living, and what that does and does not mean
 
@@ -24,7 +24,7 @@ fails when:
 - a function, class or constant named in the **Code** column no longer exists;
 - a test or check named in the **Checked by** column no longer exists;
 - a numbered choice or finding named in the **Standing** column, such as
-  `A-21`, has no entry in `docs/ASSUMPTIONS.md`;
+  `A-21`, has no file in `docs/assumptions/` or `docs/findings/`;
 - a numbered part of the paper has no row, or has two;
 - a row says the code does something and names no check for it.
 
@@ -125,7 +125,7 @@ is worse than no row, because it looks like a guarantee.
 
 **When the code starts departing from the paper**, the row's Standing changes
 in the same change as the code, and the departure gets its entry in
-`docs/ASSUMPTIONS.md` first, as working rule 4 requires.
+`docs/assumptions/` first, as working rule 4 requires.
 
-**When something about the paper is found**, it goes into `docs/ASSUMPTIONS.md`
+**When something about the paper is found**, it goes into `docs/findings/`
 as a finding and its identifier goes into the row it concerns.

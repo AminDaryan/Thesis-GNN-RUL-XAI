@@ -5,7 +5,7 @@ sensor. This file leaves that stage out, because the paper never states its
 size, its depth, or how it turns a 30-cycle window into one number, so any
 version of it would be invention rather than reproduction. Results from this
 network therefore compare against the paper's own "ESTGNN w/o LSTM" row, never
-its headline figures. Written up in docs/ASSUMPTIONS.md.
+its headline figures. Written up in docs/assumptions/A-11.md.
 
 Read README.md in this folder. It explains everything this file does, what
 these results may be compared with, and what the last layer rules out.

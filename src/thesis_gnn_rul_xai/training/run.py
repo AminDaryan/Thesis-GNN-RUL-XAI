@@ -149,7 +149,7 @@ def _as_loader(
     targets = torch.from_numpy(np.ascontiguousarray(dataset.targets)).float()
     # ASSUMPTION A-13: divide the labels by rul_max so they fit the range the
     # last layer can produce, and multiply predictions back afterwards. The
-    # paper never states this arithmetic. Written up in docs/ASSUMPTIONS.md.
+    # paper never states this arithmetic. Written up in docs/assumptions/A-13.md.
     targets = targets / float(rul_max)
     return DataLoader(
         TensorDataset(features, targets),
@@ -225,7 +225,7 @@ def train(
     # of the paper name the loss, the optimiser, the two rates, the passes and
     # the batch size, and nothing of the kind. The only guard against
     # over-training is the held-back engines and stopping on them (assumptions
-    # A-06 and A-18). Written up in docs/ASSUMPTIONS.md.
+    # A-06 and A-18). Written up in docs/assumptions/A-40.md.
     optimiser = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     scheduler = _build_scheduler(optimiser, config)
     is_plateau = isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)

@@ -1,7 +1,7 @@
 """The random and rewired sensor graphs that stand in for the paper's graph without its knowledge.
 
 src/thesis_gnn_rul_xai/graph/README.md explains both graphs and why they are
-drawn the way they are; docs/ASSUMPTIONS.md records the choices as A-41.
+drawn the way they are; docs/assumptions/A-41.md records the choices.
 """
 
 from __future__ import annotations

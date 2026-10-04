@@ -36,7 +36,7 @@ and this entry deleted.
 
 ## P-10 — The audit of 2026-09-08: the control graphs are built but not trained
 
-`docs/AUDIT_2026-09-08_response.md` answers all eleven of the audit's items. On
+`docs/audits/AUDIT_2026-09-08_response.md` answers all eleven of the audit's items. On
 2026-10-03 the last code items were done: the run record's split field
 (item D-4), ASUE's undefined case (item D-11, assumption A-39), the
 regularisation entry (assumption A-40), and the control graphs of item D-2 —
@@ -80,9 +80,10 @@ grid in the playground reading `training/stored.py`.
 instead of as a pointer, in the READMEs, `docs/learn/` and the notebooks. It does
 not look at:
 
-- **`docs/ASSUMPTIONS.md`** itself, where entries refer to one another by code
-  hundreds of times ("under A-22's rule", "see F-10"). It is the log, so a code
-  there has its entry one click away, but the author's instruction covers it.
+- **The log itself**, `docs/assumptions/` and `docs/findings/`, where entries
+  refer to one another by code hundreds of times ("under A-22's rule", "see
+  F-10"). It is the log, so a code there has its entry one click away, but the
+  author's instruction covers it.
 - **`docs/LITERATURE_BASIS.md`** and the dated audits and reviews. The dated
   documents are records of what was written then and should not be rewritten.
 - **`scripts/train.py --help`**, whose option texts end in "(A-19)" and the like.
@@ -91,7 +92,7 @@ The playground's cautions were on this list until 2026-09-17; they now say the
 thing in words and put the code after it in parentheses, as a link to the entry.
 
 **What finishing looks like:** the log's cross-references rewritten with the
-thing said in words; the check extended to `docs/ASSUMPTIONS.md` with entry
+thing said in words; the check extended to `docs/assumptions/` and `docs/findings/` with entry
 headings and table identifier columns exempt.
 
 ---
@@ -127,7 +128,7 @@ their own, or compare runs only within one recorded commit.
 on FD002, FD003 and FD004; retain each run's code identity and measured files;
 make grouped runs visible in the website's Run History; report the mean and
 seed-to-seed spread of every measure; record the resulting cross-dataset
-finding in `docs/ASSUMPTIONS.md`; run the relevant tests; and delete this
+finding in `docs/findings/`; run the relevant tests; and delete this
 entry.
 
 ---

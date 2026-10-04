@@ -2,8 +2,8 @@
 
 ## What this file is
 
-`docs/ASSUMPTIONS.md` records every choice made where Wen et al. (2026) are
-silent. Each entry says what we chose and why. This file asks a harder
+`docs/assumptions/` records every choice made where Wen et al. (2026) are
+silent, one file per choice. Each entry says what we chose and why. This file asks a harder
 question of the same list:
 
 > **Has anyone else published the same choice, on this dataset, and can we
@@ -461,7 +461,7 @@ its search but the settings chosen (its Table 4, PDF page 12, journal page
 185), so its test results cannot be checked against the search either way.
 How Figs. 3 and 7 were read, and two further problems with this paper's
 results, are in the finding about what other papers put on a graph node
-(finding F-12 in `docs/ASSUMPTIONS.md`).
+(finding F-12, `docs/findings/F-12.md`).
 
 **Added 2026-10-02.** IMTSO-GCN was counted among the twelve above, but its
 search was not discussed in this passage until this date. The question came up
@@ -479,7 +479,7 @@ between two possibilities when the paper leaves three open.
 
 ## Where the rest of the list stands
 
-Of the numbered entries in `docs/ASSUMPTIONS.md`, roughly two in five cite a
+Of the numbered entries in `docs/assumptions/` and `docs/findings/`, roughly two in five cite a
 supporting work — Heimes (2008) for the piecewise label, Kipf and Welling
 (2017) for the graph layer, its normalisation and its initialisation, Jin et
 al. (2025) for the input scaling, Shapley (1953) and Lundberg and Lee (2017)

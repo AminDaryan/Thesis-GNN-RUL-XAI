@@ -66,7 +66,7 @@ its Figure 9 give the harsher divisor, 10, to late predictions (finding F-20).
 The two printed equations are inconsistent with each other. We implement the
 intent the paper states in words, which is also the standard function every
 other paper on this dataset uses, so that our numbers can be compared with
-theirs (assumption A-15 in `docs/ASSUMPTIONS.md`).
+theirs (assumption A-15, in `docs/assumptions/A-15.md`).
 
 ## The four measures
 
@@ -107,8 +107,8 @@ prediction minus the truth's mean, squared   30² + 10² + 10² + 30² = 2 000  
 
 The standard formula scores it 0.0, no better than predicting the mean every
 time; the paper's version scores it 0.75. The code uses the standard definition,
-which is also what the text beside the equation describes (assumption A-16 in
-`docs/ASSUMPTIONS.md`).
+which is also what the text beside the equation describes (assumption A-16, in
+`docs/assumptions/A-16.md`).
 
 `r_squared` raises a `ValueError` when every true label is the same value,
 because the denominator is then zero and the measure is undefined.
@@ -205,7 +205,7 @@ day. `FIG_10_RING` cannot come from the text layer, because the sensor names in
 both figures are part of a picture; it was read by eye from graph 1 of Fig. 10
 and from Fig. 9, each rendered at scale 8, and the two agree. How Fig. 10's
 colours were then checked against Table 12, and the two graphs where they differ,
-are recorded in `docs/ASSUMPTIONS.md` (finding F-17).
+are recorded in `docs/findings/F-17.md` (finding F-17).
 
 ### The four versions of the model a row can describe
 
@@ -305,7 +305,7 @@ from a constant up to models given a summary of the whole window — on exactly
 the engines each of those networks was trained on, then scores everything on
 the same 100 test engines with `evaluate` from this folder. What its record
 run found, set beside the default network and the network with the paper's
-recurrent stage, is written up in `docs/ASSUMPTIONS.md` (finding F-22) and
+recurrent stage, is written up in `docs/findings/F-22.md` (finding F-22) and
 summarised in the top-level `README.md`, section 8.
 
 ### What a stored run holds, and why the data is rebuilt for every seed
@@ -707,7 +707,7 @@ decide the rescaling is a different question, answered where the split is made
 
 The first two are cases where the paper contradicts itself and we had to pick
 a side; the last three fill gaps where the paper says nothing. Full write-ups
-are in `docs/ASSUMPTIONS.md`.
+are in `docs/assumptions/`.
 
 - **The sign of the score function.** The paper's Equation 20 and Equation 21
   imply the opposite penalty direction from the one its own prose and the cited

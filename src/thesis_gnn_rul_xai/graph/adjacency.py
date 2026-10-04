@@ -72,7 +72,7 @@ def build_fully_connected_adjacency(
     ASSUMPTION A-19: use this as the stand-in when the paper's experiment
     "without physics prior" is repeated. The paper never says what it put in
     place of its own graph there. Explained in README.md in this folder;
-    written up in docs/ASSUMPTIONS.md.
+    written up in docs/assumptions/A-19.md.
     """
     matrix = np.ones((n_nodes, n_nodes), dtype=np.float32)
     np.fill_diagonal(matrix, 0.0)
@@ -138,7 +138,7 @@ def normalize_adjacency(
 
     ASSUMPTION A-21: choose between the two rescaling formulas below. The paper
     describes the step but never prints the formula, and both fit what it says.
-    Explained in README.md in this folder; written up in docs/ASSUMPTIONS.md.
+    Explained in README.md in this folder; written up in docs/assumptions/A-21.md.
     """
     matrix = np.asarray(adjacency, dtype=np.float64)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:

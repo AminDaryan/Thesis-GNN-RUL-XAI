@@ -114,7 +114,7 @@ class OperatingConditionEncoder:
 # nothing here reconstructs what they did. The default is the z-score, picked
 # under the rule in A-22; the per-condition min-max option follows Jin et al.
 # (2025) and was the default until 2026-08-29. Written up in
-# docs/ASSUMPTIONS.md, where it is measured as the largest single effect in
+# docs/assumptions/A-03.md, where it is measured as the largest single effect in
 # the project.
 @dataclass
 class SensorNormalizer:

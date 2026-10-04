@@ -1464,7 +1464,7 @@ of the Dynamic SHAP page). For this page's straight line all three coincide, as
 the first table shows; for the project's network they do not, because the
 average of a non-linear network's outputs is in general not its output at the average
 input, and
-[the record of that choice](../ASSUMPTIONS.md#a-24--the-attributions-are-measured-against-the-prediction-at-the-average-window-not-the-average-label)
+[the record of that choice](../assumptions/A-24.md)
 holds the gap measured on one trained network.
 
 ---

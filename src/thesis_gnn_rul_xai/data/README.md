@@ -158,7 +158,7 @@ travels with the data.
 
 Each of these is a place where the paper does not say what it did, so we had to
 choose. Every one has a numbered entry in
-[`docs/ASSUMPTIONS.md`](../../../docs/ASSUMPTIONS.md) with the full reasoning,
+[`docs/assumptions/`](../../../docs/assumptions/README.md) with the full reasoning,
 and each is explained in plain terms on the page of the file it lives in.
 
 | ID | The choice | Where it lives |

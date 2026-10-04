@@ -41,6 +41,7 @@ from thesis_gnn_rul_xai.graph.adjacency import (
     normalize_adjacency,
     pairs_beyond_reach,
 )
+from thesis_gnn_rul_xai.utils.paths import log_entry_files, project_root
 from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
 
 # --- docsite/ ---------------------------------------------------------
@@ -493,6 +494,20 @@ def test_example_published_row_prints_only_what_the_table_prints():
         published_row("transformer", "FD001")
 
 
+# --- utils/paths.py -----------------------------------------------------
+
+
+def test_example_log_entry_files_lists_the_assumptions_then_the_findings():
+    """Every A-NN.md in number order, then every F-NN.md; the folders' README files are not entries."""
+    names = [path.name for path in log_entry_files()]
+    assumptions = [name for name in names if name.startswith("A-")]
+    assert names[0] == "A-01.md"
+    assert names[len(assumptions)] == "F-01.md"
+    assert names == sorted(assumptions) + sorted(set(names) - set(assumptions))
+    assert "README.md" not in names
+    assert (project_root() / "docs" / "assumptions" / "README.md").is_file()
+
+
 # --- utils/provenance.py ------------------------------------------------
 
 
@@ -688,7 +703,7 @@ def test_example_condition_count_rests_on_altitude(raw_dir):
 
 def test_example_capping_guarantees_only_rmse_and_the_score(raw_dir):
     """Capping the FD001 test labels cannot raise RMSE or the NASA score; R-squared and ASUE can worsen."""
-    # Assumption A-02 in docs/ASSUMPTIONS.md, corrected 2026-10-02.
+    # Assumption A-02, docs/assumptions/A-02.md, corrected 2026-10-02.
     labels = np.loadtxt(raw_dir / "RUL_FD001.txt")
     capped = np.minimum(labels, 125)
     assert int((labels > 125).sum()) == 11
@@ -762,7 +777,7 @@ def test_example_stored_predictions_obey_the_two_capping_guarantees(raw_dir):
 
 def test_example_a_different_constant_breaks_the_adding_up_or_the_order(loaded):
     """Measuring stored Shapley values from the mean label breaks either the adding-up or the order by size."""
-    # Assumption A-24 in docs/ASSUMPTIONS.md, corrected 2026-10-02.
+    # Assumption A-24, docs/assumptions/A-24.md, corrected 2026-10-02.
     import json
     from pathlib import Path
 
@@ -1123,7 +1138,7 @@ def test_example_the_configuration_digest_is_built_from_the_settings_without_the
     assert uncapped.digest() == "7c2c29"
 
 
-# --- docs/ASSUMPTIONS.md, A-35: which window graph g of Table 12 is ---------
+# --- docs/assumptions/A-35.md: which window graph g of Table 12 is ---------
 
 
 def test_example_reading_graph_g_as_another_window_moves_the_red_four_count_but_not_its_order():
@@ -1384,7 +1399,7 @@ def test_example_the_lean_of_the_errors_against_the_capped_label_and_against_the
     def shown(value):
         return f"{value:.3f}".replace("-", "\N{MINUS SIGN}")
 
-    log = (project_root() / "docs" / "ASSUMPTIONS.md").read_text(encoding="utf-8")
+    log = (project_root() / "docs" / "assumptions" / "A-27.md").read_text(encoding="utf-8")
     note = log[log.index("**They do make different errors.**"):log.index("**What this says about the paper's claim.**")]
     for figure in (f"{shown(-0.210)} ± 1.551", "1.541 ± 1.320", shown(-0.415), "123.356", "1.070"):
         assert figure in note, figure

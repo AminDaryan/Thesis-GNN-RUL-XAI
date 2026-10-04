@@ -275,7 +275,7 @@
     if (!ref) { return ""; }
     if (/^[AF]-\d+$/.test(ref)) { return '<a href="#/entry/' + ref + '">' + ref + "</a>"; }
     if (/^D-\d+$/.test(ref)) {
-      return '<a href="#/doc/docs/AUDIT_2026-09-08_scientific_validity.md">' + ref + "</a>";
+      return '<a href="#/doc/docs/audits/AUDIT_2026-09-08_scientific_validity.md">' + ref + "</a>";
     }
     return esc(ref);
   }

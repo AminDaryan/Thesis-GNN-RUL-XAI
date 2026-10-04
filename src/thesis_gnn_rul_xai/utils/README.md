@@ -38,6 +38,15 @@ Everything else here is built on that:
 - `ensure_dir(path)` creates a directory and any missing parents, then returns
   it. Calling it on a directory that already exists does nothing and raises
   nothing.
+- `log_entry_files()` → the project's record of its choices and findings, one
+  file per entry: every file in `docs/assumptions/` named like `A-07.md`, in
+  number order, then every file in `docs/findings/` named like `F-16.md`, in
+  number order. On 2026-10-03 that is 63 paths, `A-01.md` to `A-41.md` and
+  then `F-01.md` to `F-22.md`. Each folder's `README.md` is left out, and so is
+  any file named another way, such as `A-7.md`, so nothing that is not an
+  entry is ever read as one. The website and `tests/test_paper_to_code.py`
+  list the entries through this one function; `tests/test_log_layout.py`
+  lists the folders its own way on purpose, to check it.
 
 **`data/raw` is read-only.** Nothing in this project ever writes into it. That
 is what guarantees the original measurements can always be recovered.
@@ -115,7 +124,7 @@ lines show which module produced them.
 A number in `reports/` is only evidence if someone can find the exact code that
 produced it and run it again. This repository once held a results file that
 disagreed with its own documentation and could not be reproduced from any
-committed state of the code (finding F-09 in `docs/ASSUMPTIONS.md`). So every
+committed state of the code (finding F-09, in `docs/findings/F-09.md`). So every
 stored result carries a stamp saying which code it came from and when, and
 `provenance.py` makes the two halves of that stamp. `scripts/train.py` and
 `scripts/explain.py` both use it, and put both halves into the name of the
@@ -282,7 +291,7 @@ back into place.
 ## Judgement calls
 
 None. This folder makes no choices that depart from the paper, so it has no
-`A-xx` entries in `docs/ASSUMPTIONS.md` — that file records every such
+`A-xx` entries in `docs/assumptions/` — that folder records every such
 judgement call made elsewhere in the project.
 
 ## Known loose end

@@ -30,7 +30,7 @@ FLIPPING_TASKS: tuple[str, ...] = ("activation", "pruning")
 # ASSUMPTION A-33: the random ordering the paper sets beside each explanation is
 # averaged over this many random orders, each drawn from a generator seeded by
 # the window's position. The paper reports a random baseline but not how many
-# orders make it. Written up in docs/ASSUMPTIONS.md.
+# orders make it. Written up in docs/assumptions/A-33.md.
 RANDOM_ORDERS: int = 20
 
 # How far the full graph's score here may sit from the walks' own score before
@@ -119,7 +119,7 @@ def _scores(model: ESTGNN, nodes: torch.Tensor, masks: np.ndarray) -> np.ndarray
     # that was rescaled loses a node; the authors' code, when it masks a graph,
     # multiplies the mask into the already rescaled one. Its readings stay in
     # the window; with no connection left, nothing of them reaches the score
-    # through the graph layers. Written up in docs/ASSUMPTIONS.md.
+    # through the graph layers. Written up in docs/assumptions/A-33.md.
     adjacency = model.adjacency.double()[None] * keep[:, :, None] * keep[:, None, :]
     hidden = nodes.expand(len(masks), -1, -1)
     for layer in model.graph_layers:

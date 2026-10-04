@@ -12,9 +12,10 @@ from pathlib import Path
 
 import pytest
 
+from thesis_gnn_rul_xai.utils.paths import log_entry_files
+
 ROOT = Path(__file__).resolve().parents[1]
 TABLE = ROOT / "docs" / "PAPER_TO_CODE.md"
-LOG = ROOT / "docs" / "ASSUMPTIONS.md"
 NOTHING = chr(0x2014)   # an em dash: the cell names nothing
 RANGE = chr(0x2013)     # an en dash, which the table uses between two numbers
 
@@ -99,8 +100,9 @@ def check_problem(reference: str, root: Path = ROOT) -> str | None:
 
 
 def log_codes() -> set[str]:
-    """Every assumption and finding that has an entry heading in docs/ASSUMPTIONS.md."""
-    return set(re.findall(r"^#{2,3} ([AF]-\d{2}) ", LOG.read_text(encoding="utf-8"), re.M))
+    """Every assumption and finding whose file in docs/assumptions/ or docs/findings/ opens with its heading."""
+    headings = (path.read_text(encoding="utf-8") for path in log_entry_files(ROOT))
+    return {match.group(1) for text in headings if (match := re.match(r"# ([AF]-\d{2}) ", text))}
 
 
 @pytest.fixture(scope="module")

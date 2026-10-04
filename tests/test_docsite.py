@@ -168,10 +168,10 @@ def test_display_mathematics_is_marked_up_as_display():
 
 def test_links_between_documents_are_rewritten_to_site_addresses():
     rendered = markup.render_markdown(
-        "See [the log](docs/ASSUMPTIONS.md#a-01) and [up](../README.md).",
+        "See [the entry](../../../docs/assumptions/A-01.md#a-01) and [up](../README.md).",
         source_path="src/thesis_gnn_rul_xai/data/README.md",
     )
-    assert "#/doc/src/thesis_gnn_rul_xai/data/docs/ASSUMPTIONS.md#a-01" in rendered.html
+    assert "#/doc/docs/assumptions/A-01.md#a-01" in rendered.html
     assert "#/doc/src/thesis_gnn_rul_xai/README.md" in rendered.html
 
 
@@ -339,7 +339,7 @@ def test_pages_that_repeat_other_pages_are_not_in_the_menu(
 ):
     listed = set(site_catalog.by_path)
     # The files stay in the repository; only the menu leaves them out.
-    for path in ("README.md", "docs/AUDIT_2026-08-31_paper_against_code.md"):
+    for path in ("README.md", "docs/audits/AUDIT_2026-08-31_paper_against_code.md"):
         assert (root / path).is_file(), path
         assert path not in listed, path
     code = next(s for s in site_catalog.sections if s.key == "code")
@@ -347,7 +347,9 @@ def test_pages_that_repeat_other_pages_are_not_in_the_menu(
         (doc.path, doc.title) for doc in code.documents
     }
     checks = next(s for s in site_catalog.sections if s.key == "checks")
-    assert checks.documents[0].title == "Assumptions log"
+    assert [doc.title for doc in checks.documents[:2]] == ["Assumptions", "Findings"]
+    # Each entry is a page of its own, opened from its folder's table, not from the menu.
+    assert "docs/assumptions/A-07.md" not in listed
 
 
 def test_every_listed_page_has_a_first_heading_to_show_its_menu_name(
@@ -375,6 +377,15 @@ def test_search_finds_a_phrase_that_is_certainly_there(
     assert all(set(hit) == {"path", "title", "context"} for hit in hits)
 
 
+def test_search_reads_the_assumptions_and_findings_though_they_are_not_in_the_menu(
+    site_catalog: catalog.Catalog, root: Path
+):
+    hits = catalog.search("Glorot uniform", site_catalog, root)
+    entry = [hit for hit in hits if hit["path"] == "docs/assumptions/A-14.md"]
+    assert entry, "the entry on the starting weights was not searched"
+    assert entry[0]["title"].startswith("A-14 — ")
+
+
 def test_search_ignores_a_query_too_short_to_mean_anything(
     site_catalog: catalog.Catalog, root: Path
 ):
@@ -398,14 +409,14 @@ def test_every_assumption_and_finding_is_picked_up(root: Path):
     assert findings == [f"F-{n:02d}" for n in range(1, len(findings) + 1)]
 
 
-def test_each_entry_anchor_exists_in_the_rendered_log(root: Path):
-    rendered = markup.render_markdown(
-        catalog.read_document("docs/ASSUMPTIONS.md", root),
-        source_path="docs/ASSUMPTIONS.md",
-    )
-    anchors = {heading.anchor for heading in rendered.headings}
+def test_each_entry_opens_as_a_page_under_its_own_heading(root: Path):
     for entry in results.load_entries(root):
-        assert entry.anchor in anchors, f"{entry.identifier} has no anchor to link to"
+        rendered = markup.render_markdown(
+            catalog.read_document(entry.path, root), source_path=entry.path
+        )
+        first = rendered.headings[0]
+        assert first.level == 1, f"{entry.identifier} does not open with its own heading"
+        assert first.text.startswith(f"{entry.identifier} — "), entry.path
 
 
 def test_a_withdrawn_entry_is_not_reported_as_active(root: Path):
@@ -423,11 +434,10 @@ def test_an_entry_superseded_in_its_body_is_picked_up(tmp_path: Path):
     branch any more, and it is checked here against a log written in the test
     rather than left uncovered until some future entry needs it.
     """
-    log = tmp_path / "docs" / "ASSUMPTIONS.md"
-    log.parent.mkdir(parents=True)
-    log.write_text(
-        "# Assumptions log\n\n"
-        "## A-99 — A title carrying no status word\n\n"
+    entry = tmp_path / "docs" / "assumptions" / "A-99.md"
+    entry.parent.mkdir(parents=True)
+    entry.write_text(
+        "# A-99 — A title carrying no status word\n\n"
         "**Superseded 2026-08-29 by A-22.** The reproduction holds nothing "
         "out.\n",
         encoding="utf-8",
@@ -1182,3 +1192,33 @@ def test_the_playground_graph_is_handed_the_area_its_positions_were_scaled_to(
     assert (graph["width"], graph["height"]) == area
     for x, y in graph["positions"].values():
         assert 0 <= x <= graph["width"] and 0 <= y <= graph["height"]
+
+
+def test_an_old_address_of_the_log_or_an_audit_opens_where_the_page_went(root: Path):
+    """The log became one file per entry, and the audits moved to docs/audits/, on 2026-10-03."""
+    import re
+
+    script = (root / "src/thesis_gnn_rul_xai/docsite/assets/app.js").read_text(encoding="utf-8")
+    old_log = re.search(r'var OLD_LOG = "([^"]+)";', script).group(1)
+    assert not (root / old_log).exists()
+    block = script.split("var MOVED_DOCS = {", 1)[1].split("};", 1)[0]
+    moved = dict(re.findall(r'"(docs/[^"]+)": "(docs/[^"]+)"', block))
+    assert len(moved) == 5
+    for old, new in moved.items():
+        assert not (root / old).exists() and (root / new).is_file(), (old, new)
+    # An entry's old anchor, such as #a-07--each-sensor-node-..., names its code first.
+    pattern = re.search(r"var entry = /(.+?)/\.exec\(fragment\);", script).group(1)
+    match = re.match(pattern, "a-07--each-sensor-node-carries-the-last-cycle-of-its-window")
+    assert match and match.group(1).upper() + "-" + match.group(2) == "A-07"
+    assert re.match(pattern, "why-this-file-exists") is None
+
+
+def test_a_link_whose_words_are_only_a_code_is_drawn_like_a_code_in_prose():
+    """The index tables link each code to its file; the site draws it as it draws "A-07" in a sentence."""
+    rendered = markup.render_markdown(
+        "| ID |\n|----|\n| [A-07](A-07.md) |\n| [~~A-08~~](A-08.md) |\n\nSee [the entry](A-07.md).",
+        source_path="docs/assumptions/README.md",
+    )
+    assert '<a class="identifier" href="#/doc/docs/assumptions/A-07.md">A-07</a>' in rendered.html
+    assert '<a class="identifier" href="#/doc/docs/assumptions/A-08.md"><del>A-08</del></a>' in rendered.html
+    assert '<a href="#/doc/docs/assumptions/A-07.md">the entry</a>' in rendered.html

@@ -101,7 +101,7 @@ PAPER_SENSOR_SYMBOLS: tuple[str, ...] = (
 # ASSUMPTION A-10: NRc is the seventh of them. Their Section 3.2.2 says seven
 # sensors are removed and then names only six; NRc is the one sensor in their
 # Table 2 that is missing from their Table 3 without being named. Explained in
-# README.md in this folder; written up in docs/ASSUMPTIONS.md.
+# README.md in this folder; written up in docs/assumptions/A-10.md.
 PAPER_EXCLUDED_SYMBOLS: tuple[str, ...] = (
     "T2", "P2", "epr", "NRc", "farB", "Nf_dmd", "PCNfR_dmd",
 )

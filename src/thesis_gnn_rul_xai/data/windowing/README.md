@@ -677,7 +677,7 @@ WindowedDataset(empty, sensors=14)      len: 0
 
 The paper gives a window size of 30 in its Table 6 and in Section 3.4, but
 **never states a stride**. We use 1 (assumption A-05 in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md)).
+[the assumptions log](../../../../docs/assumptions/A-05.md)).
 
 ### A-07 — the model, not this file, reduces a window to one number
 
@@ -686,7 +686,7 @@ Table 4 of the paper gives the input to the first graph layer as
 of a per-sensor recurrent stage. This file hands on the whole window; the
 model's default temporal stage then keeps the most recent reading in place of
 the paper's stage, which is not the default (assumptions A-07 and A-11 in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md)).
+[the assumptions log](../../../../docs/assumptions/README.md)).
 
 ### A-23 — an engine shorter than the window is left out, not padded
 
@@ -707,7 +707,7 @@ because the model improved. Counted from the real files, no FD001 or FD003 test
 engine is affected; 6 FD002 and 11 FD004 engines are. So this cannot touch any
 number this project currently reports, and becomes live the moment FD002 or
 FD004 is run. The full entry is in
-[the assumptions log](../../../../docs/ASSUMPTIONS.md) (assumption A-23).
+[the assumptions log](../../../../docs/assumptions/A-23.md) (assumption A-23).
 
 ### A-06 — a validation split exists at all
 
@@ -715,7 +715,7 @@ The paper describes no validation split and trains for a fixed number of passes;
 holding engines out is **our addition**. The consequence is settled and not up
 for re-litigation: **validation error and test error are not comparable in this
 project**, and neither should ever be presented as the other (assumption A-06
-in [the assumptions log](../../../../docs/ASSUMPTIONS.md)).
+in [the assumptions log](../../../../docs/assumptions/A-06.md)).
 
 ---
 

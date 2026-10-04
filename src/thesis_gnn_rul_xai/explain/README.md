@@ -179,7 +179,7 @@ resulting numbers mean.
 The paper does not say what stand-in it uses. We replace an absent sensor's
 reading with that sensor's average across the training windows, so the model
 sees "this sensor is behaving typically" rather than some arbitrary value
-(assumption A-20 in `docs/ASSUMPTIONS.md`).
+(assumption A-20, in `docs/assumptions/A-20.md`).
 
 **Why zero would be the obvious alternative, and why that is a trap.** The
 temptation is to feed a sensor 0 when it is left out. Whether that is safe
@@ -407,8 +407,8 @@ labelled `G1`, `G2` and so on instead of by cycle.
 
 The *contents* are not comparable. Our values are signed and measured in flight
 cycles. The paper's cannot be: Table 12's contents cannot be signed Shapley
-values satisfying the paper's own Equation 14 (finding F-08 in
-`docs/ASSUMPTIONS.md`). Do not place the two side by side without saying so.
+values satisfying the paper's own Equation 14 (finding F-08, in
+`docs/findings/F-08.md`). Do not place the two side by side without saying so.
 
 The same caution applies to `shap_summary`. Its `mean_abs` column — the average
 size of a sensor's contribution, ignoring direction — is the usual measure of
@@ -1341,7 +1341,7 @@ wrong one.
 - **What "a sensor not considered" means.** Equation 15 needs a prediction with
   a sensor absent, but the network always needs all fourteen inputs, and the
   paper never says what it substitutes. We substitute that sensor's average
-  window over the training set (assumption A-20 in `docs/ASSUMPTIONS.md`).
+  window over the training set (assumption A-20, in `docs/assumptions/A-20.md`).
   Occlusion uses the same substitute, so the two methods differ only in the
   arithmetic.
 - **Offering occlusion at all.** It is not in the paper. It is here as the
@@ -1364,7 +1364,7 @@ wrong one.
 
 That the paper's Table 12 cannot hold signed Shapley values satisfying its own
 Equation 14 is not a choice of ours but an observation about the paper (finding
-F-08, also in `docs/ASSUMPTIONS.md`).
+F-08, in `docs/findings/F-08.md`).
 
 ## References
 

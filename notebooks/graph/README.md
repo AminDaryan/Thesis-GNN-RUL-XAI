@@ -105,8 +105,8 @@ notebook's setup cell takes the newest commit at which all three graphs have a
 stored five-seed run of this configuration that saved its networks, and the
 newest run of each graph at that commit. So all four notebooks read the same
 runs, and the three runs record the same commit. On 2026-10-02 that commit is
-`f386291-dirty`, and its three runs are the ones `docs/ASSUMPTIONS.md` quotes
-for these graphs (assumption A-27 and finding F-04).
+`f386291-dirty`, and its three runs are the ones `docs/assumptions/A-27.md` and
+`docs/findings/F-04.md` quote for these graphs (assumption A-27 and finding F-04).
 
 That is less than a promise that the three trained from identical code. The
 `-dirty` means the working tree held uncommitted changes, and these runs did
@@ -151,8 +151,8 @@ rescaled table has, and how many different sensors leave its first graph
 layer.
 
 **Do not confuse** different rows with the independent rows that
-`docs/ASSUMPTIONS.md` counts for the same graphs (assumption A-27 and finding
-F-18). A row is independent of the others when it cannot be built by adding
+`docs/assumptions/A-27.md` and `docs/findings/F-18.md` count for the same
+graphs (assumption A-27 and finding F-18). A row is independent of the others when it cannot be built by adding
 up multiples of them, so a table can have fewer independent rows than
 different ones: Table 3's rescaled table has 9 different rows and 8
 independent ones. The notebooks here count different rows, because two

@@ -10,7 +10,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from ..utils.paths import project_root
+from ..utils.paths import log_entry_files, project_root
 
 __all__ = [
     "Catalog",
@@ -33,8 +33,10 @@ _WORDS_PER_MINUTE = 220
 # above it. A page whose file is missing is left out rather than listed.
 #
 # Some files are deliberately not listed. README.md is the repository's front
-# page on GitHub, and each of its sections has a menu page of its own. A page
-# that is not listed still opens from a link, under its own heading.
+# page on GitHub, and each of its sections has a menu page of its own. Each
+# assumption and finding is a file of its own, reached from the table in its
+# folder's README. A page that is not listed still opens from a link, under its
+# own heading.
 _Entry = tuple[str, str, str, int]
 
 _PRIMARY: _Entry = ("explore/playground", "Playground", "explore", 0)
@@ -102,10 +104,12 @@ _CODE: tuple[_Entry, ...] = (
     (f"{_PACKAGE}/docsite/playground/README.md", "The playground", "reference", 1),
 )
 
-# The dated audits and reviews are found on disk rather than listed, so a new
-# one appears without an edit here. They sit between these two groups.
+# The dated audits and reviews in docs/audits/ are found on disk rather than
+# listed, so a new one appears without an edit here. They sit between these two
+# groups.
 _CHECKS_BEFORE: tuple[_Entry, ...] = (
-    ("docs/ASSUMPTIONS.md", "Assumptions log", "reference", 0),
+    ("docs/assumptions/README.md", "Assumptions", "reference", 0),
+    ("docs/findings/README.md", "Findings", "reference", 0),
     ("docs/PAPER_TO_CODE.md", "Paper-to-code table", "reference", 0),
     ("docs/LITERATURE_BASIS.md", "Published basis for each choice", "reference", 0),
     ("docs/PENDING.md", "Open work", "reference", 0),
@@ -138,7 +142,7 @@ _DATED_NAMES = {
     "AUDIT_response": "Response to the validity audit",
 }
 
-# Dated files kept in docs/ but not listed. The paper-against-code audit is the
+# Dated files kept in docs/audits/ but not listed. The paper-against-code audit is the
 # record of how each row of docs/PAPER_TO_CODE.md was first checked; the table,
 # which a test keeps current, is the page the menu offers for the same question.
 _UNLISTED_DATED = frozenset({"AUDIT_paper_against_code"})
@@ -223,9 +227,9 @@ def _describe(root: Path, entry: _Entry) -> Document | None:
 
 
 def _dated(root: Path) -> list[_Entry]:
-    """Every dated audit and review in docs/, newest first, named for the menu."""
+    """Every dated audit and review in docs/audits/, newest first, named for the menu."""
     found: list[tuple[str, _Entry]] = []
-    for file in (root / "docs").glob("*.md"):
+    for file in (root / "docs" / "audits").glob("*.md"):
         match = _DATED.match(file.name)
         if not match:
             continue
@@ -233,7 +237,7 @@ def _dated(root: Path) -> list[_Entry]:
         if f"{kind}_{topic}" in _UNLISTED_DATED:
             continue
         name = _DATED_NAMES.get(f"{kind}_{topic}", _DATED_NAMES[kind])
-        found.append((date, (f"docs/{file.name}", f"{name}, {date}", "reference", 0)))
+        found.append((date, (f"docs/audits/{file.name}", f"{name}, {date}", "reference", 0)))
     return [entry for _, entry in sorted(found, reverse=True)]
 
 
@@ -284,12 +288,17 @@ def search(query: str, catalog: Catalog, root: Path | None = None) -> list[dict[
     if len(needle) < 2:
         return []
 
+    pages = [(doc.path, doc.title) for doc in catalog.by_path.values()
+             if doc.kind not in ("notebook", "explore")]
+    # The assumptions and findings are not in the menu, but their words are searched.
+    for file in log_entry_files(root):
+        heading = (file.read_text(encoding="utf-8").splitlines() or [file.stem])[0]
+        pages.append((file.relative_to(root).as_posix(), heading.lstrip("# ").strip()))
+
     hits: list[dict[str, object]] = []
-    for document in catalog.by_path.values():
-        if document.kind in ("notebook", "explore"):
-            continue
+    for path, title in pages:
         try:
-            text = read_document(document.path, root)
+            text = read_document(path, root)
         except (OSError, ValueError):
             continue
         for line in text.splitlines():
@@ -299,8 +308,8 @@ def search(query: str, catalog: Catalog, root: Path | None = None) -> list[dict[
             start = max(0, position - 60)
             hits.append(
                 {
-                    "path": document.path,
-                    "title": document.title,
+                    "path": path,
+                    "title": title,
                     "context": line[start : position + len(needle) + 90].strip(),
                 }
             )

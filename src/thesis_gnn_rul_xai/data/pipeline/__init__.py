@@ -190,7 +190,7 @@ def run_preprocessing(
     # that keeping the test engines separate exists to avoid. Corrected
     # 2026-10-02: this said their error would look better than it really is;
     # found by the search for that claim after the review of the playground's
-    # information cards on 2026-09-26. Written up in docs/ASSUMPTIONS.md.
+    # information cards on 2026-09-26. Written up in docs/assumptions/A-25.md.
     train_units, validation_units = split_units_by_id(
         np.unique(train[UNIT_COL].to_numpy()),
         validation_fraction=config.validation_fraction,
@@ -254,13 +254,13 @@ def run_preprocessing(
         # ASSUMPTION A-41: join 41 sensor pairs chosen at random, the paper's
         # count, drawn from this run's seed and drawn again until every sensor
         # can reach every other. The paper never describes such a graph; the
-        # audit of 2026-09-08 asked for it. Written up in docs/ASSUMPTIONS.md.
+        # audit of 2026-09-08 asked for it. Written up in docs/assumptions/A-41.md.
         adjacency_raw, symbols = build_random_adjacency(config.seed)
     elif config.graph == "rewired":
         # ASSUMPTION A-41: the paper's graph with the ends of its edges swapped
         # at random, from this run's seed, so every sensor keeps its number of
         # connections but which sensors are joined is no longer the engineer's
-        # choice. Written up in docs/ASSUMPTIONS.md.
+        # choice. Written up in docs/assumptions/A-41.md.
         adjacency_raw, symbols = build_rewired_adjacency(config.seed)
     elif config.graph == "correlation":
         # ASSUMPTION A-27: join the sensor pairs whose readings move together
@@ -268,7 +268,7 @@ def run_preprocessing(
         # on the training engines only, after smoothing and rescaling, so that
         # neither the held-back nor the test engines help decide the graph --
         # the same rule the rescaling follows. The paper describes no such graph
-        # for its network. Written up in docs/ASSUMPTIONS.md.
+        # for its network. Written up in docs/assumptions/A-27.md.
         physics_edges = int(build_physics_adjacency()[0].sum() // 2)
         adjacency_raw, symbols = build_correlation_adjacency(
             train[train[UNIT_COL].isin(train_units)],

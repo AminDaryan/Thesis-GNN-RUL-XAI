@@ -153,7 +153,7 @@ def _chunk(
 
     # ASSUMPTION A-29: split the score before the sigmoid, not the prediction in
     # cycles, into one share per walk. The paper explains only sensors, never
-    # walks. Written up in docs/ASSUMPTIONS.md.
+    # walks. Written up in docs/assumptions/A-29.md.
     #
     # carried[b, p, j, c]: how much of channel c at node j came from the walk
     # prefix p, which lists the nodes visited before j. There is one prefix

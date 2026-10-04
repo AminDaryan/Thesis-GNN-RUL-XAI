@@ -535,7 +535,7 @@ project.** Five seeds each, everything else identical (commit `09628fa`):
 the paper's 14.93, and larger than every other assumption tested combined.
 
 Those numbers are quoted from
-[the assumptions log](../../../../docs/ASSUMPTIONS.md) (finding F-10); they were
+[the findings](../../../../docs/findings/F-10.md) (finding F-10); they were
 measured on a named commit and are not re-derived on this page.
 
 **What that means for any number this project reports.** It does not tell us

@@ -76,7 +76,7 @@ class LastCycle(TemporalStage):
     # project can also build now (see LSTMStage), and this stage is the
     # stand-in used when it is not built. The choice is made here, in the
     # model, rather than in data/windowing/ where it used to be made and
-    # looked like a property of the data. Written up in docs/ASSUMPTIONS.md.
+    # looked like a property of the data. Written up in docs/assumptions/A-07.md.
     def forward(self, windows: Tensor) -> Tensor:
         self._check(windows)
         return windows[:, :, -1:]
@@ -189,7 +189,7 @@ class LSTMStage(TemporalStage):
         # is drawn evenly from -1/sqrt(hidden_size) to +1/sqrt(hidden_size), and
         # each forget gate starts near one half; Gers et al. (2000) start theirs
         # above one half (0.62 and 0.73 for their first two blocks). The paper
-        # gives no starting values. Written up in docs/ASSUMPTIONS.md.
+        # gives no starting values. Written up in docs/assumptions/A-34.md.
         # ASSUMPTION A-36: cell="gru" puts a gated recurrent unit where each
         # LSTM goes. The paper has no such stage; it borrows the LSTM stage's
         # width, single layer and projection (A-26), and PyTorch's GRU applies
@@ -211,7 +211,7 @@ class LSTMStage(TemporalStage):
         # no hidden size, no depth and no projection: Table 4 has no recurrent
         # row at all, and Table 6 lists only the learning rate, epochs, batch
         # size, time steps, optimiser and loss. Written up in
-        # docs/ASSUMPTIONS.md.
+        # docs/assumptions/A-26.md.
         self.project = nn.Linear(self.hidden_size, self.out_features)
 
         logger.info(

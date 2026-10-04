@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 # ASSUMPTION A-09: use pandas' adjust=False form of this filter. Pandas offers
 # two, which disagree about the first few values of a series; adjust=False is
 # the plain formula the paper prints as its Equation 18. Written up in
-# docs/ASSUMPTIONS.md, together with A-04, the strength of the filter.
+# docs/assumptions/A-09.md, and the strength of the filter in A-04.md beside it.
 def ewma_series(values: Sequence[float] | np.ndarray, alpha: float) -> np.ndarray:
     """Smooth one series, written out the slow and obvious way.
 

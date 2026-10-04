@@ -429,7 +429,7 @@ def main() -> int:
         "stage. Without one -- the default -- it is 'ESTGNN w/o LSTM'; with\n"
         "--temporal lstm it is the full ESTGNN, under the size A-26 chose.\n"
         "Any other stage is not in the paper, and no row above applies to it.\n"
-        "See docs/ASSUMPTIONS.md for every way this pipeline differs from the\n"
+        "See docs/assumptions/ for every way this pipeline differs from the\n"
         "paper."
     )
     # The paper never says what its "w/o Physics prior" row used in place of

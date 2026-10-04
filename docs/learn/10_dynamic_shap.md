@@ -585,9 +585,9 @@ So the top and the bottom of the ranking hold across seeds for this one
 configuration; the exact sizes do not, and no other configuration has been
 measured this way. The settings, the tables and the code that produces them
 are in the records for
-[the reference choice](../ASSUMPTIONS.md#a-20--an-absent-sensor-is-replaced-by-its-average-training-window)
+[the reference choice](../assumptions/A-20.md)
 (assumption A-20) and
-[the two-value sensor](../ASSUMPTIONS.md#f-05--what-shap-says-about-p15-and-what-it-does-not)
+[the two-value sensor](../findings/F-05.md)
 (finding F-05).
 
 (Corrected 2026-10-03: this said both results came from one network and were

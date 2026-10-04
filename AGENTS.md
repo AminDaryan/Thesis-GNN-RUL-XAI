@@ -5,8 +5,9 @@ paper**, and its value depends entirely on the reader being able to tell which
 claims come from the paper, which come from measurement, and which are
 judgement calls. Everything below exists to protect that distinction.
 
-Read `README.md` section 9 for the layout and `docs/ASSUMPTIONS.md` for every
-judgement call made so far.
+Read `README.md` section 9 for the layout and `docs/assumptions/` for every
+judgement call made so far: one file per choice, all listed in the table of
+that folder's `README.md`.
 
 `docs/PENDING.md` holds what is known to be wrong, unmeasured or unfinished, and
 what finishing each item looks like. **Read it before starting anything and
@@ -59,7 +60,8 @@ No estimated results, no "approximately", no numbers carried over from an
 earlier message without re-deriving them. If a claim needs a number, run the
 code that produces it and show the output.
 
-Numbers already in `docs/ASSUMPTIONS.md` and `README.md` have been measured.
+Numbers already in `docs/assumptions/`, `docs/findings/` and `README.md` have
+been measured.
 Numbers anywhere else have not, until you check.
 
 ### 3. One seed is not a result
@@ -102,8 +104,10 @@ corroborated one that was wrong. See F-09.
 
 ### 4. Every deviation from the paper gets a numbered entry
 
-If the paper does not specify something and you have to choose, add an entry to
-`docs/ASSUMPTIONS.md` with:
+If the paper does not specify something and you have to choose, add a file to
+`docs/assumptions/` named after the next free code (`A-42.md`, opening with
+the heading `# A-42 — ` and the choice in a few words), add a row for it to the
+table in that folder's `README.md`, and write in the file:
 
 - **The gap** — quote what the paper does and does not say.
 - **What we chose.**
@@ -112,7 +116,7 @@ If the paper does not specify something and you have to choose, add an entry to
   measurement, say so.
 
 Then put the identifier in the code at the point of use, as a comment beginning
-`ASSUMPTION A-xx`. The header of that file promises this; keep it true.
+`ASSUMPTION A-xx`. That folder's `README.md` promises this; keep it true.
 
 That comment must say **what the choice was, in words**, not just cite its
 number. `# ASSUMPTION A-17` tells a reader nothing; `# ASSUMPTION A-17: drop
@@ -122,7 +126,9 @@ everything they need without leaving the file.
 
 Observations *about the paper* established from data are findings (`F-xx`), not
 assumptions. Keep the two apart: assumptions are our choices, findings are
-facts about the source.
+facts about the source. A finding goes in `docs/findings/` the same way: a
+file named after its code (`F-23.md`), opening with its heading, and a row in
+that folder's `README.md`.
 
 ### 5. Distinguish the three kinds of statement, always
 
@@ -799,7 +805,7 @@ a fast paragraph containing fifteen technical terms.
 
 ```bash
 ruff check .          # must be clean
-pytest                # 698 tests; must all pass
+pytest                # 711 tests; must all pass
 python scripts/check_prose.py   # borrowed words must be explained where used
 ```
 
@@ -810,8 +816,8 @@ beside it. It cannot tell whether a sentence is clear, so a green run means
 "none of the known traps", not "this reads well". The check in rule 9 is still
 yours to run.
 
-If the change touches `docs/ASSUMPTIONS.md`, a default in `config/`, or
-anything the log quotes a number from, also run:
+If the change touches `docs/assumptions/` or `docs/findings/`, a default in
+`config/`, or anything the log quotes a number from, also run:
 
 ```bash
 python scripts/verify_claims.py --fast
@@ -823,7 +829,7 @@ more checks train a network and it takes minutes. This exists because the log
 has drifted from the code more than once — see the header of that script.
 
 With everything present — the data, PyTorch, the stored runs and the cited
-papers in `docs/references/` — 698 were collected late on 2026-10-03, and 696
+papers in `docs/references/` — 711 were collected on 2026-10-04, and 709
 passed; one was skipped because no stored run is trained on a control graph
 yet, and the one failure is a stored sensitivity run whose
 folder name and recorded commit disagree, written up in `docs/PENDING.md`.

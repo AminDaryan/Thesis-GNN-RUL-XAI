@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..utils.paths import project_root
+from ..utils.paths import log_entry_files, project_root
 
 __all__ = [
     "Entry",
@@ -20,11 +20,10 @@ __all__ = [
     "load_entries",
 ]
 
-# A heading in docs/ASSUMPTIONS.md that introduces one entry, such as
-# "## A-01 — The label ceiling is 125 cycles" or "### F-04 — WITHDRAWN AND ...".
-_ENTRY_HEADING = re.compile(
-    r"^#{2,3}\s+(~~)?([AF]-\d{2})(~~)?\s*[—-]+\s*(.+?)\s*$", re.MULTILINE
-)
+# The first line of an entry's file, such as "# A-01 — The label ceiling is
+# 125 cycles" in docs/assumptions/A-01.md or "# A-08 — WITHDRAWN: the paper
+# does state the order" in docs/assumptions/A-08.md.
+_ENTRY_HEADING = re.compile(r"#\s+(~~)?([AF]-\d{2})(~~)?\s*[—-]+\s*(.+?)\s*$", re.MULTILINE)
 
 # The line inside an entry that names the code the choice is made in.
 _WHERE = re.compile(r"^\*\*Where:\*\*\s*(.+?)$", re.MULTILINE)
@@ -49,23 +48,19 @@ class Verification:
 
 @dataclass(frozen=True)
 class Entry:
-    """One assumption or finding in the log: its heading, its anchor and whether it still stands."""
+    """One assumption or finding: its heading, the file it is in and whether it still stands."""
 
     identifier: str
     kind: str
     title: str
-    anchor: str
+    path: str
     where: str
     status: str
     summary: str
 
 
 def latest_verification(root: Path | None = None) -> Verification | None:
-    """The most recent run of verify_claims.py, or nothing if it never ran.
-
-    That script recomputes the figures docs/ASSUMPTIONS.md quotes and fails if
-    one disagrees, so its last result is how far the log can be trusted.
-    """
+    """The most recent run of verify_claims.py, or nothing if it never ran."""
     root = root or project_root()
     reports = root / "reports"
     if not reports.is_dir():
@@ -99,8 +94,8 @@ def _status_of(identifier: str, heading: str, body: str) -> str:
         if word.startswith("WITHDRAWN"):
             return "withdrawn"
         return "reversed" if word == "REVERSED" else "superseded"
-    # A-06 and A-18 carry their status in the body instead, as a bold
-    # "Superseded <date> by A-22." line at the top of the entry.
+    # An entry may instead open its body with a bold "Superseded <date> by
+    # A-xx." line; A-06 and A-18 did until both were reinstated on 2026-09-08.
     if re.match(r"\s*\*\*Superseded\b", body):
         return "superseded"
     return "active"
@@ -120,42 +115,28 @@ def _summarise(body: str) -> str:
 
 
 def load_entries(root: Path | None = None) -> list[Entry]:
-    """Every assumption and finding in the log, in the order it is written."""
+    """Every assumption in number order, then every finding, each read from its own file."""
     root = root or project_root()
-    path = root / "docs" / "ASSUMPTIONS.md"
-    if not path.is_file():
-        return []
-    text = path.read_text(encoding="utf-8")
-
-    matches = list(_ENTRY_HEADING.finditer(text))
     entries: list[Entry] = []
-    seen: set[str] = set()
-    for index, match in enumerate(matches):
-        identifier = match.group(2)
-        if identifier in seen:  # a later heading repeating an entry, not a new one
+    for path in log_entry_files(root):
+        text = path.read_text(encoding="utf-8")
+        match = _ENTRY_HEADING.match(text)
+        if not match:  # a file that does not open with its entry's heading is not read as one
             continue
-        seen.add(identifier)
+        identifier = match.group(2)
         title = match.group(4).strip()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        body = text[match.end() : end]
+        body = text[match.end() :]
         where = _WHERE.search(body)
         entries.append(
             Entry(
                 identifier=identifier,
                 kind="assumption" if identifier.startswith("A") else "finding",
                 title=title,
-                anchor=_anchor_for(match.group(0)),
+                path=path.relative_to(root).as_posix(),
                 where=re.sub(r"[`*]", "", where.group(1)).strip() if where else "",
                 status=_status_of(identifier, title, body),
                 summary=_summarise(body),
             )
         )
     return entries
-
-
-def _anchor_for(heading_line: str) -> str:
-    """The anchor the rendered log gives this heading, so a card can link to it."""
-    from .markup import slugify
-
-    return slugify(heading_line.lstrip("#").strip())
 

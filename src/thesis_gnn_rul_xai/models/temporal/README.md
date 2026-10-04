@@ -41,7 +41,7 @@ Delete that slice and `W(1)` silently becomes `(30, 32)` instead of `(1, 32)`.
 That is what happened on 2026-08-28: 30 raw cycles reached the first graph
 layer, the model scored *better*, and two of the project's three configuration
 comparisons reversed direction before anyone noticed the architecture had
-changed. The full story is in `docs/ASSUMPTIONS.md` (assumption A-07).
+changed. The full story is in `docs/assumptions/A-07.md` (assumption A-07).
 
 With the stage in place there is no such path. The pipeline always hands over
 every cycle, the stage says what happens to them, and the network's shape
@@ -318,4 +318,4 @@ Four steps, and the third is the one people forget.
    `tests/test_examples_torch.py`.
 
 If it departs from what the paper describes, it also needs a numbered entry in
-`docs/ASSUMPTIONS.md` and that identifier quoted in the code, in words — rule 4.
+`docs/assumptions/` and that identifier quoted in the code, in words — rule 4.

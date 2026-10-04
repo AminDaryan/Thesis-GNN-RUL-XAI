@@ -37,7 +37,7 @@ class GraphConvolution(nn.Module):
         # ASSUMPTION A-12: no bias term in these layers. The paper's Equations
         # 8 to 10 print none, while its dense layers do print one, so we follow
         # what is printed. Pass bias=True to measure what it would change.
-        # Written up in docs/ASSUMPTIONS.md.
+        # Written up in docs/assumptions/A-12.md.
         if bias:
             self.bias: nn.Parameter | None = nn.Parameter(torch.empty(out_features))
         else:
@@ -53,7 +53,7 @@ class GraphConvolution(nn.Module):
         layer. The paper never says what it starts from. PyTorch spells the
         same rule xavier_uniform_, after Xavier Glorot, who proposed it — the
         two names mean one method. Explained in README.md in this folder;
-        written up in docs/ASSUMPTIONS.md.
+        written up in docs/assumptions/A-14.md.
         """
         nn.init.xavier_uniform_(self.weight)
         if self.bias is not None:

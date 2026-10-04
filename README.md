@@ -338,7 +338,7 @@ therefore a re-implementation from the text alone.
 The paper does not specify everything needed to rebuild it. The choices made
 here rather than read from the paper include the value of the label ceiling,
 the entire input rescaling procedure, and the size of the LSTM networks.
-[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records 27 of them, each with its
+[`docs/assumptions/`](docs/assumptions/README.md) records 41 of them, each with its
 justification and its measured or argued effect; one has since been withdrawn,
 because the paper turned out to state it.
 
@@ -425,7 +425,7 @@ python scripts/docs_ui.py
 This opens a browser on the playground, where a run is designed, trained,
 compared with the paper and explained. Its menu holds eight taught pages that
 build the method from nothing for a reader who has never seen it, the
-notebooks, the folder READMEs, the assumptions log and the audits.
+notebooks, the folder READMEs, the assumptions, the findings and the audits.
 
 It is not a copy. Every page is rendered from the file on disk at the moment
 you ask for it, and every figure is **computed** rather than drawn: the graph
@@ -637,7 +637,7 @@ most strongly — the same number of edges as the paper's — costs 0.10 cycles 
 than the paper's graph's, by 1.75 cycles on average and on every seed
 (`p = 0.0009`). So most of what the every-sensor comparison costs is that
 graph's averaging of every sensor together, not the loss of the engineering
-knowledge. That is written up in `docs/ASSUMPTIONS.md` (assumption A-27).
+knowledge. That is written up in `docs/assumptions/A-27.md` (assumption A-27).
 
 (Corrected 2026-10-03: this said the correlation graph's predictions "lean
 late". They do against the test label, the remaining life capped at 125 cycles,
@@ -660,7 +660,7 @@ cannot be told apart from this project's run of the paper's recurrent stage
 **The every-sensor comparison has also given opposite answers under settings
 the paper does not specify**: 2.78 and 2.40 cycles with z-score scaling, 0.044
 (`p = 0.913`) with min-max. The history, including a withdrawn 5.7-cycle figure
-from the removed `window` mode, is in `docs/ASSUMPTIONS.md` (finding F-04). The
+from the removed `window` mode, is in `docs/findings/F-04.md` (finding F-04). The
 paper reports 0.56 cycles for its own version of this comparison, for its full
 model, and never says what it replaced its graph with.
 
@@ -683,7 +683,7 @@ architecture does not have, computing a bank of linear filters over time. That
 is a temporal encoder, which the default network deliberately does not have
 (assumption A-11). The mode was removed on 2026-08-28; its numbers
 (13.45 ± 0.20 physics, 19.17 ± 0.45 complete) are reproducible at commit
-`cdcc827` and are recorded in `docs/ASSUMPTIONS.md` (finding F-06), but they are
+`cdcc827` and are recorded in `docs/findings/F-06.md` (finding F-06), but they are
 not this project's results.
 
 ### How that compares with the paper
@@ -715,7 +715,7 @@ The architecture matches: input `[batch, 14, 1]`, `W(1) ∈ ℝ^(1×32)`, the sa
 layer widths, and **61,729 parameters — Table 4's printed weight shapes
 (61,600 numbers) plus the two offsets of the dense layers that Equations 12 and
 13 print (129)**, with none in the graph layers (assumption A-12), asserted by a
-test. Table 4 prints no total; the arithmetic is in `docs/ASSUMPTIONS.md`
+test. Table 4 prints no total; the arithmetic is in `docs/assumptions/A-07.md`
 (assumption A-07). (Corrected 2026-10-02: this said "exactly what Table 4's
 printed shapes imply"; the shapes alone give 61,600.) The only thing removed is the LSTM,
 which is what "w/o LSTM" means. So the **1.57-cycle gap has no shape mismatch
@@ -730,9 +730,9 @@ current default's figure by a measured 1.508 cycles, from 18.01 uncapped
 2026-10-02: this gave only the 1.311 cycles measured on the configuration of
 2026-08-28.)
 
-[`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) records this in full (finding
-F-06), together with what the sensor graph is worth (finding F-04 and
-assumption A-27) and what the Shapley values say about the sensor that carries
+[`docs/findings/`](docs/findings/README.md) records this in full (finding
+F-06), together with what the sensor graph is worth (finding F-04, and
+assumption A-27 in `docs/assumptions/`) and what the Shapley values say about the sensor that carries
 almost no information (finding F-05).
 
 ### Beside ordinary models with no sensor graph
@@ -744,7 +744,7 @@ list of models from scikit-learn, a Python library of standard statistical
 models, every one at the library's default settings apart from the small
 network's width of 64 rather than the library's 100, taken from the review of
 2026-09-08 that first asked for this comparison
-(`docs/AUDIT_2026-09-08_scientific_validity.md`), on
+(`docs/audits/AUDIT_2026-09-08_scientific_validity.md`), on
 exactly the 80 engines that seed's network learned from, and scores them on the
 same 100 test engines. Linear regression predicts a weighted sum of its inputs.
 A random forest averages 100 decision trees, each a chain of yes-or-no
@@ -853,7 +853,7 @@ network. (Corrected 2026-10-03, later the same day: this said the boosters have
 no random step in their fitting, and that only the shuffled labels, the small
 network and the forest still change with the seed. A review found the shuffled
 order of the inputs by fitting one booster with two seeds; the figures are
-with the comparison in `docs/ASSUMPTIONS.md` (finding F-22).)
+with the comparison in `docs/findings/F-22.md` (finding F-22).)
 
 | Model | Given | RMSE | NASA score | R² | ASUE |
 |---|---|---|---|---|---|
@@ -913,7 +913,7 @@ followed, since it never says which weights it reported (finding F-16).
 the paper's own procedure, before the second table was added.) The full
 tables, both kinds of uncertainty, and how the first run differs from a first
 measurement made outside the repository on 2026-09-14 and 15 are in
-`docs/ASSUMPTIONS.md` (finding F-22).
+`docs/findings/F-22.md` (finding F-22).
 
 Reproduce the two tables with:
 
@@ -944,10 +944,10 @@ Thesis GNN RUL XAI/
 │   └── processed/                Pipeline output (not in git)
 │
 ├── docs/
-│   ├── ASSUMPTIONS.md            Every choice not taken from the paper
+│   ├── assumptions/              Every choice not taken from the paper, one file each
+│   ├── findings/                 What was found about the paper, its data and the results, one file each
 │   ├── REFERENCES.md             Full citations, each linked to its copy
-│   ├── AUDIT_*.md                The paper checked against the code
-│   ├── REVIEW_*.md               Outside reviews of this repository
+│   ├── audits/                   The paper checked against the code, and outside reviews
 │   ├── learn/                    The taught pages, for a reader new to this
 │   ├── resources/                The dataset, LSTM, GCN, SHAP and GNN-LRP,
 │   │                             each explained from its original paper
@@ -986,7 +986,7 @@ Thesis GNN RUL XAI/
 │   ├── measure_walks.py          Measure walk explanations over every seed of a stored run
 │   ├── baselines.py              Score ordinary models beside a stored run's networks,
 │   │                             on the same engines (explained in evaluation/README.md)
-│   ├── verify_claims.py          Recompute the figures the assumptions log quotes
+│   ├── verify_claims.py          Recompute the figures the assumptions and findings quote
 │   ├── check_prose.py            Catch unexplained jargon and codes used as words
 │   ├── fetch_references.py       Download the cited papers that are free
 │   └── docs_ui.py                Open all of this in a browser
@@ -1003,7 +1003,7 @@ Thesis GNN RUL XAI/
 │       ├── utils/
 │       └── docsite/              The documentation website (computes nothing)
 │
-└── tests/                        698 tests, counted on 2026-10-03
+└── tests/                        711 tests, counted on 2026-10-04
 ```
 
 (Corrected 2026-10-03: the last line said 268 tests, the size of the suite in
@@ -1181,7 +1181,7 @@ the layers above, so read them last and they will contain no surprises.
 **If you have one hour**, read notebook 01 end to end. **If you have two**, add
 notebook 02. **If you have three**, add `src/thesis_gnn_rul_xai/data/README.md`
 and `models/README.md`, in that order. **If you have a day**, add
-`docs/ASSUMPTIONS.md`, which is where every judgement call this project makes
+`docs/assumptions/`, which is where every judgement call this project makes
 is defended.
 
 ### Which file should I open?
@@ -1197,7 +1197,7 @@ is defended.
 | Understand which sensors a prediction came from, and how that changes over an engine's life | `notebooks/xai/01_shap_fd001.ipynb` |
 | Know exactly how one step is computed | the matching file in `src/thesis_gnn_rul_xai/` |
 | Know *why* a step is computed that way | the `README.md` in the same folder |
-| Know why a value was chosen when the paper is silent | `docs/ASSUMPTIONS.md` |
+| Know why a value was chosen when the paper is silent | `docs/assumptions/` |
 | Run the whole thing without reading anything | `scripts/prepare_data.py`, then `scripts/train.py` |
 | Check that a step really does what it claims | the matching file in `tests/` |
 
@@ -1214,14 +1214,15 @@ ruff check .               # style, unused imports, dead code
 ```
 
 The tests check that the code does what it claims. A separate script checks
-that **`docs/ASSUMPTIONS.md` still describes the code**, which is a different
+that **the entries in `docs/assumptions/` and `docs/findings/` still describe
+the code**, which is a different
 kind of rot and the one this project has actually suffered from:
 
 ```bash
 python scripts/verify_claims.py --fast
 ```
 
-It recomputes the figures the assumptions log quotes — the sensor graph's edge
+It recomputes the figures the assumptions and findings quote — the sensor graph's edge
 counts, `P15`'s two levels, how many test labels the ceiling touches, the
 preprocessing-order measurement on FD002 — prints each beside the recorded
 value, and exits non-zero on a disagreement. On 2026-10-03 that was **76
@@ -1246,7 +1247,7 @@ check each entry's table under both schedules. Both entries carry a correction
 saying what changed. This script exists because entries drift: before it was
 written, five of the entries it checks had already drifted from the code. The eleven newest come
 from the audit of 2026-08-31 — see
-[`docs/AUDIT_2026-08-31_paper_against_code.md`](docs/AUDIT_2026-08-31_paper_against_code.md),
+[`docs/audits/AUDIT_2026-08-31_paper_against_code.md`](docs/audits/AUDIT_2026-08-31_paper_against_code.md),
 which checked every equation, table and figure of the paper against this code
 and records the agreements as well as the six new entries it produced.
 
@@ -1261,8 +1262,8 @@ nothing that can be checked *without* the dataset is broken; it does not mean
 the numbers in [section 8](#8-results-so-far) still hold, which needs the data
 and has to be checked locally.
 
-With the data, the stored runs and the cited papers, 698 tests are collected
-and 696 pass, measured late on 2026-10-03; one is skipped because no stored
+With the data, the stored runs and the cited papers, 711 tests are collected
+and 709 pass, measured on 2026-10-04; one is skipped because no stored
 run is trained on a control graph yet, and the one failure is a stored run of the
 sensitivity study whose folder name and recorded commit disagree, written up in
 `docs/PENDING.md`. (Until 2026-10-03 this said all 268 pass, measured on
@@ -1320,7 +1321,7 @@ regardless of how good they look.
 3. **Filters only look backwards.** No step may use a reading from the future
    of the sequence it is processing.
 4. **Every assumption is written down.** If a value is not in the paper, it is
-   in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) with its justification, and
+   in [`docs/assumptions/`](docs/assumptions/README.md) with its justification, and
    marked `ASSUMPTION` at the point of use in the code.
 5. **Randomness is seeded and reported.** A single run is repeatable. Because
    one run is not evidence, experiments are intended to be repeated across
@@ -1365,7 +1366,7 @@ the reasons are documented as assumptions rather than left as a gap.
 Understanding and recording the difference is the achievable goal.
 
 **Each choice has been measured under one configuration at most.** Many of the
-choices in [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) have now been varied
+choices in [`docs/assumptions/`](docs/assumptions/README.md) have now been varied
 over five seeds: the input scaling, the smoothing, the label ceiling, the
 learning-rate schedule and early stopping (finding F-10), the held-back engines
 (assumption A-06), the rescaling of the graph (assumption A-21), and what

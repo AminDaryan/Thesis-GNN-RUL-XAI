@@ -66,7 +66,7 @@ digest, was fixed on 2026-10-03 at the author's decision of 2026-10-02. The
 digest now leaves the notes out, so `PreprocessingConfig()` and
 `config/fd001.yaml` both give `818b40`; the `e3a331` and `ba82e3` quoted in
 sections 0, 4, 6 and 7 come from the rule before then. The log's entry on how
-runs are named (finding F-09 in `docs/ASSUMPTIONS.md`) records the change.
+runs are named (finding F-09, `docs/findings/F-09.md`) records the change.
 
 ## What this is
 
@@ -142,7 +142,7 @@ I read the files, then verified every number I use below by running it.
 | `check_prose.py:140` | `rf"\b{re.escape(word)}"` — no closing boundary, so adding `head` would fire on "header"/"headline" |
 | `in_features=` call sites | 25 in Python files, plus the notebooks; `tests/test_models.py` alone has 11 uses of `in_features=30`, two of which (`:146`, `:173`) call `model.graph_layers[0]` directly with `(1, 14, 30)` |
 | `"14, 1)"` in prose and code | **73 occurrences** (re-counted 2026-09-09, including the notebooks) |
-| Highest entries in `docs/ASSUMPTIONS.md` | **A-25** and **F-15** (`tests/test_docsite.py:185` asserts they are contiguous from 01) |
+| Highest entries in the assumptions log (then one file; since 2026-10-03 `docs/assumptions/` and `docs/findings/`) | **A-25** and **F-15** (`tests/test_docsite.py:185` asserts they are contiguous from 01) |
 | `docs/EXPERIMENT_A-07_mean_window.md` | exists, 234 lines, "**Status:** not started", and specifies `PreprocessingConfig.node_feature` — this design overrules it and must say so |
 
 ---
@@ -229,7 +229,7 @@ Thesis GNN RUL XAI/
 │       └── server.py                             CHANGED — one ESTGNN(...) call
 │
 ├── docs/
-│   ├── ASSUMPTIONS.md                            CHANGED — A-07, A-11 amended; A-26…A-32 added
+│   ├── assumptions/                              CHANGED — A-07, A-11 amended; A-26…A-32 added
 │   ├── EXPERIMENT_A-07_mean_window.md            CHANGED — §4.1/4.2 superseded, §5–8 stand
 │   └── learn/04_the_pipeline.md, 05_the_model.md CHANGED — shapes
 │
@@ -285,7 +285,7 @@ class LastCycle(TemporalStage):
     # stage this project does not build (A-11), so the latest reading stands in
     # for it. This class is where that choice is made. It used to be made in
     # data/windowing/, where it looked like a property of the data rather than
-    # a choice about the model. Written up in docs/ASSUMPTIONS.md.
+    # a choice about the model. Written up in docs/assumptions/A-07.md.
     def forward(self, windows: Tensor) -> Tensor:
         return windows[:, :, -1:]
 
@@ -799,7 +799,7 @@ You can stop after step 5 with everything green, the blur closed, every run nami
 
 ### What must be re-measured
 
-- **Nothing, if step 3's gate passes.** That is the whole design of the migration order. Every stored run keeps parsing, every number in `docs/ASSUMPTIONS.md` keeps meaning what it meant, and the four `_window_` runs come out **better** labelled than they are now.
+- **Nothing, if step 3's gate passes.** That is the whole design of the migration order. Every stored run keeps parsing, every number in `docs/assumptions/` and `docs/findings/` keeps meaning what it meant, and the four `_window_` runs come out **better** labelled than they are now.
 - **A-07's 13.45 must not be carried forward.** It was measured at `cdcc827` under min-max scaling, symmetric normalisation and the exponential schedule. If step 6 reinstates `raw_window`, measure it again at today's configuration and record it as F-17.
 - **A-21, A-02, F-04 and F-10's tables** stay valid and stay interpretable; each gains one clause on its heading — every row is now "under `last_cycle` + `gcn`". No re-running is required unless the default architecture moves, at which point rule 3 already predicts what will happen: two of the three comparisons reversed direction after the A-07 correction, and they can reverse again.
 - **The README's headline is already stale and this change will expose it.** 16.82 ± 0.16 is labelled "no validation split (A-22)" and belongs to `validation_fraction: 0.0`; today's default holds 20% back after A-06's reinstatement of 2026-09-08 and measured 16.4965 ± 0.4153. That is a pre-existing drift, not caused by this design, and it should be fixed before step 3 so the regression gate has an uncontested baseline.
@@ -809,6 +809,6 @@ You can stop after step 5 with everything green, the blur closed, every run nami
 - **`PreprocessingConfig.notes` is inside the digest.** `to_dict()` is `dataclasses.asdict`, so the prose field is hashed: today's default digests to `e3a331` while `config/fd001.yaml` gives `ba82e3`, and the *only* difference between them is a sentence of English. Editing a comment renames a run. `ModelConfig.effective_dict()` excludes `notes` from day one; whether to make the same fix to the preprocessing digest is your call, because it would give future runs a different `cfg` value than stored runs with identical settings — a one-time discontinuity, worth a line in the log if you take it.
 - **`TrainingHistory.save()` is never called**, so `epochs`, `batch_size` and `learning_rate` appear in no run directory. Step 4 fixes it in two lines.
 
-### What must be written into `docs/ASSUMPTIONS.md`
+### What must be written into `docs/assumptions/`
 
 A-07 amended (the `**Where:**` line and one new paragraph), A-11 given one dated appended line, A-12's `**Where:**` extended, and **A-26 through A-32** written in the file's own gap / what-we-chose / why / how-much-it-matters shape, each with its identifier quoted in the code at the point of use, in words. `docs/EXPERIMENT_A-07_mean_window.md` amended in the open to say its §4.1 and §4.2 are superseded and why. **F-16** written after step 3's gate, **F-17** after step 6. Nothing in `reports/` is edited, renamed or deleted.

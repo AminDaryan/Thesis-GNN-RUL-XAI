@@ -53,7 +53,7 @@ def mean_window_baseline(dataset: WindowedDataset) -> np.ndarray:
     ASSUMPTION A-20: when a sensor is left out of the calculation, put its
     average training reading in its place. The paper never says what it puts
     there. Explained in README.md in this folder; written up in
-    docs/ASSUMPTIONS.md.
+    docs/assumptions/A-20.md.
     """
     if len(dataset) == 0:
         raise ValueError("cannot build a baseline from an empty dataset.")
@@ -220,7 +220,7 @@ def efficiency_error(
     the average window, not from the average label. Equation 14 of the paper
     calls its constant "the average value of target variable across all
     samples"; the two differ by 10.7 cycles on a trained model. Written up in
-    docs/ASSUMPTIONS.md.
+    docs/assumptions/A-24.md.
     """
     single = features.ndim == 2
     batch = features[None, ...] if single else features

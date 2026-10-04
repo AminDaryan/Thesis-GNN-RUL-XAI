@@ -16,8 +16,8 @@ docs/references/*
 
 # --- Generated outputs --------------------------------------------------
 # Training writes one directory per run under reports/, so these accumulate.
-# The numbers that belong in the thesis are quoted in docs/ASSUMPTIONS.md and
-# README.md instead, where they can be read without re-running anything.
+# The numbers that belong in the thesis are quoted in docs/assumptions/,
+# docs/findings/ and README.md instead, where they can be read without re-running anything.
 reports/*
 !reports/figures/
 reports/figures/*

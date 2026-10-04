@@ -66,7 +66,7 @@ def connection_removal(
         # both directions and rescales the whole graph again, the way the network's
         # graph was built, rather than zeroing one entry of the rescaled graph. The
         # rest of the two sensors' rows then grows to fill the gap. The network is
-        # not retrained. Written up in docs/ASSUMPTIONS.md.
+        # not retrained. Written up in docs/assumptions/A-30.md.
         removed = raw.copy()
         removed[i, j] = removed[j, i] = 0.0
         network.adjacency.copy_(

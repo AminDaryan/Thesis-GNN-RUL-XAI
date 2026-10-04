@@ -48,7 +48,7 @@ remaining 129 are the two biases Equations 12 and 13 print for the dense
 layers. (Corrected 2026-10-03: this said 61,729 is "the count Table 4's printed
 shapes imply", and then corrected itself in the next sentence; the shapes alone
 give 61,600. Found by the search for that wording in answering the audit of
-2026-09-08, `docs/AUDIT_2026-09-08_response.md`.) `ESTGNN.count_parameters()` returns that number and
+2026-09-08, `docs/audits/AUDIT_2026-09-08_response.md`.) `ESTGNN.count_parameters()` returns that number and
 `ESTGNN.layer_summary()` returns one dictionary per layer in the same form as
 Table 4, so the transcription can be checked line by line: the row's name
 (`layer`), its kind (`type`), the shape going in and coming out (`in`, `out`),
@@ -433,8 +433,8 @@ counts as asking for it on purpose, and every other stage is still checked.
 ## Judgement calls made in this folder
 
 Each of these is a place where the paper does not say what to do and we had to
-choose. The full reasoning for every one is in `docs/ASSUMPTIONS.md`, under the
-code given in parentheses.
+choose. The full reasoning for every one is in `docs/assumptions/`, in the file
+named after the code given in parentheses.
 
 - **The graph layers carry no bias.** The paper's Equations 8 to 10 show only
   the weight matrix `W`, while Equations 12 and 13, describing the dense

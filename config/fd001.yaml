@@ -2,7 +2,7 @@
 #
 # Every field is documented in src/thesis_gnn_rul_xai/config.py.
 # Fields whose value is NOT taken from Wen et al. (2026) are marked below and
-# explained in docs/ASSUMPTIONS.md.
+# explained in docs/assumptions/.
 
 subset: FD001
 
@@ -52,4 +52,4 @@ seed: 42
 
 notes: >-
   Preprocessing configuration for the FD001 subset. Fields marked ASSUMPTION
-  are not specified by Wen et al. (2026); see docs/ASSUMPTIONS.md.
+  are not specified by Wen et al. (2026); see docs/assumptions/.

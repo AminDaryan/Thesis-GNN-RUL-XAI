@@ -22,7 +22,7 @@
 # capping lowers RMSE by 0.80 to 1.96. (Corrected 2026-10-02: this said
 # capping can only lower "the reported error", naming no measure; found by the
 # search for that claim after the review of the playground's information cards
-# on 2026-09-26. A-02 in docs/ASSUMPTIONS.md has the argument. Corrected again
+# on 2026-09-26. docs/assumptions/A-02.md has the argument. Corrected again
 # the same day: this called the cap "the single largest uncontrolled
 # difference", written on 2026-08-28 before the rescaling was measured later
 # that day; found while the correction above was being made, which rewrote
@@ -50,4 +50,4 @@ seed: 42
 
 notes: >-
   FD001 with uncapped test labels, to measure the size of assumption A-02.
-  See docs/ASSUMPTIONS.md.
+  See docs/assumptions/A-02.md.

@@ -66,13 +66,13 @@ class PreprocessingConfig:
     window_size: int = 30
     # ASSUMPTION A-05: move the window on by one cycle at a time. The paper
     # gives the window length in Table 6 but never says how far it moves.
-    # Written up in docs/ASSUMPTIONS.md.
+    # Written up in docs/assumptions/A-05.md.
     window_stride: int = 1
 
     # --- Labels ------------------------------------------------------------
     # ASSUMPTION A-01: cap the label at 125 flight cycles. The paper's
     # Equation 19 says there is a cap but never prints the number; 125 was
-    # measured off its Fig. 7. Written up in docs/ASSUMPTIONS.md.
+    # measured off its Fig. 7. Written up in docs/assumptions/A-01.md.
     rul_max: int = 125
     # ASSUMPTION A-02: put the same ceiling on the test labels. The paper does
     # not say whether it does. The network's last layer cannot produce a number
@@ -83,35 +83,36 @@ class PreprocessingConfig:
     # Corrected 2026-10-02: this said capping can only move our reported
     # numbers in our favour; found by the search for that claim after the
     # review of the playground's information cards on 2026-09-26. Written up
-    # in docs/ASSUMPTIONS.md.
+    # in docs/assumptions/A-02.md.
     clip_test_labels: bool = True
 
     # --- Preparing the sensor readings --------------------------------------
     # ASSUMPTION A-03: put the sensors on a comparable scale with z-scores. The
     # paper never describes this step at all. Worth 3.83 cycles against the
     # alternative, which is the largest measured effect of any choice in this
-    # project. Written up in docs/ASSUMPTIONS.md as A-03, A-22 and F-10.
+    # project. Written up as A-03, A-22 and F-10, in docs/assumptions/A-03.md,
+    # docs/assumptions/A-22.md and docs/findings/F-10.md.
     normalization: NormalizationMethod = "zscore"
     # ASSUMPTION A-04: smooth with a strength of 0.5. The paper's Section 3.2.3
     # attaches 0.5 to the wrong symbol, and this is the only reading that makes
-    # the sentence mean anything. Written up in docs/ASSUMPTIONS.md.
+    # the sentence mean anything. Written up in docs/assumptions/A-04.md.
     smoothing_alpha: float | None = 0.5
 
     # --- The sensor graph --------------------------------------------------
     # ASSUMPTION A-19: when repeating the paper's experiment "without physics
     # prior", stand in a graph where every sensor is joined to every other. The
     # paper names that experiment but never says what it used. Written up in
-    # docs/ASSUMPTIONS.md. Leave this on "physics" for the paper's own graph.
+    # docs/assumptions/A-19.md. Leave this on "physics" for the paper's own graph.
     # ASSUMPTION A-27: "correlation" joins the 41 most strongly correlated
     # sensor pairs on the training engines, the same number of edges as the
     # paper's graph. The paper claims its graph captures more than correlations
     # but describes no correlation graph to compare against. Written up in
-    # docs/ASSUMPTIONS.md.
+    # docs/assumptions/A-27.md.
     # ASSUMPTION A-41: "random" and "rewired" are drawn from `seed` below, so a
     # run whose seed varies gets a different graph on every seed. They are the
     # controls the audit of 2026-09-08 asked for in place of "complete", which
     # changes the number of edges as well as the knowledge. Written up in
-    # docs/ASSUMPTIONS.md.
+    # docs/assumptions/A-41.md.
     graph: SensorGraph = "physics"
     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
     # formula and two forms fit what it says. With nothing held back --
@@ -128,7 +129,7 @@ class PreprocessingConfig:
     # said "until 2026-09-02", a day on which the held-back setting did not
     # change; the split came back on 2026-09-08, as the comment on
     # validation_fraction below says.
-    # Written up as A-21 in docs/ASSUMPTIONS.md, with the table of every
+    # Written up in docs/assumptions/A-21.md, with the table of every
     # comparison.
     adjacency_normalization: AdjacencyNormalization = "row"
 
@@ -139,7 +140,7 @@ class PreprocessingConfig:
     # run now restores the weights that scored best on the held-back engines
     # and may stop early. Reinstated as the default on 2026-09-08, reversing
     # the 2026-08-29 decision that removed it; the reversal and what it cost
-    # are written up under A-06 in docs/ASSUMPTIONS.md.
+    # are written up in docs/assumptions/A-06.md.
     validation_fraction: float = 0.2
     seed: int = 42
 
@@ -148,7 +149,7 @@ class PreprocessingConfig:
         default=(
             "Settings for preparing the FD001 subset. The lines marked "
             "ASSUMPTION in config.py are choices we made because Wen et al. "
-            "(2026) does not state them; see docs/ASSUMPTIONS.md."
+            "(2026) does not state them; see docs/assumptions/."
         )
     )
 

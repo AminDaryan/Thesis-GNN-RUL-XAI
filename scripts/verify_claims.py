@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Recompute the tables in docs/ASSUMPTIONS.md and check them against what is written
-=================================================================================
+Recompute the tables of the assumptions log and check them against what is written
+==================================================================================
 
-Every numbered entry in the assumptions log quotes measurements. Those numbers
-go stale silently: the architecture moves, or a default changes, and an entry
+Every numbered entry in the assumptions log (one file per entry, in
+docs/assumptions/ and docs/findings/) quotes measurements. Those numbers go
+stale silently: the architecture moves, or a default changes, and an entry
 keeps asserting a figure nobody has recomputed since. That has happened here
 more than once — A-03 kept recommending min-max after the default became
 z-score, A-20 and F-05 described a scaling that had been replaced, and F-07
@@ -93,7 +94,7 @@ from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
 
 @dataclass
 class Claim:
-    """One recomputed figure, beside the value docs/ASSUMPTIONS.md records for it."""
+    """One recomputed figure, beside the value its entry in docs/assumptions/ or docs/findings/ records."""
 
     entry: str
     claim: str
@@ -641,7 +642,7 @@ def main(argv: list[str] | None = None) -> int:
     table = pd.DataFrame(rows)
     failed = int((table["ok"] == False).sum()) if len(table) else 0  # noqa: E712
     checked = int(table["ok"].notna().sum()) if len(table) else 0
-    print(f"{checked} claim(s) checked against docs/ASSUMPTIONS.md, {failed} disagree.")
+    print(f"{checked} claim(s) checked against docs/assumptions/ and docs/findings/, {failed} disagree.")
     if len(table) - checked:
         print(f"{len(table) - checked} figure(s) reported with nothing recorded to "
               "compare against.")

@@ -80,9 +80,9 @@ transcription. All 196 cells agree.
   text says `phi` influences `htBleed`, `W31` *and* `W32`, but the `phi`-`W32`
   entry is 0 in Table 3 and in Fig. 3 alike. This code follows the matrix,
   because the matrix is what the model consumes. The conflict is written up in
-  `docs/ASSUMPTIONS.md` (finding F-07). Findings there are facts about the
-  paper established from data; assumptions are choices this project had to
-  make.
+  `docs/findings/F-07.md` (finding F-07). Findings, in `docs/findings/`, are
+  facts established by measurement or by checking the paper; assumptions, in
+  `docs/assumptions/`, are choices this project had to make.
 - **The paper never prints the normalisation formula.** See the assumptions
   section at the end of this file.
 
@@ -395,7 +395,7 @@ made it: the particular pairs, the groups, or the reach.
 
 ## Judgement calls made in this folder
 
-All four are recorded in full in `docs/ASSUMPTIONS.md`.
+All four are recorded in full in `docs/assumptions/`.
 
 - **What the "without physics prior" experiment replaces the graph with.** The
   paper names that experiment — an ablation, meaning a run with one part
