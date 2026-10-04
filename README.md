@@ -30,11 +30,10 @@ is that this re-implementation **spans 16.50 to 20.35 cycles depending on
 choices the source leaves open**. [Section 8](#8-results-so-far) gives all four
 measures.
 
-**Status.** Ruff is clean. Each of the sixteen notebooks was last run from top
-to bottom on 2026-10-02 or 2026-10-03, by the run times stored in its cells,
-and none stored an error. Whether the code has changed since a notebook was
-run is not checked here; a notebook's stored outputs follow a change only once
-it is re-executed. Section 10 gives the test counts. (Corrected 2026-10-03:
+**Status.** Ruff is clean. The notebooks are committed without their outputs
+since 2026-10-04, because every run gives new results; run one to see them.
+Each of the sixteen was last run from top to bottom on 2026-10-02 or
+2026-10-03 without an error. Section 10 gives the test counts. (Corrected 2026-10-03:
 this said the notebooks were re-executed on 2026-09-14 and that their stored
 outputs match the code. Every notebook has been run since, twelve of them
 added after that date, and nothing checks the match. Found by a review of

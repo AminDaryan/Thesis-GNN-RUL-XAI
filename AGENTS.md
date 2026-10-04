@@ -856,15 +856,17 @@ and it needs neither the data, nor PyTorch, nor a stored run. Eight tests have
 been added since those counts, so each of them is now low by an amount nobody
 has measured: re-measure them before quoting one.
 
-If a change touches a notebook, re-execute it before committing, so its stored
-outputs match its code. The notebooks in `notebooks/xai/` load a stored
+Notebooks are committed without their outputs, because every run gives new
+results. If a change touches a notebook, run it to check that it still works,
+then clear it before committing:
+`python -m nbconvert --clear-output --inplace <notebook>`. The notebooks in `notebooks/xai/` load a stored
 five-seed run of `config/fd001.yaml` with saved networks, so they need one in
 `reports/`; a change to the network, the training or the preprocessing means
 re-training that run first:
 
 ```bash
-python -m nbconvert --to notebook --execute --inplace notebooks/02_model_fd001.ipynb
-python -m nbconvert --to notebook --execute --inplace notebooks/xai/01_shap_fd001.ipynb notebooks/xai/02_occlusion_fd001.ipynb notebooks/xai/03_walks_fd001.ipynb
+python -m nbconvert --to notebook --execute --output-dir <scratch folder> notebooks/02_model_fd001.ipynb
+python -m nbconvert --to notebook --execute --output-dir <scratch folder> notebooks/xai/01_shap_fd001.ipynb notebooks/xai/02_occlusion_fd001.ipynb notebooks/xai/03_walks_fd001.ipynb
 ```
 
 ---

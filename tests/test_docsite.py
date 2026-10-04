@@ -623,7 +623,7 @@ def test_the_notebook_map_needs_the_nasa_files_rather_than_inventing_them(
 
 
 def test_the_map_survives_into_the_page_the_site_builds_from_the_notebook(
-    root: Path, raw_dir: Path
+    root: Path, raw_dir: Path, tmp_path: Path
 ):
     """The map has to reach the reader, not just sit in the notebook file.
 
@@ -633,11 +633,16 @@ def test_the_map_survives_into_the_page_the_site_builds_from_the_notebook(
     should have been. Nothing failed; the figure was simply absent.
     """
     pytest.importorskip("nbconvert")
+    import subprocess
+    import sys
+
     from thesis_gnn_rul_xai.docsite import notebooks
 
-    body = notebooks.render_notebook(
-        root / "notebooks" / "01_preprocessing_fd001.ipynb"
-    )
+    # Notebooks are committed without outputs, so run notebook 01 first.
+    subprocess.run([sys.executable, "-m", "nbconvert", "--to", "notebook", "--execute",
+                    "--output-dir", str(tmp_path), str(root / "notebooks" / "01_preprocessing_fd001.ipynb")],
+                   check=True, capture_output=True)
+    body = notebooks.render_notebook(str(tmp_path / "01_preprocessing_fd001.ipynb"), root=tmp_path)
     assert "What notebook 01 does" in body, (
         "the pipeline map is not in the page the site builds from notebook 01"
     )

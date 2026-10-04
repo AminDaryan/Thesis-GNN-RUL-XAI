@@ -788,8 +788,8 @@
   function viewNotebook(path) {
     return get("/api/notebook?path=" + encodeURIComponent(path)).then(function (notebook) {
       var run = state.jupyter
-        ? 'Saved outputs. <button class="button button--small" id="open-in-jupyter" type="button">Open in JupyterLab</button>'
-        : "Saved outputs. To run these cells, install JupyterLab with <code>pip install -e .[notebook]</code>.";
+        ? 'Outputs are not stored. <button class="button button--small" id="open-in-jupyter" type="button">Open in JupyterLab</button>'
+        : "Outputs are not stored. To run these cells, install JupyterLab with <code>pip install -e .[notebook]</code>.";
 
       content.innerHTML =
         '<p class="notebook-bar">' + run + "</p>" +

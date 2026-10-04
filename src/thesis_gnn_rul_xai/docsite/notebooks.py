@@ -60,7 +60,7 @@ class JupyterProcess:
 
 
 def render_notebook(path: str, root: Path | None = None) -> str:
-    """Turn one notebook into the HTML of its cells, with the outputs it was saved with."""
+    """Turn one notebook into the HTML of its cells, with any outputs it holds."""
     root = (root or project_root()).resolve()
     target = (root / path).resolve()
     if not target.is_relative_to(root):
