@@ -62,10 +62,15 @@ stored in each notebook and the commits that added them.)
 
 ## 1. What this project is about
 
-A jet engine wears out gradually. If an airline can estimate how many more
-flights an engine will survive, it can plan maintenance before a failure
-happens, instead of reacting afterwards. Estimating that number from sensor
-readings is the task this project works on.
+Every jet engine has a limited life: its parts wear a little with every flight.
+An engine that fails in service is dangerous and expensive, costing an airline
+repairs, lost flights and, at worst, human lives. The way to prevent that is to
+service the engine in time. Servicing it on a fixed schedule is safe only if
+the schedule is set for the engines that wear fastest, so most engines are
+taken off the wing with many flights still left in them, and that usable life
+is wasted. It would be better to estimate, for each engine, how many more
+flights it will survive, and service it just before that point. Estimating that
+number from sensor readings is the task this project works on.
 
 Two things make the task interesting for a thesis:
 

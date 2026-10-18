@@ -1,11 +1,17 @@
 # Start here
 
-A jet engine wears out gradually. If an airline can estimate how many more
-flights an engine will survive, it can service the engine before it fails
-rather than after. This project estimates that number from sensor readings,
-using a neural network that treats the engine's sensors as **connected to each
-other** rather than as a list of unrelated numbers, and then explains each
-estimate by saying which sensors drove it.
+Every jet engine has a limited life: its parts wear a little with every flight.
+An engine that fails in service is dangerous and expensive, costing an airline
+repairs, lost flights and, at worst, human lives. The way to prevent that is to
+service the engine in time. Servicing it on a fixed schedule is safe only if
+the schedule is set for the engines that wear fastest, so most engines are
+taken off the wing with many flights still left in them, and that usable life
+is wasted. It would be better to estimate, for each engine, how many more
+flights it will survive, and service it just before that point. This project
+estimates that number from sensor readings, using a neural network that treats
+the engine's sensors as **connected to each other** rather than as a list of
+unrelated numbers, and then explains each estimate by saying which sensors
+drove it.
 
 The method, called ESTGNN, comes from one paper published in 2026, with no
 source code and with its data offered only on request. This thesis rebuilds it
