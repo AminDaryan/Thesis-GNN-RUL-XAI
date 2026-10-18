@@ -612,6 +612,7 @@
     "04_the_pipeline.md#8--cut-into-windows": "04_the_pipeline.md#5--cut-into-windows",
     "04_the_pipeline.md#9--assign-windows-to-their-sets": "04_the_pipeline.md#prepared-windows",
     "04_the_pipeline.md#6--assign-windows-to-their-sets": "04_the_pipeline.md#prepared-windows",
+    "01_the_problem.md#nasas-benchmark-data-c-mapss": "01_the_problem.md#the-data-nasas-c-mapss-engines",
     "01_the_problem.md#only-14-of-the-21-sensors": "01_the_problem.md#3--select-14-sensor-columns-for-model-inputs",
     "01_the_problem.md#select-14-sensor-columns-for-model-inputs": "01_the_problem.md#3--select-14-sensor-columns-for-model-inputs",
     "01_the_problem.md#what-the-model-is-asked-to-predict": "04_the_pipeline.md#1--cap-the-labels",

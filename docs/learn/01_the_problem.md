@@ -1,11 +1,76 @@
 # Data: from engine histories to known answers
 
+## The data: NASA's C-MAPSS engines
+
+The data in this project come from **C-MAPSS**, the Commercial Modular
+Aero-Propulsion System Simulation. C-MAPSS simulates a large commercial
+turbofan engine of the 90,000 lb thrust class and is written in MATLAB and
+Simulink (Saxena et al., 2008, p. 2); its user's guide was published by NASA
+as a technical memorandum (Frederick et al., 2007). Saxena et al. (2008) used
+it to simulate engines that wear out until they fail, and the result became the
+challenge data of the PHM'08 data competition (p. 1). They needed a simulation
+because records of real machines followed all the way to failure are rare:
+collecting them is slow and expensive, and companies that have them seldom
+publish them (Saxena et al., 2008, p. 1).
+
+NASA distributes the data as four subsets, FD001 to FD004 (NASA Prognostics
+Center of Excellence [NASA PCoE], 2008). This project uses **FD001**: 100
+training engines and 100 test engines, all running in one operating condition
+(sea level) with one fault mode, degradation of the high-pressure compressor
+(NASA PCoE, 2008). Each subset comes as three text files: a training file, a test file and
+a file of answers for the test engines. This page reads the FD001 files in
+`data/raw/` and never creates replacement sensor readings.
+
+## What one cycle is
+
+Every row of a data file is one engine at one moment. NASA's description of
+the files says that "each row is a snapshot of data taken during a single
+operational cycle", and that the second column is "time, in cycles" (NASA
+PCoE, 2008). The paper that produced the data says what that snapshot is: the
+simulated engines fly one flight after another, possibly in different flight
+conditions, and one measurement snapshot is taken per flight, "during or right
+after that flight" (Saxena et al., 2008, p. 5).
+
+Read together, the two sources mean that **one cycle is one flight**, and an
+engine has one row per flight. Neither source puts it in exactly those words;
+it is this project's reading of the two quotations above. A cycle is a count,
+not a length of time: the files record no duration for a flight (NASA PCoE,
+2008, lists every column), so cycle 3 says only that it was the engine's third
+recorded flight.
+
+## Training engines and test engines
+
+Each file holds many engines, and each engine starts with a different,
+unknown amount of wear and manufacturing variation, which counts as normal
+rather than as a fault (NASA PCoE, 2008). Every engine runs normally at first
+and develops a fault at some point. In the **training** file the fault grows
+until the engine fails; in the **test** file each history stops some time
+before failure, and a separate answer file gives how many cycles each test
+engine still had left after its last recorded one (NASA PCoE, 2008). Training
+engine 1 and test engine 1 are different engines: each history comes from a
+different engine (NASA PCoE, 2008), and the numbering starts again at 1 in
+every file.
+
 ## Remaining useful life
 
-**Remaining useful life (RUL)** is how many recorded cycles an engine has left
-before failure. Predictive maintenance uses this estimate to plan servicing:
-too early wastes usable life; too late risks a failure in service. A cycle is
-the time step in these files, with one set of readings per engine per cycle.
+The quantity the data are built to predict is the **remaining useful life
+(RUL)**: how long a component will still work before it reaches the end of
+its useful life, counted in units of time such as hours or cycles (Saxena et
+al., 2008, p. 1). In these files it is counted in cycles. For a test engine it
+is "the number of operational cycles after the last cycle that the engine will
+continue to operate" (NASA PCoE, 2008).
+
+This page needs the definition because everything after it turns the files
+into examples with a known remaining life. A model learns by being shown
+inputs together with the right answer, and the files contain no remaining-life
+column for the training engines. That answer has to be counted from each
+history, which is step 1 below. For the test engines the answer file gives it
+only at the last recorded cycle.
+
+The estimate is worth having because it lets maintenance be planned before a
+failure. Saxena et al. (2008) name what that promises: cost savings, by
+avoiding unscheduled maintenance and by using equipment for longer, and better
+operational safety (p. 2).
 
 ## What the engine's sensors measure
 
@@ -18,16 +83,7 @@ this path. For example, `T24` measures temperature at the LPC outlet. Changes
 upstream can affect readings downstream. The model's sensor graph represents
 chosen connections between sensors; a connection is not proof of a causal effect.
 
-## NASA's benchmark data: C-MAPSS
-
-**C-MAPSS**, Commercial Modular Aero-Propulsion System Simulation, is NASA's
-engine simulator. This tutorial uses the distributed **FD001** engine records
-in `data/raw/`; it does not create replacement sensor readings.
-
-Training histories continue to failure. Test histories stop earlier, and a
-separate answer file gives the life remaining at each test engine's last
-recorded cycle. Training engine 1 and test engine 1 are different engines:
-their identifiers belong to separate files.
+## How the steps below are written
 
 Each **Process** follows the same sample from input to output.
 Tables show every column of the sample, with no omitted readings. Read each

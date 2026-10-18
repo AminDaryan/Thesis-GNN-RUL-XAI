@@ -475,7 +475,7 @@ _GAMMA_LABELS = {setting["value"]: setting["label"] for setting in GAMMA_SETTING
 _PIPELINE, _MODEL, _GRAPHS = "docs/learn/04_the_pipeline.md", "docs/learn/05_the_model.md", "docs/learn/02_graphs.md"
 _TEMPORAL, _TRAINING = "src/thesis_gnn_rul_xai/models/temporal/README.md", "src/thesis_gnn_rul_xai/training/README.md"
 _READ_MORE: dict[str, tuple[str, str]] = {
-    "subset": ("docs/learn/01_the_problem.md", "NASA's benchmark data: C-MAPSS"),
+    "subset": ("docs/learn/01_the_problem.md", "The data: NASA's C-MAPSS engines"),
     "procedure": (_TRAINING, "Validation is optional, and what changes without it"),
     "validation_fraction": (_TRAINING, "Validation is optional, and what changes without it"),
     "early_stopping": (_TRAINING, "Validation is optional, and what changes without it"),
