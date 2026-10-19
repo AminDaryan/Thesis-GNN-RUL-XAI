@@ -26,7 +26,7 @@ then explains each estimate by saying which sensors drove it.
 
 The method, called ESTGNN, comes from one paper, Wen et al. (2026, p. 1),
 which offers its data only on request (p. 15). It was published with no source
-code: the paper makes no statement about code at all, so that is this
+code: the paper never says whether its code is available, so that is this
 project's own observation, not something the paper says. This thesis rebuilds
 the method from the paper's text alone, runs it on NASA's public engine data
 (Dida et al., 2025, p. 2), and measures how far the results land from the

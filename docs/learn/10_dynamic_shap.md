@@ -591,12 +591,12 @@ the two-value sensor P15 ranks. Both have since been measured on five
 networks, trained with five different seeds (42 to 46), which set their random
 starting values and the order in which they see the training windows. All five
 share one configuration: the default settings, except that no training engine
-is held back (the default holds back a fifth of them, assumption A-06), so
-every network learns from the same 100 engines (NASA PCoE, 2008) for all 200
-passes over them (Wen et al., 2026, Table 6), and the network as it stands
-after the last pass is the one explained, where the default keeps the one
-that did best on the held-back engines (assumption A-18). Ranking the sensors
-by the average size of their contributions, sign set aside:
+is held back, so every network learns from the same 100 engines (NASA PCoE,
+2008) for all 200 passes over them (Wen et al., 2026, Table 6), and the
+network as it stands after the last pass is the one explained. The default
+instead holds back a fifth of the training engines (assumption A-06) and
+keeps the network that did best on them (assumption A-18). Ranking the
+sensors by the average size of their contributions, sign set aside:
 
 - **The same four sensors lead on every network**, Nc, T50, W31 and T24,
   whichever of three references stands in for an absent sensor: the average
@@ -634,9 +634,9 @@ output a weighted sum of its inputs plus a constant. Neither holds here: the
 paper reports strong correlations among T24, T30 and T50 (Wen et al., 2026,
 p. 8, Fig. 5), and step 2 shows this model setting negative values to zero,
 which no weighted sum does. So the contributions on this page are exact for
-this stand-in but need not equal the quantity Lundberg and Lee define, the
-model's average prediction over the inputs that could occur alongside the
-present sensors' actual readings (p. 5, Eqs. 9–10). Because SHAP describes
+this stand-in but need not equal the SHAP values Lundberg and Lee define,
+which are built from the model's average prediction over the inputs that
+could occur alongside the present sensors' actual readings (p. 5, Eqs. 9–10). Because SHAP describes
 only the model's response, it does not, in this project's reading, prove
 physical causation or identify a failed component. Nor does it provide a
 confidence interval for remaining life: the paper describes its own

@@ -25,10 +25,10 @@ apply one after another.
 | Pass every cycle | All readings, in their original order | Nothing |
 
 The **LSTM**, short for long short-term memory network (Hochreiter &
-Schmidhuber, 1997, Section 4), and **GRU**, short for gated recurrent unit
-(Ren et al., 2026, p. 2), the unit introduced by Cho et al. (2014, Section 2.3),
-follow the four numbered steps below. The fixed alternatives later on this page
-replace that entire route.
+Schmidhuber, 1997, Section 4), and the **GRU**, short for gated recurrent unit
+(Ren et al., 2026, p. 2), follow the four numbered steps below. The fixed
+alternatives later on this page replace that entire route. The GRU was
+introduced by Cho et al. (2014, Section 2.3).
 
 ## Example setup
 
@@ -507,7 +507,7 @@ One separate output sequence per sensor. T50 again gives the same values when pr
 
 ## 3 — Keep the last hidden state
 
-The last output has been calculated through the preceding updates, so it can summarise the history. It need not preserve every detail. Passing on the last cycle's hidden state is this project's reading of the paper's Eq. 7, which writes each sensor's LSTM result as the hidden state at the window's last cycle (Wen et al., 2026, Section 2.2, Eq. 7; assumption A-26).
+The last output has been calculated through the preceding updates, so it can summarise the history. It need not preserve every detail. Passing on the last cycle's hidden state follows the paper's Eq. 7, which writes each sensor's LSTM result as the hidden state at the window's last cycle (Wen et al., 2026, Section 2.2, Eq. 7). Turning that hidden state into graph inputs, in step 4, is a project choice (assumption A-26).
 
 ### Process
 

@@ -42,10 +42,10 @@ characterize the engine health during or right after that flight" (p. 5).
 Read together, the two sources mean that **one cycle is one flight**, and an
 engine has one row per flight. Neither source puts it in exactly those words;
 it is this project's reading of the quotations above, and it assumes the files
-were made the way the paper describes. The paper also describes its output as
-measurements "at cruise snapshots" (Saxena et al., 2008, p. 6), while FD001's
-one condition is sea level (NASA PCoE, 2008), so the FD001 files do not match
-the paper's description exactly. A cycle is a count, and the files give it no
+were made the way Saxena et al. (2008) describe. That paper also describes its
+output as measurements "at cruise snapshots" (p. 6), while FD001's one
+condition is sea level (NASA PCoE, 2008), so the FD001 files do not match its
+description exactly. A cycle is a count, and the files give it no
 duration: the columns NASA lists are the engine number, the cycle, three
 operational settings and the sensor measurements, none of them a duration
 (NASA PCoE, 2008; Saxena et al., 2008, Table 2), so cycle 3 says only that it
@@ -86,6 +86,14 @@ failure: Saxena et al. (2008) write that remaining-life estimates allow
 they add, promise two things: cost savings, by avoiding unscheduled
 maintenance and by using equipment for longer, and better operational safety
 (p. 2).
+
+A wrong estimate costs something in either direction. Wen et al. (2026) write
+that estimating too little is "generally safer" than estimating too much,
+because it "leads to earlier maintenance rather than unexpected failures", but
+that estimating far too little "results in unnecessary maintenance costs"
+(p. 9). So an estimate that is too high lets an engine fly on towards a failure
+in service, and one that is too low sends it for maintenance it did not yet
+need.
 
 ## What the engine's sensors measure
 
@@ -436,8 +444,8 @@ are the answers. None of these is an extra sensor input.
 The project uses one fixed list of 14 sensor columns: the 14 sensors of the
 paper's sensor graph, in the order of its rows (Wen et al., 2026, Table 3).
 The six constant sensors reported above are absent. The paper names all six
-among the sensors it removes (writing the last as PCNR_dmd, where its Table 2
-has PCNfR_dmd), by a rule that removes "features with high
+among the sensors it removes (writing PCNfR_dmd as PCNR_dmd there, unlike its
+Table 2), by a rule that removes "features with high
 correlational redundancy (above 0.95) and constant values" (Wen et al., 2026,
 Section 3.2.2, p. 8). `NRc`, the corrected core-speed reading, is absent too:
 the paper says seven sensors are removed but names only six, and taking `NRc`

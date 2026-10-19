@@ -155,7 +155,7 @@ they are "contaminated with sensor noise" (NASA Prognostics Center of
 Excellence [NASA PCoE], 2008). Smoothing gives a new reading only
 part of the influence on the next value, reducing the effect of one sudden jump.
 It is applied separately to each engine and to each of the 14 selected sensors
-(Wen et al., 2026, Table 3; assumption A-10).
+(Wen et al., 2026, Table 3).
 
 {{figure:smoothing}}
 
@@ -193,8 +193,10 @@ be one fixed number; this project reads the 0.5 as the new-reading share
 instead, which makes both shares one half (assumption A-04). The starting rule
 is a project choice (assumption A-09).
 
-Follow `T24`, the `sensor_2` column (Wen et al., 2026, Table 2), through all
-three rows:
+Wen et al. (2026, Table 2) number the temperature `T24` as sensor 2; reading it
+as the file's `sensor_2` column is this project's reading, checked on the
+[C-MAPSS resource page](../resources/cmapss.md#which-flight-conditions-the-settings-are).
+Follow `T24`, the `sensor_2` column, through all three rows:
 
 ```text
 cycle 1: first reading                               = 641.82
@@ -234,8 +236,9 @@ columns change; the first row of each engine stays as it was:
 | 1 | 3 | -0.0043 | 0.0003 | 100 | 518.67 | 642.1675 | 1589.375 | 1403.035 | 14.62 | 21.61 | 554.1575 | 2388.065 | 9049.035 | 1.3 | 47.375 | 522.195 | 2388.0375 | 8133.23 | 8.421725 | 0.03 | 391 | 2388 | 100 | 38.99 | 23.38275 | 125 |
 
 Turning smoothing off skips this change. A weight of 1 also keeps the raw
-readings. The filter runs before any rescaling, the order the paper draws for
-smoothing and normalisation (Wen et al., 2026, Fig. 1). So when the rescaling
+readings. The filter runs before any rescaling, the order the paper draws:
+smoothing first, then what it calls data normalisation, which is the rescaling
+of step 4 (Wen et al., 2026, Fig. 1). So when the rescaling
 is done within each operating condition and an engine's condition changes, as
 it may "from one flight to another" (Saxena et al., 2008, p. 5), the filter can
 blend readings across that change. On FD002, which has six conditions,
@@ -254,8 +257,8 @@ We split by engine, not by individual window. Neighbouring 30-cycle windows
 share 29 cycles; putting them on opposite sides would test the model on almost
 the same history it learned from. We also split **before** measuring rescaling
 statistics so held-back readings cannot influence those statistics. This
-reverses the order the paper draws, normalisation before the train and test
-datasets (Wen et al., 2026, Fig. 1); the paper never says which engines its
+reverses the order the paper draws, in which the rescaling comes before the
+data are divided into training and test sets (Wen et al., 2026, Fig. 1); the paper never says which engines its
 statistics come from (assumption A-25).
 
 **Where this happens.** The playground's **Training → Procedure** control
@@ -426,23 +429,25 @@ settings stay unchanged; rounding was only used to count the groups.
 Whole numbers are coarser than the settings of FD002 and FD004, the two
 sub-datasets flown in six conditions (NASA PCoE, 2008). The three settings are
 read here as the altitude in thousands of feet, the Mach number (the speed as a
-fraction of the speed of sound) and the throttle angle in degrees. That reading
-is this project's. The dataset's paper says the six conditions of its challenge
-data combine altitude (0 to 42,000 ft), Mach number (0 to 0.84) and throttle
-resolver angle (20 to 100) (Saxena et al., 2008, Section V.D, p. 6), and Wen et
-al. (2026) say the six conditions vary "altitude, Mach number, and throttle
-resolver angle settings" (Section 3.2.1, p. 7); neither says which column holds
-which. The six combinations in the files each match one of the simulator's
-ready-made flight conditions (Frederick et al., 2007, Table 1.4, p. 11), and the
-simulator's guide gives the throttle resolver angle in degrees (Frederick et
-al., 2007, Table 1.3, p. 11). Rounded, the Mach numbers 0, 0.25,
+fraction of the speed of sound) and the throttle angle in degrees (the sources
+call it the throttle resolver angle). Rounded, the Mach numbers 0, 0.25,
 0.62, 0.70 and 0.84 become only 0 and 1, and with the throttle angle's two
 values, 100 and 60, they make just three combinations. The count still comes
 out at six because the altitudes round to six different values: 0, 10, 20, 25,
 35 and 42. That holds in the training and the test file of both
 sub-datasets, so no condition is merged. Two conditions at one altitude whose
 Mach numbers round to the same whole number (0.62 and 0.84 both become 1)
-would be counted as one; none of these files has such a pair. The
+would be counted as one; none of these files has such a pair.
+
+That reading of the three settings is this project's. The dataset's paper says
+the six conditions of its challenge data combine altitude (0 to 42,000 ft),
+Mach number (0 to 0.84) and throttle resolver angle (20 to 100) (Saxena et al.,
+2008, Section V.D, p. 6), and Wen et al. (2026) say the six conditions vary
+"altitude, Mach number, and throttle resolver angle settings" (Section 3.2.1,
+p. 7); neither says which column holds which. The six combinations in the files
+each match one of the simulator's ready-made flight conditions (Frederick et
+al., 2007, Table 1.4, p. 11), and the simulator's guide gives the throttle
+resolver angle in degrees (Frederick et al., 2007, Table 1.3, p. 11). The
 [C-MAPSS resource page](../resources/cmapss.md#which-flight-conditions-the-settings-are)
 shows how the three settings were identified.
 

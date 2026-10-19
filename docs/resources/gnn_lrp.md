@@ -48,10 +48,10 @@ graph networks that came before it as limited to individual nodes or edges
 in [Section 1.1.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2)
 sets itself apart from them by scoring sequences of edges instead; the methods
 it lists there also include some that pick out a subgraph, such as
-GNNExplainer (Ying et al., 2019, p. 1). It argues that a score per node
-"does not tell us whether a node is important by itself"
+GNNExplainer (Ying et al., 2019, p. 1). Schnake et al. argue that a score
+per node "does not tell us whether a node is important by itself"
 ([Section 2.1, p. 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)),
-or only because of what it is connected to. Its answer is to make the graph
+or only because of what it is connected to. Their answer is to make the graph
 the thing that is explained: work out how the output depends on the entries
 of Λ, and split the output into terms that each multiply as many entries of
 Λ as the network has graph layers (Section 2.2, Eq. 6); Section 3 then
@@ -599,10 +599,9 @@ step it calls *combine*
 involves no neighbour: it multiplies each node's own aggregated row by $W_t$
 and applies the switch.
 
-Schnake et al. (2022, p. 3) write $\lambda^\star_{JK}$, and $\lambda_{JK}$ in
-their Table 1, for the element of the graph for the connection
-between node J and node K; in a walk (…, J, K, …) it is the connection
-through which J's numbers reach K at the next layer. The graphs whose
+Schnake et al. (2022, Table 1) write $\lambda_{JK}$ for the element of the
+graph for the connection between node J and node K; in a walk (…, J, K, …)
+it is the connection through which J's numbers reach K at the next layer. The graphs whose
 construction the paper writes out are built from undirected graphs and so
 are symmetric ([Appendix F.1 and F.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=19)),
 and it never has to say which index of Λ sends. This page's graph is not
@@ -694,7 +693,8 @@ Schnake et al. (2022, [Section 3](../references/schnake_2022_gnn_lrp_relevant_wa
 define a **walk** as an ordered sequence of connections linking nodes in
 consecutive layers, written by the nodes it visits, $(\ldots, J, K, L,
 \ldots)$, and give each layer its own copy of the graph, $\Lambda^\star =
-(\Lambda, \ldots, \Lambda)$. [Appendix B](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=16)
+(\Lambda, \ldots, \Lambda)$, whose element for the connection between node J
+and node K they write $\lambda^\star_{JK}$ (p. 3). [Appendix B](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=16)
 then argues in three moves (its Eqs. 7–9). A derivative with respect to a
 shared entry is the sum of the derivatives with respect to that entry's copy
 in each layer. A mixed derivative that takes two entries from the same
@@ -1299,8 +1299,9 @@ way equal node-level LRP with the same γ. That is the statement of
 Schnake et al. (2022, [pp. 6–7](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=7))
 that pooling walk explanations by their first node gives node explanations
 equivalent to those of Pope et al. (2019),
-in the form their benchmark used them: Pope et al.'s attribution onto the
-initial node features, computed by gradient × input or by LRP. Walks lose
+in the form Schnake et al.'s benchmark used them (Section 4, item (a)):
+Pope et al.'s attribution onto the initial node features, computed by
+gradient × input or by LRP. Walks lose
 nothing that node shares hold, and add the route.
 
 **The key idea is** that GNN-LRP runs the same backward division as
@@ -1489,11 +1490,11 @@ The masked procedure costs one forward and one backward pass for each walk
 in the input graph (Schnake et al., 2022, p. 5): those along existing
 connections, 17 of the 27 here, and 5,178 of the 14 × 14 × 14 × 14 = 38,416
 possible on the project's 14-sensor graph with three graph layers (Wen et al.,
-2026, Table 4). It also
+2026, Table 4). The masked procedure also
 allows a variation: removing the mask at one layer adds together all walks
-through that layer, ignoring which node they pass there (p. 5). To save time,
-it suggests defining walks first between groups of nodes and expanding only
-the most relevant, stopping a walk early once its relevance falls below a
+through that layer, ignoring which node they pass there (Schnake et al.,
+2022, p. 5). To save time, Schnake et al. suggest defining walks first
+between groups of nodes and expanding only the most relevant, stopping a walk early once its relevance falls below a
 threshold, and, for regular grids such as an image's pixels, computing many
 walks in one pass (pp. 5–6; Appendix D). The project's `walk_relevance` does not run one pass
 per walk: it multiplies arrays so that all walks come out at once, and a
