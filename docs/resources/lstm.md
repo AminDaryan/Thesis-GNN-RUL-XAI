@@ -779,7 +779,7 @@ The multiplications above show how.
 
 Hochreiter and Schmidhuber (1997, Section 4) sum this up as the output gate
 selecting which error signals are kept in the carousel, and the input gate deciding when they leave it, both by
-the multiplications just shown. It adds that a task does not always need both
+the multiplications just shown. They add that a task does not always need both
 gates: Experiments 2a and 2b use input gates only.
 
 ### Memory cell blocks

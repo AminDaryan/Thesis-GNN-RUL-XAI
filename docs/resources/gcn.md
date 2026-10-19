@@ -1260,8 +1260,8 @@ it.
   ReLU of a rescaled adjacency matrix times the values times a learned table,
   the form of Kipf and Welling's (2017, Eq. 2) rule. Wen et al. describe the rescaled
   matrix only in words, as normalised and including self-connections (p. 6),
-  and their reference list does not include Kipf and Welling's paper
-  (pp. 15–16); tracing the layer to it is
+  and their reference list (pp. 15–16) does not include Kipf and Welling's
+  paper; tracing the layer to it is
   this project's reading. The project's `GraphConvolution` multiplies the graph
   matrix by the values and then by the learned table, in the order Wen et
   al.'s Eq. 8 writes it.

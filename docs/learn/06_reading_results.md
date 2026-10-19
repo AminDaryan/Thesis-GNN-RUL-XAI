@@ -8,7 +8,7 @@ more than that left (the second warning under "What may and may not be compared
 with the paper", below, says what the cap does to each measure). NASA's description of
 the data counts that life in "operational cycles" (NASA Prognostics Center of
 Excellence [NASA PCoE], 2008). The error is the
-difference between them, positive when the model was optimistic, the same way
+difference between the prediction $\hat{y}$ and the label $y$, positive when the model was optimistic, the same way
 round as the dataset paper's "Estimated RUL – True RUL" (Saxena et al., 2008,
 p. 7):
 

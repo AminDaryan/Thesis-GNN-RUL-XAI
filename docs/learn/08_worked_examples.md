@@ -111,7 +111,8 @@ internal score. Each addition ends with an offset and its total. Only the two
 fully connected layers, Fully connected and Output, learn an offset
 (Wen et al., 2026, Eqs. 12–13). The graph layers have none: the paper prints
 none in their equations (Wen et al., 2026, Eqs. 8–10), and this project
-follows them (assumption A-12), so their tables show an offset of 0. None of
+follows them (assumption A-12). Their tables still end with "learned offset
+0.000000", which for these layers means there is no offset at all. None of
 these tables is a ranking of sensors.
 
 ## Other temporal algorithms
@@ -137,10 +138,13 @@ Training takes sensor windows **and separate answers**. It calculates a
 prediction, compares it with the answer, then adjusts learned multipliers to
 reduce that mismatch. A batch is the group of windows used for one update;
 a pass goes through all training windows. The learning rate controls the
-update size: the paper trains with Adam (Wen et al., 2026, Table 6), and
-Kingma and Ba (2015) write that Adam's steps are "approximately bounded by
-the stepsize setting α" (p. 3), a stepsize they also call the learning rate
-(p. 4). A seed selects
+update size. The paper trains with Adam (Wen et al., 2026, Table 6), the
+rule that chooses each learned number's next change from how fast the
+mismatch changes as that number changes, on this batch and on earlier ones
+(Kingma & Ba, 2015, Algorithm 1, p. 2). Kingma and Ba (2015) write that the
+size of each Adam step is "approximately bounded by the stepsize setting α"
+(p. 3). That α is a setting chosen before training, not a learned number,
+and it is what they also call the learning rate (p. 4). A seed selects
 repeatable random choices; changing it starts a
 different training repetition. A device changes which processor performs
 these calculations, not what a row means.
