@@ -42,8 +42,11 @@ characterize the engine health during or right after that flight" (p. 5).
 Read together, the two sources mean that **one cycle is one flight**, and an
 engine has one row per flight. Neither source puts it in exactly those words;
 it is this project's reading of the quotations above, and it assumes the files
-were made the way the paper describes. A cycle is a count, not a fixed length
-of time: the columns NASA lists are the engine number, the cycle, three
+were made the way the paper describes. The paper also describes its output as
+measurements "at cruise snapshots" (Saxena et al., 2008, p. 6), while FD001's
+one condition is sea level (NASA PCoE, 2008), so the FD001 files do not match
+the paper's description exactly. A cycle is a count, and the files give it no
+duration: the columns NASA lists are the engine number, the cycle, three
 operational settings and the sensor measurements, none of them a duration
 (NASA PCoE, 2008; Saxena et al., 2008, Table 2), so cycle 3 says only that it
 was the engine's third recorded flight.
@@ -53,8 +56,8 @@ was the engine's third recorded flight.
 Each file holds many engines, and each engine starts with a different,
 unknown amount of wear and manufacturing variation, which counts as normal
 rather than as a fault (NASA PCoE, 2008). Every engine runs normally at first
-and develops a fault at some point. In the **training** file the fault grows
-until the engine fails; in the **test** file each history stops some time
+and develops a fault at some point (NASA PCoE, 2008). In the **training**
+file the fault grows until the engine fails; in the **test** file each history stops some time
 before failure, and a separate answer file gives how many cycles each test
 engine still had left after its last recorded one (NASA PCoE, 2008). Training
 engine 1 and test engine 1 are different engines: each history comes from a
@@ -79,9 +82,10 @@ answer file gives it only at the last recorded cycle.
 
 The estimate is worth having because it lets maintenance be planned before a
 failure: Saxena et al. (2008) write that remaining-life estimates allow
-"planners to account for upcoming maintenance", and that reliable estimates
-promise cost savings, by avoiding unscheduled maintenance and by using
-equipment for longer, and better operational safety (p. 2).
+"planners to account for upcoming maintenance" (p. 2). Reliable estimates,
+they add, promise two things: cost savings, by avoiding unscheduled
+maintenance and by using equipment for longer, and better operational safety
+(p. 2).
 
 ## What the engine's sensors measure
 
@@ -90,9 +94,9 @@ equipment for longer, and better operational safety (p. 2).
 Air enters through a fan. A splitter then sends part of it around the
 engine's core along a bypass path, and the rest passes through a low-pressure
 compressor (LPC), a high-pressure compressor (HPC), a combustor, and high- and
-low-pressure turbines (HPT and LPT) (Frederick et al., 2007, p. 7; Saxena et
-al., 2008, Figs. 1 and 2). Sensors record temperatures, pressures, shaft speeds
-and other quantities along this path (Saxena et al., 2008, Table 2). For
+low-pressure turbines (HPT and LPT) (Frederick et al., 2007, p. 7 and
+Figs. 1.1–1.2, p. 9; Saxena et al., 2008, Figs. 1 and 2). Sensors record
+temperatures, pressures, shaft speeds and other quantities along this path (Saxena et al., 2008, Table 2). For
 example, `T24` measures temperature at the LPC outlet (Saxena et al., 2008,
 Table 2). Changes upstream can affect readings downstream: Wen et al. (2026)
 build part of their sensor graph by linking sensors that follow one another
@@ -149,8 +153,12 @@ No measurement changes during this operation.
 
 For the first sample line, the first 1 identifies engine 1 and the second 1
 identifies cycle 1. The three values after them describe how the engine was
-being run. Among the sensor values, 641.82 is the second one, and sensor 2 is
-the temperature named T24 (Wen et al., 2026, Table 2). The next two lines are
+being run. Among the sensor values, 641.82 is the second one. Wen et al.
+(2026, Table 2) number the 21 sensors so that sensor 2 is the temperature
+named T24; reading the file's sensor columns in that numbering is this
+project's reading, checked on the
+[C-MAPSS resource page](../resources/cmapss.md#which-flight-conditions-the-settings-are).
+The next two lines are
 cycles 2 and 3 of that same engine. The output below labels
 engine and cycle as `unit` and `cycle`, and T24 as `sensor_2`.
 
@@ -288,7 +296,8 @@ its first three rows after reading:
 The second input is `data/raw/RUL_FD001.txt`: line 1 belongs to test engine 1,
 line 2 to test engine 2, and so on. NASA's description does not say which line
 is which engine (NASA PCoE, 2008); matching them by position, one line for each
-of the 100 test engines, is this project's reading. Its first three entries are:
+of the 100 test engines, is this project's reading. The file's first three
+entries are:
 
 <!-- sample: test_answers -->
 | unit | rul_at_last_cycle |
@@ -427,7 +436,8 @@ are the answers. None of these is an extra sensor input.
 The project uses one fixed list of 14 sensor columns: the 14 sensors of the
 paper's sensor graph, in the order of its rows (Wen et al., 2026, Table 3).
 The six constant sensors reported above are absent. The paper names all six
-among the sensors it removes, by a rule that removes "features with high
+among the sensors it removes (writing the last as PCNR_dmd, where its Table 2
+has PCNfR_dmd), by a rule that removes "features with high
 correlational redundancy (above 0.95) and constant values" (Wen et al., 2026,
 Section 3.2.2, p. 8). `NRc`, the corrected core-speed reading, is absent too:
 the paper says seven sensors are removed but names only six, and taking `NRc`

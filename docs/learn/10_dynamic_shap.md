@@ -3,7 +3,7 @@
 A prediction combines information from several sensors. To understand one
 prediction, ask **how much each sensor's actual readings changed it from a
 specified reference**. SHAP, short for SHapley Additive exPlanations, divides
-that difference among the sensors (Lundberg & Lee, 2017, p. 1; p. 4, Eq. 5).
+that difference among the sensors (Lundberg & Lee, 2017, p. 1 and p. 4, Eq. 5).
 
 ## Dividing credit fairly
 
@@ -14,7 +14,7 @@ therefore count the same interaction more than once.
 Instead, imagine adding the sensors one at a time. Record how much the
 prediction changes when a sensor joins. Repeat for every possible order, then
 average that sensor's changes. That average is its **Shapley value**
-(Lundberg & Lee, 2017, p. 4; p. 5, Fig. 1).
+(Lundberg & Lee, 2017, p. 4 and p. 5, Fig. 1).
 
 {{figure:shapley}}
 
@@ -237,14 +237,17 @@ or any of its connections.
 The model in this example keeps only the last position before exchanging
 information between sensors. It follows the connections the paper draws
 among these three sensors (Wen et al., 2026, Table 3) and averages what each
-sensor receives, its own reading included (Wen et al., 2026, Section 2.3.2,
-Eq. 8; assumption A-21). Its first
-sensor uses the average of T24 and T30; its second uses the average of all
-three; its third uses the average of T30 and T50. Negative averages become
-zero. It then doubles the first result, adds the second, subtracts the third,
-and adds 0.5. Negative totals become zero, and the final conversion produces a
-number between zero and the ceiling of 125 cycles (assumption A-01). The
-[GNN-LRP page](11_gnn_lrp.md) traces these same calculations.
+sensor receives, which is this project's choice (assumption A-21), with its
+own reading included, as in the paper (Wen et al., 2026, Section 2.3.2,
+Eq. 8). Its first sensor uses the average of T24 and T30; its second uses the
+average of all three; its third uses the average of T30 and T50. Negative
+averages become zero. It then doubles the first result, adds the second,
+subtracts the third, and adds 0.5. Negative totals become zero, and the final
+conversion produces a number between zero and the ceiling of 125 cycles: the
+paper's last step turns the total into a number between 0 and 1 (Wen et al.,
+2026, Section 2.3.2, Eq. 13), which this project multiplies by the ceiling
+(assumptions A-01 and A-13). The [GNN-LRP page](11_gnn_lrp.md) traces these
+same calculations.
 SHAP only needs the resulting predictions.
 
 <details class="process-example">
@@ -588,10 +591,12 @@ the two-value sensor P15 ranks. Both have since been measured on five
 networks, trained with five different seeds (42 to 46), which set their random
 starting values and the order in which they see the training windows. All five
 share one configuration: the default settings, except that no training engine
-is held back, so every network learns from the same 100 engines for all 200
-passes over them, and the network as it stands after the last pass is the one
-explained. Ranking the sensors by the average size of their contributions,
-sign set aside:
+is held back (the default holds back a fifth of them, assumption A-06), so
+every network learns from the same 100 engines (NASA PCoE, 2008) for all 200
+passes over them (Wen et al., 2026, Table 6), and the network as it stands
+after the last pass is the one explained, where the default keeps the one
+that did best on the held-back engines (assumption A-18). Ranking the sensors
+by the average size of their contributions, sign set aside:
 
 - **The same four sensors lead on every network**, Nc, T50, W31 and T24,
   whichever of three references stands in for an absent sensor: the average
@@ -620,14 +625,21 @@ measurements were added to the two records that day, and a review found this
 page had not followed them.)
 
 Replacing sensor histories can also create combinations not observed together
-in a real engine. Lundberg and Lee (2017, p. 5, Eqs. 11–12) arrive at this
-kind of stand-in, the average put in place of the absent inputs, by assuming
-two things: that the inputs are independent of one another, which sets aside
-how sensors move together, and that the model is linear, its output a
-weighted sum of its inputs plus a constant. SHAP describes
-how the model responds to those combinations under this reference choice. It
-does not prove physical causation or identify a failed component. Nor does it
-provide a confidence interval for remaining life: the paper describes its own
+in a real engine. SHAP describes how the model responds to those combinations
+under this reference choice. Lundberg and Lee (2017, p. 5, Eqs. 11–12) arrive
+at this kind of stand-in, the average put in place of the absent inputs, by
+assuming two things: that the inputs are independent of one another, which
+sets aside how sensors move together, and that the model is linear, its
+output a weighted sum of its inputs plus a constant. Neither holds here: the
+paper reports strong correlations among T24, T30 and T50 (Wen et al., 2026,
+p. 8, Fig. 5), and step 2 shows this model setting negative values to zero,
+which no weighted sum does. So the contributions on this page are exact for
+this stand-in but need not equal the quantity Lundberg and Lee define, the
+model's average prediction over the inputs that could occur alongside the
+present sensors' actual readings (p. 5, Eqs. 9–10). Because SHAP describes
+only the model's response, it does not, in this project's reading, prove
+physical causation or identify a failed component. Nor does it provide a
+confidence interval for remaining life: the paper describes its own
 SHAP analysis as working "without addressing prediction uncertainty or
 confidence intervals" (Wen et al., 2026, p. 7). A large contribution is a
 statement about a model's calculation, not a diagnosis.
