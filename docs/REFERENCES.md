@@ -20,6 +20,23 @@ The pages under **Resources** in the site's menu explain the five works the
 project is built on most directly — the dataset, the LSTM, the GCN, SHAP and
 GNN-LRP — from the papers themselves.
 
+**How the taught pages cite these works.** Every page under Learn and
+Resources names its sources the way a journal paper does. A claim taken from a
+published work carries an author–date citation in the text, such as
+(Saxena et al., 2008, p. 5) or Kipf and Welling (2017, Eq. 2), with the most
+specific place a reader can find: a page, section, table, equation or figure
+of the copy listed here. The page ends with a list headed "References" that
+holds this file's entry for every work the page cites, and only those, each
+followed by a link to its copy. A choice this project made is not credited to
+a paper: the page says the choice in words and points to its entry, as in
+"(assumption A-07)". A measurement is either computed on the page or points
+to the finding that records it, as in "(finding F-16)". Where a sentence joins
+a source to this project's own reading of it, it says which part is which.
+`tests/test_citations.py` checks that each page's citations and its list agree
+with each other and with this file; whether a citation supports its sentence
+can only be checked by reading the copy, and the record of that check is
+[`audits/AUDIT_2026-10-19_docs_sources.md`](audits/AUDIT_2026-10-19_docs_sources.md).
+
 ---
 
 ## The paper being re-implemented

@@ -162,3 +162,40 @@ and Young (the uniqueness conditions) are unchecked against their sources.
 as unchecked), the Kapoor sentence checked, and this entry deleted. (The IMTSO-GCN leads this
 entry also held were confirmed in the copy and written into finding F-12 and
 `docs/LITERATURE_BASIS.md` on 2026-10-02 and 2026-10-03.)
+
+---
+
+## P-30 — Sentences on the documentation pages that no held source supports
+
+On 2026-10-18 the author asked for every statement on the documentation pages
+to carry a source, cited the way papers cite theirs. All 17 pages under Learn
+and Resources now do, checked against the held copies; the record is
+`docs/audits/AUDIT_2026-10-19_docs_sources.md`. That check left 58 sentences
+that teach something the page needs but that no held copy states. The audit
+lists every one, in four groups, with what is missing:
+
+- **Plain-word explanations of standard terms** (39): a spool, the Rankine
+  scale, a paired *t*-test, a softmax and the like. Textbook definitions that
+  no held copy gives.
+- **Why information must not leak from the test engines** (6): the reading
+  list's source, Kapoor and Narayanan (2023), is held only as its 2022
+  preprint (see the entry above).
+- **Sources needed but not held** (2): the GNN-LRP authors' code, which sets
+  the explanation rule's gamma per layer, and any paper on peephole
+  connections.
+- **The project's own reasoning, not marked as such** (11). Two of them
+  describe the Mean and Full window options for the step before the graph
+  layers, which this project added and the worked examples page describes,
+  but which no assumption entry records, unlike the GRU stage (assumption
+  A-36).
+
+**How to check:** read the audit's four tables; `tests/test_citations.py`
+cannot see any of this, because it compares citations only with the lists.
+
+**What finishing looks like:** the author decides, group by group, whether a
+sentence stays as the page's own explanation (marked as such where it is
+reasoning), gets a source added to `docs/REFERENCES.md` and its copy to
+`docs/references/`, or is reworded; the Mean and Full window options get an
+assumption entry each, or one between them; the pages are changed and
+`pytest tests/test_citations.py tests/test_links.py` and
+`python scripts/check_prose.py` pass; and this entry is deleted.
