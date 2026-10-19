@@ -200,24 +200,27 @@ assumption entry each, or one between them; the pages are changed and
 `pytest tests/test_citations.py tests/test_links.py` and
 `python scripts/check_prose.py` pass; and this entry is deleted.
 
-## P-31 — The Reading results page's "current default" figure is not what the default gives now
+## P-31 — The default's five-seed figure moves with the PyTorch version, and the Reading results page does not say which it quotes
 
-`docs/learn/06_reading_results.md`, under "One seed is not a result", calls
-16.496 ± 0.415 the test RMSE of "the current default settings", from the
-stored run `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`.
-On 2026-10-19 the default settings at commit `a05da94` gave 16.689 ± 0.246
-over the same seeds, 42 to 46
+`docs/learn/06_reading_results.md`, under "One seed is not a result", gives
+16.496 ± 0.415 as what "the current default settings" produce, from
+`fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`,
+trained under PyTorch 2.13.0 on the processor. The settings are still the
+default's: `ba82e3` and `818b40` are the same settings under the digest rule
+before and after 2026-10-03, which stopped counting the prose notes (finding
+F-09). But on 2026-10-19 the same settings at `a05da94`, under PyTorch 2.14.1
+on the processor, gave 16.689 ± 0.246 over the same seeds
 (`reports/fd001_physics_row_cap_5seed_varsplit_cfg818b40_a05da94_20261019T091343Z`,
-run while measuring smoothing for assumption A-04). The configuration digests
-differ, `ba82e3` against `818b40`, so some preprocessing setting changed
-between the two; which one was not established, because the older run is not
-in this session's `reports/`. The page's two worked comparisons under "When is
-a difference real?" (the all-to-all graph, +2.784, and the correlation graph,
-+0.096) were measured under the older configuration too.
+trained to measure smoothing for assumption A-04), close to the 16.690 ± 0.229
+that assumption A-07 records under PyTorch 2.5.1 on a graphics card. A-07
+says no stored run separates the device from the PyTorch version; this one is
+on the processor, so the device alone does not explain the 16.496, but it also
+differs from the 2.13.0 runs in commit, so the code is not ruled out either.
 
-**How to check:** compare the two runs' `preprocessing_config.yaml` where both
-are stored.
+**How to check:** train the default at `f4f40ad`, whose clean checkout
+reproduced 16.496 under 2.13.0, again under PyTorch 2.14.1 on the processor,
+and compare seed by seed.
 
-**What finishing looks like:** the page either quotes a current run and
-re-measures its two comparisons at that configuration, or names the older
-configuration as the one it describes instead of calling it current.
+**What finishing looks like:** A-07's paragraph on the two figures says which
+of code, version or device moves them, and the Reading results page names the
+PyTorch version (and device) its figure was trained under.

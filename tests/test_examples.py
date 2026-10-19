@@ -327,12 +327,13 @@ def test_example_design_preprocessing_tutorial(loaded, monkeypatch):
     np.testing.assert_allclose(namespace["smooth_output"].sensor_2, [641.82, 641.985, 642.1675])
     raw, smooth = (namespace[name].query("unit == 1").set_index("cycle").sensor_4
                    for name in ("capped", "smoothed"))
-    assert (raw.head(30).mean(), raw.tail(30).mean()) == pytest.approx((1400.11, 1421.92), abs=5e-3)
+    assert (raw.head(30).mean(), raw.tail(30).mean()) == pytest.approx((1400.107, 1421.924), abs=5e-4)
     np.testing.assert_allclose(raw.loc[125:128], [1406.42, 1418.50, 1399.49, 1407.06])
-    np.testing.assert_allclose(smooth.loc[125:128], [1405.6218, 1412.0609, 1405.7754, 1406.4177], atol=5e-5)
+    np.testing.assert_allclose(smooth.loc[125:128], [1405.62175, 1412.06088, 1405.77544, 1406.41772], atol=5e-6)
     assert 0.5 * raw[127] + 0.5 * smooth[126] == pytest.approx(smooth[127])
     steps = [namespace[name].groupby("unit").sensor_4.diff().abs().mean() for name in ("capped", "smoothed")]
     assert steps == pytest.approx([4.557, 1.866], abs=5e-4)
+    assert [raw.diff().abs().mean(), smooth.diff().abs().mean()] == pytest.approx([4.155, 1.689], abs=5e-4)
     stats = namespace["scale_statistics"].query("column == 'sensor_2'").iloc[0]
     assert stats["mean"] == pytest.approx(642.6751709174424)
     assert stats["std"] == pytest.approx(0.4303079837962261)
