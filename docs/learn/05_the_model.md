@@ -6,31 +6,36 @@ use it, until one window has one remaining-life prediction.
 
 There are two separate operations in a graph layer: the **fixed graph shares**
 combine allowed senders, then **learned multipliers** turn that mixture into
-new values. Training adjusts the latter, not the graph table.
+new values (Wen et al., 2026, Section 2.3.2, Eqs. 8–10). Training adjusts the
+latter, not the graph table.
 
 ## The whole route
 
 {{figure:architecture-overview}}
 
 The figure shows the command-line default network, whose temporal stage keeps the last
-reading. The paper's Table 4 specifies graph widths 32, 64 and 32, followed by
-a fully connected width of 128 and one output. Here **width** means how many
+reading (assumption A-07). The paper specifies graph widths 32, 64 and 32,
+followed by a fully connected width of 128 and one output (Wen et al., 2026,
+Table 4). Here **width** means how many
 calculated values a sensor or window carries, not how many cycles are read.
-The paper describes separate LSTMs before these layers in Section 2.2; that
-stage is omitted by the command-line default (assumption A-11).
+The paper places a separate long short-term memory network (LSTM; Hochreiter
+& Schmidhuber, 1997, Section 4) before these layers for each sensor (Wen et
+al., 2026, Section 2.2, Eq. 7); that stage is omitted by the command-line
+default (assumption A-11).
 
 ## Example setup
 
 To show **every input and output value**, this tutorial uses graph widths
 **3, 2, 1**, and a fully connected width of **3**. It uses the real Physics
-graph and FD001 training engine 1, cycles 1–30, with the last-reading temporal
-route. These smaller widths are teaching settings, not the paper's settings
-or a change to the playground defaults.
+graph (Wen et al., 2026, Table 3) and FD001 training engine 1 (NASA
+Prognostics Center of Excellence [NASA PCoE], 2008), cycles 1–30, with the
+last-reading temporal route. These smaller widths are teaching settings, not
+the paper's settings or a change to the playground defaults.
 
-This is an **untrained demonstration**. Its parameters come from the normal
-initializer with seed 0, chosen so nonzero values can be followed through all
-three graph layers. The output illustrates arithmetic, not useful prediction
-accuracy. [Follow one real example](08_worked_examples.md#through-the-saved-model)
+This is an **untrained demonstration**. Its parameters are the model's usual
+random starting values (assumption A-14), drawn with seed 0, chosen so nonzero
+values can be followed through all three graph layers. The output illustrates
+arithmetic, not useful prediction accuracy. [Follow one real example](08_worked_examples.md#through-the-saved-model)
 retains the separate walkthrough of a named, saved trained network.
 
 All fourteen sensor rows and all calculated columns are shown. Each Output
@@ -38,7 +43,7 @@ is the next step's Input. Numbers are rounded
 to six decimal places for reading; calculations use full precision.
 
 The optional setup and examples run in page order from the repository root,
-with the real NASA FD001 files in `data/raw/`.
+with the real NASA FD001 files (NASA PCoE, 2008) in `data/raw/`.
 
 <details class="process-example">
 <summary>Set up the Python examples</summary>
@@ -103,7 +108,7 @@ Let each sensor use its neighbours’ information before calculating several new
 
 #### Input
 
-Every sensor carries 1 value in this example. A second input is the same fixed fourteen-by-fourteen combining table from [Rescale the graph](02_graphs.md#2--rescale-the-graph). Its rows receive from its columns.
+Every sensor carries 1 value in this example. A second input is the same fixed fourteen-by-fourteen combining table from [Rescale the graph](02_graphs.md#2--rescale-the-graph). Its rows receive from its columns. In each row, the sensor's permitted senders, itself included (Wen et al., 2026, Section 2.3.2, p. 6), take equal shares (assumption A-21).
 
 <!-- sample: input_table -->
 | Sensor | Value 1 |
@@ -176,7 +181,7 @@ For T24's first output, every product is:
 |---|---|---|---|
 | 1 | -0.356339 | -0.009169 | 0.003267 |
 
-Their sum is `0.003267`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero. T24's first output is therefore `0.003267`. This demonstration adds no graph-layer offset, matching the project's default choice (assumption A-12).
+Their sum is `0.003267`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero (Wen et al., 2026, Eq. 8). T24's first output is therefore `0.003267`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -299,7 +304,7 @@ For T24's first output, every product is:
 | 2 | 0.000000 | 0.293752 | 0.000000 |
 | 3 | 0.417640 | 0.868567 | 0.362749 |
 
-Their sum is `0.359686`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero. T24's first output is therefore `0.359686`. This demonstration adds no graph-layer offset, matching the project's default choice (assumption A-12).
+Their sum is `0.359686`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero (Wen et al., 2026, Eq. 9). T24's first output is therefore `0.359686`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -414,7 +419,7 @@ For T24's first output, every product is:
 | 1 | 0.327411 | 0.374219 | 0.122523 |
 | 2 | 0.000000 | -0.427394 | -0.000000 |
 
-Their sum is `0.122523`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero. T24's first output is therefore `0.122523`. This demonstration adds no graph-layer offset, matching the project's default choice (assumption A-12).
+Their sum is `0.122523`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero (Wen et al., 2026, Eq. 10). T24's first output is therefore `0.122523`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -462,7 +467,7 @@ All fourteen sensors, each now carrying 1 calculated value. These are neither ne
 
 ## 4 — Flatten
 
-The next layer needs one list for the whole engine window. Place the sensor rows end to end so it can use every position.
+The next layer needs one list for the whole engine window. Place the sensor rows end to end so it can use every position (Wen et al., 2026, Eq. 11).
 
 ### Process
 
@@ -508,7 +513,7 @@ torch.testing.assert_close(flat.reshape_as(layer3), layer3)
 
 #### Output
 
-All fourteen positions in the window’s one list. At the default final graph width of 32, the same operation produces fourteen times 32 positions.
+All fourteen positions in the window’s one list. At the default final graph width of 32, the same operation produces fourteen times 32 positions (Wen et al., 2026, Table 4).
 
 <!-- sample: flat_output -->
 | Window | Position 1 | Position 2 | Position 3 | Position 4 | Position 5 | Position 6 | Position 7 | Position 8 | Position 9 | Position 10 | Position 11 | Position 12 | Position 13 | Position 14 |
@@ -519,7 +524,7 @@ All fourteen positions in the window’s one list. At the default final graph wi
 
 ## 5 — Fully connected
 
-Now combine information from the whole window, including sensor positions that cannot reach one another within three graph layers. Every output has a multiplier for every input position.
+Now combine information from the whole window, including sensor positions that cannot reach one another within three graph layers. For example, the shortest route from P15 to W32 in the paper's graph (Wen et al., 2026, Table 3) takes four connections, through T24, T30 and T50. Every output has a multiplier for every input position.
 
 ### Process
 
@@ -534,7 +539,7 @@ The complete flattened list:
 
 #### Function
 
-For each output, multiply every input by its own multiplier and add all products plus an offset. Then replace a negative total with zero. The complete multiplier table is:
+For each output, multiply every input by its own multiplier and add all products plus an offset. Then replace a negative total with zero (Wen et al., 2026, Eq. 12). The complete multiplier table is:
 
 <!-- sample: dense_weights -->
 | Input value | Output 1 | Output 2 | Output 3 |
@@ -636,9 +641,9 @@ Multiply each input by its output multiplier and add the products:
 | 0.059617 | -0.447623 | -0.026686 |
 | 0.000000 | -0.400153 | -0.000000 |
 
-Add the offset `-0.298250`, giving score `-0.317888`. The **sigmoid** maps this score using `1 / (1 + exp(−score))`; `exp` is the exponential function. It gives a larger fraction for a larger score and always stays between zero and one. Here it gives `0.421191`.
+Add the offset `-0.298250`, giving score `-0.317888`. The **sigmoid** (Wen et al., 2026, Eq. 13) maps this score using `1 / (1 + exp(−score))` (Hochreiter & Schmidhuber, 1997, Appendix A.1, Eq. 3); `exp` is the exponential function. It gives a larger fraction for a larger score and always stays between zero and one. Here it gives `0.421191`.
 
-The fraction is **not a probability of failure**. It specifies a share of the chosen life ceiling.
+The fraction is **not a probability of failure**. It specifies a share of the chosen life ceiling (assumption A-13).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -684,7 +689,7 @@ The computed fraction:
 
 #### Function
 
-The ceiling here is 125 cycles. Multiplying gives `0.421191 × 125 = 52.648811` cycles, with rounding only for display. Because the fraction is bounded, the prediction cannot exceed that ceiling.
+The ceiling here is 125 cycles (assumption A-01). Multiplying gives `0.421191 × 125 = 52.648811` cycles, with rounding only for display. Because the fraction is bounded, the prediction cannot exceed that ceiling.
 
 This is the result of the specified **untrained teaching network**, not a useful estimate of this engine's remaining life. It is shown to complete the path from measurements to output.
 
@@ -714,7 +719,8 @@ One output for the whole window, rather than one per sensor:
 
 ## Shapes and the default architecture
 
-The teaching model changes widths only to make every number visible. A shape
+The teaching model changes widths only to make every number visible; the
+default network's widths are the paper's (Wen et al., 2026, Table 4). A shape
 lists the lengths of an array's dimensions, in order. B below is the number of
 windows processed together; the sensor order is fixed throughout the graph layers.
 
@@ -739,22 +745,25 @@ roles for the numbers in the calculation.
 
 Training changes the parameters that the examples held fixed. It compares each
 window's predicted life fraction with the known remaining life at that window's
-final cycle, divided by the same ceiling. The **loss** is the average squared
-gap between predictions and those targets. An individual error is one gap;
-the loss combines the errors into the quantity training tries to reduce.
+final cycle, capped at the same ceiling (Wen et al., 2026, Eq. 19) and divided
+by it (assumption A-13). The **loss** is the average squared gap between
+predictions and those targets (Wen et al., 2026, Section 3.4, p. 9). An
+individual error is one gap; the loss combines the errors into the quantity
+training tries to reduce.
 
 For one update, the windows and targets are held fixed. Differentiation measures
 how changing each trainable multiplier or offset would change the loss; those
 rates of change are called **gradients**. The calculation follows the chain
 from parameter, through layer values and prediction, to loss. Adam, the update
-rule used here, uses current and past gradients to choose parameter changes.
+rule used here, uses current and past gradients to choose parameter changes
+(Kingma & Ba, 2015, Algorithm 1, p. 2).
 The [training guide](../../src/thesis_gnn_rul_xai/training/README.md) explains
 the updates and stopping procedure in detail.
 
-The paper's Table 6 specifies mean squared error, Adam, batches of 32 windows,
+The paper specifies mean squared error, Adam, batches of 32 windows,
 200 **epochs** — an epoch is one pass over all the training examples — a 30-cycle window,
-and a learning rate going from 0.001 to 0.0001. The learning rate scales
-parameter changes. The project's step schedule fills an unspecified detail
+and a learning rate going from 0.001 to 0.0001 (Wen et al., 2026, Table 6).
+The learning rate scales parameter changes. The project's step schedule fills an unspecified detail
 (assumption A-17). Its optional held-back validation engines select when to
 stop and which saved weights to keep (assumption A-18).
 
@@ -762,3 +771,24 @@ Validation engines check training progress; test engines evaluate a finished
 model. They have different window-sampling rules here, so their errors are not
 directly comparable (assumption A-06). None of the arithmetic examples on this
 page is a measured training result.
+
+## References
+
+- Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. *Neural
+  Computation*, *9*(8), 1735–1780. https://doi.org/10.1162/neco.1997.9.8.1735
+  [Copy](../references/hochreiter_1997_long_short_term_memory.pdf). The copy
+  held is the authors' 32-page manuscript, whose pages are not numbered as in
+  the journal, so it is cited here by section.
+- Kingma, D. P., & Ba, J. (2015). Adam: A method for stochastic optimization.
+  *3rd International Conference on Learning Representations (ICLR)*.
+  https://arxiv.org/abs/1412.6980v9
+  [Copy](../references/kingma_2015_adam.pdf). The copy held is arXiv version
+  9, and page numbers here are its printed pages.
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
+  the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
+  Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)

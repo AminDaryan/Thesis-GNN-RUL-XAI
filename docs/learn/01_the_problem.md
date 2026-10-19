@@ -6,19 +6,25 @@ The data in this project come from **C-MAPSS**, the Commercial Modular
 Aero-Propulsion System Simulation. C-MAPSS simulates a large commercial
 turbofan engine of the 90,000 lb thrust class and is written in MATLAB and
 Simulink (Saxena et al., 2008, p. 2); its user's guide was published by NASA
-as a technical memorandum (Frederick et al., 2007). Saxena et al. (2008) used
-it to simulate engines that wear out until they fail, and the result became the
-challenge data of the PHM'08 data competition (p. 1). They needed a simulation
-because records of real machines followed all the way to failure are rare:
-collecting them is slow and expensive, and companies that have them seldom
-publish them (Saxena et al., 2008, p. 1).
+as a technical memorandum (Frederick et al., 2007, p. 45). Saxena et al. (2008)
+used it to simulate engines that wear out until they fail, and the result became
+the challenge data of the Prognostics and Health Management data competition at
+PHM'08 (p. 1). They needed a simulation because records of real machines
+followed all the way to failure are rare: collecting them is slow and
+expensive, and those who hold them tend to keep them from public release
+(Saxena et al., 2008, pp. 1–2).
 
-NASA distributes the data as four subsets, FD001 to FD004 (NASA Prognostics
-Center of Excellence [NASA PCoE], 2008). This project uses **FD001**: 100
-training engines and 100 test engines, all running in one operating condition
-(sea level) with one fault mode, degradation of the high-pressure compressor
-(NASA PCoE, 2008). Each subset comes as three text files: a training file, a test file and
-a file of answers for the test engines. This page reads the FD001 files in
+NASA distributes the data as four subsets, FD001 to FD004, and its description
+of them names Saxena et al. (2008) as their reference (NASA Prognostics Center
+of Excellence [NASA PCoE], 2008). This project uses **FD001**: 100 training
+engines and 100 test engines, all running in one operating condition (sea
+level) with one fault mode, degradation of the high-pressure compressor (NASA
+PCoE, 2008). FD001 is not the challenge data that paper describes, though:
+those were simulated under six different flight conditions (Saxena et al.,
+2008, pp. 6–7), and FD001 has one. Each subset comes as three text files: a
+training file, a test file and a file of answers for the test engines, which
+NASA's description calls "a vector of true Remaining Useful Life (RUL) values
+for the test data" (NASA PCoE, 2008). This page reads the FD001 files in
 `data/raw/` and never creates replacement sensor readings.
 
 ## What one cycle is
@@ -26,17 +32,21 @@ a file of answers for the test engines. This page reads the FD001 files in
 Every row of a data file is one engine at one moment. NASA's description of
 the files says that "each row is a snapshot of data taken during a single
 operational cycle", and that the second column is "time, in cycles" (NASA
-PCoE, 2008). The paper that produced the data says what that snapshot is: the
-simulated engines fly one flight after another, possibly in different flight
-conditions, and one measurement snapshot is taken per flight, "during or right
-after that flight" (Saxena et al., 2008, p. 5).
+PCoE, 2008). Saxena et al. (2008), the paper that description names as its
+reference, also counts its simulated output in cycles, as "the time series
+(cycles) of sensed measurements" (p. 1), and says what one snapshot is: a
+simulated engine may fly in different flight conditions "from one flight to
+another", and the scenario takes "one measurement snapshot per flight to
+characterize the engine health during or right after that flight" (p. 5).
 
 Read together, the two sources mean that **one cycle is one flight**, and an
 engine has one row per flight. Neither source puts it in exactly those words;
-it is this project's reading of the two quotations above. A cycle is a count,
-not a length of time: the files record no duration for a flight (NASA PCoE,
-2008, lists every column), so cycle 3 says only that it was the engine's third
-recorded flight.
+it is this project's reading of the quotations above, and it assumes the files
+were made the way the paper describes. A cycle is a count, not a fixed length
+of time: the columns NASA lists are the engine number, the cycle, three
+operational settings and the sensor measurements, none of them a duration
+(NASA PCoE, 2008; Saxena et al., 2008, Table 2), so cycle 3 says only that it
+was the engine's third recorded flight.
 
 ## Training engines and test engines
 
@@ -63,25 +73,33 @@ continue to operate" (NASA PCoE, 2008).
 This page needs the definition because everything after it turns the files
 into examples with a known remaining life. A model learns by being shown
 inputs together with the right answer, and the files contain no remaining-life
-column for the training engines. That answer has to be counted from each
-history, which is step 1 below. For the test engines the answer file gives it
-only at the last recorded cycle.
+column for the training engines (NASA PCoE, 2008). That answer has to be
+counted from each history, which is step 1 below. For the test engines the
+answer file gives it only at the last recorded cycle.
 
 The estimate is worth having because it lets maintenance be planned before a
-failure. Saxena et al. (2008) name what that promises: cost savings, by
-avoiding unscheduled maintenance and by using equipment for longer, and better
-operational safety (p. 2).
+failure: Saxena et al. (2008) write that remaining-life estimates allow
+"planners to account for upcoming maintenance", and that reliable estimates
+promise cost savings, by avoiding unscheduled maintenance and by using
+equipment for longer, and better operational safety (p. 2).
 
 ## What the engine's sensors measure
 
 {{figure:engine}}
 
-Air passes through a fan, a low-pressure compressor (LPC), a high-pressure
-compressor (HPC), a combustor, and high- and low-pressure turbines (HPT and LPT).
-Sensors record temperatures, pressures, shaft speeds and other quantities along
-this path. For example, `T24` measures temperature at the LPC outlet. Changes
-upstream can affect readings downstream. The model's sensor graph represents
-chosen connections between sensors; a connection is not proof of a causal effect.
+Air enters through a fan. A splitter then sends part of it around the
+engine's core along a bypass path, and the rest passes through a low-pressure
+compressor (LPC), a high-pressure compressor (HPC), a combustor, and high- and
+low-pressure turbines (HPT and LPT) (Frederick et al., 2007, p. 7; Saxena et
+al., 2008, Figs. 1 and 2). Sensors record temperatures, pressures, shaft speeds
+and other quantities along this path (Saxena et al., 2008, Table 2). For
+example, `T24` measures temperature at the LPC outlet (Saxena et al., 2008,
+Table 2). Changes upstream can affect readings downstream: Wen et al. (2026)
+build part of their sensor graph by linking sensors that follow one another
+along the engine, "such as the temperature transfer chain T24→T30→T50"
+(Section 2.3.1, p. 5). The model's sensor graph is the table of connections
+those authors chose (Wen et al., 2026, Table 3); a connection is not proof of
+a causal effect.
 
 ## How the steps below are written
 
@@ -118,7 +136,8 @@ one history. Reading the file gives the numbers names and puts them in order.
 ```
 
 Each line contains the engine number, cycle, three operating settings (how the
-engine is being run), and all 21 sensor readings. There is no header in the file.
+engine is being run), and all 21 sensor readings (NASA PCoE, 2008; Saxena et
+al., 2008, Table 2). There is no header in the file.
 
 ##### Function
 
@@ -130,8 +149,9 @@ No measurement changes during this operation.
 
 For the first sample line, the first 1 identifies engine 1 and the second 1
 identifies cycle 1. The three values after them describe how the engine was
-being run. Among the sensor values, 641.82 is the temperature named T24. The
-next two lines are cycles 2 and 3 of that same engine. The output below labels
+being run. Among the sensor values, 641.82 is the second one, and sensor 2 is
+the temperature named T24 (Wen et al., 2026, Table 2). The next two lines are
+cycles 2 and 3 of that same engine. The output below labels
 engine and cycle as `unit` and `cycle`, and T24 as `sensor_2`.
 
 <details class="process-example">
@@ -171,9 +191,9 @@ yet:
 ### Calculate training labels
 
 A model learns from examples paired with known answers, called **labels**.
-For a training engine we know when its history ends in failure, so we can
-count how many cycles remain at every earlier row. This is arithmetic on the
-recorded history; it does not require a trained model.
+For a training engine we know when its history ends in failure (NASA PCoE,
+2008), so we can count how many cycles remain at every earlier row. This is
+arithmetic on the recorded history; it does not require a trained model.
 
 #### Process
 
@@ -196,7 +216,8 @@ failure cycle. For any complete training history, the rule is:
 
 > Remaining life = final cycle − current cycle.
 
-Subtracting tells us how many cycles still lie ahead. The final cycle is
+Subtracting tells us how many cycles still lie ahead. Wen et al. (2026, Eq. 19)
+use the same subtraction before capping it. The final cycle is
 different for each engine, so the calculation must stay within one history.
 Engine 1 ends at cycle 192; applying the rule to the sample gives:
 
@@ -245,7 +266,8 @@ large answers to a ceiling. The answer stays separate from sensor inputs.
 
 ### Test engines
 
-A test engine has not failed at its final recorded row. Subtracting its current
+A test engine has not failed at its final recorded row (NASA PCoE, 2008).
+Subtracting its current
 cycle from its last recorded cycle therefore gives only the distance to the
 cut-off, not the life left. The separate answer file supplies the missing part.
 
@@ -264,7 +286,9 @@ its first three rows after reading:
 | 1 | 3 | 0.0003 | 0.0001 | 100 | 518.67 | 642.46 | 1586.94 | 1401.34 | 14.62 | 21.61 | 554.11 | 2388.05 | 9056.96 | 1.3 | 47.5 | 521.97 | 2388.03 | 8130.1 | 8.4441 | 0.03 | 393 | 2388 | 100 | 39.08 | 23.4166 |
 
 The second input is `data/raw/RUL_FD001.txt`: line 1 belongs to test engine 1,
-line 2 to test engine 2, and so on. Its first three entries are:
+line 2 to test engine 2, and so on. NASA's description does not say which line
+is which engine (NASA PCoE, 2008); matching them by position, one line for each
+of the 100 test engines, is this project's reading. Its first three entries are:
 
 <!-- sample: test_answers -->
 | unit | rul_at_last_cycle |
@@ -293,7 +317,9 @@ engine 1 stops at cycle 31 and still has 112 cycles left there:
 
 At cycle 31 the calculation is `31 − 31 + 112 = 112`. The earlier-row answers
 can be calculated, but normal test evaluation uses only the final window of
-each engine, paired with the answer at its end.
+each engine, paired with the answer at its end: the task NASA set asks for the
+cycles left after each test engine's last cycle (NASA PCoE, 2008), and Wen et
+al. (2026, Table 5) count 100 testing samples for FD001's 100 test engines.
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -398,15 +424,22 @@ are the answers. None of these is an extra sensor input.
 
 {{figure:sensor-selection}}
 
-The project uses one fixed list of 14 sensor columns. The six constant sensors
-reported above are absent, as is `NRc`, the corrected core-speed reading
-(the recorded selection choice, assumption A-10). In the full FD001 training
-file, `Nc` and `NRc` have correlation 0.963157 when rounded to six decimal
-places; 1 would mean they move perfectly together. They describe the same
-core shaft's speed in different forms, so much of their variation overlaps.
-The fixed list keeps `Nc`. `P15` stays in the list because removing it would
-also change the chosen sensor graph; the diagnostic reports its limited
-variation without silently redesigning the model.
+The project uses one fixed list of 14 sensor columns: the 14 sensors of the
+paper's sensor graph, in the order of its rows (Wen et al., 2026, Table 3).
+The six constant sensors reported above are absent. The paper names all six
+among the sensors it removes, by a rule that removes "features with high
+correlational redundancy (above 0.95) and constant values" (Wen et al., 2026,
+Section 3.2.2, p. 8). `NRc`, the corrected core-speed reading, is absent too:
+the paper says seven sensors are removed but names only six, and taking `NRc`
+as the seventh is this project's reading of its tables (assumption A-10). In
+the full FD001 training file, `Nc` and `NRc` have correlation 0.963157 when
+rounded to six decimal places, above the paper's 0.95; 1 would mean they move
+perfectly together. They describe the same core shaft's speed in different
+forms (Saxena et al., 2008, Table 2), so much of their variation overlaps.
+The fixed list keeps `Nc`. `P15` stays in the list because it is one of the
+paper's 14, and removing it would also change the chosen sensor graph; the
+diagnostic reports its limited variation without silently redesigning the
+model.
 The graph's rows and columns use the same sensor order, so changing the order
 would connect the wrong readings to one another.
 
@@ -504,3 +537,26 @@ into windows.
 Continue with [Preprocessing, starting with Cap the labels](04_the_pipeline.md#1--cap-the-labels).
 The worked tables and code on this page are checked against the FD001 files by
 `python -m pytest tests/test_examples.py -k design_data`.
+
+## References
+
+- Frederick, D. K., DeCastro, J. A., & Litt, J. S. (2007). *User's guide for
+  the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)*
+  (NASA/TM-2007-215026). NASA Glenn Research Center.
+  https://ntrs.nasa.gov/citations/20070034949. Page numbers on this page are
+  those of the PDF file, not the report's printed page numbers.
+  [Copy](../references/frederick_2007_cmapss_users_guide.pdf)
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description
+  of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
+  Data Repository.
+  [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
+  modeling for aircraft engine run-to-failure simulation. In *2008
+  International Conference on Prognostics and Health Management* (pp. 1–9).
+  IEEE. https://doi.org/10.1109/PHM.2008.4711414
+  [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)

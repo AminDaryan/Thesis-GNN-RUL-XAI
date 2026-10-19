@@ -1,12 +1,15 @@
 # GNN: connections between sensors
 
-A single sensor can miss part of an engine's condition. A **graph neural
-network**, or **GNN**, lets a sensor's calculated values depend on other sensors
-as well as itself. The graph specifies which sensors may contribute.
+Wen et al. (2026, p. 2) argue that predicting an engine's remaining life needs
+the relationships between its sensors as well as how each sensor changes over
+time. A **graph neural network**, or **GNN**, lets a sensor's calculated values
+depend on other sensors as well as itself. The graph specifies which sensors may
+contribute (Corso et al., 2024, p. 2).
 
 A **node** is one sensor position. An **edge** is a permitted connection
-between two positions. An edge permits exchange of information inside the
-model; it does not prove that one measurement causes another.
+between two positions (Wen et al., 2026, Section 2.1). An edge permits exchange
+of information inside the model; it does not prove that one measurement causes
+another.
 
 Keep three objects separate:
 
@@ -23,10 +26,11 @@ is a calculated value, not another time or another physical sensor.
 ## Example setup
 
 The examples keep all fourteen sensor positions. The input sample shows
-three complete FD001 rows with all selected sensor columns. We then build
+three complete FD001 rows (NASA Prognostics Center of Excellence [NASA PCoE],
+2008) with all selected sensor columns. We then build
 the implemented Physics graph and follow the same graph through rescaling.
 The graph is not inferred from those three rows: its connections are supplied
-by the project's copy of the paper's Table 3.
+by the project's copy of Wen et al.'s (2026) Table 3.
 
 The tables stand on their own. The optional code uses the real FD001 files;
 run the setup and then the examples in page order to reproduce every table.
@@ -73,9 +77,9 @@ Architecture and training page then follows those readings through the layers.</
 
 ## 1 — Sensor graph
 
-First decide which sensor positions may exchange information. The **adjacency matrix** is that decision written as a table: a 1 permits a connection and a 0 excludes it. Rows name receiving sensors; columns name sending sensors.
+First decide which sensor positions may exchange information. The **adjacency matrix** is that decision written as a table: a 1 permits a connection and a 0 excludes it (Wen et al., 2026, p. 5). Rows name receiving sensors; columns name sending sensors.
 
-The left table shows the permitted connections. Its diagonal is zero because including the receiving sensor itself is the next step's job. The right table previews the combining shares calculated in that next step.
+The left table shows the permitted connections. Its diagonal is zero, as in Wen et al.'s (2026) Table 3, because including the receiving sensor itself is the next step's job. The right table previews the combining shares calculated in that next step.
 
 {{figure:adjacency}}
 
@@ -94,7 +98,7 @@ Three actual rows of sensor readings establish the sensor columns and their orde
 
 #### Function
 
-Use the supplied relationships below, rather than calculating connections from the sample readings. This list includes every sensor and every permitted other sender in the implemented Physics graph:
+Use the supplied relationships below, rather than calculating connections from the sample readings. This list includes every sensor and every permitted other sender in the implemented Physics graph (Wen et al., 2026, Table 3):
 
 <!-- sample: relationships -->
 | Sensor | Permitted other senders |
@@ -114,9 +118,9 @@ Use the supplied relationships below, rather than calculating connections from t
 | W31 | T30, T50, P30, Nc, Ps30, phi, htBleed, W32 |
 | W32 | T50, Nc, htBleed, W31 |
 
-For each receiving row, mark 1 under each listed sender and 0 elsewhere. For example, P15 permits T24, Nf, NRf and BPR. Its T24 entry becomes 1, its T30 entry 0, and its own entry stays 0. Apply the same rule to all rows; a permitted pair is recorded in both directions.
+For each receiving row, mark 1 under each listed sender and 0 elsewhere. For example, P15 permits T24, Nf, NRf and BPR. Its T24 entry becomes 1, its T30 entry 0, and its own entry stays 0. Apply the same rule to all rows; a permitted pair is recorded in both directions, as it is in the source table (Wen et al., 2026, Table 3).
 
-Design a run also offers two different rules. **Every sensor joined to every other** permits every distinct pair. **The most correlated sensor pairs** ranks how strongly the training readings vary together, either in the same or opposite directions, and keeps the requested pairs (assumption A-27). That rule uses the training engines after the split; held-back and test engines do not choose its connections. The Physics rule is the one worked through here.
+Design a run also offers two different rules. **Every sensor joined to every other** permits every distinct pair; this project uses it for the variant Wen et al. (2026, p. 11) train "without physics prior knowledge", whose replacement graph the paper does not describe (assumption A-19). **The most correlated sensor pairs** ranks how strongly the training readings vary together, either in the same or opposite directions, and keeps the requested pairs (assumption A-27). That rule uses the training engines after the split; held-back and test engines do not choose its connections. The Physics rule is the one worked through here.
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -169,7 +173,7 @@ Counted from this table (a pair is counted once, rather than once in each direct
 
 ## 2 — Rescale the graph
 
-More neighbours would produce a larger sum even if all their values were alike. Rescaling controls how much each sender contributes, while including the receiving sensor's own value so that it is not discarded.
+More neighbours would produce a larger sum even if all their values were alike. Rescaling controls how much each sender contributes, while including the receiving sensor's own value so that it is not discarded (Kipf & Welling, 2017, Eq. 2; Wen et al., 2026, p. 6).
 
 **Do not confuse this with rescaling sensor readings.** Here we change the numbers describing connections. The earlier preprocessing step changes measurements.
 
@@ -199,7 +203,7 @@ The same complete raw connection table from step 1:
 
 #### Function
 
-For the default **row** method, put 1 on the diagonal to include each sensor itself. Count the ones in each receiving row and divide every entry by that count. Allowed senders get equal shares whose total is 1, so the next graph layer takes their average. This particular rescaling is a project choice (assumption A-21); the paper's text around Equation 8 specifies rescaling with self-connections without its formula.
+For the default **row** method, put 1 on the diagonal to include each sensor itself. Count the ones in each receiving row and divide every entry by that count. Allowed senders get equal shares whose total is 1, so the next graph layer takes their average. This particular rescaling is a project choice (assumption A-21); the paper's text beneath its Equation 8 specifies rescaling with self-connections without giving its formula (Wen et al., 2026, p. 6).
 
 P15 has four other senders. Including itself makes five, so each permitted entry becomes `1 / 5 = 0.2`. T24 has seven other senders; including itself makes eight, giving `1 / 8 = 0.125`. The complete counts are:
 
@@ -221,7 +225,7 @@ P15 has four other senders. Including itself makes five, so each permitted entry
 | W31 | 8 | 9 | 0.111111 |
 | W32 | 4 | 5 | 0.200000 |
 
-The **symmetric** option uses both endpoints' counts: divide a connection's 1 by the square root of the two counts multiplied together. P15 receiving from T24 gets `1 / sqrt(5 × 8) = 0.158114`. The reverse connection gets the same multiplier. A row need not sum to 1, so this is not generally an average.
+The **symmetric** option uses both endpoints' counts: divide a connection's 1 by the square root of the two counts multiplied together (Kipf & Welling, 2017, Eq. 2). P15 receiving from T24 gets `1 / sqrt(5 × 8) = 0.158114`. The reverse connection gets the same multiplier. A row need not sum to 1, so this is not generally an average.
 
 <!-- sample: method_comparison -->
 | Method | P15 receives from T24 | P15 row total |
@@ -251,7 +255,7 @@ scaled_output = graph_table(scaled)
 
 #### Output
 
-The complete table of combining multipliers for the **row** method. Each graph layer reuses it. Training adjusts another table of multipliers for transforming the combined values; it does not adjust these connections or their combining shares.
+The complete table of combining multipliers for the **row** method. Each graph layer reuses it, and training adjusts another table of multipliers for transforming the combined values (Kipf & Welling, 2017, Eq. 2; Wen et al., 2026, Eqs. 8–10); it does not adjust these connections or their combining shares.
 
 <!-- sample: scaled_output -->
 | Receiver | T24 | T30 | T50 | P15 | P30 | Nf | Nc | Ps30 | phi | NRf | BPR | htBleed | W31 | W32 |
@@ -278,29 +282,32 @@ The complete table of combining multipliers for the **row** method. Each graph l
 A graph layer first combines each receiving sensor's permitted senders,
 using the shares above. It does that separately for every input column.
 Learned multipliers then turn each combined row into new calculated values.
-Negative results become zero. These updated rows are the next layer's inputs.
-This collect–combine–update operation is called **message passing**.
+Negative results become zero (Kipf & Welling, 2017, Eq. 2; Wen et al., 2026,
+Eqs. 8–10). These updated rows are the next layer's inputs.
+This collect–combine–update operation is called **message passing**
+(Corso et al., 2024, p. 2).
 
 {{figure:message-passing}}
 
 In the drawing, T24 receives P15's information in one round. A sensor that
 receives T24's updated value in the next round can then depend on P15 too.
 This is why one layer can reach immediate neighbours, two layers can reach
-two connections away, and three can reach three. All sensors use the previous
+two connections away, and three can reach three (Corso et al., 2024, Fig. 1;
+Kipf & Welling, 2017, p. 3). All sensors use the previous
 layer's values; updates within a layer do not cascade through the whole graph.
 
 {{figure:reach}}
 
 Three layers do not necessarily connect every pair. The figure counts the
 distances in the implemented graph. Later fully connected layers combine all
-sensor positions, including those that cannot reach each other within the
-graph layers. [Graph layer 1](05_the_model.md#1--graph-layer-1) starts a complete
+sensor positions (Wen et al., 2026, Eqs. 11–12), including those that cannot
+reach each other within the graph layers. [Graph layer 1](05_the_model.md#1--graph-layer-1) starts a complete
 numerical walkthrough of that process.
 
 ## Why use a graph?
 
 The Physics graph expresses a hypothesis about useful sensor relationships,
-proposed from engine structure in the paper's Section 2.3.1. Whether that
+proposed from engine structure by Wen et al. (2026, Section 2.3.1). Whether that
 hypothesis helps prediction must be measured; the presence of a connection
 alone is not evidence of benefit or causation.
 
@@ -313,3 +320,23 @@ configuration and training procedure each comparison used.
 
 The next page, [Architecture and training](05_the_model.md), follows actual
 FD001 readings through the graph layers and onwards to a prediction.
+
+## References
+
+- Corso, G., Stark, H., Jegelka, S., Jaakkola, T., & Barzilay, R. (2024).
+  Graph neural networks. *Nature Reviews Methods Primers*, *4*, Article 17.
+  https://doi.org/10.1038/s43586-024-00294-7
+  [Copy](../references/corso_2024_graph_neural_networks.pdf)
+- Kipf, T. N., & Welling, M. (2017). Semi-supervised classification with
+  graph convolutional networks. *International Conference on Learning
+  Representations (ICLR)*. https://arxiv.org/abs/1609.02907v4
+  [Copy](../references/kipf_2017_graph_convolutional_networks.pdf). Page
+  numbers on this page are those of arXiv version 4, the copy held.
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
+  the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
+  Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)

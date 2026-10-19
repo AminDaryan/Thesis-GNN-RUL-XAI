@@ -3,45 +3,49 @@
 A prediction combines information from several sensors. To understand one
 prediction, ask **how much each sensor's actual readings changed it from a
 specified reference**. SHAP, short for SHapley Additive exPlanations, divides
-that difference among the sensors.
+that difference among the sensors (Lundberg & Lee, 2017, p. 1; p. 4, Eq. 5).
 
 ## Dividing credit fairly
 
-Two sensors can matter together in a way neither does alone. Giving each
-sensor all of the change caused by removing it can therefore count the same
-interaction more than once.
+Two sensors can matter together in a way neither does alone (Lundberg & Lee,
+2017, p. 3). Giving each sensor all of the change caused by removing it can
+therefore count the same interaction more than once.
 
 Instead, imagine adding the sensors one at a time. Record how much the
 prediction changes when a sensor joins. Repeat for every possible order, then
-average that sensor's changes. That average is its **Shapley value**.
+average that sensor's changes. That average is its **Shapley value**
+(Lundberg & Lee, 2017, p. 4; p. 5, Fig. 1).
 
 {{figure:shapley}}
 
 The figure illustrates why order matters: B may add a different amount when
 it arrives alone than when A is already present. The project uses this same
 calculation for sensors, as set out in the paper's Equation 15, and repeats it
-through time as in Equation 16.
+through time as in Equation 16 (Wen et al., 2026, Section 2.4, Eqs. 15–16).
 
 A SHAP explanation uses the model's **inputs and predictions**. It need not
 read its internal multipliers or follow its graph connections. It keeps the
-trained model fixed and changes which sensor readings it presents to it.
+trained model fixed and changes which sensor readings it presents to it
+(Lundberg & Lee, 2017, pp. 4–5).
 
 ## Example setup
 
 We follow **FD001 test engine 5**, using the T24, T30 and T50 readings at its
-last three recorded cycles. They have already been smoothed and rescaled with
-statistics from the training engines selected using seed 42. The numbers
-therefore describe readings relative to their training means and spreads;
-they are not temperatures in their original units.
+last three recorded cycles. They have already been smoothed (Wen et al., 2026,
+Section 3.2.3, Eq. 18; assumption A-04) and rescaled with statistics from the
+training engines selected using seed 42 (assumptions A-06 and A-25). The
+numbers therefore describe readings relative to their training means and
+spreads (assumption A-03); they are not temperatures in their original units.
 
 This is a **small, untrained demonstration**, shared with the
 [GNN-LRP tutorial](11_gnn_lrp.md). It has three sensors, one graph layer with
 one value per sensor, and deliberately visible multipliers. Its temporal
-route keeps each sensor's last reading. The earlier two readings are shown
-so the rule for replacing a sensor's entire history is visible. These settings
-teach the arithmetic; they are not the full model, a trained result, or a claim
-about engine health. The full explanation uses all fourteen sensors and the
-window length saved with the run.
+route keeps each sensor's last reading (assumption A-07). The earlier two
+readings are shown so the rule for replacing a sensor's entire history is
+visible. These settings teach the arithmetic; they are not the full model, a
+trained result, or a claim about engine health. The full explanation uses all
+fourteen sensors (Wen et al., 2026, Table 3) and the window length saved with
+the run.
 
 All input and output columns of this small example are shown. Tables round
 to six decimal places; calculations use full precision. The optional Python
@@ -115,16 +119,17 @@ engine's history.</p>
 ## 1 — Choose a reference window
 
 The model always expects the same number of sensor inputs. A sensor that is
-"absent" from an explanation still needs something in its place. Here its
-actual history is replaced by its **average training window**: for each
-position in the window, average that sensor's reading at that position across
-the training windows.
+"absent" from an explanation still needs something in its place, since most
+models "cannot handle arbitrary patterns of missing input values" (Lundberg &
+Lee, 2017, p. 5). Here its actual history is replaced by its **average
+training window**: for each position in the window, average that sensor's
+reading at that position across the training windows.
 
 This reference answers a particular question: what changes when the model sees
 this engine's readings instead of the reference readings? The paper's
 Equation 15 needs predictions from groups of sensors but does not specify
-these replacement values. The training-window average is this project's
-choice (assumption A-20).
+these replacement values (Wen et al., 2026, Section 2.4, Eq. 15). The
+training-window average is this project's choice (assumption A-20).
 
 ### Process
 
@@ -230,12 +235,16 @@ T30 readings with T30's reference column. This does not delete a sensor node
 or any of its connections.
 
 The model in this example keeps only the last position before exchanging
-information between sensors. Its first sensor uses the average of T24 and
-T30; its second uses the average of all three; its third uses the average of
-T30 and T50. Negative averages become zero. It then doubles the first result,
-adds the second, subtracts the third, and adds 0.5. Negative totals become zero,
-and the final conversion produces a number between zero and the ceiling of
-125 cycles. The [GNN-LRP page](11_gnn_lrp.md) traces these same calculations.
+information between sensors. It follows the connections the paper draws
+among these three sensors (Wen et al., 2026, Table 3) and averages what each
+sensor receives, its own reading included (Wen et al., 2026, Section 2.3.2,
+Eq. 8; assumption A-21). Its first
+sensor uses the average of T24 and T30; its second uses the average of all
+three; its third uses the average of T30 and T50. Negative averages become
+zero. It then doubles the first result, adds the second, subtracts the third,
+and adds 0.5. Negative totals become zero, and the final conversion produces a
+number between zero and the ceiling of 125 cycles (assumption A-01). The
+[GNN-LRP page](11_gnn_lrp.md) traces these same calculations.
 SHAP only needs the resulting predictions.
 
 <details class="process-example">
@@ -329,8 +338,9 @@ For example, when T24 joins T30, the prediction changes by
 Adding all four weighted changes gives -10.524223 cycles.
 Repeat the same pairing and averaging for T30 and T50.
 
-The general rule in the paper's Equation 15 gives each group a weight based
-on how many orders put exactly that group before the sensor. The full model
+The general rule in the paper's Equation 15 (Wen et al., 2026, Section 2.4,
+Eq. 15) gives each group a weight based on how many orders put exactly that
+group before the sensor. The full model
 has 87,178,291,200 arrival orders but only 16,384 distinct groups.
 The project evaluates all those groups, so there is no sampling of arrival
 orders. **Exact** describes this calculation for the chosen model and
@@ -376,8 +386,10 @@ is physically good or bad. T24's negative contribution here is an average of
 its changes across different groups, not a claim that changing T24 alone
 would produce that exact difference.
 
-**Do not confuse SHAP with occlusion.** Occlusion replaces one sensor while
-keeping every other sensor actual. For T24 that uses only the last row of the
+**Do not confuse SHAP with occlusion.** Occlusion, which Zeiler and Fergus
+(2014, Section 4.2, p. 823) applied to images by covering one region with a
+grey square and watching the output, here replaces one sensor while keeping
+every other sensor actual. For T24 that uses only the last row of the
 calculation table, which gives -11.451897 cycles here. SHAP combines
 all four rows. Agreement in a particular example would not make the two
 methods interchangeable.
@@ -389,7 +401,8 @@ methods interchangeable.
 Each arrival order starts from the all-reference input and ends with the
 all-actual input. The changes along that order therefore add up to the same
 overall prediction difference. Averaging those changes over orders preserves
-the total.
+the total. Lundberg and Lee (2017, p. 4, Eq. 5) call this adding-up property
+local accuracy.
 
 ### Process
 
@@ -416,8 +429,10 @@ Add the sensor contributions to the reference prediction:
 
 Compare this with the model's prediction for the all-actual window. The
 difference should be zero apart from numerical rounding. Use the **prediction
-at the reference window**, not the average remaining-life label: only the
-former is the starting point of the group calculations (assumption A-24).
+at the reference window**, not the average remaining-life label, which is
+what the paper's Equation 14 adds the contributions to (Wen et al., 2026,
+Section 2.4, Eq. 14): only the former is the starting point of the group
+calculations (assumption A-24).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -455,8 +470,13 @@ known remaining-life answers is a separate task.
 ## 5 — Repeat along an engine's history
 
 **Dynamic SHAP** repeats the same explanation at successive windows of one
-engine. Keep the model and reference fixed so each row answers the same
-question at a different time. No additional model training happens here.
+engine. Wen et al. (2026), the paper this project re-implements, compute it
+"on each time step of the prediction sequence" (p. 7, Eq. 16) and report it
+for "a representative engine unit" (p. 13); reading each time step as the
+next window, one cycle later, is this project's choice (assumption A-35).
+Keep the model and reference fixed
+so each row answers the same question at a different time. No additional
+model training happens here.
 
 ### Process
 
@@ -465,7 +485,7 @@ question at a different time. No additional model training happens here.
 To show three consecutive explanations, now use **training engine 1**, with
 windows ending at cycles 30, 31 and 32. Every reading supplied to the small
 three-cycle demonstrator is shown. Overlap is intentional: the window moves
-forward one cycle at a time.
+forward one cycle at a time (assumption A-05).
 
 <!-- sample: trajectory_input -->
 | Window ends | Cycle | T24 | T30 | T50 |
@@ -481,8 +501,11 @@ forward one cycle at a time.
 | 32 | 32 | -1.074194 | -0.255078 | -1.196328 |
 
 The reference remains the training-window average from step 1. The test data
-prepared for evaluation contains only the last window of each engine, so that
-single window alone cannot show a time history.
+prepared for evaluation contains only the last window of each engine, the
+point at which the benchmark asks for "the number of operational cycles after
+the last cycle that the engine will continue to operate" (NASA Prognostics
+Center of Excellence [NASA PCoE], 2008). That single window alone cannot show
+a time history.
 
 #### Function
 
@@ -493,7 +516,8 @@ The rescaling statistics and reference were fitted beforehand from the full
 training histories, which include later cycles of this training engine. This
 is a retrospective demonstration, not an evaluation that trains on only the
 history available at each of those cycles. Validation and test engines do not
-enter those fitted training statistics or the reference.
+enter those fitted training statistics or the reference (assumptions A-20 and
+A-25).
 
 For each row, preserve the reference prediction, the actual prediction and
 all three contributions. This lets the sum check from step 4 be applied
@@ -596,11 +620,43 @@ measurements were added to the two records that day, and a review found this
 page had not followed them.)
 
 Replacing sensor histories can also create combinations not observed together
-in a real engine. SHAP describes how the model responds to those combinations
-under this reference choice. It does not prove physical causation, identify a
-failed component, or provide a confidence interval for remaining life. A large
-contribution is a statement about a model's calculation, not a diagnosis.
+in a real engine. Lundberg and Lee (2017, p. 5, Eqs. 11–12) arrive at this
+kind of stand-in, the average put in place of the absent inputs, by assuming
+two things: that the inputs are independent of one another, which sets aside
+how sensors move together, and that the model is linear, its output a
+weighted sum of its inputs plus a constant. SHAP describes
+how the model responds to those combinations under this reference choice. It
+does not prove physical causation or identify a failed component. Nor does it
+provide a confidence interval for remaining life: the paper describes its own
+SHAP analysis as working "without addressing prediction uncertainty or
+confidence intervals" (Wen et al., 2026, p. 7). A large contribution is a
+statement about a model's calculation, not a diagnosis.
 
 To follow routes **inside** the network instead of replacing its inputs,
 continue to [GNN-LRP](11_gnn_lrp.md). Its scores answer a different question and
 use a different unit.
+
+## References
+
+- Lundberg, S. M., & Lee, S.-I. (2017). A unified approach to interpreting
+  model predictions. In I. Guyon, U. von Luxburg, S. Bengio, H. Wallach,
+  R. Fergus, S. Vishwanathan, & R. Garnett (Eds.), *Advances in Neural
+  Information Processing Systems 30 (NIPS 2017)* (pp. 4765–4774).
+  https://proceedings.neurips.cc/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html
+  [Copy](../references/lundberg_2017_unified_shap.pdf). Page numbers on this
+  page are those printed on the copy held, which numbers its pages 1 to 10.
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description
+  of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
+  Data Repository.
+  [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)
+- Zeiler, M. D., & Fergus, R. (2014). Visualizing and understanding
+  convolutional networks. In D. Fleet, T. Pajdla, B. Schiele, &
+  T. Tuytelaars (Eds.), *Computer Vision – ECCV 2014* (Lecture Notes in
+  Computer Science, Vol. 8689, pp. 818–833). Springer.
+  https://doi.org/10.1007/978-3-319-10590-1_53
+  [Copy](../references/zeiler_2014_visualizing_convnets.pdf)

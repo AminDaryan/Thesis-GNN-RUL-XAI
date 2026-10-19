@@ -3,37 +3,55 @@
 ## Why a number is not enough
 
 A remaining-life prediction tells us what the model expects, but not which
-readings led to it. **Explainable artificial intelligence**, or **XAI**, makes
-parts of that calculation visible. It helps us inspect what the model relies
-on; it cannot establish that a sensor or engine component caused damage.
+readings led to it. **Explainable artificial intelligence**, or **XAI**, is the
+research area that tries to extract understandable information from trained
+models (Schnake et al., 2022, p. 1); here, it makes parts of that calculation
+visible. It helps us inspect what the model relies on (Montavon et al., 2019,
+Section 10.1). It cannot establish that a sensor or engine component caused
+damage. A model can rely on a reading that only happens to vary with the
+answer in the data it learned from (Montavon et al., 2019, Section 10.1), and
+an explanation reports that reliance all the same; the conclusion about engine
+damage is this project's reading of that point, not a sentence in the source.
 
 Training changes the model's multipliers and offsets using examples with
-known answers. Explaining keeps that model fixed and examines one prediction.
-A different saved model can give a different explanation for the same readings.
+known answers. Explaining keeps that model fixed and examines one prediction
+(Lundberg & Lee, 2017, p. 2; Montavon et al., 2019, Section 10.1).
+A different saved model can give a different explanation for the same
+readings, because each method computes its explanation from the model as well
+as the input (Lundberg & Lee, 2017, Eq. 8; Schnake et al., 2022, Eq. 9).
 
 ## Choose the question you want to answer
 
 | Question | Method | What it examines | What comes out |
 |---|---|---|---|
-| Which sensor readings moved this prediction away from a reference-input prediction? | [Dynamic SHAP](10_dynamic_shap.md) | Predictions after selected sensors are replaced by training-derived reference readings | A signed contribution per sensor, in remaining-life cycles |
-| Through which sensor connections did the internal score form? | [GNN-LRP](11_gnn_lrp.md) | The fixed model's multipliers, intermediate values and connections | A signed share per route through the graph layers, in internal-score units |
+| Which sensor readings moved this prediction away from a reference-input prediction? | [Dynamic SHAP](10_dynamic_shap.md) (Wen et al., 2026, Section 2.4) | Predictions after selected sensors are replaced by training-derived reference readings (assumption A-20) | A signed contribution per sensor, in remaining-life cycles |
+| Through which sensor connections did the internal score form? | [GNN-LRP](11_gnn_lrp.md) (Schnake et al., 2022, Section 3.2), added by this project (assumption A-29) | The fixed model's multipliers, intermediate values and connections (Schnake et al., 2022, Eq. 9) | A signed share per route through the graph layers, in internal-score units |
 
 **Do not confuse a contribution with a physical cause.** Both methods explain
-the model. Neither establishes which component is damaged, and neither proves
-the model predicts accurately. A contribution is also different from a sensor
-reading: one is calculated by an explanation method; the other was measured.
+the model: each divides the model's own output, not the engine's true
+remaining life (Lundberg & Lee, 2017, Eq. 5; Schnake et al., 2022, Fig. 1).
+Neither establishes which component is damaged, and neither proves the model
+predicts accurately; that follows from what they divide, and is this project's
+reading rather than a claim either source makes. A contribution is also
+different from a sensor reading: one is calculated by an explanation method;
+the other was measured.
 
 ## Example setup
 
 All three XAI pages use the same small demonstration: **FD001 test engine 5,
-its last three recorded cycles, and sensors T24, T30 and T50**. These are real
-readings after smoothing and rescaling using training engines only. The tables
+its last three recorded cycles, and sensors T24, T30 and T50**, from NASA's
+data (NASA Prognostics Center of Excellence [NASA PCoE], 2008). These are real
+readings after smoothing (Wen et al., 2026, Section 3.2.3; assumption A-04)
+and rescaling using training engines only (assumptions A-03 and A-25). The tables
 show every value in this reduced window. The normal model receives fourteen
-sensors and a longer window; this example deliberately keeps the arithmetic small.
+sensors and a longer window (Wen et al., 2026, Tables 3 and 6); this example
+deliberately keeps the arithmetic small.
 
 The example network is **untrained**. Its multipliers are chosen to make its
 calculation inspectable, not to predict engine life well. It keeps each sensor's
-newest reading, combines neighbours on the chain T24 ↔ T30 ↔ T50, turns negative
+newest reading, as the project's default model does (assumption A-07). It
+combines neighbours on the chain T24 ↔ T30 ↔ T50, which are exactly the
+connections among these three sensors in Wen et al.'s (2026) Table 3, turns negative
 mixtures into zero, and combines the results with multipliers 2, 1 and −1 plus
 an offset of 0.5. A negative combined result becomes zero. The
 [GNN-LRP example](11_gnn_lrp.md) shows every term. Its output is an arithmetic
@@ -107,9 +125,11 @@ about every engine or every moment of its life.
 
 #### Input
 
-This is the complete reduced example window. Each row is a cycle; each sensor
-column contains rescaled readings, not temperatures or pressures in their
-original units. The remaining-life answer is kept separately.
+This is the complete reduced example window. Each row is a cycle (NASA PCoE,
+2008); each sensor column contains rescaled readings, not temperatures or
+pressures in their original units. The remaining-life answer is kept
+separately; NASA supplies it as a separate list of true remaining lives for
+the test engines (NASA PCoE, 2008).
 
 <!-- sample: readings -->
 | Cycle | T24 | T30 | T50 |
@@ -123,11 +143,13 @@ original units. The remaining-life answer is kept separately.
 Pass these readings through the fixed example model. It first forms an
 **internal score**, a number before conversion to remaining life. A smooth
 S-shaped conversion, called the sigmoid, changes that score into a fraction
-between zero and one. Multiplying by the life ceiling gives cycles.
+between zero and one (Wen et al., 2026, Eq. 13). Multiplying by the life
+ceiling gives cycles (assumption A-13).
 
 For this window the score is **0.220177**. Its conversion is
 **125 ÷ (1 + exp(−0.220177)) = 69.352867 cycles**, where
-`exp` is the exponential function. The ceiling is 125 cycles. The
+`exp` is the exponential function. The ceiling is 125 cycles (assumption
+A-01). The
 [model's output tutorial](05_the_model.md#6--predicted-life-fraction) explains that conversion.
 The known answer helps evaluate a prediction afterwards; it does not enter
 this calculation or the explanation.
@@ -178,9 +200,10 @@ a positive or negative contribution.
 #### Input
 
 Here are both methods' shares for the same example. The GNN-LRP column sums
-all routes starting at each sensor; its detailed page shows those routes
-individually. The SHAP page shows the sensor combinations used to obtain its
-column. These are explanation outputs, not new sensor readings.
+all routes starting at each sensor (Schnake et al., 2022, pp. 6–7); its
+detailed page shows those routes individually. The SHAP page shows the sensor
+combinations used to obtain its column. These are explanation outputs, not new
+sensor readings.
 
 <!-- sample: shares -->
 | Sensor | SHAP (cycles) | Routes by starting sensor (score) |
@@ -191,22 +214,25 @@ column. These are explanation outputs, not new sensor readings.
 
 #### Function
 
-**SHAP starts from the prediction for the reference window.** That window
-contains averages from training windows, a project choice (assumption A-20).
+**SHAP starts from the prediction for the reference window**, the model's
+output when every sensor counts as missing (Lundberg & Lee, 2017, p. 4). That
+window contains averages from training windows, a project choice (assumption A-20).
 Add the three signed contributions to its prediction to recover the actual
-prediction. Here that is **84.012863 + (-14.659996) =
+prediction (Lundberg & Lee, 2017, Eq. 5). Here that is **84.012863 + (-14.659996) =
 69.352867 cycles**, apart from rounding. The reference prediction is
-not the known answer, or the mean of the answers (assumption A-24).
+not the known answer, or the mean of the answers; Wen et al. (2026, Eq. 14)
+describe their starting value as that mean (assumption A-24).
 
 **GNN-LRP splits the internal score.** Add all route shares and the separate
-contribution from offsets to reconstruct that score. Here **0.500000
+contribution from offsets to reconstruct that score (assumption A-29). Here **0.500000
 + (-0.279823) = 0.220177**. Only then convert the total into
 cycles. Applying the sigmoid to each share and adding would not give the same
 prediction, because that conversion is not an addition-preserving operation.
 
 A positive SHAP contribution raises predicted life relative to its reference;
-a negative one lowers it. A positive route share contributes positively to the
-internal score. Their sizes cannot be compared directly: cycles and internal
+a negative one lowers it (Lundberg & Lee, 2017, Fig. 1). A positive route
+share contributes positively to the internal score (Schnake et al., 2022,
+Fig. 4). Their sizes cannot be compared directly: cycles and internal
 score are different units, and their starting values differ.
 
 <details class="process-example">
@@ -241,8 +267,9 @@ assert np.isclose(walk_total, score, atol=1e-6)
 The two checks recover the quantities they explain. A correct sum checks the
 calculation, not the quality of the model or the physical truth of an
 explanation. The small example uses the simpler gamma-zero rule for dividing
-the score; the GNN-LRP tutorial explains this setting and distinguishes it
-from the project's rule for a model with several graph layers.
+the score (Montavon et al., 2019, Section 10.2.1; Schnake et al., 2022, p. 6);
+the GNN-LRP tutorial explains this setting and distinguishes it from the
+project's rule for a model with several graph layers (assumption A-29).
 
 <!-- sample: reconstruction -->
 | Method | Starting value | Sum of shares | Total | Unit |
@@ -252,4 +279,41 @@ from the project's rule for a model with several graph layers.
 
 Continue with [Dynamic SHAP](10_dynamic_shap.md) to work through input
 replacement and averaging, or [GNN-LRP](11_gnn_lrp.md) to trace the routes and
-test their ranking by changing which sensors remain connected.
+test their ranking by changing which sensors remain connected, a check adapted
+from Schnake et al. (2022, Section 4.1) to this network (assumption A-33).
+
+## References
+
+- Lundberg, S. M., & Lee, S.-I. (2017). A unified approach to interpreting
+  model predictions. In I. Guyon, U. von Luxburg, S. Bengio, H. Wallach,
+  R. Fergus, S. Vishwanathan, & R. Garnett (Eds.), *Advances in Neural
+  Information Processing Systems 30 (NIPS 2017)* (pp. 4765–4774).
+  https://proceedings.neurips.cc/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html
+  [Copy](../references/lundberg_2017_unified_shap.pdf). Page numbers on this
+  page are those printed on the copy held, which numbers its pages 1 to 10.
+- Montavon, G., Binder, A., Lapuschkin, S., Samek, W., & Müller, K.-R.
+  (2019). Layer-wise relevance propagation: An overview. In W. Samek,
+  G. Montavon, A. Vedaldi, L. K. Hansen, & K.-R. Müller (Eds.), *Explainable
+  AI: Interpreting, explaining and visualizing deep learning* (Lecture Notes
+  in Computer Science, Vol. 11700, pp. 193–209). Springer.
+  https://doi.org/10.1007/978-3-030-28954-6_10
+  [Copy](../references/montavon_2019_lrp_overview.pdf). The copy held is the
+  authors' own copy, whose printed pages differ from the book's, so it is
+  cited by section only.
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description
+  of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
+  Data Repository.
+  [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Schnake, T., Eberle, O., Lederer, J., Nakajima, S., Schütt, K. T., Müller,
+  K.-R., & Montavon, G. (2022). Higher-order explanations of graph neural
+  networks via relevant walks. *IEEE Transactions on Pattern Analysis and
+  Machine Intelligence*, *44*(11), 7581–7596.
+  https://doi.org/10.1109/TPAMI.2021.3115452
+  [Copy](../references/schnake_2022_gnn_lrp_relevant_walks.pdf). Page,
+  section, figure and equation numbers on this page are those of arXiv
+  version 3, the copy held.
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)

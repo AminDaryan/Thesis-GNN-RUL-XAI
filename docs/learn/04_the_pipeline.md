@@ -9,12 +9,14 @@ readings, then arrange the readings into fixed-length histories called **windows
 The order protects against **leakage**: information from test engines, held-back
 engines or future cycles entering a calculation that should not use it.
 Smoothing uses only a row's present and past; the engine split is chosen before
-learning any rescaling statistics; test engines never supply those statistics.
+learning any rescaling statistics (assumption A-25); test engines never supply
+those statistics.
 
 The examples follow the first three rows of training engine 1 through steps
 1–4. Every column is shown. Step 3 also shows engine 3 so the split is visible.
 For step 5 we use five real rows and a three-cycle window to expose every
-value; the normal run still uses 30-cycle windows. Decimal table values are
+value; the normal run still uses the paper's 30-cycle windows (Wen et al.,
+2026, Table 6). Decimal table values are
 rounded to six places for reading; computations keep their precision.
 
 ## Example setup
@@ -58,9 +60,13 @@ in order to prepare sensor windows and their answers for training and testing.</
 ## 1 — Cap the labels
 
 A very early reading need not distinguish reliably between different long
-remaining lives. Capping uses the ceiling as **one shared label for all larger
-remaining lives**; below it, the label counts down exactly. It changes the
-answer we ask the model to predict; it does not change when the engine failed.
+remaining lives. Wen et al. (2026) describe an engine's early life as a stable
+phase in which performance "remains consistent with minimal degradation",
+which allows the remaining life to be approximated "as essentially constant
+during this phase" (Section 3.2.3.1, p. 8). Capping uses the ceiling as **one
+shared label for all larger remaining lives**; below it, the label counts down
+exactly. It changes the answer we ask the model to predict; it does not change
+when the engine failed.
 
 {{figure:rul-curve}}
 
@@ -85,7 +91,7 @@ The labelled training table from the Data page. Its first three rows:
 #### Function
 
 Compare each remaining-life answer with the chosen ceiling.
-Keep the smaller of the two:
+Keep the smaller of the two (Wen et al., 2026, Eq. 19):
 
 > Capped answer = the smaller of the original answer and the ceiling.
 
@@ -140,7 +146,9 @@ answer; step 4 changes the readings from which an answer is predicted.
 
 ## 2 — Smooth each sensor
 
-Successive readings can jump up and down. Smoothing gives a new reading only
+Successive readings can jump up and down: NASA's description of the data says
+they are "contaminated with sensor noise" (NASA Prognostics Center of
+Excellence [NASA PCoE], 2008). Smoothing gives a new reading only
 part of the influence on the next value, reducing the effect of one sudden jump.
 It is applied separately to each selected sensor and each engine.
 
@@ -173,10 +181,14 @@ between the two values rather than adding their full sizes together.
 Start each sensor's history with its first recorded value. Here each share is
 one half. This is an **exponentially weighted moving average**: older readings
 keep contributing through the previous result, but their influence shrinks
-with each new blend. The half-and-half weight and starting rule are project
-choices (assumptions A-04 and A-09).
+with each new blend (Wen et al., 2026, Section 3.2.3, Eq. 18). The
+half-and-half weight is this project's reading of the paper's sentence, which
+attaches the 0.5 to the previous smoothed value instead of to the share
+(Wen et al., 2026, Section 3.2.3, p. 8; assumption A-04). The starting rule is
+a project choice (assumption A-09).
 
-Follow `T24`, the `sensor_2` column, through all three rows:
+Follow `T24`, the `sensor_2` column (Wen et al., 2026, Table 2), through all
+three rows:
 
 ```text
 cycle 1: first reading                               = 641.82
@@ -216,19 +228,25 @@ columns change; the first row of each engine stays as it was:
 | 1 | 3 | -0.0043 | 0.0003 | 100 | 518.67 | 642.1675 | 1589.375 | 1403.035 | 14.62 | 21.61 | 554.1575 | 2388.065 | 9049.035 | 1.3 | 47.375 | 522.195 | 2388.0375 | 8133.23 | 8.421725 | 0.03 | 391 | 2388 | 100 | 38.99 | 23.38275 | 125 |
 
 Turning smoothing off skips this change. A weight of 1 also keeps the raw
-readings. The filter runs before condition-based rescaling, so if an engine's
-operating condition changes it can blend readings across that change.
+readings. The filter runs before condition-based rescaling, the order the
+paper draws (Wen et al., 2026, Fig. 1), so if an engine's operating condition
+changes, as it may "from one flight to another" (Saxena et al., 2008, p. 5), it
+can blend readings across that change.
 
 ## 3 — Hold engines back
 
 We need to check a model on engines whose examples do not adjust its learned
 numbers. Those held-back engines form the **validation set**. Their errors can
-choose when to stop training and which saved version of the model to keep.
+choose when to stop training and which saved version of the model to keep
+(assumptions A-06 and A-18).
 
 We split by engine, not by individual window. Neighbouring 30-cycle windows
 share 29 cycles; putting them on opposite sides would test the model on almost
 the same history it learned from. We also split **before** measuring rescaling
-statistics so held-back readings cannot influence those statistics.
+statistics so held-back readings cannot influence those statistics. This
+reverses the order the paper draws, normalisation before the train and test
+datasets (Wen et al., 2026, Fig. 1); the paper never says which engines its
+statistics come from (assumption A-25).
 
 **Where this happens.** The playground's **Training → Procedure** control
 chooses whether to reserve validation engines and how their errors will be
@@ -340,19 +358,26 @@ later stages use the lists to control which rows may teach their statistics.
 model. Test evaluates the finished choice on the separate test file. Here
 validation includes every eligible window, while test includes only each
 engine's last window; their errors cover different examples and are not
-directly comparable. With fraction 0, all training engines are kept.
+directly comparable (assumption A-06). With fraction 0, all training engines
+are kept.
 
 ## 4 — Put readings on a comparable scale
 
-Temperature readings and ratios have different units and numerical ranges.
+Temperature readings and ratios have different units (Wen et al., 2026,
+Table 2) and numerical ranges.
 Rescaling expresses each selected sensor relative to its training readings.
 This keeps a large numerical unit from automatically producing a large input.
 
 ### Find operating conditions
 
 Readings can change because the engine is being run differently, as well as
-because it wears. A condition number groups similar operating settings so the
+because it wears: NASA's description of the data names three operational
+settings "that have a substantial effect on engine performance" (NASA PCoE,
+2008). A condition number groups similar operating settings so the
 optional rescaling within each condition can use a separate scale for each group.
+That option follows Jin et al. (2025), who cluster the FD002 and FD004 data
+by operating condition with k-means and rescale each condition separately to
+the range 0 to 1 (p. 7; assumption A-03).
 
 #### Process
 
@@ -389,9 +414,14 @@ is enough. Label it 0 and assign each row to it. The original operating
 settings stay unchanged; rounding was only used to count the groups.
 
 Whole numbers are coarser than the settings of FD002 and FD004, the two
-sub-datasets flown in six conditions. The three settings are the altitude in
-thousands of feet, the Mach number (the speed as a fraction of the speed of
-sound) and the throttle angle in degrees. Rounded, the Mach numbers 0, 0.25,
+sub-datasets flown in six conditions (NASA PCoE, 2008). The three settings are
+read here as the altitude in thousands of feet, the Mach number (the speed as a
+fraction of the speed of sound) and the throttle angle in degrees. That reading
+is this project's: Wen et al. (2026) say the six conditions vary "altitude,
+Mach number, and throttle resolver angle settings" (Section 3.2.1, p. 7) but
+not which column holds which, and the six combinations in the files each match
+one of the simulator's ready-made flight conditions (Frederick et al., 2007,
+Table 1.4, p. 11). Rounded, the Mach numbers 0, 0.25,
 0.62, 0.70 and 0.84 become only 0 and 1, and with the throttle angle's two
 values, 100 and 60, they make just three combinations. The count still comes
 out at six because the altitudes round to six different values: 0, 10, 20, 25,
@@ -405,8 +435,12 @@ shows how the three settings were identified.
 When there are several groups, their centres are found from the unrounded
 training settings. Each row joins the nearest centre, then each centre moves
 to the average of its members; repeating these steps forms clusters of similar
-settings. This is called **k-means**. Held-back and test rows join the nearest
-established centre without changing any centre.
+settings. This is called **k-means**, the name MacQueen (1967) gave to dividing
+points into k groups, each represented by its mean (pp. 281, 283). His own
+procedure moves a group's mean each time a single point joins it (p. 283); the
+version described here, which reassigns every row before moving the centres,
+is the default of the scikit-learn library that this project uses. Held-back
+and test rows join the nearest established centre without changing any centre.
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -442,7 +476,9 @@ The default subtracts each sensor's training mean and divides by its training
 standard deviation, a measure of spread around that mean. This is called
 **z-score rescaling**. A result of zero is at the training mean; a negative
 result is below it. It does not mean negative physical temperature or pressure.
-The scaling method is a project choice (assumption A-03).
+The scaling method is a project choice (assumption A-03): the paper never says
+how it rescales the sensors, and this option was picked because its test error
+came closest to the paper's own figure (assumption A-22).
 
 #### Process
 
@@ -649,11 +685,14 @@ Each window is paired with this identification and answer:
 | 1 | 1 | 4 | 125 |
 | 2 | 1 | 5 | 125 |
 
-With the normal length of 30 and stride 1, engine 1 supplies cycles 1–30,
+With the normal length of 30 (Wen et al., 2026, Table 6) and stride 1
+(assumption A-05), engine 1 supplies cycles 1–30,
 then 2–31, through 163–192: `192 − 30 + 1 = 163` windows. Across all training
 histories there are 17,731 in total across the training and validation groups.
 Their membership was already chosen in step 3. For testing, retain
-only the final window of each engine: test engine 1 contributes cycles
+only the final window of each engine, because NASA's description asks for the
+number of cycles "after the last cycle that the engine will continue to
+operate" (NASA PCoE, 2008): test engine 1 contributes cycles
 2–31, paired with 112. An engine shorter than the chosen window is left out,
 not padded with invented readings (the short-history choice, assumption A-23).
 
@@ -882,7 +921,9 @@ and the validation group is empty:
 | test | 100 | 14 | 30 | 100 |
 
 Test answers remain for final evaluation. They must not replace validation
-answers for choosing settings or deciding when to stop.
+answers for choosing settings or deciding when to stop. One choice on this
+page did not keep to that rule: the scaling method of step 4 was picked by its
+test error (assumption A-22).
 
 The model now receives windows of sensor readings with separate answers.
 The [temporal stage](09_temporal.md) determines how each sensor's sequence is
@@ -894,3 +935,37 @@ reported measures was too broad; different target definitions need not move
 every measure in the same direction. The RUL chart also previously stretched
 an uncapped line from 125 and used row positions as cycles; it now uses the
 recorded cycle numbers and actual remaining lives on the same scale.
+
+## References
+
+- Frederick, D. K., DeCastro, J. A., & Litt, J. S. (2007). *User's guide for
+  the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)*
+  (NASA/TM-2007-215026). NASA Glenn Research Center.
+  https://ntrs.nasa.gov/citations/20070034949. Page numbers on this page are
+  those of the PDF file, not the report's printed page numbers.
+  [Copy](../references/frederick_2007_cmapss_users_guide.pdf)
+- Jin, Y., Meng, Z., Hu, Q., & Chen, D. (2025). Heterogeneous dynamic-aware
+  GNN for RUL prediction of aeroengine. *IEEE Transactions on Instrumentation
+  and Measurement*, *74*, Article 3538014.
+  https://doi.org/10.1109/TIM.2025.3569885. The article prints its article
+  number in place of page numbers, so page numbers on this page are those of
+  the PDF file. [Copy](../references/jin_2025_heterogeneous_dynamic_aware_gnn.pdf)
+- MacQueen, J. (1967). Some methods for classification and analysis of
+  multivariate observations. In L. M. Le Cam & J. Neyman (Eds.), *Proceedings
+  of the Fifth Berkeley Symposium on Mathematical Statistics and Probability:
+  Vol. 1. Statistics* (pp. 281–297). University of California Press.
+  [Copy](../references/macqueen_1967_k_means.pdf)
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description
+  of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
+  Data Repository.
+  [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
+  modeling for aircraft engine run-to-failure simulation. In *2008
+  International Conference on Prognostics and Health Management* (pp. 1–9).
+  IEEE. https://doi.org/10.1109/PHM.2008.4711414
+  [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)

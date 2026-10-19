@@ -2,18 +2,23 @@
 
 A prediction $\hat{y}$ is a number of cycles, and so is $y$, the remaining life
 it is scored against. In this project's scores $y$ is the test engine's label:
-its true remaining life, capped at 125 cycles like the training labels
+its true remaining life, which NASA's description of the data counts in
+"operational cycles" (NASA Prognostics Center of Excellence [NASA PCoE], 2008),
+capped at 125 cycles like the training labels
 (assumption A-02), so 125 for the 11 FD001 test engines that have more than
 that left (the second warning under "What may and may not be compared with the
 paper", below, says what the cap does to each measure). The error is the
-difference between them, positive when the model was optimistic:
+difference between them, positive when the model was optimistic, the same way
+round as the dataset paper's "Estimated RUL – True RUL" (Saxena et al., 2008,
+p. 7):
 
 $$d = \hat{y} - y$$
 
 An optimistic model expects failure later than it comes, which leaves a failing
 engine flying. A pessimistic one, with a negative error, sends an engine for
-maintenance while it still had life in it. **The two are not equally bad**, and
-the measures below differ in whether they take that into account.
+maintenance while it still had life in it. **The two are not equally bad**
+(Saxena et al., 2008, p. 7; Wen et al., 2026, p. 9), and the measures below
+differ in whether they take that into account.
 
 (Corrected 2026-10-03: this page called $y$ the true remaining life, while
 every score it reads is computed against the capped label. Found by a review
@@ -27,12 +32,18 @@ of the wording around the capped label.)
 
 $$\mathrm{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N} d_i^{\,2}}$$
 
-The typical size of the error over the $N$ test engines, in flight cycles: an
-RMSE of 16 means the model is typically about 16 cycles out.
+The typical size of the error over the $N$ test engines, in cycles: an
+RMSE of 16 means the model is typically about 16 cycles out. One cycle is one
+flight on this project's reading of NASA's description of the files and of the
+dataset paper's "one measurement snapshot per flight" (NASA PCoE, 2008; Saxena
+et al., 2008, p. 5); the [Data](01_the_problem.md#what-one-cycle-is) page sets
+out that reading.
 
 Squaring makes it **symmetric**: 10 cycles too high counts exactly like 10 too
-low, so it is blind to the asymmetry above. Nearly every paper quotes it anyway,
-which is what makes results comparable.
+low, so it is blind to the asymmetry above. It is "frequently employed to
+evaluate the accuracy of Remaining Useful Life (RUL) predictions" anyway (Dida
+et al., 2025, p. 5), and using the same measure as earlier papers is what makes
+results comparable (Li et al., 2021, p. 5).
 
 ### The NASA score
 
@@ -42,10 +53,11 @@ e^{\;d_i/10} - 1 & d_i \ge 0 \quad \text{late}
 \end{cases}$$
 
 Each test engine $i$ gets a penalty $s_i$, and the score, from NASA's 2008
-prognostics data challenge, is the sum of those penalties. The divisor for a
-late prediction is 10, smaller than the 13 for an early one, so **the same
-error costs more when the model was optimistic**: 10 cycles late costs
-$e^{1} - 1 = 1.72$, and 10 cycles early costs $e^{10/13} - 1 = 1.16$.
+prognostics data challenge (Saxena et al., 2008, p. 7; Wen et al., 2026, p. 9),
+is the sum of those penalties. In the form this project uses (assumption A-15),
+the divisor for a late prediction is 10, smaller than the 13 for an early one,
+so **the same error costs more when the model was optimistic**: 10 cycles late
+costs $e^{1} - 1 = 1.72$, and 10 cycles early costs $e^{10/13} - 1 = 1.16$.
 
 It is exponential, so one bad engine can dominate: a single engine 40 cycles
 late costs $e^{4} - 1 = 53.6$, more than 99 engines each 2 cycles late put
@@ -54,10 +66,12 @@ the number of test engines, so it compares only runs on the same sub-dataset.
 Lower is better, and the $- 1$ makes an exact prediction cost $e^{0} - 1 = 0$.
 
 > The paper's Equations 20 and 21, taken together, give the *gentler* penalty
-> to late predictions: the opposite of what the paper's own text says. The NASA
-> dataset paper behind the challenge has the same mismatch: its printed
-> equation also gives late predictions the gentler 13, while its text and its
-> Figure 9 divide late errors by 10 (finding F-20). This project follows what
+> to late predictions: the opposite of what the paper's own text says (Wen et
+> al., 2026, p. 9, Eqs. 20–21). The NASA dataset paper behind the challenge,
+> Saxena et al. (2008), has the same mismatch: its printed equation also gives
+> late predictions the gentler 13 (p. 7, Eq. 11), while its text says late
+> predictions were "more heavily penalized" (p. 7) and its Figure 9 divides
+> late errors by 10 (p. 8, Fig. 9; finding F-20). This project follows what
 > both papers say in words (assumption A-15).
 
 ### R² — coefficient of determination
@@ -71,9 +85,12 @@ model's error as a share of that guessing error, so a model with no error scores
 1 − 1 = 0**, and a worse one scores below 0.
 
 > The paper's Equation 23 puts the predicted values in the denominator instead
-> of the true ones, so a model could raise its score by spreading its
-> predictions more widely without becoming any more accurate. This project uses
-> the standard definition above (assumption A-16).
+> of the true ones (Wen et al., 2026, p. 9, Eq. 23), so a model could raise its
+> score by spreading its predictions more widely without becoming any more
+> accurate. This project uses the standard definition above (assumption A-16),
+> which is what the paper's own text beside the equation describes: "the
+> proportion of variance in the dependent variable that is predictable from the
+> independent variables" (Wen et al., 2026, p. 9).
 
 ### ASUE — average safe underestimation error
 
@@ -81,10 +98,10 @@ $$\mathrm{ASUE} = \frac{1}{N_{\text{under}}}
 \sum_{i\,:\,\hat{y}_i < y_i} \max\left(0,\; y_i - \hat{y}_i\right)$$
 
 The average shortfall, counted **only over the $N_{\text{under}}$ engines the
-model was pessimistic about**. It is the cost of caution: how much life, on
-average, is thrown away on the engines serviced early. Because the NASA score
-charges early errors less, a model can lower that score by leaning early, and
-ASUE shows the price.
+model was pessimistic about** (Wen et al., 2026, p. 9, Eq. 24). It is the cost
+of caution: how much life, on average, is thrown away on the engines serviced
+early. Because the NASA score charges early errors less, a model can lower
+that score by leaning early, and ASUE shows the price.
 
 Read it together with $N_{\text{under}}$, which every results file written
 since 2026-10-03 holds beside each ASUE as `n_early`. A file stored before then
@@ -119,8 +136,8 @@ python scripts/train.py --seeds 5
 ```
 
 On FD001, the current default settings of `scripts/train.py`, which leave out
-the LSTM stage, trained with seeds 42 to 46 gave a test RMSE of 16.695, 16.131,
-16.843, 15.970 and 16.843 cycles. Their mean is 16.496, and their standard
+the LSTM stage (assumption A-11), trained with seeds 42 to 46 gave a test RMSE
+of 16.695, 16.131, 16.843, 15.970 and 16.843 cycles. Their mean is 16.496, and their standard
 deviation, the typical distance of one seed's RMSE from that mean, is 0.415, so
 the result is quoted as **16.496 ± 0.415**. It is the stored
 run `fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z`,
@@ -138,9 +155,9 @@ than a genuine repetition would show, and a number produced with it must say so.
 To test whether one configuration, a full set of settings, beats another, train
 both with the same five seeds and subtract within each seed, so that every
 difference compares two runs that differ only in the setting under test. Under
-the current default, replacing the paper's sensor graph with one joining every
-sensor to every other raised the RMSE by 2.125, 2.822, 2.997, 3.636 and 2.342
-cycles:
+the current default, replacing the paper's sensor graph (Wen et al., 2026,
+Table 3) with one joining every sensor to every other raised the RMSE by 2.125,
+2.822, 2.997, 3.636 and 2.342 cycles:
 
 ```
 mean 2.784        standard deviation 0.592
@@ -151,16 +168,18 @@ Dividing the standard deviation by √5 gives the uncertainty of an average of
 five numbers, so $t$ counts how many of those uncertainties the mean lies from
 zero. A paired *t*-test turns $t$ into *p*: the probability, if the setting made
 no difference at all, of a $t$ at least that far from zero. Here *p* = 0.00046.
-With five pairs, *p* falls below 0.05, the usual line for calling a difference
-real, once $t$ lies more than 2.776 from zero.
+With five pairs, *p* falls below 0.05, the line this project uses for calling
+a single difference real (assumption A-37), once $t$ lies more than 2.776 from
+zero.
 
 A graph built from the data instead, joining the 41 most strongly correlated
-sensor pairs (as many edges as the paper's graph), changed the RMSE by 0.238,
-0.311, 0.146, 0.457 and −0.672: mean 0.096, standard deviation 0.444, $t$ =
+sensor pairs (as many edges as the paper's graph; Wen et al., 2026, Table 3),
+changed the RMSE by 0.238, 0.311, 0.146, 0.457 and −0.672: mean 0.096, standard deviation 0.444, $t$ =
 0.48, *p* = 0.655. One seed points the other way, the spread swamps the mean,
 and five seeds cannot tell the two graphs apart by test error. So most of the
 2.784 is the cost of every sensor receiving the same average, not the worth of
-the paper's engineering knowledge (assumption A-27).
+the paper's engineering knowledge (Wen et al., 2026, Section 2.3.1; assumption
+A-27).
 
 ---
 
@@ -196,8 +215,9 @@ whenever any part of it changes.
 
 ## What may and may not be compared with the paper
 
-The paper reports several variants. Under the default settings, which leave the
-LSTM stage out, only one of them is comparable:
+The paper reports several variants (Wen et al., 2026, p. 12, Table 11). Under
+the default settings, which leave the LSTM stage out (assumption A-11), only one
+of them is comparable:
 
 | Paper's variant | RMSE | Comparable? |
 |---|---|---|
@@ -221,13 +241,43 @@ Even that comparison carries three warnings:
    without changing its direction: engine 25, with 145 cycles left, is
    charged exactly 20 cycles less whatever the model predicted. The NASA
    score can only fall for the same reason, but R-squared and ASUE are not
-   guaranteed to improve; page 4 notes in general that capping does not
-   guarantee every measure improves. On the current default capping lowers
+   guaranteed to improve; the
+   [Preprocessing](04_the_pipeline.md#1--cap-the-labels) page notes in general
+   that capping does not guarantee every measure improves. On the current default capping lowers
    the RMSE by 1.51 cycles, from 18.01 to 16.50 (1.31 in an earlier
    configuration), so measured without it the gap to 14.93 would be wider
    (assumption A-02; the current figure added 2026-10-02). (Corrected 2026-10-02: this said capping
-   can only lower "the error", for a reason page 4 does not give; found by the
+   can only lower "the error", for a reason the Preprocessing page does not
+   give; found by the
    search for that claim after the review of the playground's information
    cards on 2026-09-26.)
 3. **The paper gives its numbers with no spread** and never mentions seeds or
-   repeated runs, so they have an unknown spread of their own.
+   repeated runs (Wen et al., 2026, Tables 7–11), so they have an unknown
+   spread of their own.
+
+## References
+
+- Dida, M., Cheriet, A., & Belhadj, M. (2025). Remaining useful life
+  prediction using attention-LSTM neural network of aircraft engines.
+  *International Journal of Prognostics and Health Management*, *16*(2).
+  https://doi.org/10.36001/ijphm.2025.v16i2.4274
+  [Copy](../references/dida_2025_attention_lstm_rul.pdf)
+- Li, T., Zhao, Z., Sun, C., Yan, R., & Chen, X. (2021). Hierarchical
+  attention graph convolutional network to fuse multi-sensor signals for
+  remaining useful life prediction. *Reliability Engineering & System Safety*,
+  *215*, Article 107878. https://doi.org/10.1016/j.ress.2021.107878
+  [Copy](../references/li_2021_hierarchical_attention_gcn.pdf)
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description
+  of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
+  Data Repository.
+  [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
+  modeling for aircraft engine run-to-failure simulation. In *2008
+  International Conference on Prognostics and Health Management* (pp. 1–9).
+  IEEE. https://doi.org/10.1109/PHM.2008.4711414
+  [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)

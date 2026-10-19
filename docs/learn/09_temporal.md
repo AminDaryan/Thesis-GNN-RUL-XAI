@@ -4,7 +4,9 @@ A sensor's newest reading tells us its current level. Earlier readings can
 also show whether it is rising, falling or staying steady. The temporal
 algorithm decides which of that information reaches the graph layers.
 
-Here **time** means successive cycles of the same sensor. **The graph** links
+Here **time** means successive cycles of the same sensor, one row of NASA's
+data per operational cycle (NASA Prognostics Center of Excellence [NASA PCoE],
+2008). **The graph** links
 different sensors. This page follows time within each sensor; the
 [GNN page](02_graphs.md) explains how sensors exchange information afterwards.
 
@@ -22,21 +24,28 @@ apply one after another.
 | Three numbers per sensor | Last reading, average and fitted change | Nothing |
 | Pass every cycle | All readings, in their original order | Nothing |
 
-The **LSTM**, short for long short-term memory network, and **GRU**, short for
-gated recurrent unit, follow the four numbered steps below. The fixed
-alternatives later on this page replace that entire route.
+The **LSTM**, short for long short-term memory network (Hochreiter &
+Schmidhuber, 1997, Section 4), and **GRU**, short for gated recurrent unit, the
+unit introduced by Cho et al. (2014, Section 2.3), follow the four numbered
+steps below. The fixed alternatives later on this page replace that entire
+route.
 
 ## Example setup
 
 Every example uses **FD001 training engine 1, cycles 1–4**. Four cycles keep
-every reading visible; the normal window length is 30. The readings have
-already been smoothed and rescaled using statistics fitted only on the
-training engines selected with seed 42. They are relative to each sensor's
-training mean and spread, not temperatures or pressures in their original units.
+every reading visible; the normal window length is 30, as in the paper (Wen et
+al., 2026, Section 3.4, Table 6). The readings have already been smoothed with
+the paper's moving average (Wen et al., 2026, Section 3.2.3, Eq. 18), at the
+strength this project reads from that section (assumption A-04), and
+rescaled using statistics fitted only on the training engines selected with
+seed 42 (assumptions A-03, A-06 and A-25). They are relative to each sensor's
+training mean and spread, not temperatures or pressures in their original
+units.
 
 The memory examples use **one number per memory list** so every memory value
 can be shown. These are **untrained demonstrations**, with starting parameters
-obtained from the model's initializer using a fixed seed. They have not been
+obtained from the model's initializer, which keeps PyTorch's own starting
+values (assumption A-34), using a fixed seed. They have not been
 fitted to engine failures and demonstrate no prediction accuracy. The usual
 memory width is 32, a project choice (assumption A-26).
 
@@ -160,7 +169,7 @@ The complete histories, now one sensor per row. With several windows there is on
 ## 2 — Read cycles with memory
 
 An average loses order. A memory update can use it: each cycle's result becomes
-part of the next cycle's input.
+part of the next cycle's input (Cho et al., 2014, Section 2.1, Eq. 1).
 
 > Cycle 1 → memory → cycle 2 → updated memory → cycle 3 → updated memory → cycle 4.
 
@@ -172,13 +181,13 @@ windows; the memory starts at zero for every new window in this implementation.
 
 ### One LSTM per sensor
 
-An LSTM carries two lists: the **cell state**, the memory it updates, and the **hidden state**, the output it calculates from that memory. **Gates** are multipliers between zero and one. They control how much old memory to keep, how much proposed information to add, and how much updated memory to expose.
+An LSTM carries two lists: the **cell state**, the memory it updates, and the **hidden state**, the output it calculates from that memory. **Gates** are multipliers between zero and one. They control how much old memory to keep, how much proposed information to add, and how much updated memory to expose (Wen et al., 2026, Section 2.2, Eqs. 1–6). The gates that add and expose come from the original LSTM (Hochreiter & Schmidhuber, 1997, Section 4); the gate that keeps old memory, the forget gate, was added later (Gers et al., 2000, Section 3.1, Eq. 7).
 
-Giving each sensor its own LSTM follows the paper's Section 2.2. Memory width and conversion into graph inputs remain project choices (assumption A-26).
+Giving each sensor its own LSTM follows the paper (Wen et al., 2026, Section 2.2, Eq. 7). Memory width and conversion into graph inputs remain project choices (assumption A-26).
 
 {{figure:lstm-cell}}
 
-In the figure, x(t) is this cycle's reading, C(t) is the cell state and h(t) is the hidden output. The index t means the current cycle; t−1 means the preceding cycle. The forget, input and output gates are called **keep**, **add** and **expose** in the calculation below. The candidate is the proposed addition to memory.
+The figure redraws the cell of the paper's Fig. 2, and its bracketed numbers are the paper's equation numbers (Wen et al., 2026, Section 2.2, Fig. 2, Eqs. 1–6). In the figure, x(t) is this cycle's reading, C(t) is the cell state and h(t) is the hidden output. The index t means the current cycle; t−1 means the preceding cycle. The forget, input and output gates are called **keep**, **add** and **expose** in the calculation below. The candidate is the proposed addition to memory.
 
 #### Process
 
@@ -206,7 +215,7 @@ Every history starts with both memory values at zero. The complete readings are:
 
 ##### Function
 
-For each gate, add **reading × its multiplier**, **old hidden value × its multiplier**, and an offset. A **sigmoid**, a smooth function with values between zero and one, converts that sum to a gate. The proposal uses **tanh**, a smooth function with values between minus one and one.
+For each gate, add **reading × its multiplier**, **old hidden value × its multiplier**, and an offset. A **sigmoid**, a smooth function with values between zero and one, converts that sum to a gate. The proposal uses **tanh**, a smooth function with values between minus one and one (Wen et al., 2026, Section 2.2, Eqs. 1–3 and 5).
 
 These are the demonstration's actual starting multipliers for T50:
 
@@ -218,7 +227,7 @@ These are the demonstration's actual starting multipliers for T50:
 | Proposal | 0.487466 | -0.251596 | -0.706862 |
 | Expose | 0.918433 | -0.609484 | 0.733743 |
 
-Calculate **new cell = keep × old cell + add × proposal**, then **new hidden = expose × tanh(new cell)**. All terms refer to this sensor and this cycle. The table traces every cycle:
+Calculate **new cell = keep × old cell + add × proposal**, then **new hidden = expose × tanh(new cell)** (Wen et al., 2026, Section 2.2, Eqs. 4 and 6). All terms refer to this sensor and this cycle. The table traces every cycle:
 
 <!-- sample: lstm_trace -->
 | Cycle | Reading | Old hidden | Old cell | Keep | Add | Proposal | Expose | Cell | Hidden |
@@ -276,7 +285,7 @@ One hidden output per cycle for every sensor. These are calculated memory output
 
 ### One LSTM for all sensors
 
-Sharing means one set of parameters is used for every sensor. It does not mean all sensors share one memory. This is an alternative to the paper’s separate-sensor arrangement.
+Sharing means one set of parameters is used for every sensor. It does not mean all sensors share one memory. This is an alternative to the paper’s separate-sensor arrangement (Wen et al., 2026, Section 2.2, Eq. 7).
 
 #### Process
 
@@ -338,7 +347,7 @@ Each sensor still has its own output at every cycle. The example verifies that T
 
 ### One GRU per sensor
 
-A GRU carries one memory list, its hidden state. A **reset gate** controls how much old memory enters a proposed replacement. An **update gate** blends the old memory with that proposal. GRU is a project alternative, not the paper's LSTM stage, and it borrows the LSTM stage's sizes (assumption A-36).
+A GRU carries one memory list, its hidden state. A **reset gate** controls how much old memory enters a proposed replacement. An **update gate** blends the old memory with that proposal (Cho et al., 2014, Section 2.3, Eqs. 5–8). GRU is a project alternative, not the paper's LSTM stage, and it borrows the LSTM stage's sizes (assumption A-36).
 
 #### Process
 
@@ -375,9 +384,9 @@ Both gates combine the reading, old hidden state and offsets, then apply the sig
 | Update | 0.186462 | 0.530547 | 0.344169 | 0.487466 |
 | Proposal | 0.759408 | -0.773559 | 0.253301 | 0.918433 |
 
-Add the two contributions before applying the sigmoid for each gate. For the proposal, first multiply its memory contribution by the reset gate, then add its reading contribution and apply tanh. The reset acts on the memory offset as well as the multiplied hidden value.
+Add the two contributions before applying the sigmoid for each gate. For the proposal, first multiply its memory contribution by the reset gate, then add its reading contribution and apply tanh. The reset acts on the memory offset as well as the multiplied hidden value. This order is PyTorch's, the version this project runs (assumption A-36); Cho et al. (2014, Section 2.3, Eqs. 5, 6 and 8) print the gates with no offsets and apply the reset gate to the old hidden value before its multiplier.
 
-Finally, **new hidden = update × old hidden + (1 − update) × proposal**. A larger update gate keeps more old memory. Here is every T50 update:
+Finally, **new hidden = update × old hidden + (1 − update) × proposal** (Cho et al., 2014, Section 2.3, Eq. 7). A larger update gate keeps more old memory. Here is every T50 update:
 
 <!-- sample: gru_trace -->
 | Cycle | Reading | Old hidden | Reset | Update | Proposal | Hidden |
@@ -498,7 +507,7 @@ One separate output sequence per sensor. T50 again gives the same values when pr
 
 ## 3 — Keep the last hidden state
 
-The last output has been calculated through the preceding updates, so it can summarise the history. It need not preserve every detail.
+The last output has been calculated through the preceding updates, so it can summarise the history. It need not preserve every detail. Passing on the last cycle's hidden state is this project's reading of the paper's Eq. 7, which writes each sensor's LSTM result as the hidden state at the window's last cycle (Wen et al., 2026, Section 2.2, Eq. 7; assumption A-26).
 
 ### Process
 
@@ -637,7 +646,7 @@ the graph layers that receive them still learn their own multipliers.
 
 ### Keep the last reading
 
-Pass on the current level. This is the command-line default stand-in for the paper’s temporal stage (assumption A-07). Earlier cycles can still have influenced the reading through preprocessing’s smoothing.
+Pass on the current level. This is the command-line default stand-in for the paper’s temporal stage (assumption A-07). Earlier cycles can still have influenced the reading through preprocessing’s smoothing, which mixes each reading with the previous smoothed value (Wen et al., 2026, Section 3.2.3, Eq. 18; assumption A-04).
 
 #### Process
 
@@ -948,9 +957,10 @@ Every reading is retained in its original position:
 
 ## The stage left out by default
 
-The paper describes separate LSTM networks in Section 2.2. The command-line
-default instead keeps the last reading, so its results belong beside the
-paper's comparison without LSTM, not the full-model headline. Using LSTM here
+The paper describes separate LSTM networks (Wen et al., 2026, Section 2.2). The
+command-line default instead keeps the last reading, so its results belong
+beside the paper's comparison without LSTM, its "ESTGNN w/o LSTM" row, not the
+full-model headline (Wen et al., 2026, Section 4.3, Table 11). Using LSTM here
 still requires unspecified choices about width and conversion to graph
 inputs (assumptions A-11 and A-26).
 
@@ -959,3 +969,31 @@ These demonstrations teach calculations, not accuracy rankings.
 traces a named saved network using the last-reading route. The
 [implementation guide](../../src/thesis_gnn_rul_xai/models/temporal/README.md)
 records the alternatives and their limits.
+
+## References
+
+- Cho, K., van Merriënboer, B., Gulcehre, C., Bahdanau, D., Bougares, F.,
+  Schwenk, H., & Bengio, Y. (2014). Learning phrase representations using RNN
+  encoder–decoder for statistical machine translation. In A. Moschitti, B.
+  Pang, & W. Daelemans (Eds.), *Proceedings of the 2014 Conference on
+  Empirical Methods in Natural Language Processing (EMNLP)* (pp. 1724–1734).
+  Association for Computational Linguistics. https://doi.org/10.3115/v1/D14-1179
+  [Copy](../references/cho_2014_rnn_encoder_decoder.pdf)
+- Gers, F. A., Schmidhuber, J., & Cummins, F. (2000). Learning to forget:
+  Continual prediction with LSTM. *Neural Computation*, *12*(10), 2451–2471.
+  https://doi.org/10.1162/089976600300015015
+  [Copy](../references/gers_2000_learning_to_forget.pdf). The copy held is the
+  authors' accepted manuscript, cited here by section and equation.
+- Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. *Neural
+  Computation*, *9*(8), 1735–1780. https://doi.org/10.1162/neco.1997.9.8.1735
+  [Copy](../references/hochreiter_1997_long_short_term_memory.pdf). The copy
+  held is the authors' 32-page manuscript, whose pages are not numbered as in
+  the journal, so it is cited here by section.
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
+  the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
+  Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)
