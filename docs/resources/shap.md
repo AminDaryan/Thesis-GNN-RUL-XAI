@@ -1,12 +1,13 @@
 # SHAP (2017)
 
-Lundberg and Lee's paper, *A unified approach to interpreting model
+Lundberg and Lee's (2017) paper, *A unified approach to interpreting model
 predictions*, starts from a crowded field: several methods for explaining one
 prediction of a complex model, and no account of how they relate or when to
 prefer one. It shows that six of them produce the same kind of explanation,
 states three requirements that only one set of numbers of that kind can meet,
-and names those numbers **SHAP values**, short for SHapley Additive
-exPlanations.
+and names those numbers **SHAP values**, short for SHapley Additive exPlanations
+([pp. 1–2](../references/lundberg_2017_unified_shap.pdf#page=1); Section 3, p. 4;
+Section 4, pp. 4–5).
 
 This page follows the paper: its mechanism in its own equation numbers, what it
 claims and on what evidence, and what this project takes from it. How this
@@ -20,7 +21,7 @@ kept in this repository, unless another paper is named.
 
 ## The paper's three steps
 
-Section 1 (pages 1–2) lists three results:
+Lundberg and Lee (2017, Section 1, pp. 1–2) list three results:
 
 1. Treat any explanation of a prediction as a model in its own right, the
    **explanation model**. This defines a class of methods, *additive feature
@@ -39,31 +40,42 @@ Section 1 (pages 1–2) lists three results:
 
 Every equation on this page is run on one real prediction from **FD001**, the
 first of the four subsets of NASA's simulated run-to-failure records of
-turbofan engines, C-MAPSS (described on the [C-MAPSS](cmapss.md) page). Each
-engine is recorded once per **cycle**, one flight. A training engine is
-recorded until it fails, so at every cycle its **remaining-life label** is the
-number of cycles it had left; any label above 125 is set to 125, as everywhere
-in this project (assumption A-01). A **test engine** is a separate engine whose
-record stops before failure, kept aside for evaluation; its remaining life is
-published in a separate file.
+turbofan engines, C-MAPSS (NASA Prognostics Center of Excellence
+[NASA PCoE], 2008; Saxena et al., 2008, pp. 1–2), described on the
+[C-MAPSS](cmapss.md) page. Each engine is recorded once per **cycle**
+(NASA PCoE, 2008), one flight in this project's reading of its sources
+([What one cycle is](../learn/01_the_problem.md#what-one-cycle-is)). A
+training engine is recorded until it fails (NASA PCoE, 2008), so at every
+cycle its **remaining-life label** is the number of cycles it had left; any
+label above 125 is set to 125, as everywhere in this project (assumption
+A-01). A **test engine** is a separate engine whose record stops before
+failure, kept aside for evaluation; a vector of the test engines' true
+remaining lives is provided with them (NASA PCoE, 2008), and in the download it
+is a separate file, `RUL_FD001.txt` for FD001.
 
-The model being explained is a **straight-line model** fitted by least
-squares: it chooses four multipliers and an intercept that make the sum of
-squared differences between its prediction and the label, over every row of
-the 100 training engines, as small as possible. Its inputs are four raw sensor
-readings taken at a single cycle: T24, T30 and T50, total temperatures at the
-outlets of the low-pressure compressor, the high-pressure compressor and the
-low-pressure turbine, recorded in degrees Rankine (`degR`, an absolute
-temperature scale whose degree is the size of a Fahrenheit degree), and P30,
-total pressure at the high-pressure compressor outlet, recorded in pounds per
-square inch absolute (`psia`).
+The model being explained is a **straight-line model** fitted by least squares:
+it chooses four multipliers and an intercept that make the sum of squared
+differences between its prediction and the label, over every row of the 100
+training engines (NASA PCoE, 2008), as small as possible. Its inputs are four
+raw sensor readings taken at a single cycle: T24, T30 and T50, total
+temperatures at the outlets of the low-pressure compressor, the high-pressure
+compressor and the low-pressure turbine, recorded in °R, and P30, total pressure
+at the high-pressure compressor outlet, recorded in psia (Saxena et al., 2008,
+Table 2, [p. 3](../references/saxena_2008_damage_propagation_modeling.pdf#page=3);
+Frederick et al., 2007, Nomenclature, p. 7, for the names of the three
+components). Neither source spells out the two units. In their standard
+meaning, °R (`degR` in this project's code) is degrees Rankine, an absolute
+temperature scale whose degree is the size of a Fahrenheit degree, which the
+[C-MAPSS](cmapss.md#what-comes-out-21-sensors-and-four-hidden-margins) page
+checks against the user's guide, and psia is pounds per square inch absolute.
 
 Three reasons for a straight-line model rather than the project's network. One
-of the paper's results, Linear SHAP, applies only to straight-line models.
-Every number it produces can be checked by hand. And it needs no PyTorch. It is
-**this page's demonstration model**: it is not the project's model, its
-accuracy is not being assessed, and its readings are the raw values from the
-NASA files, neither smoothed nor rescaled.
+of the paper's results, Linear SHAP, applies only to straight-line models
+(Lundberg & Lee, 2017, Section 4.2, p. 6). Every number it produces can be
+checked by hand. And it needs no PyTorch. It is **this page's demonstration
+model**: it is not the project's model, its accuracy is not being assessed, and
+its readings are the raw values from the NASA files, neither smoothed nor
+rescaled.
 
 The prediction explained is that of **FD001 test engine 5 at its last recorded
 cycle**, the engine the [Learn pages](../learn/03_explainability.md) also use.
@@ -174,30 +186,32 @@ missing features shows why that matters.
 
 ## An explanation is itself a model
 
-Section 2 (page 2) starts from an observation: a simple model, such as a
-straight line, is its own best explanation, but a complex one is not, so a
-complex model $f$ is explained by a simpler **explanation model** $g$. The
-paper concerns **local** methods, which explain one prediction $f(x)$ for one
-input $x$. It credits that framing to LIME, the method of Ribeiro and
-colleagues (the paper's reference [5]), which, as Section 2.1 describes it,
-explains one prediction by fitting a linear model to the original model's
-outputs around that input.
+Lundberg and Lee (2017, [Section 2,
+p. 2](../references/lundberg_2017_unified_shap.pdf#page=2)) start from an
+observation: a simple model, such as a straight line, is its own best
+explanation, but a complex one is not, so a complex model $f$ is explained by a
+simpler **explanation model** $g$. The paper concerns **local** methods, which
+explain one prediction $f(x)$ for one input $x$. It credits that framing to
+LIME, the method of Ribeiro and colleagues (the paper's reference [5], p. 10),
+which, as Section 2.1 describes it, explains one prediction by fitting a linear
+model to the original model's outputs around that input.
 
 ### Simplified inputs and the mapping
 
 An explanation model does not read the raw input. It reads a **simplified
 input**: one switch per feature, where $z'_i = 1$ means feature $i$ is present
-at its actual value and $z'_i = 0$ means it is missing. The simplified version
-of the explained input itself is written $x'$; for engine 5 every reading was
-observed, so $x' = (1, 1, 1, 1)$.
+at its actual value and $z'_i = 0$ means it is missing (Lundberg & Lee, 2017,
+pp. 2, 4). The simplified version of the explained input itself is written $x'$;
+for engine 5 every reading was observed, so $x' = (1, 1, 1, 1)$.
 
 A **mapping** $h_x$ turns a vector of switches back into a complete input the
 original model can accept, $h_x(z')$. It is specific to the input $x$ being
-explained: a switch that is on takes $x$'s own reading, so $h_x(x') = x$. What a
-switch that is off becomes is the mapping's choice, and each method in Section 2
-makes it differently (table below). SHAP's own answer, and its alternatives,
-are the subject of a later section. Until then this page uses the simplest
-answer: **a missing reading is replaced by its training mean**.
+explained: a switch that is on takes $x$'s own reading, so $h_x(x') = x$
+(Lundberg & Lee, 2017, p. 2). What a switch that is off becomes is the mapping's
+choice, and each method in Section 2 makes it differently (table below). SHAP's
+own answer, and its alternatives, are the subject of a later section. Until then
+this page uses the simplest answer: **a missing reading is replaced by its
+training mean**.
 
 For example, $z' = (1, 0, 1, 0)$ keeps T24 and T50 and switches off T30 and
 P30. Its mapping gives the input (642.27, 1590.523119, 1419.36, 553.367711):
@@ -262,8 +276,9 @@ until then.
 
 ### Definition 1: the additive form
 
-Definition 1 (page 2) says an **additive feature attribution method** is one
-whose explanation model adds up one number per switch, plus a constant:
+Definition 1 of Lundberg and Lee (2017, p. 2) says an **additive feature
+attribution method** is one whose explanation model adds up one number per
+switch, plus a constant:
 
 $$g(z') = \phi_0 + \sum_{i=1}^{M} \phi_i z'_i \qquad \text{(Eq. 1)}$$
 
@@ -288,8 +303,8 @@ $\phi_i$ is attached to a switch, so it describes the effect of *having engine
 
 ### Six existing methods share this form
 
-Section 2 (pages 2–3) shows that six published methods all fit Definition 1.
-They differ in what a switch set to 0 does:
+Lundberg and Lee (2017, Section 2, pp. 2–3) show that six published methods all
+fit Definition 1. They differ in what a switch set to 0 does:
 
 | Method | Section | What a switch set to 0 does |
 |---|---|---|
@@ -300,20 +315,22 @@ They differ in what a switch set to 0 does:
 | Shapley sampling values | 2.4 | The model is not retrained; leaving a feature out is approximated by averaging over samples from the training data |
 | Quantitative Input Influence | 2.4 | A sampling approximation the paper calls nearly identical to Shapley sampling values |
 
-DeepLIFT, as Section 2.2 describes it, is a method for deep networks that gives
-each input the effect of its being set to the reference value instead of its
-actual value, worked out recursively through the network. Its adding-up rule
-(Eq. 3, page 3) already has the shape of Definition 1: its attributions sum to
-$f(x) - f(r)$, where $r$ is the reference input. The paper states the starting
-value $\phi_0$ for only two of the six methods: DeepLIFT's is the output at
-the reference, $f(r)$, and that of Shapley regression values is the output of
-a model trained on no features, $f_\varnothing(\varnothing)$. For the other
-four it gives none.
+DeepLIFT, as Lundberg and Lee (2017, Section 2.2) describe it, is a method for
+deep networks that gives each input the effect of its being set to the reference
+value instead of its actual value, worked out recursively through the network.
+Its adding-up rule (Eq. 3, p. 3) already has the shape of Definition 1: its
+attributions sum to $f(x) - f(r)$, where $r$ is the reference input. The paper
+states the starting value $\phi_0$ for only two of the six methods: DeepLIFT's
+is the output at the reference, $f(r)$, and that of Shapley regression values is
+the output of a model trained on no features, $f_\varnothing(\varnothing)$. For
+the other four it gives none.
 
 Layer-wise relevance propagation in this table is the original method for
-ordinary networks (the paper's reference [1]); the project's route explanation
-for its graph layers is a later extension of it to graph networks, presented on
-the [GNN-LRP resource page](gnn_lrp.md).
+ordinary networks, that of Bach et al. (2015, Abstract, p. 1), which is
+Lundberg and Lee's (2017, p. 10) reference [1]; the project's route
+explanation for its graph layers (assumption A-29) is a later extension of it
+to graph networks (Schnake et al., 2022, Abstract), presented on the
+[GNN-LRP resource page](gnn_lrp.md).
 
 The key idea is that once an explanation is written as "a starting value plus
 one number per present feature", methods that looked unrelated become
@@ -324,8 +341,9 @@ choice is right.
 
 ## Three properties that leave one answer
 
-Section 3 (page 4) states three properties and a theorem, proved in a
-Supplementary Material, that only one set of numbers satisfies all of them.
+Lundberg and Lee (2017, [Section 3,
+p. 4](../references/lundberg_2017_unified_shap.pdf#page=4)) state three properties
+and a theorem that only one set of numbers satisfies all of them.
 
 ### Property 1: local accuracy
 
@@ -333,11 +351,11 @@ $$f(x) = g(x') = \phi_0 + \sum_{i=1}^{M} \phi_i x'_i \qquad \text{(Eq. 5)}$$
 
 with $\phi_0 = f(h_x(\mathbf{0}))$, the model's output with every switch off.
 The explanation model must reproduce the original model's output at the input
-being explained. For engine 5, every switch off means every reading at its
-training mean, so $\phi_0$ is the row "None" of the table above, 86.829286
-cycles, and the four $\phi_i$ must add to $76.655142 - 86.829286 = -10.174144$
-cycles. Without this property the attributions could add to anything, and
-"T50 lowered the prediction by so many cycles" would have no fixed meaning.
+being explained (Lundberg & Lee, 2017, p. 4). For engine 5, every switch off
+means every reading at its training mean, so $\phi_0$ is the row "None" of the
+table above, 86.829286 cycles, and the four $\phi_i$ must add to $76.655142 - 86.829286 = -10.174144$
+cycles. Without this property the attributions could add to anything, and "T50
+lowered the prediction by so many cycles" would have no fixed meaning.
 
 ### Property 2: missingness
 
@@ -347,7 +365,7 @@ A feature that is switched off in the explained input itself receives nothing.
 It constrains the values only when $x'$ contains zeros, such as a word absent
 from the document LIME is explaining. For engine 5 all four readings exist,
 $x' = (1,1,1,1)$, so the condition never applies. The paper notes that every
-method in Section 2 already obeys it.
+method in Section 2 already obeys it (Lundberg & Lee, 2017, p. 4).
 
 ### Property 3: consistency
 
@@ -360,7 +378,8 @@ two models $f$ and $f'$, if
 $$f'_x(z') - f'_x(z' \setminus i) \;\ge\; f_x(z') - f_x(z' \setminus i) \quad \text{for all } z' \in \{0,1\}^M \qquad \text{(Eq. 7)}$$
 
 then $\phi_i(f', x) \ge \phi_i(f, x)$. If a model changes so that a feature adds
-at least as much as before in every situation, its attribution must not fall.
+at least as much as before in every situation, its attribution must not fall
+(Lundberg & Lee, 2017, p. 4).
 For example, below it turns out that T50 adds $-15.962813$ cycles whatever
 group it joins in this model. A second model, identical except that T50's
 multiplier is zero, would add 0 whenever T50 joins a group, which is at least
@@ -370,15 +389,16 @@ Kernel SHAP.
 
 ### Theorem 1 and the weight it uses
 
-Theorem 1 (page 4) says only one explanation model satisfies Definition 1 and
-Properties 1 to 3:
+Theorem 1 (Lundberg & Lee, 2017, p. 4) says only one explanation model satisfies
+Definition 1 and Properties 1 to 3:
 
 $$\phi_i(f, x) = \sum_{z' \subseteq x'} \frac{|z'|!\,(M - |z'| - 1)!}{M!}\,\big[f_x(z') - f_x(z' \setminus i)\big] \qquad \text{(Eq. 8)}$$
 
 Here $z' \subseteq x'$ runs over every switch setting whose switched-on
 features are among those of $x'$, and $|z'|$ counts the switches that are on.
 The same sum appears earlier, in the paper's account of Shapley regression
-values (Eq. 4, page 3), written with groups of features instead of switches:
+values (Lundberg & Lee, 2017, Eq. 4, p. 3), written with groups of features
+instead of switches:
 
 $$\phi_i = \sum_{S \subseteq F \setminus \{i\}} \frac{|S|!\,(|F| - |S| - 1)!}{|F|!}\,\big[f_{S \cup \{i\}}(x_{S \cup \{i\}}) - f_S(x_S)\big] \qquad \text{(Eq. 4)}$$
 
@@ -396,7 +416,8 @@ itself. Read that way, the setting $z' = x'$ with all $M$ switches on would need
 $(M - M - 1)! = (-1)!$, which is undefined. The weight agrees with Eq. 4, and
 with the counting argument below, when $|z'|$ is read as the number of switches
 on *besides* $i$, which is the size of the group that $i$ joins. This page, the
-project's code and Wen et al.'s Eq. 15 all use Eq. 4's form.
+project's code and Eq. 15 of Wen et al. (2026, Section 2.4, p. 7) all use
+Eq. 4's form.
 
 **Where the weight comes from.** Let the $M$ features arrive one at a time, in
 one of the $M!$ possible orders, each order equally likely. The orders in which
@@ -521,22 +542,24 @@ can be checked directly:
 
 ### Where the theorem comes from
 
-The paper attributes Theorem 1 to combined results of cooperative game theory,
-where the $\phi_i$ are known as **Shapley values**, after Shapley (1953), its
-reference [6]. It credits Young (1985), its reference [10], with showing that
-Shapley values are the only values satisfying three axioms: two similar to
-Properties 1 and 3, and a third that the authors show to be redundant in this
-setting. Property 2 is what adapts those proofs to the whole class of additive
-methods. The proofs are in the Supplementary Material, which is not part of the
-10-page file kept here, so this page can show what the theorem says but not why
-it holds. Neither Shapley's nor Young's original is in this project's library,
-so this page says nothing about them beyond what Lundberg and Lee attribute to
-them.
+Lundberg and Lee (2017, p. 4) attribute Theorem 1 to combined results of
+cooperative game theory, where the $\phi_i$ are known as **Shapley values**,
+citing for them their reference [6] (p. 10), *A value for n-person games*, a
+1953 work by Lloyd Shapley. They credit a 1985 paper by H. Peyton Young, their
+reference [10], with showing that Shapley values are the only values satisfying
+three axioms: two similar to Properties 1 and 3, and a third that the authors
+show to be redundant in this setting. Property 2 is required to adapt those
+proofs to the whole class of additive methods. The argument that the third axiom is
+redundant is left to the Supplementary Material, which is not part of the
+10-page file kept here, and the uniqueness result itself is Young's, so this
+page can show what the theorem says but not why it holds. Neither Shapley's nor
+Young's original is in this project's library, so this page says nothing about
+them beyond what Lundberg and Lee attribute to them.
 
-The paper then draws the consequence (page 4): once the simplified input
-mapping $h_x$ is fixed, only one additive feature attribution method has all
-three properties, so any method not based on Shapley values breaks local
-accuracy, consistency or both (the methods of Section 2 already respect
+The paper then draws the consequence (Lundberg & Lee, 2017, p. 4): once the
+simplified input mapping $h_x$ is fixed, only one additive feature attribution
+method has all three properties, so any method not based on Shapley values
+breaks local accuracy, consistency or both (the methods of Section 2 already respect
 missingness, it adds). That condition, a mapping fixed in advance, matters
 later.
 
@@ -548,9 +571,10 @@ over every order in which the features could arrive.
 **Do not confuse a Shapley value with a SHAP value.** A Shapley value is the
 game-theory quantity of Eq. 4, defined for any rule that gives each group of
 features a value. A SHAP value is the Shapley value of one particular rule,
-which the next section defines. Numbers computed with a different rule for
-missing features are Shapley values, but they are SHAP values only under the
-paper's definition or one of its stated approximations.
+which the next section defines (Lundberg & Lee, 2017, Section 4, p. 4). Numbers
+computed with a different rule for missing features are Shapley values, but they
+are SHAP values only under the paper's definition or one of its stated
+approximations.
 
 ---
 
@@ -558,9 +582,10 @@ paper's definition or one of its stated approximations.
 
 ### The definition: a conditional expectation
 
-Section 4 (pages 4–5) defines **SHAP values as the Shapley values of a
-conditional expectation of the model**: the value of a group $S$ of present
-features is
+Lundberg and Lee (2017, [Section 4,
+pp. 4–5](../references/lundberg_2017_unified_shap.pdf#page=4)) define **SHAP values
+as the Shapley values of a conditional expectation of the model**: the value of
+a group $S$ of present features is
 
 $$f_x(z') = f(h_x(z')) = E[f(z) \mid z_S]$$
 
@@ -569,8 +594,8 @@ input with arbitrary readings missing, so the paper replaces "the model with
 only $S$ known" by **the model's average output over inputs that agree with
 $x$ on the features in $S$**.
 
-Figure 1 (page 5) draws this for one order of four features. Its axis starts at
-0, and an arrow labelled $\phi_0$ carries it to the base value $E[f(z)]$, the
+Figure 1 of Lundberg and Lee (2017, p. 5) draws this for one order of four
+features. Its axis starts at 0, and an arrow labelled $\phi_0$ carries it to the base value $E[f(z)]$, the
 prediction expected when no feature is known. Each further arrow $\phi_i$ is
 the change in the expected prediction when one more feature becomes known, and
 the last ends at $f(x)$; in the drawn order the fourth arrow points backwards, a
@@ -580,8 +605,9 @@ the average over all orders.
 
 ### Four lines, two simplifications
 
-Section 4 (page 5) calls the exact computation challenging and offers two
-optional assumptions that simplify the expected values, written as a chain. (In
+Section 4 of Lundberg and Lee (2017, p. 5) calls the exact computation
+challenging and offers two optional assumptions that simplify the expected
+values, written as a chain. (In
 this page's words, the difficulty is that Eq. 9 needs the joint distribution of
 the features, how often each combination of readings occurs together, which is
 seldom known.)
@@ -607,9 +633,9 @@ Line by line:
 - **Eq. 11** assumes the features are independent: the missing features are
   drawn from their own overall distribution, ignoring the present values. The
   paper notes that Shapley sampling values, Quantitative Input Influence, LIME
-  and DeepLIFT make this assumption. (This page's count of its cost: one model
-  evaluation for every row of the data averaged over, the **background data**,
-  for each group.)
+  and DeepLIFT make this assumption (Lundberg & Lee, 2017, p. 5). (This page's
+  count of its cost: one model evaluation for every row of the data averaged over, the **background
+  data**, for each group.)
 - **Eq. 12** further assumes the model is linear: the average of the outputs is
   replaced by the output at the average of the missing features. (By the same
   count, one model evaluation per group.)
@@ -782,17 +808,19 @@ credit between them.
 
 ## Kernel SHAP: Shapley values from a weighted regression
 
-Exact Shapley values need the value of every group, $2^M$ of them. Section 4.1
-(page 5) describes two ways to estimate them that treat the model as a closed
-box, using only its inputs and outputs. Shapley sampling values estimate Eq. 8
-by sampling orders of the features, separately for each feature. The paper's
-new method, **Kernel SHAP**, estimates all of them at once by regression, and
-it reports that this needs fewer model evaluations for similar accuracy
-(Section 5).
+Exact Shapley values need the value of every group, $2^M$ of them. Lundberg and
+Lee (2017, [Section 4.1,
+p. 5](../references/lundberg_2017_unified_shap.pdf#page=5)) describe two ways to
+estimate them that treat the model as a closed box, using only its inputs and
+outputs. Shapley sampling values estimate Eq. 8 by sampling orders of the
+features, separately for each feature. The paper's new method, **Kernel SHAP**,
+estimates all of them at once by regression, and it reports that this needs
+fewer model evaluations for similar accuracy (Section 5).
 
 ### LIME's regression, Eq. 2
 
-LIME fits its explanation model by solving
+As Lundberg and Lee (2017, Section 2.1, p. 2) describe it, LIME fits its
+explanation model by solving
 
 $$\xi = \underset{g \in \mathcal{G}}{\arg\min}\; L(f, g, \pi_{x'}) + \Omega(g) \qquad \text{(Eq. 2)}$$
 
@@ -811,23 +839,23 @@ With $g$ of the form of Eq. 1 and a squared loss, Eq. 2 is a penalised
 weighted linear regression: the switches are the inputs, the model's outputs
 are the targets, and the fitted coefficients are the $\phi_i$.
 
-What makes LIME **local** is the kernel. The paper says only that LIME measures
-closeness in the space of switches (page 5). Figure 2A (page 7), rendered at
+What makes LIME **local** is the kernel. Lundberg and Lee (2017, p. 5) say only
+that LIME measures closeness in the space of switches. Figure 2A (p. 7), rendered at
 eight times its printed size, labels two LIME kernels by the distance each
 uses, cosine distance (based on the angle between two vectors of switches) and
 L2 distance (the straight-line distance). Reading its axis, settings ordered by
 how many switches are on, as running from few to many, both LIME kernels give
 the least weight to settings with few switches on and the most to settings with
 nearly all on, the settings nearest $x' = (1, \dots, 1)$. The paper points out
-(page 5) that LIME
+(p. 5) that LIME
 chooses $L$, $\pi_{x'}$ and $\Omega$ by rule of thumb, and that with those
 choices the solution is not the Shapley values, so by Theorem 1 it breaks local
 accuracy or consistency.
 
 ### Theorem 2: the Shapley kernel
 
-Theorem 2 (page 6) gives the choices that make the solution of Eq. 2 the
-Shapley values:
+Theorem 2 (Lundberg & Lee, 2017, p. 6) gives the choices that make the solution
+of Eq. 2 the Shapley values:
 
 $$\Omega(g) = 0, \qquad
 \pi_{x'}(z') = \frac{M - 1}{\binom{M}{|z'|}\,|z'|\,(M - |z'|)}, \qquad
@@ -877,8 +905,8 @@ at both ends and low in the middle, unlike LIME's kernels, which rise towards
 the all-on end. Here the settings with one or three switches on count twice as
 much, each, as those with two.
 
-The paper notes (page 6) that the weight is infinite with no switch on or all
-switches on, which forces $\phi_0 = f_x(\varnothing)$ and $f(x) = \sum_{i=0}^{M}
+Lundberg and Lee (2017, p. 6) note that the weight is infinite with no switch
+on or all switches on, which forces $\phi_0 = f_x(\varnothing)$ and $f(x) = \sum_{i=0}^{M}
 \phi_i$: Property 1. It also notes that in practice the two infinite weights
 are avoided by eliminating two unknowns with these two constraints. One way to
 do that, used here: fix $\phi_0$ at the all-off output, write the last
@@ -1018,8 +1046,8 @@ lands on the exact values, equal weighting does not.
 
 ### Why a weighted regression can return Shapley values
 
-The paper's intuition (page 6) is that Eq. 8 is a difference of means, that
-the mean is the best least-squares estimate for a set of points, and that it is
+Lundberg and Lee's (2017, p. 6) intuition is that Eq. 8 is a difference of
+means, that the mean is the best least-squares estimate for a set of points, and that it is
 therefore natural to look for a weighting under which least squares reproduces
 Eq. 8. The proof that the Shapley kernel does so is in the Supplementary
 Material, which this project does not hold. What follows makes the intuition
@@ -1086,14 +1114,15 @@ states that the Shapley kernel is the weighting under which the joint fit
 still returns every Shapley value, which the second engine-5 table above
 confirms on these numbers.
 
-A footnote (page 6) points out that econometrics, the statistics of economic
-data, had already stated Shapley values in an equivalent way, as the answer to
-a minimisation under constraints (Charnes et al., 1988, its reference [2]): the
-numbers that make an expression built from squares and
-products of the unknowns as small as possible under side conditions. The paper
-also says (page 6) that LIME's mapping is equivalent to the approximation of
-Eq. 12, which is what lets a LIME-style regression estimate SHAP values without
-reference to the model's insides.
+A footnote of Lundberg and Lee (2017, p. 6, footnote 2) points out that
+econometrics, the statistics of economic data, had already stated Shapley
+values in an equivalent way, as the answer to a minimisation under constraints
+(its reference [2], p. 10, a 1988 work by Charnes and colleagues): the numbers
+that make an expression built from squares and products of the unknowns as
+small as possible under side conditions.
+The paper also says (p. 6) that LIME's mapping is equivalent to the
+approximation of Eq. 12, which is what lets a LIME-style regression estimate
+SHAP values without reference to the model's insides.
 
 ### What other weightings get wrong
 
@@ -1176,16 +1205,16 @@ starting value and the prediction, so they break Property 1.
 
 ### Sampled settings: what the ten pages do not give
 
-The paper gives the cost of the regression over all settings as
-$O(2^M + M^3)$ (page 6, under Low-Order SHAP), meaning the work grows no faster
-than $2^M + M^3$ does; that is practical only for small $M$. For larger $M$,
-Kernel SHAP fits a sample of settings, but the main text does not say how the
-settings are sampled, or how sampled settings are weighted, so the sampled
+The paper gives the cost of the regression over all settings as $O(2^M + M^3)$
+(Lundberg & Lee, 2017, p. 6, under Low-Order SHAP), meaning the work grows no
+faster than $2^M + M^3$ does; that is practical only for small $M$. For larger
+$M$, Kernel SHAP fits a sample of settings, but the main text does not say how
+the settings are sampled, or how sampled settings are weighted, so the sampled
 estimator cannot be rebuilt from these ten pages. The Figure 3 runs also add a
-penalty on the coefficients (Figure 3's caption names a "debiased lasso", and
-Section 5.1 says Kernel SHAP's advantage holds particularly when such a penalty
-is added), whereas Theorem 2 sets $\Omega = 0$. The theorem's guarantee covers
-the full enumeration demonstrated here, not the sampled and penalised estimator
+penalty on the coefficients (Figure 3's caption, p. 8, names a "debiased
+lasso", and Section 5.1, p. 8, says Kernel SHAP's advantage holds particularly
+when such a penalty is added), whereas Theorem 2 sets $\Omega = 0$. The
+theorem's guarantee covers the full enumeration demonstrated here, not the sampled and penalised estimator
 whose accuracy Section 5 measures.
 
 **Do not confuse the Shapley kernel with the weight of Eq. 4.** Eq. 4's weight
@@ -1196,13 +1225,14 @@ a squared miss of the whole regression, and for four features is 0.25, 0.125,
 values by different routes.
 
 **Do not confuse model-agnostic with model-specific estimation.** Shapley
-sampling values and Kernel SHAP are **model-agnostic**: they use only inputs and
-outputs, so they apply to any model but learn only what varying the input
-reveals. Section 4.2 lists four methods for specific model types. Three of
-them, Linear SHAP, Max SHAP and Deep SHAP, read the model's form, its
-multipliers or its layers, and the paper presents them as faster for that
-reason. The fourth, Low-Order SHAP, is the full regression of Theorem 2; it
-needs only inputs and outputs, and what sets it apart is that $M$ is small.
+sampling values and Kernel SHAP are **model-agnostic** (Lundberg & Lee, 2017,
+p. 5): they use only inputs and outputs, so they apply to any model but learn only
+what varying the input reveals. Section 4.2 (pp. 6–7) lists four methods for
+specific model types. Three of them, Linear SHAP, Max SHAP and Deep SHAP, read
+the model's form, its multipliers or its layers, and the paper presents them as
+faster for that reason. The fourth, Low-Order SHAP, is the full regression of
+Theorem 2; it needs only inputs and outputs, and what sets it apart is that $M$
+is small.
 
 The key idea is that a linear regression of the model's outputs on the on/off
 switches, weighted by the Shapley kernel and forced through the all-off and
@@ -1214,7 +1244,7 @@ all-on outputs, returns the Shapley values as its coefficients.
 
 ### Linear SHAP
 
-Corollary 1 (page 6): for a straight-line model
+Corollary 1 (Lundberg & Lee, 2017, Section 4.2, p. 6): for a straight-line model
 $f(x) = \sum_{j=1}^{M} w_j x_j + b$, assuming independent features (Eq. 11),
 
 $$\phi_i(f, x) = w_i\,\big(x_i - E[x_i]\big).$$
@@ -1283,17 +1313,17 @@ and treats the printed $\phi_0 = b$ as holding for features centred on zero.
 ### Max SHAP and Deep SHAP
 
 Two further shortcuts are described in words here and not demonstrated, because
-this project uses neither. The algorithms themselves are in the Supplementary
-Material.
+this project uses neither.
 
-**Max SHAP** (page 7) computes the Shapley values of a function that returns
-the largest of its $M$ inputs, by working through the inputs in sorted order
-and computing the probability that each one raises the maximum. The paper gives
-its cost as $O(M^2)$ instead of $O(M 2^M)$. Figure 4B, under the paper's
-evidence below, is a function of this kind, worked by hand.
+**Max SHAP** (Lundberg & Lee, 2017, Section 4.2, p. 7) computes the Shapley
+values of a function that returns the largest of its $M$ inputs, by working
+through the inputs in sorted order and computing the probability that each one
+raises the maximum. The paper gives its cost as $O(M^2)$ instead of $O(M 2^M)$,
+and leaves the full algorithm to the Supplementary Material. Figure 4B, under
+the paper's evidence below, is a function of this kind, worked by hand.
 
-**Deep SHAP** (page 7) starts from a connection with DeepLIFT: if DeepLIFT's
-reference value is read as the average input $E[x]$ of Eq. 12, DeepLIFT
+**Deep SHAP** (Lundberg & Lee, 2017, Section 4.2, p. 7) starts from a
+connection with DeepLIFT: if DeepLIFT's reference value is read as the average input $E[x]$ of Eq. 12, DeepLIFT
 approximates SHAP values under the assumptions of independent features and a
 linear model. Deep SHAP computes SHAP values exactly for small pieces of a
 network whose SHAP values can be written down by a formula: a linear layer,
@@ -1311,12 +1341,13 @@ approximation for the whole network, built from exact values for its pieces.
 
 ## The paper's evidence
 
-Section 5 (pages 8–9) supports three claims.
+Lundberg and Lee (2017, [Section 5,
+pp. 8–9](../references/lundberg_2017_unified_shap.pdf#page=8)) support three claims.
 
 **Kernel SHAP estimates are better for a given number of model evaluations.**
-Figure 3 (page 8) compares Kernel SHAP, fitted with what the paper calls a
-debiased lasso, Shapley sampling values, and the open-source implementation of
-LIME. (A lasso is a regression whose penalty on the sizes of the coefficients
+Figure 3 of Lundberg and Lee (2017, p. 8) compares Kernel SHAP, fitted with
+what the paper calls a debiased lasso, Shapley sampling values, and the
+open-source implementation of LIME. (A lasso is a regression whose penalty on the sizes of the coefficients
 sets small ones to exactly zero; the paper does not say how it removes the
 penalty's bias.) Each method estimates the value of one feature in two
 decision-tree models (models that predict by a sequence of yes/no threshold
@@ -1327,9 +1358,10 @@ percentiles of 200 repeated estimates at each size (the values below which
 Kernel SHAP reaching accurate estimates with fewer evaluations, and LIME's
 values differing substantially from the Shapley values.
 
-**SHAP values agree better with human explanations.** Figure 4 (page 9)
-reports a study run on Amazon Mechanical Turk, a paid online service on which
-people complete small tasks, with two small models. In the first, a sickness
+**SHAP values agree better with human explanations.** Figure 4 of Lundberg and
+Lee (2017, p. 9) reports a study with two small models, run on Amazon
+Mechanical Turk (Section 5.2, p. 8), a paid online service on which people
+complete small tasks. In the first, a sickness
 score is 2 when a patient has both fever and cough, 5 when only one of them,
 and 0 otherwise; a third input, congestion, plays no part. In the second, three
 men are paid according to the best score any of them achieved, with 5, 4 and 0
@@ -1338,7 +1370,7 @@ explanation given by 30 and 52 participants respectively beside SHAP and LIME
 in both panels, and beside the original DeepLIFT in the second, and the paper
 reports much stronger agreement between the people and SHAP. The study takes
 agreement with people who understand the model as its measure of a good
-explanation, an assumption the paper states.
+explanation, an assumption the paper states (Section 5.2, p. 8).
 
 Both models are small enough to compute exactly with Eq. 4. Taking "no input
 present" as the reference, a score of 0 and a profit of 0 (this page's choice;
@@ -1404,9 +1436,10 @@ SHAP's at these values: 1.0 for fever and cough and zero for congestion, and 3,
 2 and zero for the three men. LIME's bars for fever and cough are below zero,
 and the original DeepLIFT gives all 5 dollars to the first man.
 
-**Better SHAP estimates explain class differences better.** Figure 5 (page 9)
-explains a pre-trained network that recognises handwritten digits (the MNIST
-dataset), the same as in the paper's reference [7]: two convolution layers,
+**Better SHAP estimates explain class differences better.** Figure 5 of
+Lundberg and Lee (2017, p. 9) explains a pre-trained network that recognises
+handwritten digits (the MNIST dataset; Bach et al., 2015, Abstract, p. 1), the
+same as in the paper's reference [7]: two convolution layers,
 which slide small learned filters across the image, then two fully connected
 layers (every input joined to every output) and ten outputs, one per digit.
 SHAP, computed with Kernel SHAP, and LIME each use 50,000 samples. Each method
@@ -1428,44 +1461,44 @@ time series.
 
 ## What this project takes from it
 
-**The equation.** Wen et al. (2026) define their explanation in Section 2.4
-([page 7](../references/wen_2026_estgnn_dynamic_shap.pdf#page=7)). Wen et al.'s
-Eq. 14 is Lundberg and Lee's Definition 1 written for the sensor nodes, Wen et
-al.'s Eq. 15 is Lundberg and Lee's Eq. 4 with $n = 14$ sensors and $f(S)$ the
-network's prediction when only the sensors in $S$ are considered, and Wen et
-al.'s Eq. 16 repeats it at each time step, which is what makes it dynamic. The
-project computes Wen et al.'s Eq. 15 with Eq. 4's weight, `coalition_weights`
-in `explain/shap.py`; for four sensors that function returns 1/4, 1/12, 1/12
-and 1/4, the "Weight of each group" column of the order-weights table above.
+**The equation.** Wen et al. (2026, [Section 2.4,
+p. 7](../references/wen_2026_estgnn_dynamic_shap.pdf#page=7)) define their
+explanation. Wen et al.'s Eq. 14 is Lundberg and Lee's Definition 1 written for
+the sensor nodes, Wen et al.'s Eq. 15 is Lundberg and Lee's Eq. 4 with $n = 14$
+sensors and $f(S)$ the network's prediction when only the sensors in $S$ are
+considered, and Wen et al.'s Eq. 16 repeats it at each time step, which is what
+makes it dynamic. The project computes Wen et al.'s Eq. 15 with Eq. 4's weight,
+`coalition_weights` in `explain/shap.py`; for four sensors that function returns
+1/4, 1/12, 1/12 and 1/4, the "Weight of each group" column of the order-weights
+table above.
 
 **Do not confuse Lundberg and Lee's Eq. 15 with Wen et al.'s Eq. 15.** The first
 is Deep SHAP's chain rule, which the project does not use. The second is the
 Shapley sum the project computes.
 
-**Where the project sits in Lundberg and Lee's terms.** It evaluates all
-$2^{14} = 16{,}384$ groups of sensors for each window, so it uses none of
-Section 4's estimators: no Shapley sampling, no Kernel SHAP, no Linear, Max or
-Deep SHAP. Wen et al. do not say what replaces a sensor outside $S$; the project
-replaces its whole window of readings by the sensor's average training window
-(assumption A-20). In Lundberg and Lee's terms that is Eq. 12, independence
-plus the output at the average reading, applied to a network that is not
-linear. The project's numbers are therefore exact Shapley values of that
+**Where the project sits in Lundberg and Lee's terms.** It evaluates all $2^{14}
+= 16{,}384$ groups of sensors for each window, so it uses none of Section 4's
+estimators: no Shapley sampling, no Kernel SHAP, no Linear, Max or Deep SHAP.
+Wen et al. (2026, Section 2.4) do not say what replaces a sensor outside $S$;
+the project replaces its whole window of readings by the sensor's average
+training window (assumption A-20). In Lundberg and Lee's terms that is Eq. 12,
+independence plus the output at the average reading, applied to a network that
+is not linear. The project's numbers are therefore exact Shapley values of that
 replacement rule, not the conditional SHAP values of Eqs. 9–10 and not the
 background averages of Eq. 11. The mechanics are on the Dynamic SHAP page,
 [steps 1 to 3](../learn/10_dynamic_shap.md#1--choose-a-reference-window).
 
-**The starting value.** Three different quantities carry that name. Lundberg
-and Lee's Figure 1 calls the base value $E[f(z)]$, the average prediction. Wen
-et al.'s Eq. 14 describes $\phi_0$ as the average of the target variable. The
-project uses the prediction at the average training window, which Property 1
-forces under its replacement rule (assumption A-24; see
-[step 4](../learn/10_dynamic_shap.md#4--check-that-the-contributions-add-up)
-of the Dynamic SHAP page). For this page's straight line all three coincide, as
-the first table shows; for the project's network they do not, because the
-average of a non-linear network's outputs is in general not its output at the average
-input, and
-[the record of that choice](../assumptions/A-24.md)
-holds the gap measured on one trained network.
+**The starting value.** Three different quantities carry that name. Lundberg and
+Lee (2017, Fig. 1, p. 5) call the base value $E[f(z)]$, the average prediction.
+Wen et al. (2026, Eq. 14, p. 7) describe $\phi_0$ as the average of the target
+variable. The project uses the prediction at the average training window, which
+Property 1 forces under its replacement rule (assumption A-24; see [step
+4](../learn/10_dynamic_shap.md#4--check-that-the-contributions-add-up) of the
+Dynamic SHAP page). For this page's straight line all three coincide, as the
+first table shows; for the project's network they do not, because the average of
+a non-linear network's outputs is in general not its output at the average
+input, and [the record of that choice](../assumptions/A-24.md) holds the gap
+measured on one trained network.
 
 ---
 
@@ -1515,9 +1548,9 @@ reference_change = pd.DataFrame({
 
 Both columns satisfy local accuracy, yet T30 changes sign and T50's share grows
 by more than half. Theorem 1's uniqueness holds once the mapping is fixed
-(Section 3, page 4); choosing the mapping, and the data behind it, is outside
-the theorem. A SHAP value answers "compared with what?", and the reference is
-part of the answer.
+(Lundberg & Lee, 2017, Section 3, p. 4); choosing the mapping, and the data
+behind it, is outside the theorem. A SHAP value answers "compared with what?",
+and the reference is part of the answer.
 
 ### They depend on what "missing" means when features are related
 
@@ -1543,9 +1576,9 @@ cycles, 14.344858 more: local accuracy means matching the model, not the truth.
 
 ### They are local
 
-Each set of values explains one prediction. An average of values over many
-predictions, such as a sensor ranking, is a different object, a **global**
-summary, and inherits every choice above.
+Each set of values explains one prediction (Lundberg & Lee, 2017, Section 2,
+p. 2). An average of values over many predictions, such as a sensor ranking, is a
+different object, a **global** summary, and inherits every choice above.
 
 ### SHAP in seven answers
 
@@ -1556,22 +1589,49 @@ summary, and inherits every choice above.
 | What does it change? | Which features are present; missing ones are replaced as the mapping says (Eqs. 9–12) |
 | What does it measure? | What each feature adds to the (expected) prediction when it joins a group, averaged over arrival orders |
 | What comes out? | One signed number per feature, in the output's unit, plus a starting value; they add to $f(x)$ |
-| What does it assume? | A mapping and the data behind it; for Eqs. 11–12, independent features and, for Eq. 12, a linear model; and that Properties 1–3 are the right requirements, which the paper calls desirable |
+| What does it assume? | A mapping and the data behind it; for Eqs. 11–12, independent features and, for Eq. 12, a linear model; and that Properties 1–3 are the right requirements, which the paper calls desirable (Lundberg & Lee, 2017, p. 4) |
 | What does it not prove? | This page's conclusion; the paper does not discuss it: that a feature causes the outcome, that the model is accurate, or that the split is the only reasonable one once the mapping is open to choice |
 
 ---
 
-## Sources
+## References
 
-- [Lundberg and Lee (2017)](../references/lundberg_2017_unified_shap.pdf) —
-  Lundberg, S. M., & Lee, S.-I. (2017). A unified approach to interpreting
+- Bach, S., Binder, A., Montavon, G., Klauschen, F., Müller, K.-R., & Samek, W.
+  (2015). On pixel-wise explanations for non-linear classifier decisions by
+  layer-wise relevance propagation. *PLOS ONE*, *10*(7), Article e0130140.
+  https://doi.org/10.1371/journal.pone.0130140
+  [Copy](../references/bach_2015_layerwise_relevance_propagation.pdf)
+- Frederick, D. K., DeCastro, J. A., & Litt, J. S. (2007). *User's guide for
+  the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)*
+  (NASA/TM-2007-215026). NASA Glenn Research Center.
+  https://ntrs.nasa.gov/citations/20070034949. Page numbers on this page are
+  those of the PDF file, not the report's printed page numbers.
+  [Copy](../references/frederick_2007_cmapss_users_guide.pdf)
+- Lundberg, S. M., & Lee, S.-I. (2017). A unified approach to interpreting
   model predictions. In I. Guyon, U. von Luxburg, S. Bengio, H. Wallach,
   R. Fergus, S. Vishwanathan, & R. Garnett (Eds.), *Advances in Neural
-  Information Processing Systems 30 (NIPS 2017)* (pp. 4765–4774). Curran
-  Associates.
+  Information Processing Systems 30 (NIPS 2017)* (pp. 4765–4774).
   https://proceedings.neurips.cc/paper/2017/hash/8a20a8621978632d76c43dfd28b67767-Abstract.html
-- [Wen et al. (2026)](../references/wen_2026_estgnn_dynamic_shap.pdf) — Wen,
-  J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B. (2026).
-  Explainable spatiotemporal graph neutral network with dynamic SHAP
+  [Copy](../references/lundberg_2017_unified_shap.pdf). The copy held is the
+  10-page proceedings paper, numbered 1 to 10; equation, section, figure and
+  page numbers on this page refer to it. Its Supplementary Material is not held.
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
+  the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
+  Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
+  modeling for aircraft engine run-to-failure simulation. In *2008
+  International Conference on Prognostics and Health Management* (pp. 1–9).
+  IEEE. https://doi.org/10.1109/PHM.2008.4711414
+  [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
+- Schnake, T., Eberle, O., Lederer, J., Nakajima, S., Schütt, K. T., Müller,
+  K.-R., & Montavon, G. (2022). Higher-order explanations of graph neural
+  networks via relevant walks. *IEEE Transactions on Pattern Analysis and
+  Machine Intelligence*, *44*(11), 7581–7596.
+  https://doi.org/10.1109/TPAMI.2021.3115452
+  [Copy](../references/schnake_2022_gnn_lrp_relevant_walks.pdf). The copy held
+  is arXiv version 3.
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
   enhancement for aeroengine RUL prediction. *Aerospace Science and
-  Technology*, 168, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)
