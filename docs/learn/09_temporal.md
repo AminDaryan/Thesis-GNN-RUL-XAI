@@ -7,7 +7,7 @@ algorithm decides which of that information reaches the graph layers.
 Here **time** means successive cycles of the same sensor, one row of NASA's
 data per operational cycle (NASA Prognostics Center of Excellence [NASA PCoE],
 2008). **The graph** links
-different sensors. This page follows time within each sensor; the
+different sensors (Wen et al., 2026, Section 2.1). This page follows time within each sensor; the
 [GNN page](02_graphs.md) explains how sensors exchange information afterwards.
 
 ## Choose a route
@@ -25,8 +25,9 @@ apply one after another.
 | Pass every cycle | All readings, in their original order | Nothing |
 
 The **LSTM**, short for long short-term memory network (Hochreiter &
-Schmidhuber, 1997, Section 4), and **GRU**, short for gated recurrent unit, the
-unit introduced by Cho et al. (2014, Section 2.3), follow the four numbered
+Schmidhuber, 1997, Section 4), and **GRU**, short for gated recurrent unit
+(Ren et al., 2026, p. 2), the unit introduced by Cho et al. (2014, Section 2.3),
+follow the four numbered
 steps below. The fixed alternatives later on this page replace that entire
 route.
 
@@ -44,8 +45,8 @@ units.
 
 The memory examples use **one number per memory list** so every memory value
 can be shown. These are **untrained demonstrations**, with starting parameters
-obtained from the model's initializer, which keeps PyTorch's own starting
-values (assumption A-34), using a fixed seed. They have not been
+obtained, using a fixed seed, from the model's initializer, which keeps
+PyTorch's own starting values (assumption A-34). They have not been
 fitted to engine failures and demonstrate no prediction accuracy. The usual
 memory width is 32, a project choice (assumption A-26).
 
@@ -181,7 +182,7 @@ windows; the memory starts at zero for every new window in this implementation.
 
 ### One LSTM per sensor
 
-An LSTM carries two lists: the **cell state**, the memory it updates, and the **hidden state**, the output it calculates from that memory. **Gates** are multipliers between zero and one. They control how much old memory to keep, how much proposed information to add, and how much updated memory to expose (Wen et al., 2026, Section 2.2, Eqs. 1–6). The gates that add and expose come from the original LSTM (Hochreiter & Schmidhuber, 1997, Section 4); the gate that keeps old memory, the forget gate, was added later (Gers et al., 2000, Section 3.1, Eq. 7).
+An LSTM carries two lists: the **cell state**, the memory it updates, and the **hidden state**, the output it calculates from that memory. **Gates** are multipliers between zero and one. They control how much old memory to keep, how much proposed information to add, and how much updated memory to expose (Wen et al., 2026, Section 2.2, Eqs. 1–6). The gates that add and expose come from the original LSTM (Hochreiter & Schmidhuber, 1997, Section 4); the gate that keeps old memory, the forget gate, was added later (Gers et al., 2000, Section 3, Eq. 7).
 
 Giving each sensor its own LSTM follows the paper (Wen et al., 2026, Section 2.2, Eq. 7). Memory width and conversion into graph inputs remain project choices (assumption A-26).
 
@@ -285,7 +286,7 @@ One hidden output per cycle for every sensor. These are calculated memory output
 
 ### One LSTM for all sensors
 
-Sharing means one set of parameters is used for every sensor. It does not mean all sensors share one memory. This is an alternative to the paper’s separate-sensor arrangement (Wen et al., 2026, Section 2.2, Eq. 7).
+Sharing means one set of parameters is used for every sensor. It does not mean all sensors share one memory. This is a project alternative to the paper’s separate-sensor arrangement (Wen et al., 2026, Section 2.2, Eq. 7).
 
 #### Process
 
@@ -396,7 +397,7 @@ Finally, **new hidden = update × old hidden + (1 − update) × proposal** (Cho
 | 3 | -0.700499 | 0.104984 | 0.700086 | 0.680641 | 0.298128 | 0.166667 |
 | 4 | -0.770999 | 0.166667 | 0.702790 | 0.684881 | 0.219047 | 0.183173 |
 
-Cycle 1 gives `0.656123 × 0 + (1 − 0.656123) × 0.132091 = 0.045423`. That output becomes the old hidden state in cycle 2. Unlike an LSTM, there is no separate cell state.
+Cycle 1 gives `0.656123 × 0 + (1 − 0.656123) × 0.132091 = 0.045423`. That output becomes the old hidden state in cycle 2. Unlike an LSTM, there is no separate cell state (Cho et al., 2014, Section 2.3, Eqs. 5–8).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -447,7 +448,7 @@ All hidden outputs for this window. The final row continues to step 3.
 
 ### One GRU for all sensors
 
-The shared GRU uses a common update rule with an independent memory for each history.
+The shared GRU, also a project alternative (assumption A-36), uses a common update rule with an independent memory for each history.
 
 #### Process
 
@@ -702,7 +703,7 @@ One reading per sensor. Do not confuse this with the last hidden state: that is 
 
 ### Average the window
 
-An average describes the overall level. It treats cycles equally and discards their order: reversing a history leaves its average unchanged.
+An average describes the overall level. It treats cycles equally and discards their order: reversing a history leaves its average unchanged. Like the last reading, it keeps one number per sensor in place of the paper’s temporal stage; it is a project alternative, measured against the last reading (assumption A-07).
 
 #### Process
 
@@ -776,7 +777,7 @@ The same window:
 
 ##### Function
 
-The middle of cycles 1–4 is 2.5. Subtract it from every cycle position. Multiply each centred position by its reading, add the products, then divide by the sum of squared centred positions. This gives the change per cycle of the straight line whose squared gaps from the readings are smallest. Multiply by the three cycle intervals to obtain the change over the window.
+The middle of cycles 1–4 is 2.5. Subtract it from every cycle position. Multiply each centred position by its reading, add the products, then divide by the sum of squared centred positions. This gives the change per cycle of the straight line whose squared gaps from the readings are smallest. Multiply by the three cycle intervals to obtain the change over the window, which this project reports instead of the slope (assumption A-28).
 
 Every contribution for T50 is shown:
 
@@ -890,7 +891,7 @@ Three complete input values for each graph node:
 
 ### Pass every cycle
 
-Keeping the entire history lets the first graph layer apply a multiplier to every cycle position, instead of receiving a summary. The oldest and newest readings occupy different columns.
+Keeping the entire history lets the first graph layer apply a multiplier to every cycle position, instead of receiving a summary. The oldest and newest readings occupy different columns. This is not the paper’s arrangement. It was this project’s earlier default, replaced by the last reading because those multipliers then learn across the cycles inside the graph layer, a temporal stage the paper never describes (assumption A-07).
 
 #### Process
 
@@ -960,7 +961,7 @@ Every reading is retained in its original position:
 The paper describes separate LSTM networks (Wen et al., 2026, Section 2.2). The
 command-line default instead keeps the last reading, so its results belong
 beside the paper's comparison without LSTM, its "ESTGNN w/o LSTM" row, not the
-full-model headline (Wen et al., 2026, Section 4.3, Table 11). Using LSTM here
+full-model headline (Wen et al., 2026, Section 4.3, Table 11, p. 12). Using LSTM here
 still requires unspecified choices about width and conversion to graph
 inputs (assumptions A-11 and A-26).
 
@@ -992,6 +993,11 @@ records the alternatives and their limits.
 - NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
   the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
   Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Ren, Y., Meng, Z., & Li, J. (2026). Spatial-temporal graph hybrid neural
+  network for remaining useful life prediction of aero-engines. *Reliability
+  Engineering & System Safety*, *274*, Article 112433.
+  https://doi.org/10.1016/j.ress.2026.112433
+  [Copy](../references/ren_2026_spatial_temporal_graph_hybrid.pdf)
 - Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
   (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
   enhancement for aeroengine RUL prediction. *Aerospace Science and
