@@ -1,18 +1,20 @@
 # LSTM (1997)
 
-Wen et al. put a **long short-term memory network**, or **LSTM**, in front of
+Wen et al. (2026, [Section 2](../references/wen_2026_estgnn_dynamic_shap.pdf#page=4))
+put a **long short-term memory network**, or **LSTM**, in front of
 their graph layers. An LSTM is a **recurrent network**: it reads a sequence one
 step at a time and carries numbers from each step to the next, and it is built
 so that what it carries can survive for many steps. This page explains it from
 the papers that introduced it.
-[Hochreiter and Schmidhuber (1997)](../references/hochreiter_1997_long_short_term_memory.pdf)
+Hochreiter and Schmidhuber (1997, [Abstract](../references/hochreiter_1997_long_short_term_memory.pdf#page=1))
 reviewed Hochreiter's 1991 analysis of why ordinary recurrent networks could
 not learn to carry information far, and built the memory cell to get round it.
-[Gers, Schmidhuber and Cummins (2000)](../references/gers_2000_learning_to_forget.pdf)
+Gers et al. (2000, [Abstract](../references/gers_2000_learning_to_forget.pdf#page=2))
 added the forget gate, which the 1997 cell did not have and every LSTM cell in
 this project has. A short note near the end separates the LSTM from the unit
-proposed by [Cho et al. (2014)](../references/cho_2014_rnn_encoder_decoder.pdf),
-which PyTorch calls a gated recurrent unit and which the project also offers.
+proposed by Cho et al. (2014, [Section 2.3](../references/cho_2014_rnn_encoder_decoder.pdf#page=3)),
+which PyTorch calls a gated recurrent unit and which the project also offers
+(assumption A-36).
 
 How this project runs the stage, cycle by cycle on real engine data, is taught
 in [Temporal algorithm](../learn/09_temporal.md#2--read-cycles-with-memory).
@@ -31,8 +33,8 @@ at the page where the passage is.
 A recurrent network is made of **units**. Each unit holds one number, its
 **activation**, and recomputes it at every time step from the activations of
 the step before.
-[Section 3.1](../references/hochreiter_1997_long_short_term_memory.pdf#page=3)
-writes the rule as
+Hochreiter and Schmidhuber (1997, [Section 3.1](../references/hochreiter_1997_long_short_term_memory.pdf#page=3))
+write the rule as
 
 $$\mathrm{net}_i(t) = \sum_j w_{ij}\, y^j(t-1), \qquad y^i(t) = f_i\big(\mathrm{net}_i(t)\big)$$
 
@@ -51,8 +53,9 @@ unit, whose own activation was 0.4 and whose input was 0.3, gets
 $\mathrm{net} = 0.5 \times 0.4 + 2.0 \times 0.3 = 0.8$, and its new activation
 is $f(0.8)$. That new activation is then part of the next step's sum. This is
 how a number can be carried forward: each step's activations are inputs to the
-next. Section 1 calls the activations the network's **short-term memory**, as
-opposed to the long-term memory held in the slowly changing weights. The
+next. Hochreiter and Schmidhuber (1997, Section 1) call the activations the
+network's **short-term memory**, as opposed to the long-term memory held in
+the slowly changing weights. The
 question the paper asks is not whether such a network *can* hold a number for
 a long time, but whether training can *find* weights that make it hold the
 right number for as long as it is needed.
@@ -61,7 +64,8 @@ right number for as long as it is needed.
 
 Training compares the network's output with a target and changes the weights
 to shrink the difference. The quantity being made smaller is the **error**,
-here the squared difference between targets and outputs. During one
+here the squared difference between targets and outputs (Hochreiter &
+Schmidhuber, 1997, [Appendix A.1, Eq. 16](../references/hochreiter_1997_long_short_term_memory.pdf#page=26)). During one
 calculation the input sequence and its targets are held fixed, and what can
 change is the weights. The **derivative** of the error with respect to one
 weight says how much the error would change if that weight alone were nudged
@@ -69,13 +73,13 @@ up, and its sign says in which direction. Such a derivative exists because
 every step from a weight to the error, the multiplications, the sums and the
 smooth activation curves, has a slope. The list of these derivatives, one per
 weight, is the **gradient**, and **gradient descent** moves each weight a small
-step against its own derivative.
+step against its own derivative (Gers et al., 2000, [Section 3.2, Eq. 9](../references/gers_2000_learning_to_forget.pdf#page=7)).
 
-To get those derivatives, Section 3.1 works with an **error signal**
-$\vartheta_j(t)$ for each unit $j$ and time $t$. It is *minus* the derivative of
-the error with respect to that unit's net input at that time: how much the
-error would fall per unit increase of the net input. The appendix states this
-definition outright for its own symbol $e_l$
+To get those derivatives, Hochreiter and Schmidhuber (1997, Section 3.1) work
+with an **error signal** $\vartheta_j(t)$ for each unit $j$ and time $t$. It is
+*minus* the derivative of the error with respect to that unit's net input at
+that time: how much the error would fall per unit increase of the net input.
+The appendix states this definition outright for its own symbol $e_l$
 ([Appendix A.1, Eq. 18](../references/hochreiter_1997_long_short_term_memory.pdf#page=26)).
 For an output unit $k$ with target $d_k(t)$:
 
@@ -91,16 +95,16 @@ $$\vartheta_j(t) = f_j'\big(\mathrm{net}_j(t)\big) \sum_i w_{ij}\, \vartheta_i(t
   one step later, each error signal weighted by the connection it came through.
 
 The first formula is minus a derivative. Write the error of output $k$ as half
-its squared difference, $\tfrac12 (d - y)^2$, as Gers et al. do in their
-[Eq. 8](../references/gers_2000_learning_to_forget.pdf#page=7). Its derivative
+its squared difference, $\tfrac12 (d - y)^2$, as Gers et al. (2000,
+[Eq. 8](../references/gers_2000_learning_to_forget.pdf#page=7)) do. Its derivative
 with respect to the output $y$ is $-(d - y)$, and the chain rule of calculus
 multiplies that by the slope $f'$ to reach the net input; the minus sign of the
 definition removes the one in front. The 1997 appendix writes its squared error
-without the half (Eq. 16), which would double every error signal, yet gives the
-formula above for output units (Eq. 19), so this page uses the halved form that
-makes the two agree. With invented numbers: a target of 1, an
-output of 0.8, and the logistic curve introduced below, whose slope at an
-output $y$ is $y\,(1 - y) = 0.8 \times 0.2 = 0.16$, give
+without the half, which would double every error signal, yet gives the formula
+above for output units (Hochreiter & Schmidhuber, 1997, Appendix A.1, Eqs. 16
+and 19), so this page uses the halved form that makes the two agree. With
+invented numbers: a target of 1, an output of 0.8, and the logistic curve
+introduced below, whose slope at an output $y$ is $y\,(1 - y) = 0.8 \times 0.2 = 0.16$, give
 $\vartheta = 0.16 \times (1 - 0.8) = 0.032$. It is positive: raising this
 unit's net input would lower the error.
 
@@ -111,7 +115,8 @@ does to the error. With invented numbers, a slope of 0.2, one weight of 0.5 and
 an error signal of 1.0 one step later give
 $\vartheta_j(t) = 0.2 \times 0.5 \times 1.0 = 0.1$.
 
-Section 3.1 then gives each weight its share. Time $t$'s contribution to the
+Hochreiter and Schmidhuber (1997, Section 3.1) then give each weight its
+share. Time $t$'s contribution to the
 update of the weight $w_{jl}$, from a unit $l$ into unit $j$, is
 $\alpha\, \vartheta_j(t)\, y^l(t-1)$, where $\alpha$ is the **learning rate**,
 the size of the step, and the contributions of all time steps are added
@@ -123,10 +128,11 @@ $0.1 \times 0.1 \times 0.5 = 0.005$ to the weight.
 
 Applying the second formula over and over carries the error signal back
 through the steps of the sequence. That is **back-propagation through time**
-(BPTT). Section 1 names it together with **real-time recurrent learning**
-(RTRL), which reaches the same derivatives working forwards: at every step it
-updates, for every weight, how much the units' activations depend on that
-weight, so it never has to store the earlier steps. Eq. 27 further down is a
+(BPTT). Hochreiter and Schmidhuber (1997, Section 1) name it together with
+**real-time recurrent learning** (RTRL), which reaches the same derivatives
+working forwards: at every step it updates, for every weight, how much the
+units' activations depend on that weight, so the memory it needs does not grow
+with the length of the sequence (Section 4, footnote 3). Eq. 27 further down is a
 derivative carried forwards in this way. Section 5 notes that the two give
 exactly the same gradient when BPTT is not cut short and RTRL changes the
 weights only at the end of each sequence. Section 1 says both suffer from the
@@ -143,8 +149,8 @@ The rest of Section 3.1 is the paper's outline of the analysis in Hochreiter's
 is how much of an error signal at one unit, at the last step, still arrives at
 a unit several steps earlier. Eq. 1 expresses the answer for $q$ steps back
 through the answer for $q - 1$ steps, and Eq. 2, which the paper proves from it
-by induction, writes it out in full
-([Section 3.1, Eq. 2](../references/hochreiter_1997_long_short_term_memory.pdf#page=4)):
+by induction, writes it out in full (Hochreiter & Schmidhuber, 1997,
+[Section 3.1, Eq. 2](../references/hochreiter_1997_long_short_term_memory.pdf#page=4)):
 
 $$\frac{\partial \vartheta_v(t-q)}{\partial \vartheta_u(t)} = \sum_{l_1=1}^{n} \cdots \sum_{l_{q-1}=1}^{n} \;\prod_{m=1}^{q} f'_{l_m}\big(\mathrm{net}_{l_m}(t-m)\big)\, w_{l_m l_{m-1}}, \qquad l_0 = u,\; l_q = v$$
 
@@ -167,24 +173,25 @@ multiplied together.
 Eq. 2 is copied above as the manuscript prints it, and its weight index is the
 wrong way round. By the paper's own convention $w_{ij}$ is the weight from $j$
 to $i$, and Eq. 1's one-step case is $f'_v\,w_{uv}$, the weight from $v$ to
-$u$. Eq. 2 with $q = 1$ gives $w_{l_1 l_0} = w_{vu}$ instead. The weight an
-error actually crosses at step $m$ is $w_{l_{m-1} l_m}$, the forward connection
-from the earlier unit $l_m$ to the later unit $l_{m-1}$. Nothing below depends
+$u$ (Hochreiter & Schmidhuber, 1997, Section 3.1, Eq. 1). Eq. 2 with $q = 1$
+gives $w_{l_1 l_0} = w_{vu}$ instead. The weight an error actually crosses at
+step $m$ is $w_{l_{m-1} l_m}$, the forward connection from the earlier unit $l_m$ to the later unit $l_{m-1}$. Nothing below depends
 on this: for a single unit connected to itself, as in the example, both
 readings name the same weight.
 
 For a single unit connected to itself there is one path, and the formula
 reduces to a product of $q$ factors $f'(\mathrm{net}(t-m))\,w$. If every factor
 is larger than 1 in size, the product grows exponentially with $q$ and the
-signal **blows up**, which, Section 3.1 warns, may make the weights swing back
-and forth and the learning unstable. If every factor is smaller than 1, the product shrinks
+signal **blows up**, which may make the weights swing back and forth and the
+learning unstable. If every factor is smaller than 1, the product shrinks
 exponentially and the signal **vanishes**: nothing learned at the last step
-reaches the earlier ones in useful size. With invented numbers, ten factors of
+reaches the earlier ones in useful size (Hochreiter & Schmidhuber, 1997,
+Section 3.1). With invented numbers, ten factors of
 0.25 multiply to $0.25^{10} = 1/1{,}048{,}576$, less than one millionth.
 
 Which case happens depends on the activation function. The paper uses the
-**logistic sigmoid**, $f(x) = 1/(1 + e^{-x})$
-([Appendix A.1, Eq. 3](../references/hochreiter_1997_long_short_term_memory.pdf#page=24)),
+**logistic sigmoid**, $f(x) = 1/(1 + e^{-x})$ (Hochreiter & Schmidhuber, 1997,
+[Appendix A.1, Eq. 3](../references/hochreiter_1997_long_short_term_memory.pdf#page=24)),
 an S-shaped curve that goes from 0 to 1. Its slope is $f(x)\,(1 - f(x))$,
 largest at $x = 0$, where it is $0.5 \times 0.5 = 0.25$. Section 3.1 draws three
 conclusions from this:
@@ -199,31 +206,37 @@ conclusions from this:
   and the short-range error signals alike, so the ratio between them stays the
   same.
 
-For a whole network the section also bounds the scaling factor
-([page 5](../references/hochreiter_1997_long_short_term_memory.pdf#page=5)):
+For a whole network the section also bounds the scaling factor (Hochreiter &
+Schmidhuber, 1997, [Section 3.1](../references/hochreiter_1997_long_short_term_memory.pdf#page=5)):
 if every weight is smaller in size than $4.0/n$, it is at most $n\,\tau^q$ with
 $\tau = n\,w_{\max}/4.0 < 1$, where $w_{\max}$ is the largest weight size. The
 bound shrinks exponentially in $q$. The paper calls it a weak bound, since it
 is reached only when every slope is at its largest and every path has the same
 sign.
 
-Wen et al. motivate their recurrent stage by this problem, which their
-[Section 2.2](../references/wen_2026_estgnn_dynamic_shap.pdf#page=4) calls the
-vanishing gradient problem.
+Wen et al. (2026, [Section 2.2](../references/wen_2026_estgnn_dynamic_shap.pdf#page=4))
+motivate their recurrent stage by this problem, which they call the vanishing
+gradient problem.
 
 ### Worked example: one unit reading T50
 
 The examples on this page use real readings of one sensor, **T50**, a
-temperature measured at the outlet of the engine's low-pressure turbine. They
-come from training engine 1 of **FD001**, the part of NASA's simulated-engine
-data, C-MAPSS, that this project uses ([C-MAPSS](cmapss.md)). The data hold one
-row per engine per **cycle**, one flight, and engine 1 ran for 192 cycles. The
-readings are prepared the way the project prepares every reading:
-[smoothed](../learn/04_the_pipeline.md#2--smooth-each-sensor), then
+temperature measured at the outlet of the engine's low-pressure turbine
+(Saxena et al., 2008, [Table 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
+They come from training engine 1 of **FD001** (NASA Prognostics Center of
+Excellence [NASA PCoE], 2008), the part of NASA's simulated-engine data,
+C-MAPSS, that this project uses ([C-MAPSS](cmapss.md)). The data hold one row
+per engine per **cycle** (NASA PCoE, 2008), which this project reads as one
+flight ([What one cycle is](../learn/01_the_problem.md#what-one-cycle-is)), and
+engine 1 ran for 192 cycles. The readings are prepared the way the project
+prepares every reading:
+[smoothed](../learn/04_the_pipeline.md#2--smooth-each-sensor) (Wen et al.,
+2026, Section 3.2.3, Eq. 18; assumption A-04), then
 [rescaled](../learn/04_the_pipeline.md#rescale-each-sensor) by subtracting the
 sensor's average over the training engines and dividing by its **standard
-deviation** there, the typical distance of a reading from that average. A value
-of 2 is two standard deviations above the training average.
+deviation** there, the typical distance of a reading from that average
+(assumptions A-03 and A-25). A value of 2 is two standard deviations above the
+training average.
 
 The demonstration unit is one logistic unit connected to itself with weight
 $w$. At each cycle its net input is $w$ times its previous activation plus 1.0
@@ -379,8 +392,8 @@ the network cannot learn from events far in the past.
 
 ## The constant error carousel (Section 3.2)
 
-[Section 3.2](../references/hochreiter_1997_long_short_term_memory.pdf#page=5)
-asks what a single unit $j$ connected to itself would need for the error signal
+Hochreiter and Schmidhuber (1997, [Section 3.2](../references/hochreiter_1997_long_short_term_memory.pdf#page=5))
+ask what a single unit $j$ connected to itself would need for the error signal
 to pass through it unchanged. From the backward formula, one step back
 multiplies its error signal by $f_j'(\mathrm{net}_j(t))\,w_{jj}$, where
 $w_{jj}$ is the weight of its connection to itself. Constant flow therefore
@@ -404,7 +417,8 @@ the 30 real readings, with automatic differentiation: every product is exactly
 1.
 
 The carousel cannot be used alone, because it is also connected to other
-units, and Section 3.2 names two conflicts that this causes:
+units, and Hochreiter and Schmidhuber (1997, Section 3.2) name two conflicts
+that this causes:
 
 - **Input weight conflict.** One incoming weight has to do two jobs at
   different times: let a relevant input switch the unit on, and keep later,
@@ -416,7 +430,8 @@ units, and Section 3.2 names two conflicts that this causes:
 
 The paper notes that both conflicts exist for short time lags too, but that
 they grow with the lag, because stored information must be protected for
-longer and more already-correct outputs must be protected from disturbance.
+longer and more already-correct outputs must be protected from disturbance
+(Section 3.2).
 
 The key idea is that an error signal passes back through a unit unchanged only
 if the unit's slope times its self-weight is exactly 1, which forces a linear
@@ -427,8 +442,8 @@ but on its own it cannot choose what to store or when to be read.
 
 ### Two gates around the carousel
 
-[Section 4](../references/hochreiter_1997_long_short_term_memory.pdf#page=6)
-adds two **gates** to the carousel. A gate is a unit of its own whose
+Hochreiter and Schmidhuber (1997, [Section 4](../references/hochreiter_1997_long_short_term_memory.pdf#page=6))
+add two **gates** to the carousel. A gate is a unit of its own whose
 activation, a number between 0 and 1, multiplies some other quantity: at 0 it
 blocks it, at 1 it lets it through whole. The **input gate** multiplies what
 enters the carousel and the **output gate** multiplies what leaves it. The
@@ -458,8 +473,7 @@ $$y^{c_j}(t) = y^{\mathrm{out}_j}(t)\; h\big(s_{c_j}(t)\big)$$
   whoever builds the network. One of them can be a unit whose activation is
   always 1.0; the weight from it is then a constant added to the net input,
   which the papers call a **bias** and this page calls an **offset** (Gers et
-  al. describe it so in
-  [Section 3.3](../references/gers_2000_learning_to_forget.pdf#page=10)).
+  al., 2000, [Section 3.3](../references/gers_2000_learning_to_forget.pdf#page=10)).
 - The three net inputs are three separate weighted sums of the same previous
   activations, with three separate sets of weights.
 - $f$ is the logistic sigmoid (Eq. 3), so both gates lie between 0 and 1.
@@ -482,7 +496,8 @@ input gate $y^{\mathrm{in}_j}$, between 0 and 1, is how much of that proposal
 is added. PyTorch's documentation calls its version of the cell input the cell
 gate, but it is the quantity being multiplied, not a multiplier.
 
-Appendix A.1 gives the two squashing curves used in the experiments:
+Hochreiter and Schmidhuber (1997, Appendix A.1) give the two squashing curves
+used in the experiments:
 
 $$h(x) = \frac{2}{1 + e^{-x}} - 1 \quad (\text{Eq. 4}), \qquad g(x) = \frac{4}{1 + e^{-x}} - 2 \quad (\text{Eq. 5})$$
 
@@ -491,12 +506,12 @@ $g$ from −2 to 2. Written with the **hyperbolic tangent**, $\tanh$, an S-shape
 curve from −1 to 1, they are $h(x) = \tanh(x/2)$ and $g(x) = 2\tanh(x/2)$; the
 code below checks that on a grid of 25 points.
 
-The paper is not consistent about these two ranges. The caption of
-[Table 10](../references/hochreiter_1997_long_short_term_memory.pdf#page=21)
-describes the setting it calls h1 as a sigmoid in [−2, 2] and the setting g2 as
-one in [−1, 1]: the two ranges the other way round. Section 5.1, the
-description of Task 2c in Section 5.2, and Eqs. 4 and 5 all agree with each
-other, so this page follows them.
+The paper is not consistent about these two ranges. The caption of its
+Table 10 describes the setting it calls h1 as a sigmoid in [−2, 2] and the
+setting g2 as one in [−1, 1]: the two ranges the other way round (Hochreiter &
+Schmidhuber, 1997, [Table 10](../references/hochreiter_1997_long_short_term_memory.pdf#page=21)).
+Section 5.1, the description of Task 2c in Section 5.2, and Eqs. 4 and 5 all
+agree with each other, so this page follows them.
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -596,21 +611,21 @@ reaching $1.158084 + 1.136730 = 2.294814$.
 
 ### How the 1997 cell learns (Section 4 and Appendix A.1)
 
-Section 4's paragraph on learning describes a **truncated** gradient. An error
+Section 4's paragraph on learning describes a **truncated** gradient
+(Hochreiter & Schmidhuber, 1997, Section 4). An error
 signal that reaches one of a cell's three net inputs (the cell's own, the input
 gate's and the output gate's) is used to change that net input's incoming
-weights, and is then not passed further back in time. Appendix A.1 does this by
-setting the derivative of each of those net inputs with respect to every
-previous activation to zero
-([page 25](../references/hochreiter_1997_long_short_term_memory.pdf#page=25)).
-The one route left backwards in time runs through the internal state, from
-$s_{c_j}(t)$ to $s_{c_j}(t-1)$, and the state update multiplies along it by
-exactly 1 (Appendix A.2, Eq. 35). Section 4 calls the method a variant of RTRL:
+weights, and is then not passed further back in time.
+[Appendix A.1](../references/hochreiter_1997_long_short_term_memory.pdf#page=25)
+does this by setting the derivative of each of those net inputs with respect to
+every previous activation to zero. The one route left backwards in time runs
+through the internal state, from $s_{c_j}(t)$ to $s_{c_j}(t-1)$, and the state
+update multiplies along it by exactly 1 (Appendix A.2, Eq. 35). Section 4 calls the method a variant of RTRL:
 for the weights into a cell and into its input gate, instead of sending errors
 backwards, it carries forwards how much the internal state depends on each
 weight. For a weight $w_{c_j m}$ from a unit $m$ into the cell, Appendix A.1
 gives
-([page 27](../references/hochreiter_1997_long_short_term_memory.pdf#page=27)):
+([Eqs. 23, 27 and 28](../references/hochreiter_1997_long_short_term_memory.pdf#page=27)):
 
 $$e_{s_{c_j}}(t) = y^{\mathrm{out}_j}(t)\; h'\big(s_{c_j}(t)\big) \sum_k w_{k c_j}\, e_k(t) \quad (\text{Eq. 23})$$
 
@@ -633,7 +648,8 @@ $$\Delta w_{c_j m}(t) = \alpha\; e_{s_{c_j}}(t)\; \frac{\partial s_{c_j}(t)}{\pa
 - $\Delta w_{c_j m}(t)$ is time $t$'s contribution to the weight's update; the
   contributions of all steps are added up.
 
-The input gate's weights follow the same pattern (Eqs. 25 and 26), with
+The input gate's weights follow the same pattern (Hochreiter & Schmidhuber,
+1997, Appendix A.1, Eqs. 25 and 26), with
 $g(\mathrm{net}_{c_j})\,f'_{\mathrm{in}_j}$ in place of
 $g'\,y^{\mathrm{in}_j}$, and summed over the cells that share the gate. The
 output gate's weights are updated by ordinary back-propagation, cut off at the
@@ -715,7 +731,8 @@ at cycle 191, where $0.613292$ is $0.745436 \times 0.396608$ times that cycle's
 reading. Carrying $\partial s / \partial w$ forwards is therefore the same
 arithmetic as carrying the error backwards through the carousel.
 
-Appendix A.1 gives the reason for the cut: with these routes removed, no error
+Hochreiter and Schmidhuber (1997, Appendix A.1) give the reason for the cut:
+with these routes removed, no error
 that has left a cell can come back into it through a loop, so the flow through
 the carousel stays constant. The cut also makes the method cheap. Its cost per
 time step is proportional to the number of weights, and Section 4 calls it
@@ -732,7 +749,8 @@ vanishing quickly anyway. The two derivatives are compared on real readings in
 
 ### Why the gates resolve the two conflicts
 
-Section 4 matches each gate to one conflict. The multiplications above show how.
+Hochreiter and Schmidhuber (1997, Section 4) match each gate to one conflict.
+The multiplications above show how.
 
 - **The input weight conflict.** The cell input's reading multiplier changes
   by $\alpha\,e_s\,\partial s/\partial w$, and $\partial s/\partial w$ gets one
@@ -759,18 +777,19 @@ gates: Experiments 2a and 2b use input gates only.
 
 ### Memory cell blocks
 
-Several cells can share one input gate and one output gate. Section 4 calls
-$S$ such cells a **memory cell block of size $S$**, says a block stores a
-**distributed** input, one whose information is spread over several numbers,
-more easily than a single cell does, and notes that it costs the same two gates
-as one cell. A block of size 1 is a single cell. Gers et al.
-([Section 2](../references/gers_2000_learning_to_forget.pdf#page=3)) call the
+Several cells can share one input gate and one output gate. Hochreiter and
+Schmidhuber (1997, Section 4) call $S$ such cells a **memory cell block of
+size $S$**, say a block stores a **distributed** input, one whose information
+is spread over several numbers, more easily than a single cell does, and note
+that it costs the same two gates as one cell. A block of size 1 is a single
+cell. Gers et al. (2000, [Section 2](../references/gers_2000_learning_to_forget.pdf#page=3)) call the
 block the basic unit of an LSTM's **hidden layer**, the units between the
 network's inputs and its outputs.
 
 ### Two problems the paper anticipates
 
-Section 4 names two problems and remedies for each.
+Hochreiter and Schmidhuber (1997, Section 4) name two problems and remedies
+for each.
 
 - **Abuse.** Early in training, the error can sometimes be reduced without
   storing anything. The network may then hold a cell's output constant and use
@@ -785,7 +804,7 @@ Section 4 names two problems and remedies for each.
   input gates with offsets that hold them near zero.
 
 The 2000 paper describes a closely related failure, unbounded growth of the
-state, on streams that are never reset.
+state, on streams that are never reset (Gers et al., 2000, Section 2.1).
 
 The key idea is that the carousel passes an error signal back unchanged by
 multiplying it by exactly 1 per step, while two separate gate units, whose
@@ -797,15 +816,16 @@ read.
 
 ## What the 1997 paper claims, and on what evidence (Sections 5 to 7)
 
-The abstract and Section 1 claim that LSTM learns to bridge minimal time lags
+Hochreiter and Schmidhuber (1997, Abstract and Section 1) claim that LSTM
+learns to bridge minimal time lags
 of more than 1000 steps, also on noisy input that cannot be compressed, without
 losing the ability to handle short lags, at a cost per time step and weight
 that does not grow with the network. A **minimal time lag** is the smallest
 number of steps between the last input that matters and the target that
 depends on it (Table 10, column 3).
 
-The evidence is six experiments on artificial sequences
-([Section 5](../references/hochreiter_1997_long_short_term_memory.pdf#page=10)).
+The evidence is six experiments on artificial sequences (Hochreiter &
+Schmidhuber, 1997, [Section 5](../references/hochreiter_1997_long_short_term_memory.pdf#page=10)).
 Five of them are built so that every training sequence has a long minimal lag,
 with no short-lag examples to make learning easier. The first, the embedded
 Reber grammar, allows lags as short as 9 steps; the paper includes it as a
@@ -815,14 +835,14 @@ on-line learning, meaning the weights are updated example by example rather
 than after a whole batch; logistic sigmoids as activation functions; starting
 weights drawn from [−0.2, 0.2] or [−0.1, 0.1]; and the network's activations
 reset after each input sequence. Gers et al.
-([Section 2.1](../references/gers_2000_learning_to_forget.pdf#page=5)) describe
+(2000, [Section 2.1](../references/gers_2000_learning_to_forget.pdf#page=5)) describe
 that last condition as resetting the cell states to zero before each new
 sequence, and it is what the next section turns on.
 
 Two results carry the claim. On Task 2a, where the first of 101 symbols must be
-remembered until the last, across 100 steps,
-[Table 2](../references/hochreiter_1997_long_short_term_memory.pdf#page=14)
-reports, as means of 18 trials, that RTRL and BPTT had no successful trial
+remembered until the last, across 100 steps, Hochreiter and Schmidhuber (1997,
+[Table 2](../references/hochreiter_1997_long_short_term_memory.pdf#page=14))
+report, as means of 18 trials, that RTRL and BPTT had no successful trial
 within 5,000,000 training sequences, and that Schmidhuber's earlier two-network
 sequence chunker, which bridges long lags only where parts of the sequence are
 predictable (Section 2), succeeded in 33 percent of trials. LSTM succeeded in
@@ -834,13 +854,14 @@ reports that with $q = 1{,}000$, so a minimal lag of 1,001 steps, and
 $p = 1{,}000$ different distractor symbols to choose from, LSTM succeeded after
 49,000 training sequences, the mean of 20 trials.
 
-Section 6 lists limitations. The truncated version struggles with tasks that
+Hochreiter and Schmidhuber (1997, Section 6) list limitations. The truncated
+version struggles with tasks that
 cannot be learned one part at a time, such as the exclusive-or (true when
 exactly one of two inputs is on) of two widely separated inputs, where storing
 one input alone does not reduce the error. Like every gradient-based method, it
 cannot count steps exactly, telling 99 from 100. Each block adds two gate
-units. And all of the evidence is artificial: the
-[conclusion](../references/hochreiter_1997_long_short_term_memory.pdf#page=23)
+units. And all of the evidence is artificial: the conclusion
+([Section 7](../references/hochreiter_1997_long_short_term_memory.pdf#page=23))
 lists applying LSTM to real data, time series prediction among it, as future
 work. Nothing in the 1997 paper is evidence about engine sensor data.
 
@@ -848,15 +869,16 @@ work. Nothing in the 1997 paper is evidence about engine sensor data.
 
 ### The weakness on a continual stream (Section 2.1)
 
-The 1997 experiments reset every cell before each new sequence. Gers et al.
+The 1997 experiments reset every cell before each new sequence (Hochreiter &
+Schmidhuber, 1997, Section 5). Gers et al. (2000,
+[Abstract and Section 1](../references/gers_2000_learning_to_forget.pdf#page=2))
 consider a **continual** input stream: one that is not divided beforehand into
-sequences with marked ends at which the network could be reset
-([Abstract and Section 1](../references/gers_2000_learning_to_forget.pdf#page=2)).
+sequences with marked ends at which the network could be reset.
 
-[Section 2.1](../references/gers_2000_learning_to_forget.pdf#page=5) gives the
-mechanism. Internal states often grow linearly while a series is presented,
-and on a continual stream they can grow without bound. That saturates $h$: the
-state sits on the flat part of the curve, where the curve's output is pinned
+Gers et al. (2000, [Section 2.1](../references/gers_2000_learning_to_forget.pdf#page=5))
+give the mechanism. Internal states often grow linearly while a series is
+presented, and on a continual stream they can grow without bound. That
+saturates $h$: the state sits on the flat part of the curve, where the curve's output is pinned
 near −1 or 1. Two things follow:
 
 - the slope $h'$ vanishes, so error signals can no longer enter the cell;
@@ -877,9 +899,9 @@ The section also explains why three simpler remedies are not enough.
 
 ### The forget gate (Section 3.1, Eqs. 6 and 7)
 
-[Section 3](../references/gers_2000_learning_to_forget.pdf#page=6) replaces
-the carousel's constant weight 1.0 with the activation of a third gate, the
-**forget gate**:
+Gers et al. (2000, [Section 3](../references/gers_2000_learning_to_forget.pdf#page=6))
+replace the carousel's constant weight 1.0 with the activation of a third
+gate, the **forget gate**:
 
 $$\mathrm{net}_{\varphi_j}(t) = \sum_m w_{\varphi_j m}\, y^m(t-1), \qquad y^{\varphi_j}(t) = f_{\varphi_j}\big(\mathrm{net}_{\varphi_j}(t)\big) \quad (\text{Eq. 6})$$
 
@@ -901,9 +923,9 @@ forget gate of 0.9 and a gated input of 0.5 give $0.9 \times 10.0 + 0.5 = 9.5$;
 with the forget gate at 0 the state becomes 0.5. Section 3 counts the slow
 fading as a reset too, a gradual one.
 
-Section 3.1 also says how the gates start: negative offsets for the input and
-output gates, as in 1997, and positive ones for the forget gates, so that the
-forget gate starts near 1 and the cell begins as a 1997 cell.
+Gers et al. (2000, Section 3.1) also say how the gates start: negative offsets
+for the input and output gates, as in 1997, and positive ones for the forget
+gates, so that the forget gate starts near 1 and the cell begins as a 1997 cell.
 [Section 4.2](../references/gers_2000_learning_to_forget.pdf#page=12) gives the
 values used: +0.5 for the first block's forget gate, +1 for the second, and so
 on, against −0.5, −1.0, −1.5 for the input and output gates of successive
@@ -912,8 +934,8 @@ blocks, and adds that the precise values are not critical.
 ### What the forget gate does to the learning rule (Section 3.2)
 
 The learning rule keeps the 1997 truncation: errors are cut off once they leave
-a cell or a gate
-([Section 3.2](../references/gers_2000_learning_to_forget.pdf#page=7)). The
+a cell or a gate (Gers et al., 2000,
+[Section 3.2](../references/gers_2000_learning_to_forget.pdf#page=7)). The
 section says which method each weight uses: output units ordinary
 back-propagation through time; output gates a truncated version of it (Eq. 11);
 and the weights into the cells, the input gates and the forget gates a
@@ -941,7 +963,9 @@ $$\frac{\partial s_{c_j^v}(t)}{\partial w_{c_j^v m}} = \frac{\partial s_{c_j^v}(
 This record of past influence is what each update uses, and it is multiplied by
 the forget gate at every step. When the gate drops to 0, the record is wiped
 together with the state; in the paper's words, "forgetting includes forgiving
-previous mistakes" (Section 3.2). The same multiplication applies to the error
+previous mistakes" (Gers et al., 2000, Section 3.2,
+[p. 9](../references/gers_2000_learning_to_forget.pdf#page=9)). The same
+multiplication applies to the error
 passing back through the carousel: by Eq. 7, a change in the old state moves
 the new one by the forget gate's activation, so the 1997 carousel's flow is
 exactly constant only while the gate is at 1. Eq. 15 is run on two real cycles
@@ -949,8 +973,8 @@ in [What PyTorch differentiates](#what-pytorch-differentiates).
 
 ### The evidence (Section 4)
 
-The main test is the **continual embedded Reber grammar**
-([Section 4.1](../references/gers_2000_learning_to_forget.pdf#page=10)). A
+The main test is the **continual embedded Reber grammar** (Gers et al., 2000,
+[Section 4.1](../references/gers_2000_learning_to_forget.pdf#page=10)). A
 grammar here is a set of rules for which symbol may follow which, drawn as a
 graph in Figure 2. Strings generated by it are joined into one stream with no
 resets, and the network must predict the next symbol at every step. Getting the
@@ -958,11 +982,11 @@ symbol before last right requires remembering the string's second symbol across
 a lag of at least 7 steps and with no upper limit. A test stream ends at the
 first wrong prediction, or after 100,000 symbols.
 
-[Table 2](../references/gers_2000_learning_to_forget.pdf#page=13) reports, as
-percentages of 100 independently trained networks each, how many found a
-perfect solution, which its caption defines as predicting 10 test streams of
-100,000 symbols each without a mistake: 74 for the 1997 LSTM given resets at the
-end of every string, 0 for the 1997 LSTM on the continual stream, 0 for a
+Gers et al. (2000, [Table 2](../references/gers_2000_learning_to_forget.pdf#page=13))
+report, as percentages of 100 independently trained networks each, how many
+found a perfect solution, which the table's caption defines as predicting 10
+test streams of 100,000 symbols each without a mistake: 74 for the 1997 LSTM
+given resets at the end of every string, 0 for the 1997 LSTM on the continual stream, 0 for a
 version whose state decays by a fixed factor of 0.9, 18 with forget gates, and
 62 with forget gates and a learning rate that decreases during each stream.
 [Figure 4](../references/gers_2000_learning_to_forget.pdf#page=14) shows the
@@ -975,10 +999,10 @@ the stream and drops to near 0 at the end of each string, resetting the states,
 which swing up and down around zero but no longer drift away as in Figure 4
 (Section 4.4).
 
-A second, continual version of the 1997 temporal order task
-([Section 4.5](../references/gers_2000_learning_to_forget.pdf#page=16)) gives
-the same picture. The 1997 LSTM found no perfect solution, against 24 percent
-with forget gates and 37 percent with forget gates and a decreasing learning
+A second, continual version of the 1997 temporal order task (Gers et al.,
+2000, [Section 4.5](../references/gers_2000_learning_to_forget.pdf#page=16))
+gives the same picture. The 1997 LSTM found no perfect solution, against 24
+percent with forget gates and 37 percent with forget gates and a decreasing learning
 rate ([Table 3](../references/gers_2000_learning_to_forget.pdf#page=17)). On
 the original task, where a reset follows each sequence anyway, forget gates
 whose starting offset was 5.0 learned as fast as the 1997 cell, and with an
@@ -988,9 +1012,10 @@ symbol streams.
 
 ### Worked example: 80 engines read as one stream
 
-Joining the 80 training engines' T50 readings end to end, in order of engine
-number, gives one stream of 16,779 cycles with no marker where one engine ends
-and the next begins: the continual setting of Section 2.1. One cell reads it.
+Joining the T50 readings of the 80 training engines (assumption A-06) end to
+end, in order of engine number, gives one stream of 16,779 cycles with no
+marker where one engine ends and the next begins: the continual setting of
+Section 2.1. One cell reads it.
 Its input gate is $f(1.0\,x - 1.0)$ and its squashed input is $g(1.0\,x)$, the
 reading multipliers and offsets of the
 [two-cycle example above](#one-step-of-the-1997-cell-on-real-readings), with the
@@ -1143,7 +1168,8 @@ gate cannot show that.
 
 Restarting at zero limits how many additions can pile up. Restarting at each
 engine, the arrangement of the 1997 experiments, keeps this cell's largest
-state at 85.707215; restarting at each 30-cycle window, as the project's stage
+state at 85.707215; restarting at each 30-cycle window, the window length of
+Wen et al. (2026, Section 3.4, Table 6), as the project's stage
 does, keeps it at 35.771487. Even 30 additions of this hand-set cell are
 enough to reach far along $h$'s flat part. How far the state travels within a
 window depends on the multipliers, which training sets.
@@ -1187,9 +1213,9 @@ h_t &= o_t \odot \tanh(c_t)
 - $\sigma$ is the logistic sigmoid; $\odot$ multiplies two lists of equal
   length entry by entry.
 
-An `nn.LSTM` with hidden size $H$ (the stage uses 32) therefore holds $H$ cells
-side by side, each with its own entry in each gate: in the 1997 vocabulary,
-$H$ blocks of size 1. PyTorch stores the four input-side matrices stacked into
+An `nn.LSTM` with hidden size $H$ (the stage uses 32, assumption A-26)
+therefore holds $H$ cells side by side, each with its own entry in each gate:
+in the 1997 vocabulary, $H$ blocks of size 1. PyTorch stores the four input-side matrices stacked into
 one array of $4H$ rows, in the order $i, f, g, o$, and the four hidden-side
 ones likewise; the
 [implementation guide](../../src/thesis_gnn_rul_xai/models/temporal/README.md)
@@ -1197,13 +1223,13 @@ counts what that comes to for the stage.
 
 | Piece of the PyTorch cell | Where it comes from |
 |---|---|
-| Input gate $i_t$ and output gate $o_t$ | Hochreiter and Schmidhuber (1997), Section 4 |
-| Forget gate $f_t$ | Gers et al. (2000), Eq. 6 |
-| $c_t = f_t \odot c_{t-1} + i_t \odot g_t$ | Gers et al. Eq. 7; with $f_t = 1$ it is the 1997 state update. The name cell state is from Gers et al. Section 2 |
-| $\tanh$ for $g_t$ | Neither paper: both use a $g$ from −2 to 2, $2\tanh(x/2)$ (1997 Eq. 5; Gers et al. Section 2) |
-| $\tanh(c_t)$ in $h_t = o_t \odot \tanh(c_t)$ | Neither paper: both use $h(x) = \tanh(x/2)$, from −1 to 1 (1997 Eq. 4; Gers et al. Section 2); the product with the output gate is the 1997 cell output $y^{\mathrm{out}}\,h(s)$ |
-| Gates read only $x_t$ and $h_{t-1}$ | Narrower than 1997, where a gate may read any unit, other gates included (Section 4) |
-| $h_0 = c_0 = 0$ unless given | The 1997 cell's $s_{c_j}(0) = 0$; PyTorch's documentation |
+| Input gate $i_t$ and output gate $o_t$ | Hochreiter and Schmidhuber (1997, Section 4) |
+| Forget gate $f_t$ | Gers et al. (2000, Eq. 6) |
+| $c_t = f_t \odot c_{t-1} + i_t \odot g_t$ | Gers et al. (2000, Eq. 7); with $f_t = 1$ it is the 1997 state update. The name cell state is from Gers et al. (2000, Section 2) |
+| $\tanh$ for $g_t$ | Neither paper: both use a $g$ from −2 to 2, $2\tanh(x/2)$ (Hochreiter & Schmidhuber, 1997, Eq. 5; Gers et al., 2000, Section 2) |
+| $\tanh(c_t)$ in $h_t = o_t \odot \tanh(c_t)$ | Neither paper: both use $h(x) = \tanh(x/2)$, from −1 to 1 (Hochreiter & Schmidhuber, 1997, Eq. 4; Gers et al., 2000, Section 2); the product with the output gate is the 1997 cell output $y^{\mathrm{out}}\,h(s)$ |
+| Gates read only $x_t$ and $h_{t-1}$ | Narrower than 1997, where a gate may read any unit, other gates included (Hochreiter & Schmidhuber, 1997, Section 4) |
+| $h_0 = c_0 = 0$ unless given | The 1997 cell's $s_{c_j}(0) = 0$ (Hochreiter & Schmidhuber, 1997, Section 4); PyTorch's documentation |
 | Derivatives through every route | Not the truncated rule of either paper; see below |
 
 **Do not confuse the hidden state with the cell state.** In the 1997
@@ -1212,9 +1238,10 @@ content, and the hidden state $h_t$ is the cell output $y^c$. The gates read
 the hidden state, never the cell state; the cell state is reached only through
 the output gate and $\tanh$.
 
-Neither paper lets a gate read the internal state directly either: in Eqs. 7
-and 8 of 1997, and Eqs. 1, 2 and 6 of 2000, the gates' net inputs are sums over
-other units' outputs $y^u(t-1)$. LSTM variants that do give the gates the cell
+Neither paper lets a gate read the internal state directly either: the gates'
+net inputs are sums over other units' outputs $y^u(t-1)$ (Hochreiter &
+Schmidhuber, 1997, Appendix A.1, Eqs. 7 and 8; Gers et al., 2000, Eqs. 1, 2
+and 6). LSTM variants that do give the gates the cell
 state exist under the name of **peephole connections**. This project holds no
 paper that introduces them, so this page says only that PyTorch's equations
 contain no such term.
@@ -1308,9 +1335,9 @@ within $10^{-14}$. The same agreement over a whole window, with the stage's own
 starting multipliers, is shown in
 [Temporal algorithm](../learn/09_temporal.md#one-lstm-per-sensor). Finally it
 recomputes the input gate at cycle 192 in the joined form of Wen et al.'s Eq. 2,
-$i_t = \sigma(W_i \cdot [h_{t-1}, x_t] + b_i)$, where $[h_{t-1}, x_t]$ is the
-previous output and the reading written as one list and $W_i$ is the row
-$[0.5, 1.0]$ of the gate's two multipliers in that order. It gives the
+$i_t = \sigma(W_i \cdot [h_{t-1}, x_t] + b_i)$ (Wen et al., 2026, Section 2.2,
+Eq. 2), where $[h_{t-1}, x_t]$ is the previous output and the reading written
+as one list and $W_i$ is the row $[0.5, 1.0]$ of the gate's two multipliers in that order. It gives the
 table's 0.793221; joining the two the other way round gives a different number,
 so the order matters.
 
@@ -1400,14 +1427,16 @@ exactly. Nudging and automatic differentiation agree, so the second row is the
 true derivative. The cut version is smaller because it drops the routes through
 cycle 191's hidden state: the multiplier changed that hidden state, which
 entered all four of cycle 192's net inputs. Training with PyTorch therefore
-follows every route within a window, which the 1997 paper chose not to do. Its
-Section 6 found no significant difference in a few experiments, and nothing on
-this page measures the difference for this project's stage.
+follows every route within a window, which the 1997 paper chose not to do.
+Hochreiter and Schmidhuber (1997, Section 6) found no significant difference in
+a few experiments, and nothing on this page measures the difference for this
+project's stage.
 
 **Do not confuse the papers' truncation with cutting the history into
 windows.** The 1997 and 2000 rules keep the whole sequence but drop, at every
 step, each route that leaves a cell or a gate, so only the carousel carries
-derivatives back. The project keeps every route, but only within one 30-cycle
+derivatives back (Hochreiter & Schmidhuber, 1997, Appendix A.1; Gers et al.,
+2000, Section 3.2). The project keeps every route, but only within one 30-cycle
 window: each window starts from zero, so no derivative reaches more than 29
 cycles back.
 
@@ -1418,10 +1447,11 @@ than the truncated ones both papers used.
 
 ## Do not confuse the LSTM with the GRU (Cho et al., 2014)
 
-The project also offers a **gated recurrent unit**, or **GRU**, the name
-PyTorch's `torch.nn.GRU` uses for the hidden unit that
-[Section 2.3](../references/cho_2014_rnn_encoder_decoder.pdf#page=3) of Cho et
-al. proposes. The paper itself calls it only a new type of hidden unit,
+The project also offers, as an option of its own (assumption A-36), a **gated
+recurrent unit**, or **GRU**, the name PyTorch's `torch.nn.GRU` uses for the
+hidden unit that Cho et al.
+(2014, [Section 2.3](../references/cho_2014_rnn_encoder_decoder.pdf#page=3))
+propose. The paper itself calls it only a new type of hidden unit,
 motivated by the LSTM but simpler to compute. For hidden unit $j$, Eqs. 5 to 8
 are:
 
@@ -1444,9 +1474,10 @@ The differences from the LSTM are mechanical:
   the next layer at every step.
 - **Fewer gates.** As the two LSTM papers name them, the cell with a forget
   gate has three gates, input, output and forget, and the 1997 cell the first
-  two; Cho et al.'s footnote 1 credits the LSTM with four, without listing
-  them, and PyTorch's documentation also lists four, counting $g_t$. The GRU
-  has two. Its update
+  two (Gers et al., 2000, Section 3.1; Hochreiter & Schmidhuber, 1997,
+  Section 4); Cho et al. (2014, Section 2.3, footnote 1) credit the LSTM with
+  four, without listing them, and PyTorch's documentation also lists four,
+  counting $g_t$. The GRU has two. Its update
   gate does in one blend what the LSTM's forget and input gates do separately:
   $z$ keeps the old value and $1 - z$ admits the new, and the two always add up
   to 1, whereas an LSTM's forget and input gates are free to be both high or
@@ -1456,22 +1487,24 @@ The differences from the LSTM are mechanical:
   entry of $r \odot h$, the proposal ignores the previous state and is computed
   from the input alone (Section 2.3).
 
-One detail separates the paper from PyTorch. Cho et al.'s Eq. 8 multiplies the
-previous state by the reset gate *before* the matrix $U$; PyTorch's `nn.GRU`
-documentation applies the reset gate *after* its matrix, to
+One detail separates the paper from PyTorch. Cho et al. (2014, Section 2.3,
+Eq. 8) multiply the previous state by the reset gate *before* the matrix $U$;
+PyTorch's `nn.GRU` documentation applies the reset gate *after* its matrix, to
 $W_{hn} h_{t-1} + b_{hn}$. The two placements give different results in
-general. The project's GRU route uses PyTorch's version, worked through with
-numbers in [Temporal algorithm](../learn/09_temporal.md#one-gru-per-sensor).
+general. The project's GRU route uses PyTorch's version (assumption A-36),
+worked through with numbers in
+[Temporal algorithm](../learn/09_temporal.md#one-gru-per-sensor).
 Wen et al.'s own model contains no GRU; a GRU-based method from the
 literature, their reference [55], appears only among the methods compared in
-their [Tables 7 to 10](../references/wen_2026_estgnn_dynamic_shap.pdf#page=10).
+their Tables 7 to 10 (Wen et al., 2026,
+[Section 4.1](../references/wen_2026_estgnn_dynamic_shap.pdf#page=10)).
 
 ## What this project takes from these papers
 
-Wen et al.'s [Section 2.2](../references/wen_2026_estgnn_dynamic_shap.pdf#page=4)
-prints, as its Eqs. 1 to 6, the cell PyTorch computes: the 1997 cell with the
+Wen et al. (2026, [Section 2.2](../references/wen_2026_estgnn_dynamic_shap.pdf#page=4))
+print, as their Eqs. 1 to 6, the cell PyTorch computes: the 1997 cell with the
 forget gate of Gers et al. and $\tanh$ squashing, written in the joined form
-$W \cdot [h_{t-1}, x_t]$. Its Eq. 7 gives every sensor its own LSTM over its
+$W \cdot [h_{t-1}, x_t]$. Their Eq. 7 gives every sensor its own LSTM over its
 window of readings. Neither Hochreiter and Schmidhuber nor Gers et al. appear
 anywhere in Wen et al.'s text, so the equations are all the paper says about
 which version of the cell it means.
@@ -1506,9 +1539,9 @@ the papers on this page it inherits:
   $\pm 1/\sqrt{32}$. Each gate
   has two offsets, so their sum lies within $\pm 2/\sqrt{32}$. At the first
   cycle of a window, where the previous hidden state is zero, a reading of zero
-  therefore gives a forget gate between 0.412521 and 0.587479. Gers et al.'s
-  own offsets give 0.622459 for the first block and 0.731059 for the second
-  (Section 4.2), rising towards 1 for later blocks.
+  therefore gives a forget gate between 0.412521 and 0.587479. The offsets of
+  Gers et al. (2000, Section 4.2) give 0.622459 for the first block and
+  0.731059 for the second, rising towards 1 for later blocks.
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -1548,27 +1581,36 @@ the same page's steps
 [3](../learn/09_temporal.md#3--keep-the-last-hidden-state) and
 [4](../learn/09_temporal.md#4--turn-into-numbers-per-sensor).
 
-## Sources
+## References
 
-- [Hochreiter and Schmidhuber (1997)](../references/hochreiter_1997_long_short_term_memory.pdf):
-  Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. *Neural
-  Computation*, 9(8), 1735–1780. https://doi.org/10.1162/neco.1997.9.8.1735.
-  The copy held is the authors' 32-page manuscript, cited here by section and
-  equation.
-- [Gers, Schmidhuber and Cummins (2000)](../references/gers_2000_learning_to_forget.pdf):
-  Gers, F. A., Schmidhuber, J., & Cummins, F. (2000). Learning to forget:
-  Continual prediction with LSTM. *Neural Computation*, 12(10), 2451–2471.
-  https://doi.org/10.1162/089976600300015015. The copy held is the authors'
-  accepted manuscript, cited here by section and equation.
-- [Cho et al. (2014)](../references/cho_2014_rnn_encoder_decoder.pdf): Cho, K.,
-  van Merriënboer, B., Gulcehre, C., Bahdanau, D., Bougares, F., Schwenk, H.,
-  & Bengio, Y. (2014). Learning phrase representations using RNN
+- Cho, K., van Merriënboer, B., Gulcehre, C., Bahdanau, D., Bougares, F.,
+  Schwenk, H., & Bengio, Y. (2014). Learning phrase representations using RNN
   encoder–decoder for statistical machine translation. In A. Moschitti, B.
   Pang, & W. Daelemans (Eds.), *Proceedings of the 2014 Conference on
   Empirical Methods in Natural Language Processing (EMNLP)* (pp. 1724–1734).
   Association for Computational Linguistics. https://doi.org/10.3115/v1/D14-1179
-- [Wen et al. (2026)](../references/wen_2026_estgnn_dynamic_shap.pdf):
-  Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  [Copy](../references/cho_2014_rnn_encoder_decoder.pdf)
+- Gers, F. A., Schmidhuber, J., & Cummins, F. (2000). Learning to forget:
+  Continual prediction with LSTM. *Neural Computation*, *12*(10), 2451–2471.
+  https://doi.org/10.1162/089976600300015015
+  [Copy](../references/gers_2000_learning_to_forget.pdf). The copy held is the
+  authors' accepted manuscript, cited here by section and equation; the one
+  page number, for a quotation, is that of the PDF file, one more than the
+  manuscript's printed page number.
+- Hochreiter, S., & Schmidhuber, J. (1997). Long short-term memory. *Neural
+  Computation*, *9*(8), 1735–1780. https://doi.org/10.1162/neco.1997.9.8.1735
+  [Copy](../references/hochreiter_1997_long_short_term_memory.pdf). The copy
+  held is the authors' 32-page manuscript, cited here by section and equation.
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
+  the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
+  Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
+  modeling for aircraft engine run-to-failure simulation. In *2008
+  International Conference on Prognostics and Health Management* (pp. 1–9).
+  IEEE. https://doi.org/10.1109/PHM.2008.4711414
+  [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
   (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
   enhancement for aeroengine RUL prediction. *Aerospace Science and
-  Technology*, 168, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)

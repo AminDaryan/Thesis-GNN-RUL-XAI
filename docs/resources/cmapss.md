@@ -3,18 +3,21 @@
 NASA's C-MAPSS engine data come as four subsets, FD001 to FD004, each made of
 three text files: simulated jet engines recorded once per flight, the training
 engines until they fail and the test engines cut off before they do, and a
-file holding each test engine's true remaining life. This project trains and
-tests on one of them, FD001. This page explains where the files come from, as
-their three sources tell it:
+file holding each test engine's true remaining life (NASA Prognostics Center
+of Excellence [NASA PCoE], 2008; Saxena et al., 2008, p. 1). That each row is
+one flight is this project's reading of those sources, explained on
+[Data, What one cycle is](../learn/01_the_problem.md#what-one-cycle-is).
+This project trains and tests on one of them, FD001. This page explains where
+the files come from, as their three sources tell it:
 
-- the **dataset paper**, [Saxena, Goebel, Simon and Eklund (2008)](../references/saxena_2008_damage_propagation_modeling.pdf),
+- the **dataset paper**, [Saxena et al. (2008)](../references/saxena_2008_damage_propagation_modeling.pdf),
   which explains how engine damage was simulated and how the challenge data
   built from it were split and scored;
-- the **simulator's user guide**, [Frederick, DeCastro and Litt (2007)](../references/frederick_2007_cmapss_users_guide.pdf),
+- the **simulator's user guide**, [Frederick et al. (2007)](../references/frederick_2007_cmapss_users_guide.pdf),
   which describes the engine model the paper ran;
 - the **readme** NASA ships inside the data download,
-  [`readme.txt`](../references/nasa_2008_cmapss_readme.txt), the only one of
-  the three that names the four subsets.
+  [`readme.txt`](../references/nasa_2008_cmapss_readme.txt) (NASA PCoE, 2008),
+  the only one of the three that names the four subsets.
 
 How this project reads the files, works out a label for every row and chooses
 its 14 sensors is taught step by step on the Learn page
@@ -64,28 +67,28 @@ def condition_count(frame):
 
 ## The problem the paper set out to solve
 
-**Prognostics**, as Section II of the paper defines it, is estimating the
-**remaining useful life (RUL)** of a component, measured in hours, cycles or
-another unit of time. The end of that life is a user's choice: the moment a
-measured quantity passes the limit the user sets for safe operation
-(Section II, pages 1 and 2). What remaining useful life means for one row of
+**Prognostics**, as Saxena et al. (2008, Section II, p. 1) define it, is
+estimating the **remaining useful life (RUL)** of a component, measured in
+hours, cycles or another unit of time. The end of that life is a user's
+choice: the moment a measured quantity passes the limit the user sets for safe
+operation (Section II, pp. 1–2). What remaining useful life means for one row of
 these files is on
 [Data, Remaining useful life](../learn/01_the_problem.md#remaining-useful-life).
 
 To build a method that estimates remaining life from data, you need examples
-where the answer is known: machines recorded all the way to failure. Section I
-explains why those are scarce: records that follow a real machine to failure
-are rare and seldom made public, and few shared run-to-failure datasets
-existed, which made it hard for research groups to compare their methods on
-the same machines (page 1).
+where the answer is known: machines recorded all the way to failure.
+Saxena et al. (2008, Section I) explain why those are scarce: records that
+follow a real machine to failure are rare and seldom made public, and few
+shared run-to-failure datasets existed, which made it hard for research groups
+to compare their methods on the same machines (p. 1).
 
 The authors' answer was to **simulate** the engines instead of waiting for real
 ones to fail. They took an existing engine simulator, injected damage that grows
 over time, ran each simulated engine until a failure criterion was met, and
-recorded the sensor readings once per flight. The result became the data for
-the first data challenge of the Prognostics and Health Management conference,
-PHM'08, whose task was to estimate remaining life from historical data alone
-(Section I).
+recorded the sensor readings once per flight (Saxena et al., 2008, pp. 1, 5).
+The result became the data for the first data challenge of the Prognostics and
+Health Management conference, PHM'08, whose task was to estimate remaining life
+from historical data alone (Saxena et al., 2008, Section I, p. 1).
 
 ---
 
@@ -94,19 +97,20 @@ PHM'08, whose task was to estimate remaining life from historical data alone
 ### The engine and its flow path
 
 **C-MAPSS**, the Commercial Modular Aero-Propulsion System Simulation, is a
-NASA program, written in MATLAB and Simulink (two numerical computing
-environments), that simulates a large commercial **turbofan**: a jet engine
-whose large front fan drives air through a bypass duct around the engine core
-as well as into the core itself. The simulated engine is in the 90,000 lb
-thrust class, and both sources give its operating range as sea level to
-40,000 ft, Mach numbers (speed as a fraction of the speed of sound) from 0 to
-0.90, and sea-level temperatures from −60 to 103 °F
-([Section III.A](../references/saxena_2008_damage_propagation_modeling.pdf#page=2);
-the user guide's
-[Section 1.1](../references/frederick_2007_cmapss_users_guide.pdf#page=8)).
+NASA program (Frederick et al., 2007, p. 45), written in MATLAB and Simulink
+(two numerical computing environments), that simulates a large commercial
+**turbofan**: a jet engine whose large front fan drives air through a bypass
+duct around the engine core as well as into the core itself (Saxena et al.,
+2008, Section III.A and Figs. 1–2, p. 2). The simulated engine is in the
+90,000 lb thrust class, and both sources give its operating range as sea level
+to 40,000 ft, Mach numbers (speed as a fraction of the speed of sound) from 0
+to 0.90, and sea-level temperatures from −60 to 103 °F
+(Frederick et al., 2007, Section 1.1,
+[p. 8](../references/frederick_2007_cmapss_users_guide.pdf#page=8); Saxena et al., 2008,
+Section III.A, [p. 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=2)).
 
 Air passes through the engine's modules in this order, which is the content of
-the paper's Figure 2 redrawn as text:
+Figure 2 of Saxena et al. (2008, p. 2) redrawn as text:
 
 ```text
 Ambient air → Inlet → Fan → Splitter ─┬→ Bypass path → Bypass nozzle
@@ -126,36 +130,38 @@ share the inner shaft marked N1, which also carries the fan (this page's
 reading of the drawing, which colours each spool's parts alike). The user
 guide's list of symbols names N1 the fan spool speed and N2 the core spool
 speed, which is why the files hold two physical speeds, Nf and Nc
-([Figures 1 and 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=2);
-the guide's [list of symbols](../references/frederick_2007_cmapss_users_guide.pdf#page=7)
-and [Figures 1.1 and 1.2](../references/frederick_2007_cmapss_users_guide.pdf#page=9)).
+(Frederick et al., 2007, [p. 7](../references/frederick_2007_cmapss_users_guide.pdf#page=7) and
+Figs. 1.1–1.2, [p. 9](../references/frederick_2007_cmapss_users_guide.pdf#page=9);
+Saxena et al., 2008, Figs. 1–2, [p. 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=2),
+and Table 2).
 
 The engine does not fly itself. C-MAPSS includes a **control system**, the
-software that sets the fuel flow. Its parts, as the paper's Section III.A and
-the guide's Section 1.1 list them:
+software that sets the fuel flow (Frederick et al., 2007, pp. 29–30). Its
+parts, as Saxena et al. (2008, Section III.A, p. 2) and Frederick et al.
+(2007, Section 1.1, p. 8) list them:
 
 | Part | What it does |
 |---|---|
-| Fan-speed controller | Sets the fuel flow so that the fan turns at the speed the throttle demands; the throttle setting is the throttle resolver angle (TRA), given in degrees (guide, [page 8](../references/frederick_2007_cmapss_users_guide.pdf#page=8) and [page 29](../references/frederick_2007_cmapss_users_guide.pdf#page=29)) |
+| Fan-speed controller | Sets the fuel flow so that the fan turns at the speed the throttle demands; the throttle setting is the throttle resolver angle (TRA), given in degrees (Frederick et al., 2007, [p. 8](../references/frederick_2007_cmapss_users_guide.pdf#page=8), [p. 11](../references/frederick_2007_cmapss_users_guide.pdf#page=11) and [pp. 28–29](../references/frederick_2007_cmapss_users_guide.pdf#page=28)) |
 | Three upper-limit regulators | Keep the core speed, the engine pressure ratio and the HPT exit temperature below their design limits |
 | One lower-limit regulator | Keeps the static pressure at the HPC exit from falling too low |
 | Acceleration and deceleration limiters | Bound how fast the core speed may change |
 
 The paper ran the engine **closed loop**, with this control system active, and
-in batch mode, without the program's graphical screens (Section III.A,
-pages 2 and [3](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
+in batch mode, without the program's graphical screens (Saxena et al., 2008,
+Section III.A, [pp. 2–3](../references/saxena_2008_damage_propagation_modeling.pdf#page=2)).
 
 The closed loop matters for reading the data. In the guide's example of a
 sudden fan fault, the fan speed first jumps and then returns to its demanded
 value as the controller cuts the fuel flow, while fuel flow, engine pressure
 ratio, thrust and other variables settle at lower values
-(user guide, Section 3.1,
-[Figure 3.2](../references/frederick_2007_cmapss_users_guide.pdf#page=29) and
-[Figure 3.3](../references/frederick_2007_cmapss_users_guide.pdf#page=30)).
+(Frederick et al., 2007, Section 3.1, p. 29,
+[Fig. 3.2](../references/frederick_2007_cmapss_users_guide.pdf#page=29) and
+[Fig. 3.3](../references/frederick_2007_cmapss_users_guide.pdf#page=30)).
 That example is a sudden fault in the fan, and the guide's example of slow
 wear degrades all five rotating modules at once with the limit regulators
-switched off
-([Section 3.2](../references/frederick_2007_cmapss_users_guide.pdf#page=30)),
+switched off (Frederick et al., 2007, Section 3.2,
+[p. 30](../references/frederick_2007_cmapss_users_guide.pdf#page=30)),
 so neither says which way slow HPC wear moves each sensor. What they show is
 the controller holding the fan at its demand. How far the fan speed of the
 FD001 engines still moves is measured below, under
@@ -163,39 +169,43 @@ FD001 engines still moves is measured below, under
 
 ### What goes in: fourteen inputs
 
-Table 1 of the paper lists the simulator's 14 inputs. One is the fuel flow.
-The other 13 are **health-parameter modifiers**: numbers that shift a rotating
-module's efficiency, its flow capacity (how much air it passes) and, for the
-fan, the LPC and the HPC, its pressure ratio, away from their healthy values.
+Table 1 of Saxena et al. (2008) lists the simulator's 14 inputs. One is the
+fuel flow. The other 13 are **health-parameter modifiers**: numbers that shift
+a rotating module's efficiency, its flow capacity (how much air it passes) and,
+for the fan, the LPC and the HPC, its pressure ratio, away from their healthy
+values (Frederick et al., 2007, p. 27; Saxena et al., 2008, Table 1).
 In standard engineering usage, which neither source spells out, a
 compressor's **pressure ratio** is its outlet pressure divided by its inlet
 pressure, and its **efficiency** is the share of the work put into it that
 goes into raising the pressure rather than into heating the air: a less
 efficient compressor heats the air more for the same rise in pressure. The
-fan, LPC and HPC have three modifiers each; the two turbines have two
-(efficiency and flow). The user guide shows what a modifier's value means: a
-step of a modifier from 0 to −0.02 is a 2 percent degradation of that quantity
-([user guide, Section 3](../references/frederick_2007_cmapss_users_guide.pdf#page=28)).
+fan, LPC and HPC have three modifiers each; the two turbines have two,
+efficiency and flow (Frederick et al., 2007, p. 28; Saxena et al., 2008,
+Table 1). The user guide shows what a modifier's value means: a step of a
+modifier from 0 to −0.02 is a 2 percent degradation of that quantity
+(Frederick et al., 2007, Section 3.0,
+[p. 28](../references/frederick_2007_cmapss_users_guide.pdf#page=28)).
 
 To simulate a worn HPC, the paper drove two of these: the **HPC efficiency
 modifier** and the **HPC flow modifier**, the rows Table 1 shades in grey
-([Table 1](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
+(Saxena et al., 2008, Table 1, [p. 3](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
 
 The last row of Table 1 is named as an HPT flow modifier but carries the symbol
-`LPT_flow_mod`; the user guide's Table 1.1 has the same slip. From the symbol and
+`LPT_flow_mod`; the user guide's Table 1.1 has the same slip (Frederick et
+al., 2007, Table 1.1, p. 10; Saxena et al., 2008, Table 1). From the symbol and
 from the guide's statement that each turbine has an efficiency and a flow
-modifier, the row is the LPT's flow modifier.
+modifier (Frederick et al., 2007, p. 28), the row is the LPT's flow modifier.
 
-**Do not confuse inputs with sensors.** The 13 modifiers are what the authors
+**Do not confuse inputs with sensors.** The modifiers are what the authors
 changed to create damage. None of them is in the released files; the files hold
-the flight condition and what the engine reported back.
+the flight condition and what the engine reported back (NASA PCoE, 2008).
 
 ### What comes out: 21 sensors and four hidden margins
 
 C-MAPSS can report 58 output variables, and the paper kept 21 of them as the
-sensor data given to participants (Section III.A, page 3). Table 2 lists them
-with their units
-([Table 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
+sensor data given to participants (Saxena et al., 2008, Section III.A, p. 3).
+Table 2 lists them with their units (Saxena et al., 2008, Table 2,
+[p. 3](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
 Most of the names are engineering terms. In plain words, by standard usage
 (Table 2 itself gives a formula only for epr and phi):
 
@@ -232,11 +242,12 @@ assert round(inlet[0] - 459.67, 2) == 59.0
 
 T2 reads 518.67 °R in every FD001 row, and 518.67 − 459.67 = 59 °F, the
 standard-day sea-level temperature of the guide's Table 1.4
-([page 11](../references/frederick_2007_cmapss_users_guide.pdf#page=11)).
+(Frederick et al., 2007, Table 1.4,
+[p. 11](../references/frederick_2007_cmapss_users_guide.pdf#page=11)).
 
 **Do not confuse total pressure with static pressure.** P30 and Ps30 are both
-measured at the HPC outlet. Static pressure is what the moving air presses on
-a wall it flows along; total pressure is what the air would reach if it were
+measured at the HPC outlet (Saxena et al., 2008, Table 2). Static pressure is
+what the moving air presses on a wall it flows along; total pressure is what the air would reach if it were
 brought to rest, so it also counts the part due to the air's speed. The two
 are different quantities at the same place, and both are among this project's
 14 sensors.
@@ -244,18 +255,19 @@ are different quantities at the same place, and both are among this project's
 Table 2 has a second part. Four more outputs were used **only** to compute the
 engine's health index and were not given to participants: the HPT outlet
 temperature T48, also called the exhaust gas temperature (EGT), and the stall
-margins of the fan, the LPC and the HPC. A **stall margin** is how far a
-compressor is operating from the point where its airflow breaks down; the
+margins of the fan, the LPC and the HPC (Saxena et al., 2008, Table 2). A
+**stall margin** is how far a compressor is operating from the point where its airflow breaks down; the
 smaller the margin, the closer it is to stalling.
 
 The user guide stores these variables in two places. Twelve of the 21 sensors
-are among its 27 model outputs
-([Table 1.2, page 10](../references/frederick_2007_cmapss_users_guide.pdf#page=10));
+are among its 27 model outputs (Frederick et al., 2007,
+[Table 1.2, p. 10](../references/frederick_2007_cmapss_users_guide.pdf#page=10));
 the other nine — T2, P2, BPR, farB, htBleed, Nf_dmd, PCNfR_dmd, W31 and W32 —
-are internal variables it lists separately
-([Table 1.3, page 11](../references/frederick_2007_cmapss_users_guide.pdf#page=11)).
+are internal variables it lists separately (Frederick et al., 2007,
+[Table 1.3, p. 11](../references/frederick_2007_cmapss_users_guide.pdf#page=11)).
 Its Table 1.3 calls both W31 and W32 an HPT coolant bleed, where the paper's
-Table 2 calls W32 the LPT's. The project's engine drawing follows the paper's
+Table 2 calls W32 the LPT's (Frederick et al., 2007, Table 1.3, p. 11; Saxena
+et al., 2008, Table 2). The project's engine drawing follows the paper's
 Table 2 here (assumption A-31).
 
 **Do not confuse the four fan speeds.** Four columns hold a fan speed, and the
@@ -303,10 +315,10 @@ the corrected fan speed nearly equals the physical one, 2388.02 against
 The paper builds on earlier work that tracks an engine's wear through the
 efficiency and flow of its compressors and turbines — Kurosaki et al.,
 Chatterjee and Litt, and Goebel et al., its references [8] to [10]
-([Section III](../references/saxena_2008_damage_propagation_modeling.pdf#page=2)) —
+(Saxena et al., 2008, Section III, [p. 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=2)) —
 and states the premise outright: the health of a compressor or turbine module
-is described by both its efficiency and its flow (Section IV.D,
-[page 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)).
+is described by both its efficiency and its flow (Saxena et al., 2008,
+Section IV.D, [p. 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)).
 
 Before simulating damage, the authors checked that C-MAPSS reacts to such
 changes the way a real engine does. For the HPC, HPT and LPT they lowered
@@ -316,8 +328,8 @@ result: a map of what one output reads for every combination of efficiency
 loss and flow loss. Figures 3 and 4 show the maps of the HPC stall margin and
 of the exhaust gas temperature for a degrading HPC, and the authors compared
 their shape with maps published for a real engine by Goebel et al., their
-reference [10]
-([Section III.B](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
+reference [10] (Saxena et al., 2008, Section III.B,
+[pp. 3–4](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
 
 Read another way — this page's reading, not the paper's — the maps also show
 why two numbers per module can stand for its damage: if every output is a
@@ -329,14 +341,15 @@ time makes every output drift.
 Section IV reviews three common models of time to failure: the Arrhenius model
 for chemical and diffusion processes, the Coffin–Manson model for fatigue
 cracking under repeated heating, and the Eyring model for several stresses
-together (Equations 1 to 3,
-[page 4](../references/saxena_2008_damage_propagation_modeling.pdf#page=4)).
+together (Saxena et al., 2008, Section IV, Eqs. 1–3,
+[p. 4](../references/saxena_2008_damage_propagation_modeling.pdf#page=4)).
 All three give the time, or the number of cycles, to failure from a
 temperature or a stress; none of them describes damage as a function of time.
 The authors nevertheless state that exponential growth of the fault is common
 to all degradation models, cite similar trends seen in practice (their
 reference [10]), and on that basis impose an exponential term on the health
-parameters instead of modelling any one physical mechanism (Section IV.D).
+parameters instead of modelling any one physical mechanism (Saxena et al.,
+2008, Section IV.D, p. 4).
 
 ### One module's health over time: Equations 4 to 6
 
@@ -346,16 +359,19 @@ point beyond which the module cannot be used. A **health index** $h(t)$ is then
 defined as the distance still left to that threshold, as a fraction of it:
 $h(t) = 1 - A e^{B(t)}/th_w$, which is 1 for a module with no wear and 0 at the
 threshold. Renaming $A/th_w = e^{a}$ and choosing $B(t) = t^{b}$, the paper
-writes (page 4):
+writes (Saxena et al., 2008, Section IV.D, p. 4):
 
 $$h(t) = 1 - \exp\{a\,t^{b}\} \tag{4}$$
 
 and, adding a non-zero initial degradation $d$ so that the generation can start
-at an arbitrary point of wear rather than with a brand-new engine (page 5):
+at an arbitrary point of wear rather than with a brand-new engine
+(Saxena et al., 2008, p. 5):
 
 $$h(t) = 1 - d - \exp\{a\,t^{b}\} \tag{5}$$
 
-- $t$ is time in cycles; one cycle is one flight.
+- $t$ is time in cycles, as the paper's Figure 5 counts it; one cycle is one
+  flight, in this project's reading of its sources
+  ([Data, What one cycle is](../learn/01_the_problem.md#what-one-cycle-is)).
 - $h(t)$ is the health of one quantity at time $t$: 1 healthy, 0 at the limit.
 - $d$ is the degradation the module already has at the start.
 - $a$ sets how fast the damage term grows, and $b$ how sharply it bends upward
@@ -371,8 +387,8 @@ into $h(t) = 1 - A e^{B(t)}/th_w$ gives $1 - e^{a}\,e^{t^{b}} = 1 - \exp\{a + t^
 a sum in the exponent, not the product $a\,t^{b}$ that Equation 4 prints.
 Second, at $t = 0$ the printed Equation 5 gives $1 - d - e^{0} = -d$: a health
 already at or below zero before the engine has flown, whereas Section V.B says
-each health trajectory starts between 1 and 0.99. The table evaluates
-Equation 5 exactly as printed, at the smallest and largest $a$ and $b$ that
+each health trajectory starts between 1 and 0.99 (Saxena et al., 2008, p. 6).
+The table evaluates Equation 5 exactly as printed, at the smallest and largest $a$ and $b$ that
 Equation 10 allows and at a starting degradation of 0 and of 1 percent:
 
 <details class="process-example">
@@ -410,15 +426,17 @@ depends on the answer.
 **Equation 6** applies the same form separately to a module's **efficiency**
 $e(t)$ and **flow** $f(t)$, each with its own initial degradation ($d_e$, $d_f$)
 and its own growth parameters, because different faults move the two
-differently (page 5):
+differently (Saxena et al., 2008, p. 5):
 
 $$e(t) = 1 - d_e - \exp\{a_e(t)\,t^{b_e(t)}\}, \qquad f(t) = 1 - d_f - \exp\{a_f(t)\,t^{b_f(t)}\} \tag{6}$$
 
 Equation 6 writes the growth parameters as functions of time, $a_e(t)$ and
 $b_e(t)$, while Equation 10 below treats them as constants drawn once per
-engine; the paper does not say which is meant. What comes next is that $e(t)$
+engine (Saxena et al., 2008, pp. 5–6); the paper does not say which is
+meant. What comes next is that $e(t)$
 and $f(t)$ are fed into the simulator as the HPC's efficiency and flow, and the
-engine's response decides when it has failed.
+engine's response decides when it has failed (Saxena et al., 2008,
+pp. 5–6).
 
 **Do not confuse the three kinds of health.** They have different ranges and
 different roles:
@@ -438,49 +456,56 @@ above shows for Equation 5.
 ### From module health to engine health: Equations 7 and 8
 
 The engine fails when any one of its safety margins runs out, not when one
-module's efficiency reaches some value. Section V.D defines the **operability
+module's efficiency reaches some value (Saxena et al., 2008, p. 1).
+Section V.D defines the **operability
 margins** as how far the engine is operating from its limits, such as stall
 and temperature limits. A few correspond to quantities a sensor reads — the
 paper's examples are the limits on core speed and the upper limits on exhaust
 gas temperature (EGT) — while the rest exist only inside the simulation
-([page 6](../references/saxena_2008_damage_propagation_modeling.pdf#page=6)).
+(Saxena et al., 2008, Section V.D,
+[p. 6](../references/saxena_2008_damage_propagation_modeling.pdf#page=6)).
 Equations 7 and 8 combine them into the engine's overall health index $H(t)$
-(page 5):
+(Saxena et al., 2008, p. 5):
 
 $$H(t) = g\big(e(t), f(t)\big) \tag{7}$$
 
 $$g\big(e(t), f(t)\big) = \min\left(m_{Fan},\, m_{HPC},\, m_{HPT},\, m_{EGT}\right) \tag{8}$$
 
 - Each $m$ is one margin, computed by the simulator from the current $e(t)$ and
-  $f(t)$, and rescaled to run from 1 (perfectly healthy) to 0 (the margin has
-  shrunk by its allowed limit).
+  $f(t)$, and rescaled to run from 1, perfectly healthy, to 0, where the margin
+  has shrunk by its allowed limit (Saxena et al., 2008, pp. 5–6).
 - $\min$ takes the smallest of them, so the margin closest to its limit sets the
   engine's health.
 
 Section V.D gives the limits: a margin reaches 0 when the fan, LPC or HPC stall
-margin has shrunk by 15 percent, or the EGT margin by about 2 percent. If a
+margin has shrunk by 15 percent, or the EGT margin by about 2 percent
+(Saxena et al., 2008, Section V.D, p. 6). If a
 pairing of efficiency and flow would breach any margin at any flight condition
 the engine might meet — a hot-day take-off, a maximum climb, a cruise — its
 health index is 0; otherwise it is the lowest rescaled margin. The margins
 also depend on how the engine is being flown: Figure 6 plots the three stall
 margins and the EGT against the throttle setting, and the paper concludes that
 the health index must be adjusted for the operating condition as well
-(page 6). The paper does not give the rescaling as a formula, so no number can
-be worked through it. Its own example is in Figures 7 and 8: three degradation
+(Saxena et al., 2008, Fig. 6, p. 6). The paper does not give the rescaling as
+a formula, so no number can be worked through it. Its own example is in Figures 7 and 8: three degradation
 trajectories drawn over the maps of HPC stall margin and EGT, where the EGT
 margin reaches its limit first in all three, so EGT sets the health index
-([page 7](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)).
+(Saxena et al., 2008, Figs. 7–8,
+[p. 7](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)).
 
-Equation 8 names the fan, HPC, HPT and EGT margins. Three other passages name a
-different set — fan, LPC and HPC stall margins and EGT: Table 2's list of
-health-index parameters, the limits in Section V.D, and item 1 of Section VI.
+Equation 8 names the fan, HPC, HPT and EGT margins (Saxena et al., 2008,
+p. 5). Three other passages name a different set — fan, LPC and HPC stall
+margins and EGT: Table 2's list of health-index parameters, the limits in
+Section V.D, and item 1 of Section VI (Saxena et al., 2008, pp. 3, 6–7).
 Table 2 contains no HPT margin at all. Three passages against one favour the
 LPC reading, but the paper does not resolve it.
 
 **Do not confuse the health index with remaining useful life.** $H(t)$ is a
-number between 0 and 1 that the simulator computed and never released.
-Remaining useful life is a count of cycles; in a training file it runs out
-where $H$ reached 0, because that is where the record ends. The model in this
+number between 0 and 1 that the simulator computed and never released
+(Saxena et al., 2008, Section VI, p. 7). Remaining useful life is a count of
+cycles; in a training file it runs out where $H$ reached 0, because that is
+where the record ends (NASA PCoE, 2008; Saxena et al., 2008, Section VI,
+p. 7). The model in this
 project is shown only sensor readings and must infer the second without ever
 seeing the first.
 
@@ -493,27 +518,32 @@ $H(t)$.
 
 No two real engines leave the factory identical, and an engine in service is
 already slightly worn. The paper treats both as normal, not as faults
-([Section V.A](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)).
+(Saxena et al., 2008, Section V.A,
+[p. 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)).
 Its Table 3 recites reference values, which it attributes to Chatterjee and
 Litt (its reference [9]), for how much a module's efficiency and flow change
 with use, at the start and after 3000 and 6000 cycles; the largest initial
-value is a 1.01 percent loss of LPC flow. The table has rows for the fan, LPC,
+value is a 1.01 percent loss of LPC flow (Saxena et al., 2008, Table 3,
+p. 5). The table has rows for the fan, LPC,
 HPT and LPT, but none for the HPC, the module the challenge data degrade.
 
 For the data, the starting efficiency and flow of each engine were drawn at
-random within 1 percent of healthy (Section V.B and Equation 9, page 6):
+random within 1 percent of healthy (Saxena et al., 2008, Section V.B and
+Eq. 9, p. 6):
 
 $$e_0 \in [0.99,\, 1], \qquad f_0 \in [0.99,\, 1] \tag{9}$$
 
 $e_0 = 0.995$, for example, is an engine that starts with half a percent less
 efficiency than a perfect one. The readme repeats the consequence for users:
 each engine starts with a different, unknown amount of initial wear and
-manufacturing variation, which counts as normal and not as a fault.
+manufacturing variation, which counts as normal and not as a fault
+(NASA PCoE, 2008).
 
 ### Three kinds of noise
 
 Section V.B separates three sources of noise and adds each at a different
-stage ([pages 5 and 6](../references/saxena_2008_damage_propagation_modeling.pdf#page=6)):
+stage (Saxena et al., 2008, Section V.B,
+[pp. 5–6](../references/saxena_2008_damage_propagation_modeling.pdf#page=6)):
 
 1. **Manufacturing and assembly variation** — the random starting values of
    Equation 9.
@@ -532,20 +562,22 @@ stage ([pages 5 and 6](../references/saxena_2008_damage_propagation_modeling.pdf
    maintenance between flights is not modelled on its own but folded into this
    noise, so efficiency and flow are allowed to recover a little, within set
    bounds, at any time, and their loss is not steady from one flight to the
-   next (Figure 5,
-   [page 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)).
+   next (Saxena et al., 2008, Section V, Fig. 5,
+   [p. 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)).
 3. **Measurement noise** — random noise added to every output channel after
    the simulation, on top of what the engine model produced.
 
 The paper's reason for the layering is that participants should face
-de-noising tasks like those real data pose. It gives no sizes for any of the
+de-noising tasks like those real data pose (Saxena et al., 2008, Section V.B,
+p. 6). It gives no sizes for any of the
 three: no variances, no amplitudes. Figure 5, one engine's efficiency loss over
 50 cycles, is the only picture of how large the process noise is, so the noise
 cannot be reproduced from the paper.
 
 ### The four-step recipe and its limits
 
-Section V.C condenses the generation into four steps (page 6):
+Section V.C condenses the generation into four steps (Saxena et al., 2008,
+p. 6):
 
 1. Choose the starting efficiency and flow (Equation 9).
 2. Let efficiency and flow fall exponentially, which makes the health index
@@ -562,10 +594,11 @@ trajectory as a path across a map whose two axes are efficiency loss and flow
 loss: an engine that loses flow faster than efficiency heads one way across the
 map, one that loses efficiency faster heads another, and the paper notes that
 whether a given margin's threshold is crossed depends on that direction
-(page 7). Different $a$ and $b$ for efficiency and for flow are what set it
-(this page's reading of Equations 6 and 10). The rest of Equation 10 is left
+(Saxena et al., 2008, Section V.D, p. 7). Different $a$ and $b$ for efficiency
+and for flow are what set it (this page's reading of Equations 6 and 10). The rest of Equation 10 is left
 unexplained: it gives bounded intervals while the text calls the distribution
-of $a_k$ and $b_k$ normal; the subscript $k$ names the engine in the text but
+of $a_k$ and $b_k$ normal (Saxena et al., 2008, Section V.B and Eq. 10,
+p. 6); the subscript $k$ names the engine in the text but
 takes the values 1 and 2 in Equation 10 (probably efficiency and flow); and
 the index $i$ in $f_i, e_i \le 1\%$ is defined nowhere. Most plausibly that
 bound repeats Equation 9's 1 percent of initial wear, but that too is a
@@ -574,8 +607,9 @@ reading.
 The output is a time series of sensor readings, one snapshot per flight,
 produced by degrading **only the HPC's** efficiency and flow; the paper states
 that degradation of other modules was left out of the challenge data on
-purpose. Section V gives the scenario behind the snapshots
-([page 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)):
+purpose (Saxena et al., 2008, Section V.C, p. 6). Section V gives the scenario
+behind the snapshots (Saxena et al., 2008, Section V,
+[p. 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)):
 each engine may fly a different flight condition from one flight to the next;
 the damage done in one flight cannot be worked out from its duration and its
 conditions alone, so it has to be read from the sensors; and because the
@@ -594,7 +628,8 @@ record stops at the flight where the smallest margin reaches zero.
 ## The challenge data the paper describes
 
 Section VI lists the properties of the data generated for PHM'08
-([page 7](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)):
+(Saxena et al., 2008, Section VI,
+[p. 7](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)):
 
 1. HPC degradation, simulated under six combinations of altitude, throttle
    resolver angle and Mach number, with the fan, HPC and LPC stall margins and
@@ -609,16 +644,19 @@ Section VI lists the properties of the data generated for PHM'08
    was deliberate and not announced, to test robustness. The sentence goes on
    to say that initial wear, noise levels and the spread of degradation
    parameters were kept as before, but as printed it lacks the negation its
-   context needs and says they remained changed.
+   context needs and says they "remained changed" (Saxena et al., 2008,
+   p. 7).
 
 During the challenge, participants submitted predictions for the test set and
 received a score back automatically, so they could improve their methods. So
 that no method could be over-fitted to the test set — tuned to the feedback on
 that one set — the validation set was held back, published later, and scored
-without feedback until the competition had closed.
+without feedback until the competition had closed (Saxena et al., 2008,
+Section VI, p. 7).
 
 **Do not confuse the paper's validation set with this project's.** The paper's
-validation set is a second, held-back set of cut-off engines with known answers.
+validation set is a second, held-back set of cut-off engines with known answers
+(Saxena et al., 2008, Section VI, p. 7).
 This project's validation engines are training engines it holds back from
 fitting, to decide when to stop training
 ([Preprocessing, step 3](../learn/04_the_pipeline.md#3--hold-engines-back)).
@@ -633,20 +671,21 @@ The paper never names FD001, FD002, FD003 or FD004. Of the dataset's own
 sources, only the readme does: it lists for each subset its training and test
 trajectories, its operating conditions and its fault modes, and cites the
 dataset paper as its reference
-([readme](../references/nasa_2008_cmapss_readme.txt)). Its description agrees
+([NASA PCoE, 2008](../references/nasa_2008_cmapss_readme.txt)). Its description agrees
 with the paper's method: a fleet of engines of one type, each with unknown
 initial wear, three operational settings that change performance
 substantially, sensor noise, and a fault that appears partway through each
 record and grows. In the training files it grows until failure; in the test
 files the record ends some time before, and a separate file holds the true
-remaining life after each test engine's last recorded cycle. Wen et al.
-(2026), the paper this project re-implements, also describe the four subsets,
-in their Table 5
-([page 7](../references/wen_2026_estgnn_dynamic_shap.pdf#page=7)).
+remaining life after each test engine's last recorded cycle (NASA PCoE, 2008).
+Wen et al. (2026), the paper this project re-implements, also describe the
+four subsets, in their Table 5
+([p. 7](../references/wen_2026_estgnn_dynamic_shap.pdf#page=7)).
 
 The row layout is shown on
 [Data, Training engines](../learn/01_the_problem.md#training-engines). The
-readme lists the 26 columns and names the last one sensor measurement 26,
+readme lists the 26 columns and names the last one sensor measurement 26
+(NASA PCoE, 2008),
 although columns 6 to 26 hold 21 sensors, so it is sensor 21.
 
 ### What the files contain, set beside the readme
@@ -716,14 +755,15 @@ condition, and the code checks that it gives the same counts.
 
 Every count agrees except FD004, where the readme swaps the two: the files hold
 249 training engines and 248 test engines, and `RUL_FD004.txt` has 248 lines,
-one per test engine. Wen et al.'s Table 5 gives 249 and 248, as the files do.
+one per test engine. Wen et al. (2026, Table 5, p. 7) give 249 and 248, as the
+files do.
 The project's record of the expected sizes, `EXPECTED_SHAPES` in
 `data/loading/`, also follows the files.
 
 In what follows, an engine's **life** means the number of cycles from its
 first record to failure. It is not the engine's age since it was built: the
-paper starts each record at an arbitrary, already worn point (page 5 and
-Section VI, item 2).
+paper starts each record at an arbitrary, already worn point (Saxena et al.,
+2008, p. 5, and Section VI, item 2, p. 7).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -756,19 +796,22 @@ subset_lengths = pd.DataFrame([
 | FD004 | 61249 | 41214 | 128 | 543 | 19 | 486 | 6 | 195 |
 
 A training engine's life is its last recorded cycle, since its record runs to
-failure. A test engine's record is how many cycles were kept before the cut.
+failure (NASA PCoE, 2008). A test engine's record is how many cycles were kept
+before the cut.
 
 **These files are not the challenge data the paper describes.** Three
 differences say so:
 
 - The paper's challenge data degrade only the HPC and leave other modules out
-  on purpose; the readme gives FD003 and FD004 a second fault mode, fan
-  degradation, which the paper never describes.
-- The paper's test answers ranged from 10 to 150 cycles. No released RUL file
+  on purpose (Saxena et al., 2008, Section V.C, p. 6); the readme gives FD003
+  and FD004 a second fault mode, fan degradation, which the paper never
+  describes (NASA PCoE, 2008).
+- The paper's test answers ranged from 10 to 150 cycles (Saxena et al., 2008,
+  Section VI, p. 7). No released RUL file
   stays inside that range: all four reach below 10, and FD002 and FD004 reach
   194 and 195, above even the validation set's 190.
 - FD001 and FD003 have a single flight condition (next section), while the
-  paper's challenge data used six.
+  paper's challenge data used six (Saxena et al., 2008, Section VI, p. 7).
 
 The paper therefore documents the simulator and the method that produced data
 of this kind. For what the four files themselves contain, the readme and the
@@ -778,10 +821,11 @@ files are the only direct sources.
 
 Neither the paper nor the readme says which setting is which. The paper says
 the challenge's six conditions combine altitude (0 to 42,000 ft), Mach number
-(0 to 0.84) and TRA (20 to 100) (Section V.D, page 6), and the user guide's
+(0 to 0.84) and TRA (20 to 100) (Saxena et al., 2008, Section V.D, p. 6), and
+the user guide's
 Table 1.4 lists 14 ready-made flight conditions with their altitude, Mach
-number, TRA and the fan speed the engine settles at
-([user guide, Table 1.4](../references/frederick_2007_cmapss_users_guide.pdf#page=11)).
+number, TRA and the fan speed the engine settles at (Frederick et al., 2007,
+[Table 1.4, p. 11](../references/frederick_2007_cmapss_users_guide.pdf#page=11)).
 Finding the conditions in the files and looking them up in that table tests
 both the settings and the sensor order at once:
 
@@ -838,9 +882,9 @@ conditions, read as altitude in thousands of feet, Mach number and TRA in
 degrees. Within each condition, sensor 18 holds one value across every row of
 all eight files, and that value is exactly the guide's fan speed for the
 condition. Sensor 18 is the 18th row of the paper's Table 2, the **demanded fan
-speed**, and the fan-speed controller holds the real fan speed at that demand
-(user guide, Section 3.1). A column that never moves within a condition and
-equals the guide's settled fan speed is what the demanded fan speed should
+speed** (Saxena et al., 2008, Table 2), and the fan-speed controller holds the
+real fan speed at that demand (Frederick et al., 2007, Section 3.1, p. 29). A
+column that never moves within a condition and equals the guide's settled fan speed is what the demanded fan speed should
 look like, so the check supports reading the 21 sensor columns in Table 2's
 order. It is evidence, not a statement from either source.
 
@@ -853,32 +897,38 @@ demanded fan speed, should do.
 Four more observations come out of the same rows:
 
 - FD001's only condition is the guide's FC01: altitude 0, Mach 0 and TRA 100,
-  the highest setting in the guide's menu. The guide's own menu labels FC01 as
-  sea level, static (the engine is not moving), standard day
-  ([page 37](../references/frederick_2007_cmapss_users_guide.pdf#page=37)),
+  the highest setting in the guide's menu (Frederick et al., 2007, Table 1.4,
+  p. 11). The guide's own menu labels FC01 as sea level, static (the engine is
+  not moving), standard day (Frederick et al., 2007, Fig. 4.6,
+  [p. 37](../references/frederick_2007_cmapss_users_guide.pdf#page=37)),
   and the readme describes the single condition of FD001 and FD003 as sea
-  level. Section V.C of the paper calls the outputs cruise snapshots, although
-  its own ranges in Section V.D start at altitude 0 and Mach 0; the paper does
-  not reconcile the two.
+  level (NASA PCoE, 2008). Section V.C of the paper calls the outputs cruise
+  snapshots, although its own ranges in Section V.D start at altitude 0 and
+  Mach 0 (Saxena et al., 2008, p. 6); the paper does not reconcile the two.
 - The files' TRA takes only the values 60 and 100, not the range 20 to 100 the
-  paper gives.
+  paper gives (Saxena et al., 2008, Section V.D, p. 6).
 - The highest condition, FC09, is at 42,000 ft, above the 40,000 ft both
-  sources give as the simulator's range, yet it is the guide's own menu
-  condition and inside the paper's 0 to 42,000 ft; neither source comments.
+  sources give as the simulator's range (Frederick et al., 2007, p. 8; Saxena
+  et al., 2008, p. 2), yet it is the guide's own menu condition (Frederick et
+  al., 2007, Table 1.4, p. 11) and inside the paper's 0 to 42,000 ft (Saxena et
+  al., 2008, p. 6); neither source comments.
 - The paper's Table 2 gives PCNfR_dmd (sensor 19) in rpm, the guide's
-  Table 1.3 in percent, and the files hold only 100 and 84.93 for it — values
+  Table 1.3 in percent (Frederick et al., 2007, Table 1.3, p. 11; Saxena et
+  al., 2008, Table 2), and the files hold only 100 and 84.93 for it — values
   that read as percentages.
 
 ### One training engine's record
 
 A training record runs from an engine's first recorded cycle, already worn by
-the paper's design, to the cycle where its health index reached zero. The
+the paper's design, to the cycle where its health index reached zero
+(Saxena et al., 2008, pp. 6–7). The
 shortest-lived and the longest-lived training engines of FD001 show what the
 method of the previous section produces. The table averages five sensors over
 each engine's first 20 and last 20 recorded cycles; averaging 20 readings
 damps the measurement noise enough to see the drift. T30, P30 and Ps30 are
 measured at the HPC outlet, the module being degraded, T50 at the LPT outlet,
-and Nf is the fan speed the controller holds. The last two columns measure the
+and Nf is the fan speed the controller holds (Frederick et al., 2007, p. 29;
+Saxena et al., 2008, Table 2). The last two columns measure the
 longer-lived engine's change in two ways: as a percentage of where it
 started, and against the sensor's own scatter, its standard deviation (the
 typical distance from the average) over all FD001 training rows.
@@ -984,7 +1034,8 @@ engines disagree more at the start than at the end, as random starts and one com
 subset and a handful of sensors this is consistent with the paper's design,
 not a proof of it. The fan speed, held by the controller, does not show the
 pattern. Nothing in a training file marks the cycle where the fault begins:
-the readme says only that it appears partway through each record.
+the readme says only that it appears partway through each record
+(NASA PCoE, 2008).
 
 ### One test engine's truncation
 
@@ -1034,7 +1085,7 @@ For engine 34: 203 cycles recorded, 7 left, so it would have failed at cycle
 100 FD001 test engines the share recorded runs from 0.206704 to 0.966667, so the
 cut falls anywhere from a fifth of the way through a life to its last few
 cycles. The readme says no more about where the test records stop than that
-each one ends some time before failure.
+each one ends some time before failure (NASA PCoE, 2008).
 
 Set beside the training engines, the test engines' implied lives look like
 lives drawn from the same fleet:
@@ -1057,16 +1108,16 @@ late. It notes that the preference could reverse where a failure does not
 threaten life and early maintenance is expensive, so a scoring rule should be
 set for the application. For the engine scenario, early is preferred, and the
 paper states that the challenge's scoring was asymmetric so that "late
-predictions were more heavily penalized than early predictions" (Section VII,
-page 7), with a penalty that grows exponentially with the error. What the
-score rewards in a model, and how it compares with the other measures this
+predictions were more heavily penalized than early predictions" (Saxena et
+al., 2008, Section VII, p. 7), with a penalty that grows exponentially with
+the error. What the score rewards in a model, and how it compares with the other measures this
 project reports, is on
 [Reading a result, The NASA score](../learn/06_reading_results.md#the-nasa-score).
 
 ### Equation 11
 
-The paper prints one equation for the whole score
-([page 7](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)).
+The paper prints one equation for the whole score (Saxena et al., 2008,
+Eq. 11, [p. 7](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)).
 As printed, each of its two branches is a sum over the engines from $i = 1$ to
 $n$ of an exponential, followed by $-1$ and by the condition on $d$, and $d$
 carries no index $i$. Read literally, the $-1$ would be subtracted once and one
@@ -1074,7 +1125,8 @@ branch would be chosen for all engines together. Since the error differs from
 engine to engine, this page reads it as one penalty per engine, with the $-1$
 inside, summed; the index $i$ on $d$ and the placement of the $-1$ are this
 page's reading, not the paper's print. Figure 9, which plots the score of a
-single error and is 0 at an error of 0, matches it. Eq. (11), read per engine:
+single error and is 0 at an error of 0 (Saxena et al., 2008, Fig. 9, p. 8),
+matches it. Eq. (11), read per engine:
 
 $$s = \sum_{i=1}^{n} s_i, \qquad s_i = \begin{cases} e^{-d_i/a_1} - 1 & d_i < 0 \\ e^{\,d_i/a_2} - 1 & d_i \ge 0 \end{cases}$$
 
@@ -1086,19 +1138,21 @@ $$s = \sum_{i=1}^{n} s_i, \qquad s_i = \begin{cases} e^{-d_i/a_1} - 1 & d_i < 0 
 - $a_1$ and $a_2$ set how fast the penalty grows on each side: a smaller
   divisor makes the penalty climb faster.
 
-It was the number participants received for their test-set predictions, and it
-is one of the four measures this project reports.
+It was the number participants received for their test-set predictions
+(Saxena et al., 2008, Section VI, p. 7), and it is one of the four measures
+this project reports.
 
 ### The printed constants contradict the sentence above them
 
-Under the equation the paper prints $a_1 = 10$ and $a_2 = 13$. Put those into
+Under the equation the paper prints $a_1 = 10$ and $a_2 = 13$ (Saxena et al.,
+2008, Eq. 11, p. 7). Put those into
 Equation 11: an early error ($d < 0$) is divided by 10, a late error ($d \ge 0$)
 by 13. A larger divisor grows more slowly, so the printed constants penalise
 **late** predictions **less** — the opposite of the sentence quoted above
 (finding F-20).
 
-Figure 9 supports the sentence
-([page 8](../references/saxena_2008_damage_propagation_modeling.pdf#page=8)).
+Figure 9 supports the sentence (Saxena et al., 2008, Fig. 9,
+[p. 8](../references/saxena_2008_damage_propagation_modeling.pdf#page=8)).
 Rendered at eight times its printed size, its tick marks at 0 and at 150 lie
 651 pixels apart, 4.34 pixels per unit of score; measured that way, its curve
 ends at about 45 for an error of −50 and at about 147 for an error of +50, so
@@ -1145,8 +1199,8 @@ predictions, as this paper's printed constants do; their own text calls a
 positive error an over-prediction and punishes it harder, which fits
 Equation 21 only with the error taken as predicted minus true. So in Wen et
 al. it is Equation 20's sign, not the constants, that disagrees with the text
-([Wen et al., page 9](../references/wen_2026_estgnn_dynamic_shap.pdf#page=9);
-assumption A-15).
+(Wen et al., 2026, Eqs. 20–21,
+[p. 9](../references/wen_2026_estgnn_dynamic_shap.pdf#page=9); assumption A-15).
 
 ### The asymmetry on real test-engine errors
 
@@ -1254,7 +1308,8 @@ figure put that side in opposite places.
 ### What else Section VII proposes
 
 After the challenge the authors suggested two refinements, which the challenge
-did not use ([page 8](../references/saxena_2008_damage_propagation_modeling.pdf#page=8)).
+did not use (Saxena et al., 2008, Section VII,
+[p. 8](../references/saxena_2008_damage_propagation_modeling.pdf#page=8)).
 Errors close to the end of life matter more and are easier to make small, so
 engines with short true remaining life could be weighted more heavily. And
 because a sum over engines can hide whether a method is consistently good or
@@ -1277,14 +1332,16 @@ are followed here.)
   [What the files contain](#what-the-files-contain-set-beside-the-readme).
 - **The sensor names.** The names attached to columns 6 to 26 come from Wen et
   al.'s Table 2, which numbers the 21 sensors 1 to 21 in the same order as this
-  paper's Table 2. The evidence that the file columns follow that order is the
+  paper's Table 2 (Saxena et al., 2008, Table 2; Wen et al., 2026, Table 2,
+  p. 5). The evidence that the file columns follow that order is the
   check under
   [Which flight conditions the settings are](#which-flight-conditions-the-settings-are).
 - **The labels.** Training labels count the cycles left before the record ends,
-  which is where the simulated health index reached zero; test labels come from
-  the RUL files ([Data](../learn/01_the_problem.md)). Wen et al. never state
-  the value of their label ceiling; 125 cycles is the project's reading of
-  their Fig. 7 (assumption A-01), and applying the ceiling to the test labels
+  which is where the simulated health index reached zero (Saxena et al., 2008,
+  p. 7); test labels come from the RUL files ([Data](../learn/01_the_problem.md)).
+  Wen et al. (2026) never state the value of their label ceiling (Eq. 19,
+  p. 9); 125 cycles is the project's reading of their Fig. 7 (p. 11;
+  assumption A-01), and applying the ceiling to the test labels
   too is the project's own choice (assumption A-02). Neither comes from this
   paper.
 - **The score.** `nasa_score` in `evaluation/metrics.py` follows the reading
@@ -1292,7 +1349,8 @@ are followed here.)
   [The printed constants contradict the sentence above them](#the-printed-constants-contradict-the-sentence-above-them)
   (assumption A-15).
 - **What it does not take.** The health index, the margins and the health
-  modifiers were never released. The paper's validation set is not in these
+  modifiers were never released (NASA PCoE, 2008; Saxena et al., 2008, Table 2
+  and Section VI, p. 7). The paper's validation set is not in these
   files, and the project's own validation engines are a different thing. The
   generation equations are not used either: the project contains no simulated
   data of its own, only NASA's files, so the inconsistencies in Equations 4, 5,
@@ -1300,28 +1358,27 @@ are followed here.)
 
 ---
 
-## Sources
+## References
 
-- [saxena_2008_damage_propagation_modeling.pdf](../references/saxena_2008_damage_propagation_modeling.pdf) —
-  Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
-  modeling for aircraft engine run-to-failure simulation. In *2008 International
-  Conference on Prognostics and Health Management* (pp. 1–9). IEEE.
-  https://doi.org/10.1109/PHM.2008.4711414. The copy is the authors' 9-page
-  manuscript as NASA distributes it on DASHlink; equation, table, figure and
-  page numbers on this page refer to it.
-- [frederick_2007_cmapss_users_guide.pdf](../references/frederick_2007_cmapss_users_guide.pdf) —
-  Frederick, D. K., DeCastro, J. A., & Litt, J. S. (2007). *User's guide for the
-  Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)*
+- Frederick, D. K., DeCastro, J. A., & Litt, J. S. (2007). *User's guide for
+  the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)*
   (NASA/TM-2007-215026). NASA Glenn Research Center.
   https://ntrs.nasa.gov/citations/20070034949. Page numbers on this page are
   those of the PDF file, not the report's printed page numbers.
-- [nasa_2008_cmapss_readme.txt](../references/nasa_2008_cmapss_readme.txt) —
-  NASA Prognostics Center of Excellence. (2008). readme.txt [Description of the
-  C-MAPSS turbofan engine degradation simulation data set, distributed inside
-  CMAPSSData.zip]. NASA Prognostics Data Repository. The file itself carries no
-  date.
-- [wen_2026_estgnn_dynamic_shap.pdf](../references/wen_2026_estgnn_dynamic_shap.pdf) —
-  Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  [Copy](../references/frederick_2007_cmapss_users_guide.pdf)
+- NASA Prognostics Center of Excellence. (2008). readme.txt, the description
+  of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
+  Data Repository. The file itself carries no date.
+  [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
+  modeling for aircraft engine run-to-failure simulation. In *2008
+  International Conference on Prognostics and Health Management* (pp. 1–9).
+  IEEE. https://doi.org/10.1109/PHM.2008.4711414. The copy is the authors'
+  9-page manuscript as NASA distributes it on DASHlink; equation, table,
+  figure and page numbers on this page refer to it.
+  [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
   (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
-  enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
-  *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)
