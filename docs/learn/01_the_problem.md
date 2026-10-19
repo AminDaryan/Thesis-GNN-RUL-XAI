@@ -83,8 +83,8 @@ answer file gives it only at the last recorded cycle.
 The estimate is worth having because it lets maintenance be planned before a
 failure: Saxena et al. (2008) write that remaining-life estimates allow
 "planners to account for upcoming maintenance" (p. 2). Reliable estimates,
-they add, promise two things: cost savings, by avoiding unscheduled
-maintenance and by using equipment for longer, and better operational safety
+they add, promise two things: cost savings, "by avoiding unscheduled
+maintenance and by increasing equipment usage", and better operational safety
 (p. 2).
 
 A wrong estimate costs something in either direction. Wen et al. (2026) write

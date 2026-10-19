@@ -5,8 +5,8 @@
 A record of giving every statement on the website's documentation pages a
 source, and of checking each source against the copy this project holds. It
 covers the twelve pages under Learn (`docs/learn/`) and the five under
-Resources (`docs/resources/`), and the two READMEs that repeated one of their
-definitions.
+Resources (`docs/resources/`), and the two READMEs and the preprocessing
+notebook that repeated one of their definitions.
 
 It was asked for by the author on 2026-10-18:
 
@@ -71,7 +71,7 @@ was wrong. Each is corrected on its page.
 
 | Where | What it said | What the source says | How it was found |
 |---|---|---|---|
-| `README.md`, glossary; `data/README.md` | A flight cycle is "one complete take-off, flight, and landing". | NASA's readme says each row is "a snapshot of data taken during a single operational cycle"; Saxena et al. (2008, p. 5) take "one measurement snapshot per flight". Neither describes take-off and landing. Both READMEs now quote the two and call "one cycle is one flight" this project's reading. | The final read across pages: the Data page already said no source defines a cycle in those words. One held paper does define "flight cycle data" as one mission "from take-off to landing" (Li & Dong, 2026, p. 402), but for NASA's later N-CMAPSS data, not these files, so it is not cited for them. |
+| `README.md`, glossary; `data/README.md`; preprocessing notebook | A flight cycle is "one complete take-off, flight, and landing". | NASA's readme says each row is "a snapshot of data taken during a single operational cycle"; Saxena et al. (2008, p. 5) take "one measurement snapshot per flight". Neither describes take-off and landing. All three now quote the two and call "one cycle is one flight" this project's reading. | The final read across pages: the Data page already said no source defines a cycle in those words. One held paper does define "flight cycle data" as one mission "from take-off to landing" (Li & Dong, 2026, journal page 402, PDF page 5), but for NASA's later N-CMAPSS data, not these files, so it is not cited for them. |
 | Start here | Saxena et al. (2008) say reliable estimates promise cost savings by "using equipment for longer". | "by increasing equipment usage" (p. 2). | A reader comparing the quotation with the copy. |
 | Data page | Frederick et al. (2007, p. 7) cited for the fan, the bypass and the combustor. | PDF page 7 is the list of symbols, which shows none of them; the engine drawing is Fig. 1.1 on PDF page 9. | A reader opening the locator. |
 | C-MAPSS page | The figure was read as marking the outer shaft N2 and the inner N1. | In Saxena et al.'s Fig. 1 (p. 2) and the guide's Fig. 1.1, the arrow from N1 ends on the outer shaft (compressor and turbine of the core) and the arrow from N2 on the inner one, the reverse of the guide's list of symbols, which names N1 the fan speed and N2 the core speed (p. 7). The page now says both and follows the list of symbols. | Both figures rendered at 1152 and 1200 dots per inch and the shafts followed by eye. |
@@ -193,9 +193,12 @@ and with the reading list. Three things are outside its reach:
 
 ## What was not part of this check
 
-The notebooks, `docs/assumptions/`, `docs/findings/`, the folder READMEs other
-than the data folder's one sentence, and `README.md` apart from its glossary
-entry on remaining useful life and its count of the Learn pages. The
+The notebooks apart from one sentence of the preprocessing notebook,
+`docs/assumptions/`, `docs/findings/`, the folder READMEs other than the data
+folder's one sentence, and `README.md` apart from its glossary entry on
+remaining useful life and its count of the Learn pages. The preprocessing
+notebook still opens with "A jet engine wears out gradually.", the line the
+author had replaced on the Start here page and in `README.md`. The
 glossary in `README.md` cites works by author and year, but not every entry
 has a source (the one on predictive maintenance has none), and most carry no
 page or section.
