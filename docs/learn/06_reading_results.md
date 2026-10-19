@@ -2,12 +2,12 @@
 
 A prediction $\hat{y}$ is a number of cycles, and so is $y$, the remaining life
 it is scored against. In this project's scores $y$ is the test engine's label:
-its true remaining life, which NASA's description of the data counts in
-"operational cycles" (NASA Prognostics Center of Excellence [NASA PCoE], 2008),
-capped at 125 cycles like the training labels
-(assumption A-02), so 125 for the 11 FD001 test engines that have more than
-that left (the second warning under "What may and may not be compared with the
-paper", below, says what the cap does to each measure). The error is the
+its true remaining life, capped at 125 cycles like the training labels
+(assumptions A-01 and A-02), so 125 for the 11 FD001 test engines that have
+more than that left (the second warning under "What may and may not be compared
+with the paper", below, says what the cap does to each measure). NASA's description of
+the data counts that life in "operational cycles" (NASA Prognostics Center of
+Excellence [NASA PCoE], 2008). The error is the
 difference between them, positive when the model was optimistic, the same way
 round as the dataset paper's "Estimated RUL – True RUL" (Saxena et al., 2008,
 p. 7):
@@ -87,10 +87,14 @@ model's error as a share of that guessing error, so a model with no error scores
 > The paper's Equation 23 puts the predicted values in the denominator instead
 > of the true ones (Wen et al., 2026, p. 9, Eq. 23), so a model could raise its
 > score by spreading its predictions more widely without becoming any more
-> accurate. This project uses the standard definition above (assumption A-16),
-> which is what the paper's own text beside the equation describes: "the
-> proportion of variance in the dependent variable that is predictable from the
-> independent variables" (Wen et al., 2026, p. 9).
+> accurate. This project uses the definition above (assumption A-16), which is
+> how this project reads the paper's own text beside the equation: R-squared
+> measures "the proportion of variance in the dependent variable that is
+> predictable from the independent variables" (Wen et al., 2026, p. 9). The
+> dependent variable is the quantity being predicted, here the remaining life,
+> and the independent variables are the inputs it is predicted from, so the
+> variance meant is that of the labels $y_i$, not of the predictions: the
+> bottom sum above divided by the number of engines.
 
 ### ASUE — average safe underestimation error
 
@@ -123,10 +127,10 @@ have ranked it the best there is (assumption A-39).
 ## One seed is not a result
 
 Training draws random numbers: the network's weights start from random values,
-the training examples arrive in a shuffled order, and the held-back engines are
-picked at random. A **seed** is the starting number those draws are generated
-from, so the same network trained with two different seeds gives two different
-results.
+the training examples arrive in a shuffled order, and the held-back engines, a
+fifth of the training engines (assumption A-06), are picked at random. A
+**seed** is the starting number those draws are generated from, so the same
+network trained with two different seeds gives two different results.
 
 So **anything quoted as a result here is a mean over at least five seeds, with
 its standard deviation**:
@@ -156,8 +160,8 @@ To test whether one configuration, a full set of settings, beats another, train
 both with the same five seeds and subtract within each seed, so that every
 difference compares two runs that differ only in the setting under test. Under
 the current default, replacing the paper's sensor graph (Wen et al., 2026,
-Table 3) with one joining every sensor to every other raised the RMSE by 2.125,
-2.822, 2.997, 3.636 and 2.342 cycles:
+Table 3) with one joining every sensor to every other (assumption A-19) raised
+the RMSE by 2.125, 2.822, 2.997, 3.636 and 2.342 cycles:
 
 ```
 mean 2.784        standard deviation 0.592
@@ -176,10 +180,10 @@ A graph built from the data instead, joining the 41 most strongly correlated
 sensor pairs (as many edges as the paper's graph; Wen et al., 2026, Table 3),
 changed the RMSE by 0.238, 0.311, 0.146, 0.457 and −0.672: mean 0.096, standard deviation 0.444, $t$ =
 0.48, *p* = 0.655. One seed points the other way, the spread swamps the mean,
-and five seeds cannot tell the two graphs apart by test error. So most of the
-2.784 is the cost of every sensor receiving the same average, not the worth of
-the paper's engineering knowledge (Wen et al., 2026, Section 2.3.1; assumption
-A-27).
+and five seeds cannot tell the two graphs apart by test error. So, on these
+measurements (assumption A-27), most of the 2.784 is the cost of every sensor
+receiving the same average, not the worth of the engineering knowledge the
+paper built its graph from (Wen et al., 2026, p. 4, Section 2.3.1).
 
 ---
 
@@ -192,7 +196,8 @@ A-27).
 The first comparison above shows it. In an earlier configuration the inputs
 were squeezed into the range 0 to 1, the graph was rescaled in its symmetric
 form, and the learning rate shrank a little after every pass over the training
-data. There the same swap of
+data (assumptions A-03, A-21 and A-17 record what replaced each). There the
+same swap of
 graphs cost 0.044 cycles (*p* = 0.913), against 2.784 under the current default.
 The graph was the same both times. At least those three settings differed, and
 no stored run changes one of them on its own, so the runs cannot say what
@@ -202,8 +207,9 @@ A verdict close to the 0.05 line can flip when only the learning-rate schedule
 changes. With no engines held back, the row form of the graph's rescaling beat
 the symmetric form by 0.35 cycles at *p* = 0.047 when the rate shrank after
 every pass, and by 0.25 at *p* = 0.068 under the single drop at the halfway
-point that the project now uses. With a fifth of the engines held back, no
-difference survives under either, with or without early stopping: the four
+point that the project now uses (assumption A-17). With a fifth of the engines
+held back (assumption A-06), no difference survives under either, with or
+without early stopping (assumption A-18): the four
 comparisons, all re-run at one commit on 2026-10-02, give differences between
 0.091 and 0.199 cycles at *p* between 0.276 and 0.735, and which form comes out
 nominally ahead changes from one to the next (assumption A-21).
@@ -251,9 +257,9 @@ Even that comparison carries three warnings:
    give; found by the
    search for that claim after the review of the playground's information
    cards on 2026-09-26.)
-3. **The paper gives its numbers with no spread** and never mentions seeds or
-   repeated runs (Wen et al., 2026, Tables 7–11), so they have an unknown
-   spread of their own.
+3. **The paper gives its numbers with no spread** (Wen et al., 2026, Tables
+   7–11) and never mentions seeds or repeated runs (assumption A-37 records the
+   search of its text), so they have an unknown spread of their own.
 
 ## References
 
