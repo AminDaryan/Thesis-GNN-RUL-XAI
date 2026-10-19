@@ -6,8 +6,9 @@ readings, then arrange the readings into fixed-length histories called **windows
 
 {{figure:pipeline}}
 
-The order protects against **leakage**: information from test engines, held-back
-engines or future cycles entering a calculation that should not use it.
+The order protects against **leakage**, which on this page means information
+from test engines, held-back engines or future cycles entering a calculation
+that should not use it.
 Smoothing uses only a row's present and past; the engine split is chosen before
 learning any rescaling statistics (assumption A-25); test engines never supply
 those statistics.
@@ -108,6 +109,9 @@ three input answers become:
 
 For comparison, engine 1 at cycle 68 has 124 cycles left. That answer is below
 the ceiling, so it remains 124. Sensor readings are never part of this comparison.
+The paper draws smoothing before capping (Wen et al., 2026, Fig. 1); the order
+does not matter here, because capping changes only the answer column and
+smoothing (step 2) changes only the sensor columns.
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -150,7 +154,8 @@ Successive readings can jump up and down: NASA's description of the data says
 they are "contaminated with sensor noise" (NASA Prognostics Center of
 Excellence [NASA PCoE], 2008). Smoothing gives a new reading only
 part of the influence on the next value, reducing the effect of one sudden jump.
-It is applied separately to each selected sensor and each engine.
+It is applied separately to each engine and to each of the 14 selected sensors
+(Wen et al., 2026, Table 3; assumption A-10).
 
 {{figure:smoothing}}
 
@@ -181,11 +186,12 @@ between the two values rather than adding their full sizes together.
 Start each sensor's history with its first recorded value. Here each share is
 one half. This is an **exponentially weighted moving average**: older readings
 keep contributing through the previous result, but their influence shrinks
-with each new blend (Wen et al., 2026, Section 3.2.3, Eq. 18). The
-half-and-half weight is this project's reading of the paper's sentence, which
-attaches the 0.5 to the previous smoothed value instead of to the share
-(Wen et al., 2026, Section 3.2.3, p. 8; assumption A-04). The starting rule is
-a project choice (assumption A-09).
+with each new blend (Wen et al., 2026, Section 3.2.3, Eq. 18). The paper
+writes that the previous smoothed value "is equal to 0.5 in this study" (Wen et
+al., 2026, Section 3.2.3, p. 8). That value changes every cycle, so it cannot
+be one fixed number; this project reads the 0.5 as the new-reading share
+instead, which makes both shares one half (assumption A-04). The starting rule
+is a project choice (assumption A-09).
 
 Follow `T24`, the `sensor_2` column (Wen et al., 2026, Table 2), through all
 three rows:
@@ -228,10 +234,14 @@ columns change; the first row of each engine stays as it was:
 | 1 | 3 | -0.0043 | 0.0003 | 100 | 518.67 | 642.1675 | 1589.375 | 1403.035 | 14.62 | 21.61 | 554.1575 | 2388.065 | 9049.035 | 1.3 | 47.375 | 522.195 | 2388.0375 | 8133.23 | 8.421725 | 0.03 | 391 | 2388 | 100 | 38.99 | 23.38275 | 125 |
 
 Turning smoothing off skips this change. A weight of 1 also keeps the raw
-readings. The filter runs before condition-based rescaling, the order the
-paper draws (Wen et al., 2026, Fig. 1), so if an engine's operating condition
-changes, as it may "from one flight to another" (Saxena et al., 2008, p. 5), it
-can blend readings across that change.
+readings. The filter runs before any rescaling, the order the paper draws for
+smoothing and normalisation (Wen et al., 2026, Fig. 1). So when the rescaling
+is done within each operating condition and an engine's condition changes, as
+it may "from one flight to another" (Saxena et al., 2008, p. 5), the filter can
+blend readings across that change. On FD002, which has six conditions,
+smoothing first was measured to leave the readings following remaining life far
+less closely than smoothing after that rescaling (assumption A-08, withdrawn
+because the paper states the order).
 
 ## 3 — Hold engines back
 
@@ -417,11 +427,15 @@ Whole numbers are coarser than the settings of FD002 and FD004, the two
 sub-datasets flown in six conditions (NASA PCoE, 2008). The three settings are
 read here as the altitude in thousands of feet, the Mach number (the speed as a
 fraction of the speed of sound) and the throttle angle in degrees. That reading
-is this project's: Wen et al. (2026) say the six conditions vary "altitude,
-Mach number, and throttle resolver angle settings" (Section 3.2.1, p. 7) but
-not which column holds which, and the six combinations in the files each match
-one of the simulator's ready-made flight conditions (Frederick et al., 2007,
-Table 1.4, p. 11). Rounded, the Mach numbers 0, 0.25,
+is this project's. The dataset's paper says the six conditions of its challenge
+data combine altitude (0 to 42,000 ft), Mach number (0 to 0.84) and throttle
+resolver angle (20 to 100) (Saxena et al., 2008, Section V.D, p. 6), and Wen et
+al. (2026) say the six conditions vary "altitude, Mach number, and throttle
+resolver angle settings" (Section 3.2.1, p. 7); neither says which column holds
+which. The six combinations in the files each match one of the simulator's
+ready-made flight conditions (Frederick et al., 2007, Table 1.4, p. 11), and the
+simulator's guide gives the throttle resolver angle in degrees (Frederick et
+al., 2007, Table 1.3, p. 11). Rounded, the Mach numbers 0, 0.25,
 0.62, 0.70 and 0.84 become only 0 and 1, and with the throttle angle's two
 values, 100 and 60, they make just three combinations. The count still comes
 out at six because the altitudes round to six different values: 0, 10, 20, 25,
@@ -439,7 +453,9 @@ settings. This is called **k-means**, the name MacQueen (1967) gave to dividing
 points into k groups, each represented by its mean (pp. 281, 283). His own
 procedure moves a group's mean each time a single point joins it (p. 283); the
 version described here, which reassigns every row before moving the centres,
-is the default of the scikit-learn library that this project uses. Held-back
+is the default of the scikit-learn library (Pedregosa et al., 2011, p. 2826)
+that this project uses; that default was checked by running scikit-learn
+1.7.2. Held-back
 and test rows join the nearest established centre without changing any centre.
 
 <details class="process-example">
@@ -478,7 +494,9 @@ standard deviation, a measure of spread around that mean. This is called
 result is below it. It does not mean negative physical temperature or pressure.
 The scaling method is a project choice (assumption A-03): the paper never says
 how it rescales the sensors, and this option was picked because its test error
-came closest to the paper's own figure (assumption A-22).
+came closest to the error the paper reports for its network without its LSTM
+stage, a part that reads each sensor's history in time order (Wen et al., 2026,
+Table 11; assumption A-22).
 
 #### Process
 
@@ -923,7 +941,9 @@ and the validation group is empty:
 Test answers remain for final evaluation. They must not replace validation
 answers for choosing settings or deciding when to stop. One choice on this
 page did not keep to that rule: the scaling method of step 4 was picked by its
-test error (assumption A-22).
+test error (assumption A-22). A later check on the held-back engines picks the
+same method for the network without the LSTM stage, but not for the network
+with it (assumption A-03).
 
 The model now receives windows of sensor readings with separate answers.
 The [temporal stage](09_temporal.md) determines how each sensor's sequence is
@@ -959,6 +979,12 @@ recorded cycle numbers and actual remaining lives on the same scale.
   of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
   Data Repository.
   [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel,
+  O., Blondel, M., Prettenhofer, P., Weiss, R., Dubourg, V., Vanderplas, J.,
+  Passos, A., Cournapeau, D., Brucher, M., Perrot, M., & Duchesnay, É. (2011).
+  Scikit-learn: Machine learning in Python. *Journal of Machine Learning
+  Research*, *12*, 2825–2830. https://www.jmlr.org/papers/v12/pedregosa11a.html
+  [Copy](../references/pedregosa_2011_scikit_learn.pdf)
 - Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
   modeling for aircraft engine run-to-failure simulation. In *2008
   International Conference on Prognostics and Health Management* (pp. 1–9).

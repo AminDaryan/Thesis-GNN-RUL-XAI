@@ -4,17 +4,18 @@ NASA's C-MAPSS engine data come as four subsets, FD001 to FD004, each made of
 three text files: simulated jet engines recorded once per flight, the training
 engines until they fail and the test engines cut off before they do, and a
 file holding each test engine's true remaining life (NASA Prognostics Center
-of Excellence [NASA PCoE], 2008; Saxena et al., 2008, p. 1). That each row is
-one flight is this project's reading of those sources, explained on
+of Excellence [NASA PCoE], 2008; Saxena et al., 2008, pp. 1, 5). That each row
+is one flight is this project's reading of those sources, explained on
 [Data, What one cycle is](../learn/01_the_problem.md#what-one-cycle-is).
-This project trains and tests on one of them, FD001. This page explains where
+This project trains and tests on one of the four subsets, FD001. This page explains where
 the files come from, as their three sources tell it:
 
 - the **dataset paper**, [Saxena et al. (2008)](../references/saxena_2008_damage_propagation_modeling.pdf),
   which explains how engine damage was simulated and how the challenge data
   built from it were split and scored;
 - the **simulator's user guide**, [Frederick et al. (2007)](../references/frederick_2007_cmapss_users_guide.pdf),
-  which describes the engine model the paper ran;
+  which describes the engine model the paper ran and is the paper's
+  reference [11] for it (Saxena et al., 2008, pp. 2, 9);
 - the **readme** NASA ships inside the data download,
   [`readme.txt`](../references/nasa_2008_cmapss_readme.txt) (NASA PCoE, 2008),
   the only one of the three that names the four subsets.
@@ -121,19 +122,26 @@ Ambient air → Inlet → Fan → Splitter ─┬→ Bypass path → Bypass nozz
 ```
 
 The fan, the low-pressure compressor (LPC) and the high-pressure compressor
-(HPC) squeeze the air; fuel burns in the burner (the combustor); the
+(HPC) squeeze the air; fuel burns in the burner, which Figure 1 calls the
+combustor (Saxena et al., 2008, Figs. 1–2, p. 2); the
 high-pressure and low-pressure turbines (HPT and LPT) take energy out of the
 hot gas. A **spool** is one shaft with compressor and turbine stages fixed to
 it, so that the turbine turns the compressor. Figure 1 of the paper draws two:
-the HPC and the HPT share the outer shaft marked N2, and the LPC and the LPT
-share the inner shaft marked N1, which also carries the fan (this page's
-reading of the drawing, which colours each spool's parts alike). The user
-guide's list of symbols names N1 the fan spool speed and N2 the core spool
-speed, which is why the files hold two physical speeds, Nf and Nc
-(Frederick et al., 2007, [p. 7](../references/frederick_2007_cmapss_users_guide.pdf#page=7) and
-Figs. 1.1–1.2, [p. 9](../references/frederick_2007_cmapss_users_guide.pdf#page=9);
-Saxena et al., 2008, Figs. 1–2, [p. 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=2),
-and Table 2).
+the HPC and the HPT, in yellow, share the outer shaft, and the LPC and the
+LPT, in dark blue, share the inner shaft, which also carries the fan (this
+page's reading of the drawing, which colours each spool's parts alike). The
+user guide's list of symbols names N1 the fan spool speed and N2 the core
+spool speed (Frederick et al., 2007,
+[p. 7](../references/frederick_2007_cmapss_users_guide.pdf#page=7)), which is
+why the files hold two physical speeds, Nf and Nc (Saxena et al., 2008,
+Table 2). The drawing's arrows say the reverse: in Figure 1, and in the
+guide's own Figure 1.1, the arrow from N1 ends on the outer shaft and the
+arrow from N2 on the inner one (Saxena et al., 2008, Fig. 1,
+[p. 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=2);
+Frederick et al., 2007, Fig. 1.1,
+[p. 9](../references/frederick_2007_cmapss_users_guide.pdf#page=9); this
+page's reading of both figures rendered at high resolution). This page
+follows the list of symbols.
 
 The engine does not fly itself. C-MAPSS includes a **control system**, the
 software that sets the fuel flow (Frederick et al., 2007, pp. 29–30). Its
@@ -215,9 +223,9 @@ Most of the names are engineering terms. In plain words, by standard usage
 | P2, P15, P30 | Pressure at the fan inlet; total pressure in the bypass duct and at the HPC outlet; in psia, pounds per square inch counted from vacuum |
 | Ps30 | Static pressure at the HPC outlet |
 | Nf, Nc | Physical speeds of the fan spool and the core spool, in rpm (revolutions per minute) |
-| NRf, NRc | Corrected speeds: the physical speeds rescaled by the inlet temperature to what they would be on a standard day, so that readings from hot and cold days compare |
-| epr | Engine pressure ratio, P50/P2: the LPT outlet pressure over the fan inlet pressure (Table 2) |
-| phi | Fuel flow divided by Ps30 (Table 2) |
+| NRf, NRc | Corrected speeds, derived from the physical speeds and the inlet temperature (Wen et al., 2026, p. 5): the physical speeds rescaled to what they would be on a standard day, so that readings from hot and cold days compare |
+| epr | Engine pressure ratio, P50/P2: the LPT outlet pressure over the fan inlet pressure (Saxena et al., 2008, Table 2; for P50, Frederick et al., 2007, Table 1.2, p. 10) |
+| phi | Fuel flow divided by Ps30 (Saxena et al., 2008, Table 2) |
 | BPR | Bypass ratio: the mass of air passing around the core per unit mass passing through it |
 | farB | Burner fuel-air ratio: the mass of fuel burned per unit mass of air in the burner |
 | htBleed | Bleed enthalpy: the heat content of air drawn off the compressor (bleed air); Table 2 gives it no unit |
@@ -247,8 +255,9 @@ standard-day sea-level temperature of the guide's Table 1.4
 
 **Do not confuse total pressure with static pressure.** P30 and Ps30 are both
 measured at the HPC outlet (Saxena et al., 2008, Table 2). Static pressure is
-what the moving air presses on a wall it flows along; total pressure is what the air would reach if it were
-brought to rest, so it also counts the part due to the air's speed. The two
+what the moving air presses on a wall it flows along; total pressure is what
+the air would reach if it were brought to rest, so it also counts the part due
+to the air's speed. The two
 are different quantities at the same place, and both are among this project's
 14 sensors.
 
@@ -256,8 +265,10 @@ Table 2 has a second part. Four more outputs were used **only** to compute the
 engine's health index and were not given to participants: the HPT outlet
 temperature T48, also called the exhaust gas temperature (EGT), and the stall
 margins of the fan, the LPC and the HPC (Saxena et al., 2008, Table 2). A
-**stall margin** is how far a compressor is operating from the point where its airflow breaks down; the
-smaller the margin, the closer it is to stalling.
+**stall margin** is how far a compressor is operating from its stall limit
+(Saxena et al., 2008, Section V.D, p. 6), which by standard usage is the point
+where its airflow breaks down; the smaller the margin, the closer it is to
+stalling.
 
 The user guide stores these variables in two places. Twelve of the 21 sensors
 are among its 27 model outputs (Frederick et al., 2007,
@@ -304,7 +315,8 @@ fan_speeds = pd.DataFrame([
 
 FD001's inlet is at the standard-day temperature, as the T2 check showed, so
 the corrected fan speed nearly equals the physical one, 2388.02 against
-2388.06, as the standard definition of a corrected speed leads one to expect.
+2388.06, as the standard definition of a corrected speed, from the physical
+speed and the inlet temperature (Wen et al., 2026, p. 5), leads one to expect.
 
 ---
 
@@ -369,7 +381,8 @@ at an arbitrary point of wear rather than with a brand-new engine
 
 $$h(t) = 1 - d - \exp\{a\,t^{b}\} \tag{5}$$
 
-- $t$ is time in cycles, as the paper's Figure 5 counts it; one cycle is one
+- $t$ is time in cycles, as the paper's abstract and its Figure 5 count it
+  (Saxena et al., 2008, p. 1, and Fig. 5, p. 5); one cycle is one
   flight, in this project's reading of its sources
   ([Data, What one cycle is](../learn/01_the_problem.md#what-one-cycle-is)).
 - $h(t)$ is the health of one quantity at time $t$: 1 healthy, 0 at the limit.
@@ -503,9 +516,10 @@ LPC reading, but the paper does not resolve it.
 **Do not confuse the health index with remaining useful life.** $H(t)$ is a
 number between 0 and 1 that the simulator computed and never released
 (Saxena et al., 2008, Section VI, p. 7). Remaining useful life is a count of
-cycles; in a training file it runs out where $H$ reached 0, because that is
-where the record ends (NASA PCoE, 2008; Saxena et al., 2008, Section VI,
-p. 7). The model in this
+cycles; in a training file it runs out where the record ends, which the
+readme calls system failure (NASA PCoE, 2008) and which, if the files were
+made by the method the paper describes, is where $H$ reached 0 (Saxena et al.,
+2008, pp. 6–7). The model in this
 project is shown only sensor readings and must infer the second without ever
 seeing the first.
 
@@ -658,8 +672,8 @@ Section VI, p. 7).
 validation set is a second, held-back set of cut-off engines with known answers
 (Saxena et al., 2008, Section VI, p. 7).
 This project's validation engines are training engines it holds back from
-fitting, to decide when to stop training
-([Preprocessing, step 3](../learn/04_the_pipeline.md#3--hold-engines-back)).
+fitting, to decide when to stop training (assumptions A-06 and A-18;
+[Preprocessing, step 3](../learn/04_the_pipeline.md#3--hold-engines-back)).
 Neither is the test set, and validation error is not comparable with test error
 in this project (assumption A-06).
 
@@ -753,7 +767,8 @@ to two decimals, which is safe because in all eight files it never lies more
 than 0.002 from a two-decimal value. Setting 1 alone already separates every
 condition, and the code checks that it gives the same counts.
 
-Every count agrees except FD004, where the readme swaps the two: the files hold
+Every count agrees except FD004, where the readme swaps the two (NASA PCoE,
+2008): the files hold
 249 training engines and 248 test engines, and `RUL_FD004.txt` has 248 lines,
 one per test engine. Wen et al. (2026, Table 5, p. 7) give 249 and 248, as the
 files do.
@@ -920,7 +935,8 @@ Four more observations come out of the same rows:
 ### One training engine's record
 
 A training record runs from an engine's first recorded cycle, already worn by
-the paper's design, to the cycle where its health index reached zero
+the paper's design, to system failure (NASA PCoE, 2008), which in the method
+the paper describes is the cycle where the health index reached zero
 (Saxena et al., 2008, pp. 6–7). The
 shortest-lived and the longest-lived training engines of FD001 show what the
 method of the previous section produces. The table averages five sensors over
@@ -1156,7 +1172,9 @@ Figure 9 supports the sentence (Saxena et al., 2008, Fig. 9,
 Rendered at eight times its printed size, its tick marks at 0 and at 150 lie
 651 pixels apart, 4.34 pixels per unit of score; measured that way, its curve
 ends at about 45 for an error of −50 and at about 147 for an error of +50, so
-the steep side is the late side. The figure labels its axis only as the error,
+the steep side is the late side (finding F-20, which measured to the centre of
+the label 150, one pixel above its tick, and so records 4.35 pixels per unit
+and curve ends of 45.5 and 147.2). The figure labels its axis only as the error,
 without a sign convention, so it supports rather than settles the reading. The
 two readings give, at those two errors:
 
@@ -1190,7 +1208,7 @@ first column and not the second. The sentence gives the direction, late
 punished harder, and the figure matches divisors of 10 for late and 13 for
 early; only the two printed constants disagree. They appear to have been
 swapped. The project's `nasa_score` divides late errors by 10 and early ones
-by 13.
+by 13 (assumption A-15).
 
 Wen et al. (2026), the paper this project re-implements, print the same pair
 of divisors in their Equation 21. Read through their Equation 20, which
@@ -1337,8 +1355,10 @@ are followed here.)
   check under
   [Which flight conditions the settings are](#which-flight-conditions-the-settings-are).
 - **The labels.** Training labels count the cycles left before the record ends,
-  which is where the simulated health index reached zero (Saxena et al., 2008,
-  p. 7); test labels come from the RUL files ([Data](../learn/01_the_problem.md)).
+  which the readme calls system failure (NASA PCoE, 2008) and which, if the
+  files were made by the method the paper describes, is where the simulated
+  health index reached zero (Saxena et al., 2008, p. 7); test labels come from
+  the RUL files ([Data](../learn/01_the_problem.md)).
   Wen et al. (2026) never state the value of their label ceiling (Eq. 19,
   p. 9); 125 cycles is the project's reading of their Fig. 7 (p. 11;
   assumption A-01), and applying the ceiling to the test labels
@@ -1349,9 +1369,10 @@ are followed here.)
   [The printed constants contradict the sentence above them](#the-printed-constants-contradict-the-sentence-above-them)
   (assumption A-15).
 - **What it does not take.** The health index, the margins and the health
-  modifiers were never released (NASA PCoE, 2008; Saxena et al., 2008, Table 2
-  and Section VI, p. 7). The paper's validation set is not in these
-  files, and the project's own validation engines are a different thing. The
+  modifiers were never released (NASA PCoE, 2008; Saxena et al., 2008, Table 2,
+  p. 3, and Section VI, p. 7). The paper's validation set is not in these
+  files, and the project's own validation engines are a different thing
+  (assumption A-06). The
   generation equations are not used either: the project contains no simulated
   data of its own, only NASA's files, so the inconsistencies in Equations 4, 5,
   6, 8 and 10 affect the account of where the data came from, not any result.
