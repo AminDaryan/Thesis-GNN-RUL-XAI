@@ -1,10 +1,11 @@
 # GNN-LRP
 
 A sensor reading can affect a prediction through several neighbours. Naming
-the sensor alone does not show which route the calculation used. GNN-LRP,
-short for **graph neural network layer-wise relevance propagation**, follows
-those routes and assigns each one a signed share of the network's score
-(Schnake et al., 2022, p. 1; Fig. 4).
+the sensor alone does not show which route the calculation used (Schnake et
+al., 2022, Section 2.1, p. 3). GNN-LRP, short for **graph neural network
+layer-wise relevance propagation**, follows those routes and assigns each one
+a signed share of the network's score (Schnake et al., 2022, p. 1; p. 6,
+Fig. 4).
 
 A **walk** records one sensor at the input and one after each graph layer
 (Schnake et al., 2022, Section 3, p. 3).
@@ -27,7 +28,8 @@ to remaining-life cycles**, so its shares have score units, not cycles
 ## Example setup
 
 The example uses **FD001 test engine 5**, the final three available cycles for
-T24, T30 and T50, from NASA's data (NASA Prognostics Center of Excellence
+T24, T30 and T50, three of the engine's temperatures (Saxena et al., 2008,
+p. 3, Table 2), from NASA's data (NASA Prognostics Center of Excellence
 [NASA PCoE], 2008). The ordinary preprocessing uses seed 42, and only training
 engines supply the rescaling averages and spreads (assumptions A-06 and A-25).
 Afterwards, we select three sensors and three cycles to keep every input cell
@@ -43,13 +45,14 @@ different temporal stage, graph and number of layers.
 The graph joins **T24 ↔ T30 ↔ T50**, as the paper being re-implemented joins
 these three sensors (Wen et al., 2026, Table 3), and each sensor can keep its
 own number (Wen et al., 2026, Section 2.3.2).
-The graph layer averages arriving numbers (assumption A-21), multiplies by 1,
-and sets negative totals to zero, as the paper's graph layers do (Wen et al.,
-2026, Eq. 8). This last operation is a **ReLU**: a switch that keeps positive
-values and replaces negative ones with zero. The final calculation multiplies
-the three results by 2, 1 and −1, adds 0.5, and applies another such switch
-(Wen et al., 2026, Eq. 12). The remaining multiplier is 1 and its added
-constant is 0.
+The graph layer averages arriving numbers (assumption A-21), multiplies by 1
+(a value set for this demonstration), and sets negative totals to zero, as the
+paper's graph layers do (Wen et al., 2026, Eq. 8). This last operation is a
+**ReLU**: a switch that keeps positive values and replaces negative ones with
+zero. The final calculation multiplies the three results by 2, 1 and −1 and
+adds 0.5, numbers set for this demonstration, then applies another such
+switch, like the paper's first layer after the graph (Wen et al., 2026,
+Eq. 12). The remaining multiplier is 1 and its added constant is 0.
 
 Run the optional examples in page order after this setup. Tables show six
 decimal places; the calculations retain full precision.
@@ -244,11 +247,12 @@ define the rule for graph layers of this kind.
 
 By default the project's three graph layers use **0, 1.5, 0**. The authors'
 published code (Schnake and colleagues, n.d.) starts at 3 and falls evenly
-to 0, as this project read it (assumption A-29). Here the first value is
-replaced by 0 because rescaled readings can be negative, while the rule's
-derivation assumes nonnegative layer inputs (Schnake et al., 2022,
-Appendix C). When each sensor hands the graph one number, as in the default
-network, every number reaching one first-layer output passes
+to 0, as this project read it in the function `explain` of its file
+`xaigraph-synth-code/explainers.py` (assumption A-29). Here the first value is
+replaced by 0 (assumption A-29) because rescaled readings can be negative,
+while the rule's derivation assumes nonnegative layer inputs (Schnake et al.,
+2022, Appendix C). When each sensor hands the graph one number, as in the
+default network, every number reaching one first-layer output passes
 through the same multiplier, so gamma's extra weight scales them all alike and
 the rescaling undoes it: the replacement changes nothing there. It matters
 when each sensor hands the graph several numbers. The layers after the graph
@@ -406,8 +410,8 @@ This agreement is called **conservation**: the division preserves the score
 et al. (2022, p. 4) note that added constants stop the walks alone from adding
 up to the output; here the constant is carried as its own part, so walks and
 constant together do (assumption A-29).
-It checks the accounting, not whether the explanation reveals an engine's
-physical cause of failure.
+Conservation checks the accounting, not whether the explanation reveals an
+engine's physical cause of failure.
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -456,8 +460,9 @@ The accounting checks out:
 part carried from numbers added inside the network's layers. In a larger
 network, different switches can change it between windows. It is not the
 prediction of an average engine. [SHAP](10_dynamic_shap.md) instead divides
-a difference from a chosen reference (Lundberg & Lee, 2017, p. 4, Eq. 5;
-p. 5, Fig. 1).
+a difference from a reference prediction (Lundberg & Lee, 2017, p. 4, Eq. 5;
+p. 5, Fig. 1), which this project takes to be the prediction at the average
+training window (assumptions A-20 and A-24).
 
 ---
 
@@ -648,7 +653,7 @@ claim about prediction accuracy or superiority to other methods.
 - **Groups the graph cannot distinguish.** Sensors with identical receiving
   rows can acquire identical graph outputs. The playground combines such
   route endings rather than treating their arbitrary split as evidence of
-  a difference (finding F-18).
+  a difference (finding F-18; assumption A-29).
 - **The selected network, not the value of its graph design.** Showing which
   routes it uses does not establish that its graph is better than another.
   That requires separate trained comparisons (assumption A-27).
@@ -681,9 +686,14 @@ that statement refers to.
   of the C-MAPSS data set distributed inside its zip file. NASA Prognostics
   Data Repository.
   [Copy](../references/nasa_2008_cmapss_readme.txt)
+- Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
+  modeling for aircraft engine run-to-failure simulation. In *2008
+  International Conference on Prognostics and Health Management* (pp. 1–9).
+  IEEE. https://doi.org/10.1109/PHM.2008.4711414
+  [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
 - Schnake, T., and colleagues. (n.d.). paper_gnn_lrp, the GNN-LRP authors'
-  published code. https://git.tu-berlin.de/thomas_schnake/paper_gnn_lrp. A
-  code repository, so no copy is kept.
+  published code. https://git.tu-berlin.de/thomas_schnake/paper_gnn_lrp
+  (a code repository, so no copy is kept)
 - Schnake, T., Eberle, O., Lederer, J., Nakajima, S., Schütt, K. T., Müller,
   K.-R., & Montavon, G. (2022). Higher-order explanations of graph neural
   networks via relevant walks. *IEEE Transactions on Pattern Analysis and
@@ -691,8 +701,8 @@ that statement refers to.
   https://doi.org/10.1109/TPAMI.2021.3115452
   [Copy](../references/schnake_2022_gnn_lrp_relevant_walks.pdf). Page,
   section, figure, table and equation numbers on this page are those of arXiv
-  version 3, the copy held; its appendices are in the supplement at the end
-  of that copy.
+  version 3 (https://arxiv.org/abs/2006.03589v3), the copy held; its
+  appendices are in the supplement at the end of that copy.
 - Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
   (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
   enhancement for aeroengine RUL prediction. *Aerospace Science and

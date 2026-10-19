@@ -13,8 +13,10 @@ is which.
 A statement about the paper cites it the way a journal article cites its
 sources: by authors and year, with the table, equation, section or page where
 it can be checked, as in (Wen et al., 2026, Table 3). It is checked against the
-PDF rather than stated from memory. The References list at the end of this
-page gives each work cited here in full.
+PDF rather than stated from memory. A fact taken from any other published work,
+such as the dataset's description or a method's original paper, is cited the
+same way, as in (Kipf & Welling, 2017, p. 3). The References list at the end of
+this page gives each work cited here in full.
 
 Figures need more care. A value read off a small page image is a guess, so the
 region is rendered at high resolution before a number is read off an axis. The
@@ -81,7 +83,8 @@ project's own decisions as facts about its source. Some of the findings:
   (Wen et al., 2026, p. 15 and Table 9; finding F-11).
 - **The paper gives each graph node a single number** (Wen et al., 2026,
   Table 4), which none of the ten other graph methods on the same NASA data
-  read for this project does (finding F-12).
+  read for this project does, by this project's reading of each (finding F-12,
+  which names every paper and the page it rests on).
 
 ---
 
@@ -119,8 +122,10 @@ the NASA files, where every check that needs the data skips itself:
 looks plausible: that the smoothing filter only looks backwards, as the paper's
 formula does (Wen et al., 2026, Eq. 18); that the test engines never influence
 the scaling (assumption A-25); that held-back engines never overlap the
-training engines (assumption A-06); that the parameter counts match the weight
-shapes in the paper's Table 4 (Wen et al., 2026, p. 7); and that information
+training engines (assumption A-06); that the parameter counts follow from the
+weight shapes the paper's Table 4 prints (Wen et al., 2026, p. 7), plus the one
+offset per output that its Eqs. 12 and 13 add in the network's last two layers
+(Wen et al., 2026, p. 6); and that information
 spreading along the graph's edges, one hop per layer (Kipf & Welling, 2017,
 p. 3), cannot reach further than the graph allows.
 
