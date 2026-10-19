@@ -618,10 +618,14 @@ the index $i$ in $f_i, e_i \le 1\%$ is defined nowhere. Most plausibly that
 bound repeats Equation 9's 1 percent of initial wear, but that too is a
 reading.
 
-The output is a time series of sensor readings taken as cruise snapshots,
-produced by degrading **only the HPC's** efficiency and flow; the paper states
-that degradation of other modules was left out of the challenge data on
-purpose (Saxena et al., 2008, Section V.C, p. 6). Section V gives the scenario
+The output is a time series of sensor readings, which the paper calls cruise
+snapshots, produced by degrading **only the HPC's** efficiency and flow; the
+paper states that degradation of other modules was left out of the challenge
+data on purpose (Saxena et al., 2008, Section V.C, p. 6). FD001's files,
+though, hold a single condition, the one the user's guide calls sea level,
+static (Frederick et al., 2007, Fig. 4.6, p. 37), with the engine not moving
+(see [Which flight conditions the settings are](#which-flight-conditions-the-settings-are)).
+Section V gives the scenario
 behind the snapshots (Saxena et al., 2008, Section V,
 [p. 5](../references/saxena_2008_damage_propagation_modeling.pdf#page=5)):
 each engine may fly a different flight condition from one flight to the next;

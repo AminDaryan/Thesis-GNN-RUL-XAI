@@ -96,9 +96,9 @@ points to a source where it is defined properly.
 > If you would rather have these built up in order, with figures, than
 > defined in a list, read `docs/learn/` instead — twelve pages covering
 > the same ground for a reader who has never met any of it. They are best read
-> in a browser: `python scripts/docs_ui.py`. (Corrected 2026-10-19: this and
-> the table in section 9 said "eight short pages"; there are twelve, and
-> several run to hundreds of lines.)
+> in a browser: `python scripts/docs_ui.py`. (Corrected 2026-10-19: this, the
+> table in section 9 and the description of the site in section 6 said eight
+> pages; there are twelve, and several run to hundreds of lines.)
 
 **RUL — Remaining Useful Life.** The number of flight cycles an engine will
 still run before it fails. This is the quantity being predicted. Each row of
@@ -437,7 +437,7 @@ python scripts/docs_ui.py
 ```
 
 This opens a browser on the playground, where a run is designed, trained,
-compared with the paper and explained. Its menu holds eight taught pages that
+compared with the paper and explained. Its menu holds twelve taught pages that
 build the method from nothing for a reader who has never seen it, the
 notebooks, the folder READMEs, the assumptions, the findings and the audits.
 

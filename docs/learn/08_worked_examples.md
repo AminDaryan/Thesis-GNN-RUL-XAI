@@ -143,8 +143,11 @@ rule that chooses each learned number's next change from how fast the
 mismatch changes as that number changes, on this batch and on earlier ones
 (Kingma & Ba, 2015, Algorithm 1, p. 2). Kingma and Ba (2015) write that the
 size of each Adam step is "approximately bounded by the stepsize setting α"
-(p. 3). That α is a setting chosen before training, not a learned number,
-and it is what they also call the learning rate (p. 4). A seed selects
+(p. 3). That α is a setting chosen before training, not a learned number
+(Algorithm 1, p. 2). They give the name learning rate to a version of α
+that changes with the step number t: their convergence analysis sets the
+learning rate at step t to α/√t, which is α at the first step, α/2 at the
+fourth, and keeps shrinking as training goes on (p. 4). A seed selects
 repeatable random choices; changing it starts a
 different training repetition. A device changes which processor performs
 these calculations, not what a row means.

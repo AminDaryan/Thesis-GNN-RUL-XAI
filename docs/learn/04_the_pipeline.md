@@ -257,9 +257,10 @@ We split by engine, not by individual window. Neighbouring 30-cycle windows
 share 29 cycles; putting them on opposite sides would test the model on almost
 the same history it learned from. We also split **before** measuring rescaling
 statistics so held-back readings cannot influence those statistics. This
-reverses the order the paper draws, in which the rescaling comes before the
-data are divided into training and test sets (Wen et al., 2026, Fig. 1); the paper never says which engines its
-statistics come from (assumption A-25).
+reverses the order the paper draws, in which data normalisation (the rescaling)
+comes before the box it labels "Train and test datasets" (Wen et al., 2026,
+Fig. 1); the paper never says which engines its statistics come from
+(assumption A-25).
 
 **Where this happens.** The playground's **Training → Procedure** control
 chooses whether to reserve validation engines and how their errors will be
@@ -429,8 +430,9 @@ settings stay unchanged; rounding was only used to count the groups.
 Whole numbers are coarser than the settings of FD002 and FD004, the two
 sub-datasets flown in six conditions (NASA PCoE, 2008). The three settings are
 read here as the altitude in thousands of feet, the Mach number (the speed as a
-fraction of the speed of sound) and the throttle angle in degrees (the sources
-call it the throttle resolver angle). Rounded, the Mach numbers 0, 0.25,
+fraction of the speed of sound) and the throttle angle in degrees, which Saxena
+et al. (2008, p. 6) and Frederick et al. (2007, Table 1.3, p. 11) call the
+throttle resolver angle. Rounded, the Mach numbers 0, 0.25,
 0.62, 0.70 and 0.84 become only 0 and 1, and with the throttle angle's two
 values, 100 and 60, they make just three combinations. The count still comes
 out at six because the altitudes round to six different values: 0, 10, 20, 25,

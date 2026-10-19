@@ -1480,9 +1480,14 @@ is Deep SHAP's chain rule, which the project does not use. The second is the
 Shapley sum the project computes.
 
 **Where the project sits in Lundberg and Lee's terms.** It evaluates all
-$2^{14} = 16{,}384$ groups of sensors for each window, so it uses none of
-Section 4's estimators: no Shapley sampling, no Kernel SHAP, no Linear, Max or
-Deep SHAP.
+$2^{14} = 16{,}384$ groups of sensors for each window, so it needs none of
+Section 4's sampling or model-reading shortcuts: no Shapley sampling, no Kernel
+SHAP, no Linear, Max or Deep SHAP. Section 4's sixth method, Low-Order SHAP
+(Lundberg & Lee, 2017, p. 6), also uses every group, but it fits Theorem 2's
+weighted regression. The project instead adds up Eq. 4's weighted differences
+directly (`shap_values` in `explain/shap.py`), which reaches the same values by
+the other route, as the Shapley-kernel column of the two tables under "Run on
+engine 5" above shows for four sensors.
 Wen et al. (2026, Section 2.4) do not say what replaces a sensor outside $S$;
 the project replaces its whole window of readings by the sensor's average
 training window (assumption A-20). In Lundberg and Lee's terms that is Eq. 12,

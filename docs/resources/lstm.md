@@ -607,8 +607,8 @@ trace_1997 = pd.DataFrame({
 At cycle 191 the previous output is 0, so the input gate's net input is
 $1.0 \times 2.074416 + 0.5 \times 0 - 1.0 = 1.074416$ and the gate is
 $f(1.074416) = 0.745436$. The cell input's net input is 2.074416, which $g$
-squashes to 1.553566, and the state becomes $0 + 0.745436 \times 1.553566 =
-1.158084$. $h$ squashes that to 0.521969, and the output gate,
+squashes to 1.553566, and the state becomes
+$0 + 0.745436 \times 1.553566 = 1.158084$. $h$ squashes that to 0.521969, and the output gate,
 $f(0.5 \times 2.074416 - 0.5) = 0.631163$, lets
 $0.631163 \times 0.521969 = 0.329447$ out. At cycle 192 every net input also
 contains that output: the input gate's is
@@ -1429,8 +1429,9 @@ assert abs(by_hand - derivative(True)) < 1e-12
 
 Eq. 15 starts at 0 (Eq. 18), so cycle 191 gives
 $0 \times 0.954227 + 0.061185 \times 0.745436 \times 2.074416 = 0.094613$, and
-cycle 192 gives $0.094613 \times 0.963378 + 0.111885 \times 0.793221 \times
-2.149321 = 0.281899$; the forget gate is what multiplies the old record.
+cycle 192 gives
+$0.094613 \times 0.963378 + 0.111885 \times 0.793221 \times 2.149321 = 0.281899$;
+the forget gate is what multiplies the old record.
 Multiplied by $0.724105 \times (1 - 0.894370^2)$ it gives the "routes cut" row
 exactly. Nudging and automatic differentiation agree, so the second row is the
 true derivative. The cut version is smaller because it drops the routes through

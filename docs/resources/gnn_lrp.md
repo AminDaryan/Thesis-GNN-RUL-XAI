@@ -576,8 +576,8 @@ $$Z_t = \Lambda H_{t-1}, \qquad H_t = \rho(Z_t W_t)$$
 - **Symbols.** $H_{t-1}$ is an $n \times d_{t-1}$ table: one row per node
   ($n$ nodes), $d_{t-1}$ numbers per row. $\Lambda$ is the $n \times n$ graph
   with each node joined to itself. $Z_t$ is the aggregated table. $W_t$ is
-  the layer's $d_{t-1} \times d_t$ table of learned weights. $\rho(\cdot) =
-  \max(0, \cdot)$ is the switch, applied to every number.
+  the layer's $d_{t-1} \times d_t$ table of learned weights.
+  $\rho(\cdot) = \max(0, \cdot)$ is the switch, applied to every number.
 - **What it computes.** Aggregate: each node's new row is a weighted sum of
   the rows of the nodes it is joined to, with entry $\Lambda[K, J]$ weighting
   node J's row in node K's sum. Combine: each row is multiplied by $W_t$ and
@@ -599,8 +599,9 @@ step it calls *combine*
 involves no neighbour: it multiplies each node's own aggregated row by $W_t$
 and applies the switch.
 
-Schnake et al. (2022, Table 1) write $\lambda_{JK}$ for the element of the
-graph for the connection between node J and node K; in a walk (…, J, K, …)
+Schnake et al. (2022, p. 3) write $\lambda_{\mathcal{E}}$ for the element of
+the graph for a connection $\mathcal{E}$, and their Table 1 writes
+$\lambda_{JK}$ for the one between node J and node K; in a walk (…, J, K, …)
 it is the connection through which J's numbers reach K at the next layer. The graphs whose
 construction the paper writes out are built from undirected graphs and so
 are symmetric ([Appendix F.1 and F.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=19)),
@@ -636,8 +637,8 @@ output by $s^T$.** In Proposition 1, Schnake et al. (2022,
 [p. 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
 ask each combine step and the readout to be piecewise linear and
 **positively homogeneous**: multiplying the input by a positive $s$
-multiplies the output by $s$. The switch has this property, $\rho(s\,a) =
-s\,\rho(a)$ for $s > 0$; a layer that adds a constant does not. Stacked over
+multiplies the output by $s$. The switch has this property,
+$\rho(s\,a) = s\,\rho(a)$ for $s > 0$; a layer that adds a constant does not. Stacked over
 $T$ graph layers, each of which multiplies by Λ once more, it makes $H_1$
 scale by $s$, $H_2$ by $s^2$, and the output by $s^T$ (Appendix A, Eq. 2).
 Appendix A draws two consequences (Eq. 3 and the sentence after it): every
@@ -691,9 +692,9 @@ $$f(\Lambda) = \sum_{\mathcal{B}} R_{\mathcal{B}}, \qquad R_{\mathcal{B}} = \fra
 **Step 5 — from bags to walks.**
 Schnake et al. (2022, [Section 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
 define a **walk** as an ordered sequence of connections linking nodes in
-consecutive layers, written by the nodes it visits, $(\ldots, J, K, L,
-\ldots)$, and give each layer its own copy of the graph, $\Lambda^\star =
-(\Lambda, \ldots, \Lambda)$, whose element for the connection between node J
+consecutive layers, written by the nodes it visits,
+$(\ldots, J, K, L, \ldots)$, and give each layer its own copy of the graph,
+$\Lambda^\star = (\Lambda, \ldots, \Lambda)$, whose element for the connection between node J
 and node K they write $\lambda^\star_{JK}$ (p. 3). [Appendix B](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=16)
 then argues in three moves (its Eqs. 7–9). A derivative with respect to a
 shared entry is the sum of the derivatives with respect to that entry's copy
@@ -909,9 +910,9 @@ and the shares of all walks add up to the output with nothing left over.
 The first algorithm of Schnake et al. (2022,
 [Section 3.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
 computes Eq. 7 as written. For a walk ending (…, K, L, M) it starts at the
-last connection with $R_{LM} = \frac{\partial f}{\partial\lambda^\star_{LM}}
-\lambda^\star_{LM}$, then takes $R_{KLM} = \frac{\partial
-R_{LM}}{\partial\lambda^\star_{KL}} \lambda^\star_{KL}$, and continues down to
+last connection with
+$R_{LM} = \frac{\partial f}{\partial\lambda^\star_{LM}} \lambda^\star_{LM}$, then takes
+$R_{KLM} = \frac{\partial R_{LM}}{\partial\lambda^\star_{KL}} \lambda^\star_{KL}$, and continues down to
 the first layer ([p. 4](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=4)).
 Each step is a gradient times an input, so the paper names it GNN-GI, a
 nested gradient × input. In a switch network it is the product along the
@@ -1046,8 +1047,8 @@ works them out for the graph convolution:
 2. **Treat one neuron as a small layer whose inputs are the graph entries.**
    Appendix C copies each graph entry to every pair of neurons:
    $\lambda_{jk} = \lambda_{JK}$ for every neuron $j$ of J and $k$ of K.
-   Holding $c$ constant, neuron $k$ is $h_k = \rho\big(\sum_J \sum_{j \in J}
-   \lambda_{jk} v_{jk}\big)$ with $v_{jk} = h_j w_{jk}$: a weighted sum and a
+   Holding $c$ constant, neuron $k$ is
+   $h_k = \rho\big(\sum_J \sum_{j \in J} \lambda_{jk} v_{jk}\big)$ with $v_{jk} = h_j w_{jk}$: a weighted sum and a
    switch whose inputs are the entries $\lambda_{jk}$, never negative, and
    whose weights are the $v_{jk}$. LRP-γ on that small layer, added over the
    neurons of K, gives
@@ -1064,9 +1065,9 @@ sum, LRP-γ gives a rule whose result cannot be put back in the form $h_j c_j$, 
 stops at that layer
 ([p. 18](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=18)).
 
-Going from step 2 to Table 1's rule uses one more fact: $v_{jk} + \gamma
-\max(0, v_{jk}) = h_j\,(w_{jk} + \gamma \max(0, w_{jk}))$ **because $h_j \ge
-0$** (Schnake et al., 2022, Appendix C, p. 17). Step 2's form favours a
+Going from step 2 to Table 1's rule uses one more fact:
+$v_{jk} + \gamma \max(0, v_{jk}) = h_j\,(w_{jk} + \gamma \max(0, w_{jk}))$ **because
+$h_j \ge 0$** (Schnake et al., 2022, Appendix C, p. 17). Step 2's form favours a
 contribution by its own sign; Table 1's form favours it by the sign of its weight. The two agree
 whenever the activation feeding the layer is not negative, which inside a
 switch network it never is. A first graph layer that receives rescaled
@@ -1320,8 +1321,8 @@ to the inputs and, by the chain rule (the derivative through a chain of steps
 is the product of the steps' own derivatives), computes the derivative of the
 output with respect to every recorded number at once.
 
-Writing each relevance as an activation times a factor, $R_{jKL\ldots} = h_j
-c_{jKL\ldots}$ and $R_{kL\ldots} = h_k c_{kL\ldots}$, Eq. 9 becomes
+Writing each relevance as an activation times a factor,
+$R_{jKL\ldots} = h_j c_{jKL\ldots}$ and $R_{kL\ldots} = h_k c_{kL\ldots}$, Eq. 9 becomes
 (Schnake et al., 2022, Eq. 12):
 
 $$c_{jKL\ldots} = \sum_{k \in K} \lambda_{JK}\, w^{\wedge}_{jk}\, \frac{h_k}{p_k}\, c_{kL\ldots}, \qquad p_k = \sum_{J'}\sum_{j' \in J'} \lambda_{J'K}\, h_{j'}\, w^{\wedge}_{j'k}$$
@@ -1346,9 +1347,9 @@ $$c_{jKL\ldots} = \sum_{k \in K} \lambda_{JK}\, w^{\wedge}_{jk}\, \frac{h_k}{p_k
 
 The **forward rewrite** changes how each graph layer is written, not what it
 outputs (Schnake et al., 2022, p. 5): $P_t \leftarrow Z_t W^{\wedge}_t$,
-then $Q_t \leftarrow P_t
-\odot [\rho(Z_t W_t) \oslash P_t]_{\text{cst.}}$, then $H_t \leftarrow Q_t
-\odot M_K + [Q_t]_{\text{cst.}} \odot (1 - M_K)$. Here ⊙ and ⊘ multiply and
+then
+$Q_t \leftarrow P_t \odot [\rho(Z_t W_t) \oslash P_t]_{\text{cst.}}$, then
+$H_t \leftarrow Q_t \odot M_K + [Q_t]_{\text{cst.}} \odot (1 - M_K)$. Here ⊙ and ⊘ multiply and
 divide number by number, $[\cdot]_{\text{cst.}}$ marks a quantity that
 automatic differentiation treats as a constant, and $M_K$ is a mask, 1 for
 the neurons of the walk's node K at that layer and 0 elsewhere.
@@ -1523,9 +1524,9 @@ layer and γ = 1 at the second. Three methods are set beside GNN-LRP (p. 6):
   initial features, with the attribution computed by gradient × input or by
   LRP.
 - **(b) GNN-GI**, described as GNN-LRP with γ = 0.
-- **(c) GNNExplainer**, which searches by optimisation for a mask $M =
-  \sigma(R)$ over the connections that maximises the output $f(M \odot
-  \Lambda)$, σ being the logistic sigmoid $1/(1 + e^{-r})$, which maps any
+- **(c) GNNExplainer**, which searches by optimisation for a mask
+  $M = \sigma(R)$ over the connections that maximises the output
+  $f(M \odot \Lambda)$, σ being the logistic sigmoid $1/(1 + e^{-r})$, which maps any
   number into the range 0 to 1; the explanation is $R$.
 
 Comparing the four explanations of one graph
@@ -1549,11 +1550,11 @@ To use an explanation for that, each method needs an estimate $R_\mathcal{G}$
 of what a set of nodes $\mathcal{G}$ (a subgraph) is worth (Schnake et al.,
 2022, p. 7):
 
-- for a node-level explanation, $R_\mathcal{G} = \sum_{V \in \mathcal{G}}
-  R_V$, the shares of the nodes in the set;
+- for a node-level explanation,
+  $R_\mathcal{G} = \sum_{V \in \mathcal{G}} R_V$, the shares of the nodes in the set;
 - for an edge-level explanation, the shares of the edges in the set;
-- for bags or walks, $R_\mathcal{G} = \sum_{\mathcal{B} \in \mathcal{G}}
-  R_\mathcal{B}$, where a bag counts only if all its connections lie in the
+- for bags or walks,
+  $R_\mathcal{G} = \sum_{\mathcal{B} \in \mathcal{G}} R_\mathcal{B}$, where a bag counts only if all its connections lie in the
   set — for walks, only walks whose every node is in the set.
 
 Schnake et al. (2022, p. 7) note that every estimate is 0 for the empty set

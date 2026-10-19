@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -164,6 +165,16 @@ def test_a_dollar_sign_inside_code_is_not_treated_as_mathematics():
 def test_display_mathematics_is_marked_up_as_display():
     rendered = markup.render_markdown("$$a = b$$")
     assert "math-display" in rendered.html
+
+
+@pytest.mark.parametrize("page", sorted(project_root().glob("docs/learn/*.md"))
+                         + sorted(project_root().glob("docs/resources/*.md")), ids=lambda p: p.name)
+def test_no_formula_on_a_taught_page_is_left_as_raw_dollar_signs(page: Path):
+    # An inline formula split across two lines is not typeset; 19 were, on three of these pages, until 2026-10-19.
+    html = markup.render_markdown(page.read_text(encoding="utf-8")).html
+    html = re.sub(r"<code>[\s\S]*?</code>|<span class=\"math-(?:inline|display)\">[\s\S]*?</span>", "", html)
+    shown = re.sub(r"<[^>]+>", "", html)
+    assert "$" not in shown, shown[max(0, shown.find("$") - 80):shown.find("$") + 80]
 
 
 def test_links_between_documents_are_rewritten_to_site_addresses():
