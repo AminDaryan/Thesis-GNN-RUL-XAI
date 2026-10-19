@@ -420,7 +420,9 @@ def test_a_second_run_prepared_differently_or_missing_the_seed_is_refused(raw_di
     changed = _copy_one_seed(run, seed, tmp_path / "changed")
     settings_path = changed / "preprocessing_config.yaml"
     settings = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
-    settings["smoothing_alpha"] = float(settings["smoothing_alpha"]) + 0.1
+    # A stored run may have smoothing switched off, which is stored as null.
+    alpha = settings["smoothing_alpha"]
+    settings["smoothing_alpha"] = 0.5 if alpha is None else float(alpha) + 0.1
     settings_path.write_text(yaml.safe_dump(settings), encoding="utf-8")
     error = _refused(script, [*arguments, "--also", str(changed)], tmp_path / "out_changed", capsys)
     assert "was prepared differently" in error
