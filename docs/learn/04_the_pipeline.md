@@ -150,14 +150,93 @@ answer; step 4 changes the readings from which an answer is predicted.
 
 ## 2 — Smooth each sensor
 
-Successive readings can jump up and down: NASA's description of the data says
-they are "contaminated with sensor noise" (NASA Prognostics Center of
-Excellence [NASA PCoE], 2008). Smoothing gives a new reading only
-part of the influence on the next value, reducing the effect of one sudden jump.
-It is applied separately to each engine and to each of the 14 selected sensors
-(Wen et al., 2026, Table 3).
+Successive readings can jump up and down. NASA's description of the four
+subsets says the data are "contaminated with sensor noise" (NASA Prognostics
+Center of Excellence [NASA PCoE], 2008). The paper it names as their reference
+says where such noise came from in the data that paper generated: "a random
+measurement noise component was added to all output channels in order to
+impose sensor noise", leaving "competition participants" the task "to carry
+out appropriate de-noising operations" (Saxena et al., 2008, Section V.B,
+p. 6). FD001 is not those challenge data (see the [Data page](01_the_problem.md)),
+so that its noise was added the same way is this project's reading, not
+something either source states.
+
+Wear, by contrast, builds up slowly. That difference is the paper's reason for
+smoothing: noise "can obscure genuine engine degradation signals, as equipment
+deterioration represents a gradual process requiring focus on long-term trends
+rather than short-term fluctuations" (Wen et al., 2026, Section 3.2.3, p. 8).
+Smoothing gives a new reading only part of the influence on the next value,
+reducing the effect of one sudden jump. It is applied separately to each engine
+and to each of the 14 selected sensors (Wen et al., 2026, Table 3).
 
 {{figure:smoothing}}
+
+### Without smoothing
+
+The figure follows `T50`, the temperature at the low-pressure turbine's outlet
+(Wen et al., 2026, p. 5), in degrees Rankine, °R (Saxena et al., 2008,
+Table 2), read from the file's `sensor_4` column; which column holds which
+sensor is this project's reading, checked on the
+[C-MAPSS resource page](../resources/cmapss.md#which-flight-conditions-the-settings-are).
+On training engine 1, `T50` averages 1400.11 °R over the first 30 cycles and
+1421.92 °R over the last 30, so 192 cycles of wear raised it by 21.82 °R.
+Four cycles near the end show what one reading can do against that:
+
+```text
+cycle              125         126         127         128
+raw reading    1406.42     1418.50     1399.49     1407.06
+smoothed     1405.6218   1412.0609   1405.7754   1406.4177
+```
+
+From cycle 126 to cycle 127 the raw reading falls by 19.01 °R, almost the
+whole life's rise and in the opposite direction, and it climbs back at cycle
+128. At cycle 127 it is lower than the engine's average over its first 30
+cycles, when it was new. The smoothed value at cycle 127 takes half of the new
+reading and half of the smoothed value before it:
+
+```text
+0.5 × 1399.49 + 0.5 × 1412.0609 = 1405.7754
+```
+
+so it falls by 1412.0609 − 1405.7754 = 6.2855 °R instead of 19.01. Function,
+below, starts this calculation at cycle 1. Over all 100 training engines,
+`T50` moves by 4.557 °R on average from one cycle to the next before smoothing
+and by 1.866 °R after it.
+
+What this costs depends on what reaches the network. This project's network
+by default passes on only each sensor's reading at the last cycle of its
+30-cycle window (assumption A-07); the paper instead gives each sensor its own
+network that reads every cycle of the window (Wen et al., 2026, Section 2.2,
+Eq. 7). With smoothing, that one number still carries the earlier cycles: half
+of it comes from the last reading, a quarter from the one before, an eighth
+from the one before that, and the last six readings together supply
+1 − 0.5⁶ = 0.984 of it. Without smoothing it is one raw reading, noise and
+all, and the other 29 cycles of the window never reach the network. For the
+window ending at engine 1's cycle 127, the network would be told 1399.49 °R.
+
+We measured it with this project's default settings, which use that
+last-reading stage, by training five times with seeds 42 to 46. A seed fixes
+the random choices of one run: the network's starting values, the order of
+the training examples, and which engines step 3 holds back. The test error,
+the root mean squared error over the 100 test engines, roughly how many cycles
+a prediction is typically out (explained on the
+[Reading results page](06_reading_results.md)), was 16.689 ± 0.246 with
+smoothing and 18.395 ± 0.123 without: the mean of the five runs ± their
+standard deviation, the typical distance of one run from that mean. Seed by
+seed, removing smoothing raised the error by 1.367, 2.209, 1.535, 1.679 and
+1.741 cycles, a mean of 1.706. A paired *t*-test, which sets the mean of
+those five differences against their spread, gives *t* = 12.06 and
+*p* = 0.00027: the probability of a *t* at least that far from zero if
+smoothing made no difference
+([When is a difference real?](06_reading_results.md#when-is-a-difference-real);
+assumption A-04).
+
+That result belongs to this configuration. With the paper's design instead,
+one long short-term memory network per sensor reading all 30 cycles (Wen et
+al., 2026, Section 2.2), removing smoothing changed the test error by an amount
+five seeds could not tell apart from zero (finding F-19). One possible reason,
+not tested here, is that such a network reads the whole window and can weigh
+several cycles itself.
 
 ### Process
 
