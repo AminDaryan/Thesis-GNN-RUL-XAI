@@ -6,8 +6,8 @@ algorithm decides which of that information reaches the graph layers.
 
 Here **time** means successive cycles of the same sensor, one row of NASA's
 data per operational cycle (NASA Prognostics Center of Excellence [NASA PCoE],
-2008). **The graph** links
-different sensors (Wen et al., 2026, Section 2.1). This page follows time within each sensor; the
+2008). **The graph** links different sensors (Wen et al., 2026, Section 2.1).
+This page follows time within each sensor; the
 [GNN page](02_graphs.md) explains how sensors exchange information afterwards.
 
 ## Choose a route
@@ -27,9 +27,8 @@ apply one after another.
 The **LSTM**, short for long short-term memory network (Hochreiter &
 Schmidhuber, 1997, Section 4), and **GRU**, short for gated recurrent unit
 (Ren et al., 2026, p. 2), the unit introduced by Cho et al. (2014, Section 2.3),
-follow the four numbered
-steps below. The fixed alternatives later on this page replace that entire
-route.
+follow the four numbered steps below. The fixed alternatives later on this page
+replace that entire route.
 
 ## Example setup
 
@@ -891,7 +890,7 @@ Three complete input values for each graph node:
 
 ### Pass every cycle
 
-Keeping the entire history lets the first graph layer apply a multiplier to every cycle position, instead of receiving a summary. The oldest and newest readings occupy different columns. This is not the paper’s arrangement. It was this project’s earlier default, replaced by the last reading because those multipliers then learn across the cycles inside the graph layer, a temporal stage the paper never describes (assumption A-07).
+Keeping the entire history lets the first graph layer apply a multiplier to every cycle position, instead of receiving a summary. The oldest and newest readings occupy different columns. This is not the paper’s arrangement: its first graph layer receives one number per sensor (Wen et al., 2026, Section 2.3.2, Table 4). It was this project’s earlier default, replaced by the last reading because those multipliers then form a learned calculation across the cycles inside the graph layer, a temporal stage the paper never describes (assumption A-07).
 
 #### Process
 
@@ -961,9 +960,9 @@ Every reading is retained in its original position:
 The paper describes separate LSTM networks (Wen et al., 2026, Section 2.2). The
 command-line default instead keeps the last reading, so its results belong
 beside the paper's comparison without LSTM, its "ESTGNN w/o LSTM" row, not the
-full-model headline (Wen et al., 2026, Section 4.3, Table 11, p. 12). Using LSTM here
-still requires unspecified choices about width and conversion to graph
-inputs (assumptions A-11 and A-26).
+full-model headline (Wen et al., 2026, Section 4.3, Table 11, p. 12). Using
+LSTM here still requires unspecified choices about width and conversion to
+graph inputs (assumptions A-11 and A-26).
 
 These demonstrations teach calculations, not accuracy rankings.
 [Follow one real example](08_worked_examples.md#through-the-saved-model)

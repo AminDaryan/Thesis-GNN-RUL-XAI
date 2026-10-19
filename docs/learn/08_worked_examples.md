@@ -107,7 +107,11 @@ next list shows all sensor values leaving the temporal stage.
 Each graph layer then exposes two additions: combine T24's neighbours, and
 apply the learned multipliers to that mixture. Fully connected shows every
 term forming its first output; Output shows every term forming the final
-internal score. Each addition includes its learned offset and total. None of
+internal score. Each addition ends with an offset and its total. Only the two
+fully connected layers, Fully connected and Output, learn an offset
+(Wen et al., 2026, Eqs. 12–13). The graph layers have none: the paper prints
+none in their equations (Wen et al., 2026, Eqs. 8–10), and this project
+follows them (assumption A-12), so their tables show an offset of 0. None of
 these tables is a ranking of sensors.
 
 ## Other temporal algorithms
@@ -118,8 +122,9 @@ averages a sensor's values in the window. Window summary keeps its last value,
 average and fitted change (assumption A-28). Full window keeps all the values.
 LSTM and GRU read them in order and update internal lists of computed numbers
 (Hochreiter & Schmidhuber, 1997, Section 4; Cho et al., 2014, Section 2.3).
-The paper's model has an LSTM for each sensor (Wen et al., 2026, Section 2.2);
-the GRU is this project's addition (assumption A-36). An LSTM or GRU
+The paper's model has an LSTM for each sensor (Wen et al., 2026, Section 2.2),
+which this project leaves out by default (assumption A-11); the GRU is this
+project's addition (assumption A-36). An LSTM or GRU
 network's learned weights are different from the example's Last cycle network.
 Do not interpret that saved prediction as a prediction of those alternatives.
 The [temporal explanation](09_temporal.md#the-stage-left-out-by-default)
@@ -148,8 +153,9 @@ Read the [SHAP worked addition](10_dynamic_shap.md) for the separate
 input → replacement → prediction-difference calculation; what stands in for
 a replaced sensor is this project's choice (assumption A-20). A SHAP
 explanation assigns each input an effect on the model's output (Lundberg &
-Lee, 2017, p. 2); in this project's reading, an explanation therefore does
-not establish that a sensor caused physical damage.
+Lee, 2017, p. 2). Those effects describe what the network computes, not what
+happens in the engine, so in this project's reading an explanation does not
+establish that a sensor caused physical damage.
 
 ## References
 
