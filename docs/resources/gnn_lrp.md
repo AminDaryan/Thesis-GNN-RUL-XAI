@@ -4,11 +4,13 @@ A graph neural network computes along a graph. At every graph layer, each
 node — in this project, one sensor — replaces its numbers with a combination
 of the numbers held by the nodes it is joined to. Two different questions can
 then be asked of one prediction: *which readings mattered?*, and *along which
-connections, and in which layer, did they travel?* Thomas Schnake and
-colleagues wrote their paper to answer the second. Their method, **GNN-LRP**
+connections, and in which layer, did they travel?* Schnake et al. (2022,
+Abstract; [p. 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
+wrote their paper to answer the second. Their method, **GNN-LRP**
 (graph neural network layer-wise relevance propagation), splits one output of
 a fixed network into signed shares, one for each **walk**: an ordered list of
-nodes, one per graph layer, that part of the output passed through.
+nodes, one at the input and one after each graph layer, that part of the
+output passed through (Section 3).
 
 This page gives the papers' own account: the problem the method was built
 for, how it is derived, how it is computed, how its authors tested it, and
@@ -19,7 +21,8 @@ version may number them differently. It also uses the two papers the method
 is built on, [Bach et al. (2015)](../references/bach_2015_layerwise_relevance_propagation.pdf)
 and [Montavon et al. (2019)](../references/montavon_2019_lrp_overview.pdf),
 and the node-level method it was compared against,
-[Pope et al. (2019)](../references/pope_2019_explainability_gcn.pdf).
+[Pope et al. (2019)](../references/pope_2019_explainability_gcn.pdf)
+(Schnake et al., 2022, Sections 3.2 and 4).
 
 How this project runs the method on its own network, step by step, is the
 subject of the [GNN-LRP tutorial](../learn/11_gnn_lrp.md), and the
@@ -33,24 +36,26 @@ layer, and an explanation can divide the output among those numbers. A graph
 network has two inputs. One is the table of **node features** — here, each
 sensor's reading. The other is the graph itself, written as a table **Λ**
 (capital lambda) with one row and one column per node, whose entries say how
-strongly each node takes in each other node's numbers. The paper's abstract
-and its [Section 2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2)
-stress that the graph does not enter once, at the start: every graph layer
-uses it again, so the graph is woven through the whole calculation.
+strongly each node takes in each other node's numbers (Schnake et al., 2022,
+[Section 2, Eqs. 1–3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2)).
+The paper's abstract and its Section 2 (p. 2) stress that the graph does not
+enter once, at the start: every graph layer uses it again, so the graph is
+woven through the whole calculation.
 
-The paper describes the explanation methods for graph networks that came
-before it as limited to individual nodes or edges
+The paper by Schnake et al. (2022) describes the explanation methods for
+graph networks that came before it as limited to individual nodes or edges
 ([p. 1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=1)), and
 in [Section 1.1.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2)
 sets itself apart from them by scoring sequences of edges instead; the methods
 it lists there also include some that pick out a subgraph, such as
-GNNExplainer. It argues that a score per node "does not tell us whether a
-node is important by itself"
-([Section 2.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)),
+GNNExplainer (Ying et al., 2019, p. 1). It argues that a score per node
+"does not tell us whether a node is important by itself"
+([Section 2.1, p. 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)),
 or only because of what it is connected to. Its answer is to make the graph
 the thing that is explained: work out how the output depends on the entries
-of Λ, and split the output into terms that each use one connection per graph
-layer.
+of Λ, and split the output into terms that each multiply as many entries of
+Λ as the network has graph layers (Section 2.2, Eq. 6); Section 3 then
+assigns each of those entries to one layer, which gives the walks.
 
 **Do not confuse the graph table with the node feature table.** Λ says which
 nodes may combine and with what weight; in this project it is the same for
@@ -65,8 +70,10 @@ input**. Where the paper says which output it explains, that number is taken
 before any final step that maps a score into a fixed range: for its sentiment
 classifier, the difference between the positive and the negative class scores
 before a softmax (the step that turns class scores into probabilities) is
-applied ([Fig. 7](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=9));
-for molecules, the predicted energy, which has no such step, and the dipole
+applied (Schnake et al., 2022, [Fig. 7](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=9);
+Appendix F.2);
+for molecules, the predicted energy, for which the paper names no such step,
+and the dipole
 moment (a measure of how a molecule's electric charge is separated) after the
 paper replaces that output by a linear one
 ([Section 5.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=10)).
@@ -75,16 +82,20 @@ which output it explains.
 
 The explanation is a set of **relevances**: signed numbers, one per input
 element (or, for GNN-LRP, one per walk), which add up to the output. A
-positive relevance pushes the output up; a negative one pulls it down. To
+positive relevance pushes the output up; a negative one pulls it down
+(Bach et al., 2015, [p. 3, Eq. 1](../references/bach_2015_layerwise_relevance_propagation.pdf#page=3);
+Schnake et al., 2022, Proposition 1 and Fig. 4). To
 compute them, GNN-LRP reads every weight of the network, the graph, and the
 state of every switch (defined below) for this one input; it changes no input
-and reruns nothing.
+and never runs the network on any other input (Schnake et al., 2022, Table 1
+and Section 3.2.1).
 
 **Do not confuse activation with relevance.** An *activation* is the number a
 node or a neuron — one of the numbers a layer computes — outputs during the
 prediction. A *relevance* is the part of the final output credited to it
-afterwards. A large positive activation can carry a small or negative
-relevance when the layers above multiply it by a small or negative weight.
+afterwards (Bach et al., 2015, p. 5). A large positive activation can carry
+a small or negative relevance when the layers above multiply it by a small or
+negative weight.
 The example below has one: T30's below-average part is 0.418705 as an
 activation and −0.069784 as a relevance.
 
@@ -93,12 +104,15 @@ activation and −0.069784 as a relevance.
 Every number on this page comes from one small network fed with real
 readings: FD001 **test engine 75 at its last available cycle, 88**, sensors
 T30, T50 and W32, after the project's own preparation with seed 42 —
-smoothing, then rescaling with averages and spreads taken from training
-engines only, as the [preparation tutorial](../learn/04_the_pipeline.md)
-shows. A rescaled reading is the distance from the sensor's training average
-in units of its training spread, so a negative value means below average.
+smoothing (Wen et al., 2026, Section 3.2.3; assumption A-04), then
+rescaling with averages and spreads taken from training engines only
+(assumptions A-03 and A-25), as the
+[preparation tutorial](../learn/04_the_pipeline.md) shows. A rescaled
+reading is the distance from the sensor's training average in units of its
+training spread, so a negative value means below average.
 
-The three sensors form a path in the project's sensor graph: T30 is joined to
+The three sensors form a path in the project's sensor graph, the table of
+connections printed by Wen et al. (2026, Table 3): T30 is joined to
 T50, and T50 to W32, but T30 is not joined to W32. The page cuts these three
 rows and columns out of the project's graph, joins each sensor to itself, and
 rescales each row of the small table to add up to 1, the way the project
@@ -117,7 +131,8 @@ engines or about accuracy.
 - **Graph layer 1** averages each sensor's permitted inputs, multiplies the
   average by 1 and by −1 to give two numbers per sensor, and sets negative
   results to zero. That last operation is a **ReLU** (rectified linear unit):
-  a switch that passes a positive number unchanged and outputs 0 otherwise.
+  a switch that passes a positive number unchanged and outputs 0 otherwise,
+  the rectification function $\max(0, \cdot)$ (Schnake et al., 2022, Table 1).
   The first number is therefore the average where it is above zero (the
   *above-average part*) and the second its size where it is below zero (the
   *below-average part*).
@@ -127,11 +142,13 @@ engines or about accuracy.
 - **The last step** adds the three sensors' outputs (weights 1, 1 and 1),
   applies a switch, and multiplies by 1. The result is the **score**. The
   project's network turns a score into cycles with the sigmoid curve
-  125 ÷ (1 + e^(−score)), which maps any number into the range 0 to 125; this
+  (Wen et al., 2026, Eq. 13), here 125 ÷ (1 + e^(−score)), which maps any
+  number into the range 0 to 125 (assumptions A-01 and A-13); this
   page, like the project, divides the score, not the cycles (assumption A-29).
 
 No layer adds a constant of its own. That matters below: it is the condition
-under which the paper's derivation is exact. Tables show six decimal places;
+under which the paper's derivation is exact (Schnake et al., 2022,
+Proposition 1; p. 4). Tables show six decimal places;
 the calculations keep full precision, so adding printed values can differ
 from a printed total in the last digit. Every Python block on this page needs
 only NumPy and pandas, except the one in "The masked procedure, and the
@@ -250,7 +267,8 @@ divided among the three readings, and among the routes they took?
 
 ### The idea: hand the output back, keeping the total
 
-Bach and colleagues introduced **layer-wise relevance propagation**, LRP, to
+Bach et al. (2015, [p. 3](../references/bach_2015_layerwise_relevance_propagation.pdf#page=3))
+introduced **layer-wise relevance propagation**, LRP, to
 explain image classifiers pixel by pixel. They want one relevance $R_d$ per
 input number $d$ such that $f(x) \approx \sum_d R_d$
 ([Eq. 1](../references/bach_2015_layerwise_relevance_propagation.pdf#page=3)).
@@ -265,8 +283,8 @@ $$f(x) = \cdots = \sum_{d \in l+1} R^{(l+1)}_d = \sum_{d \in l} R^{(l)}_d = \cdo
   from the input (layer 1) upwards. $d$ runs over the numbers computed at one
   layer (pixels, at layer 1). $R^{(l)}_d$ is the relevance of number $d$ at
   layer $l$.
-- **What it says.** The sum of the shares is the same at every layer. The
-  paper calls this a conservation law (p. 5).
+- **What it says.** The sum of the shares is the same at every layer.
+  Bach et al. (2015, p. 5) call this a conservation law.
 - **Why it is needed.** Once the input layer is reached, the input shares
   must add up to the output, which is what Eq. 1 asks for.
 - **Example.** In the table at the end of this section, the shares at the
@@ -275,7 +293,8 @@ $$f(x) = \cdots = \sum_{d \in l+1} R^{(l+1)}_d = \sum_{d \in l} R^{(l)}_d = \cdo
 - **What uses it.** It constrains the rule that divides each number's
   relevance among the numbers that fed it: the rule may lose nothing.
 
-The same page shows why conservation alone is not enough. Their Eq. 4
+Bach et al. (2015) also show why conservation alone is not
+enough. Their Eq. 4
 divides a linear classifier's output in proportion to the size of each
 input's term: the total is kept, but every input receives the sign of the
 output, whichever way it actually pushed
@@ -285,8 +304,10 @@ right.
 
 ### The proportional rule
 
-For a layer in which lower number $i$ sends $z_{ij} = x_i w_{ij}$ to upper
-number $j$ (Eq. 50), the upper number totals $z_j = \sum_i z_{ij} + b_j$
+In the notation of Bach et al. (2015), for a layer in which lower number $i$
+sends $z_{ij} = x_i w_{ij}$ to upper
+number $j$ ([Eq. 50](../references/bach_2015_layerwise_relevance_propagation.pdf#page=19)),
+the upper number totals $z_j = \sum_i z_{ij} + b_j$
 (Eq. 51) and then passes $z_j$ through a function such as the switch
 (Eq. 52), the first rule they give is
 ([Eq. 56](../references/bach_2015_layerwise_relevance_propagation.pdf#page=20)):
@@ -315,13 +336,13 @@ $$R^{(l,l+1)}_{i \leftarrow j} = \frac{z_{ij}}{z_j}\, R^{(l+1)}_j$$
 
 ### The gamma rule (2019)
 
-Montavon and colleagues' overview ([Montavon et al., 2019](../references/montavon_2019_lrp_overview.pdf))
-calls the rule above **LRP-0** and, in its Section 10.2.1, states that
+The overview by Montavon et al. (2019, [Section 10.2.1](../references/montavon_2019_lrp_overview.pdf#page=4))
+calls the rule above **LRP-0** and states that
 applying it at every layer gives the same shares as **gradient × input**:
 each input's value times the rate at which the output changes when that
 input alone changes (its partial derivative; the list of these rates over all
 inputs is the gradient). Because the gradient of a deep network is noisy
-(Section 10.1), the same section introduces a variant it names LRP-γ, the
+(Section 10.1), Section 10.2.1 introduces a variant it names LRP-γ, the
 gamma rule:
 
 $$R_j = \sum_k \frac{a_j\,(w_{jk} + \gamma\, w^+_{jk})}{\sum_{0,j} a_j\,(w_{jk} + \gamma\, w^+_{jk})}\, R_k$$
@@ -342,10 +363,11 @@ $$R_j = \sum_k \frac{a_j\,(w_{jk} + \gamma\, w^+_{jk})}{\sum_{0,j} a_j\,(w_{jk} 
   turns the rule into the one it calls LRP-α1β0, which by the formula in its
   Appendix 10.A keeps positive contributions only.
 - **Example.** The GNN-LRP section below applies γ = 1 at T50's layer-2 node.
-- **What uses it.** GNN-LRP applies this rule at each graph layer (Table 1 of
-  Schnake et al., below).
+- **What uses it.** GNN-LRP applies this rule at each graph layer
+  (Schnake et al., 2022, Table 1), as set out below.
 
-Three further points of the overview matter later. Its Section 10.2.3
+Three further points of the overview by Montavon et al. (2019) matter later.
+Its Section 10.2.3
 justifies these rules as Taylor expansions — approximations of a function by
 its value and its rates of change at a reference point — made one neuron at a
 time, at reference points that are never negative, which fits layers whose inputs are
@@ -416,8 +438,8 @@ np.testing.assert_allclose(at_readings, x * slope, atol=1e-8)
 | Readings | -0.016839 | -0.615049 | 0.947583 | 0.315695 |
 | Reading × slope of the score | -0.016839 | -0.615049 | 0.947583 | 0.315695 |
 
-Read down the Total column: 0.315695 at every layer, which is Bach et al.'s
-Eq. 2. Along the rows:
+Read down the Total column: 0.315695 at every layer, which is Eq. 2 of
+Bach et al. (2015). Along the rows:
 
 - **Layer-2 outputs.** The last step adds the outputs with weight 1, so each
   one's relevance is its own value. T30's is 0 because its switch is off.
@@ -429,13 +451,13 @@ Eq. 2. Along the rows:
   the averages with positive entries, so it pulls the score down: −0.615049.
 - **The last row** is each reading times the slope of the score with respect
   to it, the slope measured by nudging that reading by 0.000001 either way.
-  It matches the readings row, as the overview's Section 10.2.1 says LRP-0
-  throughout must.
+  It matches the readings row, as Montavon et al. (2019, Section 10.2.1) say
+  LRP-0 throughout must.
 
 This is a **node-level explanation**: one share per sensor reading, the
-first-order explanation on the initial node features that Section 2.1 of the
-GNN-LRP paper describes. It is also what that paper's benchmark used under
-the name of Pope et al.: an attribution onto the initial node features,
+first-order explanation on the initial node features that Schnake et al.
+(2022, Section 2.1) describe. It is also what their benchmark used under
+the name of Pope et al. (2019): an attribution onto the initial node features,
 computed by gradient × input, as here, or by LRP
 ([Section 4, item (a)](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=6)).
 Pope et al.'s own maps are a different kind of score, described in the next
@@ -447,9 +469,9 @@ the way down and the input shares add up to the output.
 
 ## Why one share per sensor, or per connection, is not enough
 
-[Section 2.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2)
-of the GNN-LRP paper writes the output as a first-order Taylor expansion in
-the node features (its Eq. 4): the output near a reference point is that
+Schnake et al. (2022, [Section 2.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2))
+write the output as a first-order Taylor expansion in
+the node features (their Eq. 4): the output near a reference point is that
 point's output plus one term per node, the node's change times the rate at
 which the output changes with it. Each term is one node's share, like the
 readings row above. The paper raises two limits
@@ -459,8 +481,9 @@ above, and it does not say whether a node mattered by itself or through its
 connections. It traces both limits to having expanded the output as a
 function of the node features rather than of the entries of Λ.
 
-**Pope et al. (2019)** is the node-level method the paper compares against.
-Pope and colleagues carry image-explanation methods over to graph
+**Pope et al. (2019)** is the node-level method the paper compares against
+(Schnake et al., 2022, Section 4).
+Pope et al. (2019, Section 3.3) carry image-explanation methods over to graph
 convolutions: a gradient map, which for each node takes the size of the
 positive part of the derivative of a class score with respect to that node's
 features ([Eq. 12](../references/pope_2019_explainability_gcn.pdf#page=4));
@@ -476,9 +499,9 @@ table further down splits it into five nonzero routes, among them
 T50 → W32 → W32 (−0.197694) and T50 → T50 → W32 (−0.131796). A node-level
 share holds their sum and cannot separate them.
 
-**One score per connection fails too.** The paper's
-[Section 2.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)
-gives the reason: the graph enters every layer and the layers multiply what
+**One score per connection fails too.** Schnake et al. (2022,
+[Section 2.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
+give the reason: the graph enters every layer and the layers multiply what
 they receive, so the output depends on *products* of graph entries, and an
 analysis with one first-order term per entry of Λ cannot pick those products
 apart. The demonstration shows what goes wrong. For each connection, take the
@@ -528,19 +551,23 @@ connection to itself collects 0.227420 and 0.341130 from the two routes that
 use it in layer 1, and −0.197694 and 0.341130 from the two that use it in
 layer 2 (the GNN-GI column of the walk table below), so W32 → W32 → W32 is
 counted twice. With T graph layers and no added constants, this total is T
-times the output. A first-order expansion made around the empty graph, where
+times the output: the total is the rate at which the output changes when
+every entry is multiplied by the same $s$, taken at $s = 1$, and Step 3 below
+shows that the output then changes as $s^T$, whose rate at $s = 1$ is T. A
+first-order expansion made around the empty graph, where
 Proposition 1 below makes the expansion exact, fares no better: every
-first-order term there is 0. Hence the paper's turn to terms that multiply T
-entries.
+first-order term there is 0 (Schnake et al., 2022, Appendix A). Hence the
+paper's turn to terms that multiply T entries.
 
 ## From the graph to walks: the paper's derivation
 
 ### The network as a function of its graph
 
-[Section 2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2)
-writes one graph layer $t$ as an *aggregate* step and a *combine* step
-(Eqs. 1 and 2). For the graph convolution — the layer the [GCN page](gcn.md)
-derives, and the kind this project's graph layers are —
+Schnake et al. (2022, [Section 2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=2))
+write one graph layer $t$ as an *aggregate* step and a *combine* step
+(Eqs. 1 and 2). For the graph convolution of Kipf and Welling (2017, Eq. 2)
+— the layer the [GCN page](gcn.md) derives, and the kind this project's
+graph layers are — the GNN-LRP paper's
 [Table 1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=5)
 gives the combine step explicitly:
 
@@ -567,12 +594,14 @@ $$Z_t = \Lambda H_{t-1}, \qquad H_t = \rho(Z_t W_t)$$
 
 **Do not confuse the paper's aggregate step with its combine step.** The
 numbers arriving from the neighbours are added together in the step the paper
-calls *aggregate*, $Z_t = \Lambda H_{t-1}$. The step it calls *combine*
+calls *aggregate*, $Z_t = \Lambda H_{t-1}$ (Schnake et al., 2022, p. 2). The
+step it calls *combine*
 involves no neighbour: it multiplies each node's own aggregated row by $W_t$
 and applies the switch.
 
-The paper writes $\lambda_{JK}$ for the element of Λ for the connection
-between node J and node K (p. 3); in a walk (…, J, K, …) it is the connection
+Schnake et al. (2022, p. 3) write $\lambda^\star_{JK}$, and $\lambda_{JK}$ in
+their Table 1, for the element of the graph for the connection
+between node J and node K; in a walk (…, J, K, …) it is the connection
 through which J's numbers reach K at the next layer. The graphs whose
 construction the paper writes out are built from undirected graphs and so
 are symmetric ([Appendix F.1 and F.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=19)),
@@ -587,8 +616,8 @@ The derivation then takes five steps.
 
 **Step 1 — hold the readings and the weights fixed, and vary the graph.**
 With the node features $H_0$ and every weight fixed, the output depends only
-on the entries of Λ: $f(\Lambda)$
-([Section 2.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)).
+on the entries of Λ: $f(\Lambda)$ (Schnake et al., 2022,
+[Section 2.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)).
 
 **Step 2 — between switch changes, the output is a polynomial of degree at
 most T.** A polynomial is a sum of terms, each a number times a product of
@@ -597,15 +626,16 @@ in any one term. Each aggregate step multiplies by Λ once; with every switch
 held in its current state, each combine step multiplies by fixed weights, and
 may add a constant. After $T$ graph layers, and through a readout that is
 also linear while its switches hold, no term contains more than $T$ entries
-of Λ; a layer that adds a constant also creates terms with fewer. The paper
-calls this piecewise polynomial of order $T$
-([Appendix A](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=15)):
+of Λ; a layer that adds a constant also creates terms with fewer. Schnake
+et al. (2022, [Appendix A](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=15))
+call this piecewise polynomial of order $T$:
 one formula holds as long as no switch changes state, and an input on which
 some switch flips lies on another piece, with another formula.
 
 **Step 3 — with no added constants, scaling the graph by $s$ scales the
-output by $s^T$.** [Proposition 1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)
-asks each combine step and the readout to be piecewise linear and
+output by $s^T$.** In Proposition 1, Schnake et al. (2022,
+[p. 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
+ask each combine step and the readout to be piecewise linear and
 **positively homogeneous**: multiplying the input by a positive $s$
 multiplies the output by $s$. The switch has this property, $\rho(s\,a) =
 s\,\rho(a)$ for $s > 0$; a layer that adds a constant does not. Stacked over
@@ -619,17 +649,17 @@ covers that whole line.
 **Step 4 — expand around a nearly empty graph.** A Taylor expansion writes a
 function as a sum of terms built from its derivatives at a reference point
 $\tilde\Lambda$; a term of order $k$ uses $k$-th derivatives and multiplies
-$k$ entries' distances from the reference. The paper writes its terms of
-order $T$ in bags of connections
-([Eq. 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)) and
-chooses the reference $\tilde\Lambda = s\Lambda$ with $s \to 0$: the graph
+$k$ entries' distances from the reference. Schnake et al. (2022,
+[Eq. 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)) write
+their terms of order $T$ in bags of connections and
+choose the reference $\tilde\Lambda = s\Lambda$ with $s \to 0$: the graph
 shrunk towards nothing, through which no information is exchanged. For
 $k < T$, a $k$-th derivative of the degree-$T$ polynomial of Step 3 is itself
 homogeneous of degree $T - k \ge 1$: every one of its terms still multiplies
 at least one graph entry, so it falls to 0 as the graph shrinks to nothing.
 For $k > T$ the derivatives of a degree-$T$ polynomial are all zero. And the
-order-$T$ derivatives are constant on the piece. What remains is exact
-(Eq. 6):
+order-$T$ derivatives are constant on the piece (Appendix A, pp. 15–16).
+What remains is exact (Eq. 6):
 
 $$f(\Lambda) = \sum_{\mathcal{B}} R_{\mathcal{B}}, \qquad R_{\mathcal{B}} = \frac{1}{\alpha_{\mathcal{B}}!}\,\frac{\partial^T f}{\partial\lambda_{\mathcal{E}_1}\cdots\partial\lambda_{\mathcal{E}_T}}\;\lambda_{\mathcal{E}_1}\cdots\lambda_{\mathcal{E}_T}$$
 
@@ -660,10 +690,10 @@ $$f(\Lambda) = \sum_{\mathcal{B}} R_{\mathcal{B}}, \qquad R_{\mathcal{B}} = \fra
   impractical, so Section 3 rewrites the terms walk by walk.
 
 **Step 5 — from bags to walks.**
-[Section 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)
-defines a **walk** as an ordered sequence of connections linking nodes in
+Schnake et al. (2022, [Section 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
+define a **walk** as an ordered sequence of connections linking nodes in
 consecutive layers, written by the nodes it visits, $(\ldots, J, K, L,
-\ldots)$, and gives each layer its own copy of the graph, $\Lambda^\star =
+\ldots)$, and give each layer its own copy of the graph, $\Lambda^\star =
 (\Lambda, \ldots, \Lambda)$. [Appendix B](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=16)
 then argues in three moves (its Eqs. 7–9). A derivative with respect to a
 shared entry is the sum of the derivatives with respect to that entry's copy
@@ -680,7 +710,8 @@ $\lambda_{K'L}$ multiplies only node K′'s numbers from layer $t$. Unless K and
 K′ are the same node, neither entry can change the other's effect, and their
 mixed derivative is zero.
 
-[Proposition 2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=4)
+Proposition 2 of Schnake et al. (2022,
+[p. 4](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=4))
 then gives each walk a score (Eq. 7), and a bag's term is the sum of its
 walks' scores:
 
@@ -698,12 +729,13 @@ $$R_{\mathcal{W}} = \frac{\partial}{\partial \ldots}\left(\frac{\partial}{\parti
 - **Why.** Each step is a first derivative, which one backward pass through
   the network computes — the sweep from the output back to the inputs that
   obtains every first derivative at once; no derivative of order $T$ of the
-  whole network is needed.
+  whole network is needed (Section 3.1, p. 3).
 - **Example.** The walk T30 → T50 → W32, below: −0.007772.
 - **What uses it.** GNN-GI computes exactly this; GNN-LRP replaces each
   differentiation step by an LRP step.
 
-A walk carries more than its bag. [Fig. 2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3)
+A walk carries more than its bag. Fig. 2 of Schnake et al. (2022,
+[p. 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
 shows one bag holding two walks that use the same connections in a different
 order, and the paper notes that a walk therefore says in which layer two
 nodes exchanged information, which the bag does not (p. 3). The worked
@@ -874,8 +906,8 @@ and the shares of all walks add up to the output with nothing left over.
 
 ## GNN-GI: the gamma = 0 special case
 
-The paper's first algorithm, in
-[Section 3.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3),
+The first algorithm of Schnake et al. (2022,
+[Section 3.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=3))
 computes Eq. 7 as written. For a walk ending (…, K, L, M) it starts at the
 last connection with $R_{LM} = \frac{\partial f}{\partial\lambda^\star_{LM}}
 \lambda^\star_{LM}$, then takes $R_{KLM} = \frac{\partial
@@ -885,7 +917,7 @@ Each step is a gradient times an input, so the paper names it GNN-GI, a
 nested gradient × input. In a switch network it is the product along the
 walk that the worked example computed.
 
-The paper states two limits of GNN-GI (p. 4). When the network is not
+Schnake et al. (2022, p. 4) state two limits of GNN-GI. When the network is not
 positively homogeneous — for instance when its neurons add constants — the
 walk shares no longer add up to the output, and part of the output is
 credited to nothing. And in deep networks the gradient GNN-GI relies on
@@ -897,16 +929,16 @@ as the special case of GNN-LRP with γ = 0
 **Do not confuse GNN-GI with the gradient map of Pope et al.** Both use
 derivatives. GNN-GI multiplies derivatives by graph entries along a walk and
 gives one signed share per walk, and the shares add up to the output. Pope et
-al.'s map takes the size of the positive part of a gradient with respect to a
-node's features and gives one score per node, never negative and with no
+al.'s (2019, Eq. 12) map takes the size of the positive part of a gradient
+with respect to a node's features and gives one score per node, never negative and with no
 requirement to add up to anything.
 
 ## GNN-LRP: one LRP step for each connection of the walk
 
 ### The nested procedure
 
-[Section 3.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=4)
-replaces each gradient × input step of Eq. 7 by an LRP step (Eq. 8): the
+Schnake et al. (2022, [Section 3.2](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=4))
+replace each gradient × input step of Eq. 7 by an LRP step (Eq. 8): the
 relevance arriving at the walk's last node is handed by LRP to the
 connection before it, the result is handed to the connection before that,
 and so on down to the first layer. LRP works on neurons, not nodes, so the
@@ -918,7 +950,7 @@ every pair of their neurons (Fig. 3).
 
 $$R_{jKL\ldots} = \sum_{k\in K} \frac{\lambda_{JK}\, h_j\, w^{\wedge}_{jk}}{\sum_{J'}\sum_{j'\in J'} \lambda_{J'K}\, h_{j'}\, w^{\wedge}_{j'k}}\; R_{kL\ldots}, \qquad w^{\wedge} = w + \gamma\,\rho(w)$$
 
-([Table 1, Eq. 9, p. 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=5);
+(Schnake et al., 2022, [Table 1, Eq. 9, p. 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=5);
 the paper reuses J as the running index of the lower sum, written J′ here to
 keep the two apart.)
 
@@ -929,9 +961,9 @@ keep the two apart.)
   $R_{kL\ldots}$ is the relevance held by neuron $k$ for the walks that
   continue through L …, and $R_{jKL\ldots}$ the part handed to neuron $j$ for
   the walks that go J → K → L ….
-- **What it computes.** The overview's gamma rule applied at a graph layer,
-  with three changes: each contribution carries the graph entry
-  $\lambda_{JK}$ as a factor; the denominator has no constant input, because
+- **What it computes.** The overview's gamma rule (Montavon et al., 2019,
+  Section 10.2.1) applied at a graph layer, with three changes: each
+  contribution carries the graph entry $\lambda_{JK}$ as a factor; the denominator has no constant input, because
   Table 1's combine step adds none; and the result is added only over the
   neurons $k$ of the walk's next node K, not over every upper neuron.
   [Appendix C](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=17)
@@ -941,12 +973,16 @@ keep the two apart.)
   would give back node-level LRP.
 - **Example.** The table below.
 - **What uses it.** At the first layer the walk's share is the sum over the
-  starting node's neurons; with γ = 0 at every layer the result is GNN-GI.
+  starting node's neurons; with γ = 0 at every layer the result is GNN-GI
+  (Schnake et al., 2022, Section 4, item (b)).
 
-Table 1 applies γ to the weights $w_{jk}$ only. The same table gives rules
+In this rule for a graph convolution, Table 1 of Schnake et al. (2022)
+applies γ to the weights $w_{jk}$ only. The same table gives rules
 for graph isomorphism networks (Eq. 10), whose combine step is a small
-multi-layer network applied to each node's aggregated row, and for spectral
-networks (Eq. 11), whose layers use several graph tables at once.
+multi-layer network applied to each node's aggregated row, and whose rule
+writes no γ of its own; and for spectral networks (Eq. 11), whose layers use
+several graph tables at once, and whose rule applies γ to the product
+$\lambda^s_{JK} w^s_{jk}$ of a graph entry and a weight.
 
 Here is the rule at T50's layer-2 node with γ = 1. Three parts arrive there:
 T30's below-average part through the weight −0.5, and the above-average parts
@@ -988,18 +1024,18 @@ value divided by 0.238599 and multiplied by 0.084407. The shares still add
 up to 0.084407. The negative share shrinks from −0.069784 to −0.024687, and
 the positive ones shrink too (0.058568 to 0.041438): less of the total is
 now made of large shares cancelling each other, which is the behaviour the
-overview describes. At W32's layer-2 node both arriving parts come through
-the weight 1, so both are doubled and their fractions do not move: γ has no
+overview describes (Montavon et al., 2019, Section 10.2.1). At W32's layer-2
+node both arriving parts come through the weight 1, so both are doubled and their fractions do not move: γ has no
 effect there.
 
 ### Why each step may be used: the induction of Appendix C
 
-GNN-LRP has no closed formula like Eq. 6
-([p. 4](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=4)). The
-paper justifies it with deep Taylor decomposition — the view, from the
-overview's Section 10.2.3, that each LRP step is a first-order Taylor
-expansion made at one neuron — through an **induction**: an argument that,
-once it holds at one layer, holds at the next one down. Section 3.2 states
+GNN-LRP has no closed formula like Eq. 6 (Schnake et al., 2022,
+[p. 4](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=4)). The
+paper justifies it with deep Taylor decomposition — the view, from
+Montavon et al. (2019, Section 10.2.3), that each LRP step is a first-order
+Taylor expansion made at one neuron — through an **induction**: an argument
+that, once it holds at one layer, holds at the next one down. Section 3.2 states
 its three steps, and
 [Appendix C](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=17)
 works them out for the graph convolution:
@@ -1022,16 +1058,16 @@ works them out for the graph convolution:
    $c_{kL\ldots}$, already assumed nearly constant. So the assumption of
    step 1 holds one layer down, and the argument repeats to the first layer.
 
-The copies of step 2 are needed. Appendix C notes that written per node
-instead, with $\lambda_{JK}$ multiplying a whole node's sum, LRP-γ gives a
-rule whose result cannot be put back in the form $h_j c_j$, and the argument
+The copies of step 2 are needed. Schnake et al. (2022, Appendix C) note
+that written per node instead, with $\lambda_{JK}$ multiplying a whole node's
+sum, LRP-γ gives a rule whose result cannot be put back in the form $h_j c_j$, and the argument
 stops at that layer
 ([p. 18](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=18)).
 
 Going from step 2 to Table 1's rule uses one more fact: $v_{jk} + \gamma
 \max(0, v_{jk}) = h_j\,(w_{jk} + \gamma \max(0, w_{jk}))$ **because $h_j \ge
-0$** (Appendix C, p. 17). Step 2's form favours a contribution by its own
-sign; Table 1's form favours it by the sign of its weight. The two agree
+0$** (Schnake et al., 2022, Appendix C, p. 17). Step 2's form favours a
+contribution by its own sign; Table 1's form favours it by the sign of its weight. The two agree
 whenever the activation feeding the layer is not negative, which inside a
 switch network it never is. A first graph layer that receives rescaled
 readings is different: a reading below its training average is negative.
@@ -1125,7 +1161,8 @@ assert rise_total > 0
 Under Table 1's form, T50's newer reading — below average, arriving through
 the positive weight — is counted twice although its contribution is
 negative, and its share grows from −0.263593 to −0.401833: the rule enlarges
-a negative share, the opposite of what the overview says γ is for. The two
+a negative share, the opposite of what the overview says γ is for
+(Montavon et al., 2019, Section 10.2.1). The two
 older readings, also below average but arriving through the negative weight,
 make positive contributions that Table 1's form does not count up. Step 2's
 form, whose inputs are the graph entries and so never negative whatever the
@@ -1137,8 +1174,8 @@ in the network on this page, Table 1's γ would change nothing at that layer
 anyway; the choice matters only where a sensor hands the first graph layer
 several numbers. The authors themselves fell back to γ = 0 for SchNet, their
 network for molecules, whose layers lack the structure of a switch, then a
-weighted sum, then a switch that LRP-γ needs
-([Section 4.1, p. 8](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=8)).
+weighted sum, then a switch that LRP-γ needs (Schnake et al., 2022,
+[Section 4.1, p. 8](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=8)).
 
 **The key idea is** that if a neuron's relevance is its activation times a
 factor that hardly moves, the gamma rule hands down relevances of the same
@@ -1258,11 +1295,11 @@ Added up by the node each walk starts from:
 Both columns of walks add up to the score, 0.315695. The GNN-GI walks,
 pooled by their first node, give back the node-level LRP of the earlier
 table exactly; the code also checks that the GNN-LRP walks pooled the same
-way equal node-level LRP with the same γ. That is the paper's statement that
-pooling walk explanations by their first node gives node explanations
-equivalent to those of Pope et al.
-([pp. 6–7](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=7)),
-in the form its benchmark used them: Pope et al.'s attribution onto the
+way equal node-level LRP with the same γ. That is the statement of
+Schnake et al. (2022, [pp. 6–7](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=7))
+that pooling walk explanations by their first node gives node explanations
+equivalent to those of Pope et al. (2019),
+in the form their benchmark used them: Pope et al.'s attribution onto the
 initial node features, computed by gradient × input or by LRP. Walks lose
 nothing that node shares hold, and add the route.
 
@@ -1272,8 +1309,9 @@ so every share stays labelled with the full list of nodes it passed through.
 
 ## Computing the walks in practice
 
-Table 1 defines the shares; [Section 3.2.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=5)
-shows how to obtain them with **automatic differentiation**, the library
+Table 1 defines the shares; Schnake et al. (2022,
+[Section 3.2.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=5))
+show how to obtain them with **automatic differentiation**, the library
 feature that computes derivatives of any calculation it has recorded. A
 **forward pass** computes the output from the input, layer by layer, and
 records each operation; a **backward pass** then sweeps from the output back
@@ -1282,7 +1320,8 @@ is the product of the steps' own derivatives), computes the derivative of the
 output with respect to every recorded number at once.
 
 Writing each relevance as an activation times a factor, $R_{jKL\ldots} = h_j
-c_{jKL\ldots}$ and $R_{kL\ldots} = h_k c_{kL\ldots}$, Eq. 9 becomes (Eq. 12):
+c_{jKL\ldots}$ and $R_{kL\ldots} = h_k c_{kL\ldots}$, Eq. 9 becomes
+(Schnake et al., 2022, Eq. 12):
 
 $$c_{jKL\ldots} = \sum_{k \in K} \lambda_{JK}\, w^{\wedge}_{jk}\, \frac{h_k}{p_k}\, c_{kL\ldots}, \qquad p_k = \sum_{J'}\sum_{j' \in J'} \lambda_{J'K}\, h_{j'}\, w^{\wedge}_{j'k}$$
 
@@ -1305,7 +1344,8 @@ $$c_{jKL\ldots} = \sum_{k \in K} \lambda_{JK}\, w^{\wedge}_{jk}\, \frac{h_k}{p_k
   differentiation compute exactly this.
 
 The **forward rewrite** changes how each graph layer is written, not what it
-outputs (p. 5): $P_t \leftarrow Z_t W^{\wedge}_t$, then $Q_t \leftarrow P_t
+outputs (Schnake et al., 2022, p. 5): $P_t \leftarrow Z_t W^{\wedge}_t$,
+then $Q_t \leftarrow P_t
 \odot [\rho(Z_t W_t) \oslash P_t]_{\text{cst.}}$, then $H_t \leftarrow Q_t
 \odot M_K + [Q_t]_{\text{cst.}} \odot (1 - M_K)$. Here ⊙ and ⊘ multiply and
 divide number by number, $[\cdot]_{\text{cst.}}$ marks a quantity that
@@ -1366,8 +1406,8 @@ demonstration network, with one backward pass for each of the 27 walks, and
 then explains the same network with the project's `walk_relevance`, which
 explains the project's own network class, so the demonstration is rebuilt as
 one, with the same multipliers. γ = 1 at layer 2 is a demonstration setting,
-chosen to make its effect visible; the project's own setting is described on
-the [GNN-LRP tutorial](../learn/11_gnn_lrp.md).
+chosen to make its effect visible; the project's own setting (assumption
+A-29) is described on the [GNN-LRP tutorial](../learn/11_gnn_lrp.md).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -1445,10 +1485,11 @@ project's `subgraph_scores`, which reruns the network with sensors taken out,
 gives the same scores as the NumPy network used in the node-flipping example
 below.
 
-The masked procedure costs one forward and one backward pass per walk, and
-the paper counts the walks in the input graph (p. 5): those along existing
+The masked procedure costs one forward and one backward pass for each walk
+in the input graph (Schnake et al., 2022, p. 5): those along existing
 connections, 17 of the 27 here, and 5,178 of the 14 × 14 × 14 × 14 = 38,416
-possible on the project's 14-sensor graph with three graph layers. It also
+possible on the project's 14-sensor graph with three graph layers (Wen et al.,
+2026, Table 4). It also
 allows a variation: removing the mask at one layer adds together all walks
 through that layer, ignoring which node they pass there (p. 5). To save time,
 it suggests defining walks first between groups of nodes and expanding only
@@ -1468,13 +1509,13 @@ the one route that is the walk.
 
 ### What it was compared with
 
-[Section 4](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=6)
-first trains a graph isomorphism network — whose combine step is a small
+Schnake et al. (2022, [Section 4](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=6))
+first train a graph isomorphism network — whose combine step is a small
 two-layer network, 32 neurons wide at each node — with two graph layers, every node's
 initial features set to 1, and the graph Λ = Ã/2, where Ã is the adjacency
 table (1 where two nodes are joined, 0 elsewhere) with each node also joined
-to itself. It learns to tell two kinds of synthetic random graph apart,
-reaching an accuracy above 95 %, and is explained with γ = 2 at the first
+to itself. The network learns to tell two kinds of synthetic random graph
+apart, reaching an accuracy above 95 %, and is explained with γ = 2 at the first
 layer and γ = 1 at the second. Three methods are set beside GNN-LRP (p. 6):
 
 - **(a) Pope et al.**, described as attributing the output to the nodes'
@@ -1487,24 +1528,25 @@ layer and γ = 1 at the second. Three methods are set beside GNN-LRP (p. 6):
   number into the range 0 to 1; the explanation is $R$.
 
 Comparing the four explanations of one graph
-([Fig. 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=6)), the
-paper reports that Pope et al.'s method marks nodes without showing whether
-they matter alone or through their neighbours; that GNNExplainer marks
+([Fig. 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=6)),
+Schnake et al. (2022) report that Pope et al.'s method marks nodes without
+showing whether they matter alone or through their neighbours; that GNNExplainer marks
 roughly the regions GNN-LRP marks, but fewer of them and with less detail;
 and that the methods built on gradient × input spread positive and negative
 relevance over more of the graph than those built on LRP (pp. 6–7).
 
 ### Node flipping: adding and removing nodes
 
-[Section 4.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=7)
-adapts pixel flipping, a check for image explanations, to graphs: nodes are
+Schnake et al. (2022, [Section 4.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=7))
+adapt pixel flipping, a check for image explanations, to graphs: nodes are
 added or removed in the order an explanation suggests, and the network's
 output is followed. If removing what the explanation calls relevant moves the
 output a lot, and removing what it calls irrelevant moves it little, the
 explanation describes the network faithfully.
 
 To use an explanation for that, each method needs an estimate $R_\mathcal{G}$
-of what a set of nodes $\mathcal{G}$ (a subgraph) is worth:
+of what a set of nodes $\mathcal{G}$ (a subgraph) is worth (Schnake et al.,
+2022, p. 7):
 
 - for a node-level explanation, $R_\mathcal{G} = \sum_{V \in \mathcal{G}}
   R_V$, the shares of the nodes in the set;
@@ -1513,9 +1555,9 @@ of what a set of nodes $\mathcal{G}$ (a subgraph) is worth:
   R_\mathcal{B}$, where a bag counts only if all its connections lie in the
   set — for walks, only walks whose every node is in the set.
 
-The paper notes that every estimate is 0 for the empty set and equals the
-output for the full graph (p. 7); that last part holds when the shares add
-up to the output. Then two tasks:
+Schnake et al. (2022, p. 7) note that every estimate is 0 for the empty set
+and equals the output for the full graph; that last part holds when the
+shares add up to the output. Then two tasks:
 
 $$\mathcal{V}^\star = \arg\max_{\mathcal{V} \notin \mathcal{G}} R_{\mathcal{G} \cup \{\mathcal{V}\}} \qquad\qquad \mathcal{V}^\star = \arg\min_{\mathcal{V} \in \mathcal{G}} \big|R_{\mathcal{G}_0} - R_{\mathcal{G} \setminus \{\mathcal{V}\}}\big|$$
 
@@ -1546,9 +1588,9 @@ $$\mathcal{V}^\star = \arg\max_{\mathcal{V} \notin \mathcal{G}} R_{\mathcal{G} \
   values over the sequence, averaged over many graphs: higher is better for
   activation, lower for pruning.
 
-Section 4.1 does not say how a network is run on a graph with nodes taken
-out: whether a removed node's row and column of Λ are set to zero, whether
-the remaining rows are rescaled, or what the removed node's own features
+Section 4.1 of Schnake et al. (2022) does not say how a network is run on a
+graph with nodes taken out: whether a removed node's row and column of Λ are
+set to zero, whether the remaining rows are rescaled, or what the removed node's own features
 become. Fig. 6 only writes the output as $f(\Lambda)$ of the changed graph.
 The expression $f(M \odot \Lambda)$ appears in Section 4 in the description
 of GNNExplainer, item (c), not in Section 4.1. The project's procedure is its
@@ -1604,7 +1646,8 @@ subset_table = pd.DataFrame(subset_rows)
 | T30, T50, W32 | 0.315695 | 0.315695 | 0.315695 | 0.315695 |
 
 - **First and last rows.** Every estimate is 0 with no sensor and equals the
-  score with all three, as Section 4.1 says. So is the network here, because
+  score with all three, as Schnake et al. (2022, Section 4.1, p. 7) say. So
+  is the network here, because
   it adds no constants.
 - **Adding (Eq. 14).** Every estimate adds W32 first. For the second step
   the node-level estimate prefers T30 (0.823913 against 0.328507), because it
@@ -1638,7 +1681,8 @@ removing procedure and its mean on the project's network.
 
 ### What the paper's tables report
 
-[Tables 2 and 3](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=8)
+Tables 2 and 3 of Schnake et al. (2022,
+[p. 8](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=8))
 give one AUFC per network and method — synthetic graphs with three kinds of
 graph network, a sentiment classifier, SchNet for molecular energy and dipole
 moment, and VGG-16 for images. For the synthetic graph convolution,
@@ -1655,8 +1699,8 @@ benchmark (p. 8).
 
 ## What the paper found with it
 
-[Section 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=8)
-uses GNN-LRP to examine three trained networks:
+Schnake et al. (2022, [Section 5](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=8))
+use GNN-LRP to examine three trained networks:
 
 - **Sentiment** (Section 5.1, γ = 3). The graph of each sentence is its
   dependency tree, which joins each word to the word it grammatically
@@ -1696,20 +1740,21 @@ Four more follow from the papers and from the example on this page:
 - **A unique answer.** The split depends on the rule. In the example, every
   walk ending at T50 changes between γ = 0 and γ = 1 while the score they add
   up to, 0.315695, does not; even the totals by starting sensor move, T50's
-  from −0.615049 to −0.508218. Bach et al.'s Eq. 4 shows that conservation
-  can be met by a meaningless split.
+  from −0.615049 to −0.508218. Eq. 4 of Bach et al. (2015, p. 4) shows that
+  conservation can be met by a meaningless split.
 - **Removal effects.** At γ > 0 a share is not what taking a node out would
   do, even where no switch changes (0.351820 against 0.398432 above); where a
   switch changes, no estimate is (−0.062166 against 0 for T50 alone). Node
   flipping is the separate check of that.
 - **Exactness with added constants.** Proposition 1 needs a network without
-  them; the paper notes that GNN-GI then stops adding up (Section 3.1), and
-  for its synthetic networks it forced every constant to be zero or negative
-  during training, to avoid parts it could not explain
+  them; Schnake et al. (2022, Section 3.1) note that GNN-GI then stops adding
+  up, and for their synthetic networks they forced every constant to be zero
+  or negative during training, to avoid parts they could not explain
   ([Appendix F.1](../references/schnake_2022_gnn_lrp_relevant_walks.pdf#page=19)).
 - **Anything beyond the explained input.** The switch states belong to that
   input; a neighbouring input can flip one and change many shares. The
-  paper's patterns over a data set (Figs. 9–11) are averages of explanations
+  paper's patterns over a data set (Schnake et al., 2022, Figs. 9–11) are
+  averages of explanations
   of single inputs — *local* explanations, each about one input — not an
   explanation of the network as a whole.
 
@@ -1734,48 +1779,69 @@ Identifying Relevant Walks*, differs from version 3 where it matters here:
 
 ## What this project takes from the papers
 
-The project's `walk_relevance` applies Table 1's graph-convolution rule
-(Eq. 9) at its graph layers and LRP-0 at the two ordinary layers after them,
+The project's `walk_relevance` applies the graph-convolution rule of
+Schnake et al. (2022, Table 1, Eq. 9) at its graph layers and LRP-0 at the two ordinary layers after them,
 and divides the score before the sigmoid (assumption A-29); its
 `node_flipping` runs Eqs. 14 and 15 (assumption A-33). Its networks add
-constants in their last two layers, which Proposition 1 excludes, and their
-part of the score is reported beside the walks. How all of this is done on
+constants in their last two layers (Wen et al., 2026, Eqs. 12 and 13) and
+none in their graph layers (assumption A-12); Proposition 1 excludes such
+constants, and their part of the score is reported beside the walks. How all of this is done on
 the project's network, with which setting of γ and how a sensor is taken
 out, is on the [GNN-LRP tutorial](../learn/11_gnn_lrp.md) and in the
 [explanation guide](../../src/thesis_gnn_rul_xai/explain/README.md).
 
-## Sources
+## References
 
-- [Schnake et al. (2022)](../references/schnake_2022_gnn_lrp_relevant_walks.pdf):
-  Schnake, T., Eberle, O., Lederer, J., Nakajima, S., Schütt, K. T.,
-  Müller, K.-R., & Montavon, G. (2022). Higher-order explanations of graph
-  neural networks via relevant walks. *IEEE Transactions on Pattern Analysis
-  and Machine Intelligence*, 44(11), 7581–7596.
-  https://doi.org/10.1109/TPAMI.2021.3115452. Copy used: arXiv:2006.03589v3
-  (27 November 2020), whose numbering this page follows.
-- [Schnake et al. (2020)](../references/schnake_2020_gnn_lrp_arxiv_v1.pdf):
-  Schnake, T., Eberle, O., Lederer, J., Nakajima, S., Schütt, K. T.,
-  Müller, K.-R., & Montavon, G. (2020). *XAI for graphs: Explaining graph
-  neural network predictions by identifying relevant walks* (Version 1).
-  arXiv:2006.03589v1. https://arxiv.org/abs/2006.03589v1
-- [Bach et al. (2015)](../references/bach_2015_layerwise_relevance_propagation.pdf):
-  Bach, S., Binder, A., Montavon, G., Klauschen, F., Müller, K.-R., &
-  Samek, W. (2015). On pixel-wise explanations for non-linear classifier
-  decisions by layer-wise relevance propagation. *PLOS ONE*, 10(7), Article
-  e0130140. https://doi.org/10.1371/journal.pone.0130140
-- [Montavon et al. (2019)](../references/montavon_2019_lrp_overview.pdf):
-  Montavon, G., Binder, A., Lapuschkin, S., Samek, W., & Müller, K.-R.
+- Bach, S., Binder, A., Montavon, G., Klauschen, F., Müller, K.-R., & Samek,
+  W. (2015). On pixel-wise explanations for non-linear classifier decisions by
+  layer-wise relevance propagation. *PLOS ONE*, *10*(7), Article e0130140.
+  https://doi.org/10.1371/journal.pone.0130140
+  [Copy](../references/bach_2015_layerwise_relevance_propagation.pdf)
+- Kipf, T. N., & Welling, M. (2017). Semi-supervised classification with
+  graph convolutional networks. *International Conference on Learning
+  Representations (ICLR)*. https://arxiv.org/abs/1609.02907v4. The copy is
+  arXiv version 4, the ICLR 2017 paper.
+  [Copy](../references/kipf_2017_graph_convolutional_networks.pdf)
+- Montavon, G., Binder, A., Lapuschkin, S., Samek, W., & Müller, K.-R.
   (2019). Layer-wise relevance propagation: An overview. In W. Samek,
   G. Montavon, A. Vedaldi, L. K. Hansen, & K.-R. Müller (Eds.), *Explainable
   AI: Interpreting, explaining and visualizing deep learning* (Lecture Notes
   in Computer Science, Vol. 11700, pp. 193–209). Springer.
-  https://doi.org/10.1007/978-3-030-28954-6_10. Copy used: the authors'
+  https://doi.org/10.1007/978-3-030-28954-6_10. The copy is the authors'
   manuscript, whose page numbers differ from the book's, so it is cited by
   section only.
-- [Pope et al. (2019)](../references/pope_2019_explainability_gcn.pdf):
-  Pope, P. E., Kolouri, S., Rostami, M., Martin, C. E., & Hoffmann, H.
+  [Copy](../references/montavon_2019_lrp_overview.pdf)
+- Pope, P. E., Kolouri, S., Rostami, M., Martin, C. E., & Hoffmann, H.
   (2019). Explainability methods for graph convolutional neural networks. In
   *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
-  Recognition (CVPR)* (pp. 10772–10781). Computer Vision Foundation
-  open-access version.
-  https://openaccess.thecvf.com/content_CVPR_2019/html/Pope_Explainability_Methods_for_Graph_Convolutional_Neural_Networks_CVPR_2019_paper.html
+  Recognition (CVPR)* (pp. 10772–10781).
+  https://openaccess.thecvf.com/content_CVPR_2019/html/Pope_Explainability_Methods_for_Graph_Convolutional_Neural_Networks_CVPR_2019_paper.html.
+  The copy is the Computer Vision Foundation's open-access version, cited
+  here by equation and section.
+  [Copy](../references/pope_2019_explainability_gcn.pdf)
+- Schnake, T., Eberle, O., Lederer, J., Nakajima, S., Schütt, K. T., Müller,
+  K.-R., & Montavon, G. (2022). Higher-order explanations of graph neural
+  networks via relevant walks. *IEEE Transactions on Pattern Analysis and
+  Machine Intelligence*, *44*(11), 7581–7596.
+  https://doi.org/10.1109/TPAMI.2021.3115452. The copy is
+  arXiv:2006.03589v3 (27 November 2020), whose section, equation, table and
+  figure numbering this page follows. Page numbers on this page are those of
+  the PDF file: they are the printed ones for the main paper (pp. 1–14), but
+  the supplementary material, PDF pages 15–20, numbers its own pages from 1.
+  [Copy](../references/schnake_2022_gnn_lrp_relevant_walks.pdf). Its first
+  version, of 5 June 2020, is cited on this page as Schnake et al. (2020), by
+  its own equation and PDF page numbers: Schnake, T., Eberle, O., Lederer, J.,
+  Nakajima, S., Schütt, K. T., Müller, K.-R., & Montavon, G. (2020). *XAI for
+  graphs: Explaining graph neural network predictions by identifying relevant
+  walks* (Version 1). arXiv:2006.03589v1. https://arxiv.org/abs/2006.03589v1
+  [Copy](../references/schnake_2020_gnn_lrp_arxiv_v1.pdf)
+- Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
+  (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
+  enhancement for aeroengine RUL prediction. *Aerospace Science and
+  Technology*, *168*, 110875. https://doi.org/10.1016/j.ast.2025.110875
+  [Copy](../references/wen_2026_estgnn_dynamic_shap.pdf)
+- Ying, R., Bourgeois, D., You, J., Zitnik, M., & Leskovec, J. (2019).
+  GNNExplainer: Generating explanations for graph neural networks. In
+  *Advances in Neural Information Processing Systems 32 (NeurIPS 2019)*.
+  https://arxiv.org/abs/1903.03894v4. The copy is arXiv version 4.
+  [Copy](../references/ying_2019_gnnexplainer.pdf)
