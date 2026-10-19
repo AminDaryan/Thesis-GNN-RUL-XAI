@@ -618,7 +618,7 @@ the index $i$ in $f_i, e_i \le 1\%$ is defined nowhere. Most plausibly that
 bound repeats Equation 9's 1 percent of initial wear, but that too is a
 reading.
 
-The output is a time series of sensor readings, one snapshot per flight,
+The output is a time series of sensor readings taken as cruise snapshots,
 produced by degrading **only the HPC's** efficiency and flow; the paper states
 that degradation of other modules was left out of the challenge data on
 purpose (Saxena et al., 2008, Section V.C, p. 6). Section V gives the scenario

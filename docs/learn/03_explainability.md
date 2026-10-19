@@ -234,8 +234,8 @@ not the known answer, or the mean of the answers; Wen et al. (2026, Eq. 14)
 describe their starting value as that mean (assumption A-24).
 
 **GNN-LRP splits the internal score.** Add all route shares and the separate
-contribution from offsets to reconstruct that score (assumption A-29). Here **0.500000
-+ (-0.279823) = 0.220177**. Only then convert the total into
+contribution from offsets to reconstruct that score (assumption A-29). Here
+**0.500000 + (-0.279823) = 0.220177**. Only then convert the total into
 cycles. Applying the sigmoid to each share and adding would not give the same
 prediction, because that conversion is not an addition-preserving operation.
 

@@ -65,9 +65,11 @@ Table 2, [p. 3](../references/saxena_2008_damage_propagation_modeling.pdf#page=3
 Frederick et al., 2007, Nomenclature, p. 7, for the names of the three
 components). Neither source spells out the two units. In their standard
 meaning, °R (`degR` in this project's code) is degrees Rankine, an absolute
-temperature scale whose degree is the size of a Fahrenheit degree, which the
+temperature scale whose degree is the size of a Fahrenheit degree, and psia is
+pounds per square inch absolute. The
 [C-MAPSS](cmapss.md#what-comes-out-21-sensors-and-four-hidden-margins) page
-checks against the user's guide, and psia is pounds per square inch absolute.
+checks the Rankine reading against the user's guide with the fan-inlet
+temperature T2.
 
 Three reasons for a straight-line model rather than the project's network. One
 of the paper's results, Linear SHAP, applies only to straight-line models
@@ -906,9 +908,9 @@ the all-on end. Here the settings with one or three switches on count twice as
 much, each, as those with two.
 
 Lundberg and Lee (2017, p. 6) note that the weight is infinite with no switch
-on or all switches on, which forces $\phi_0 = f_x(\varnothing)$ and $f(x) = \sum_{i=0}^{M}
-\phi_i$: Property 1. It also notes that in practice the two infinite weights
-are avoided by eliminating two unknowns with these two constraints. One way to
+on or all switches on, which forces $\phi_0 = f_x(\varnothing)$ and
+$f(x) = \sum_{i=0}^{M} \phi_i$: Property 1. It also notes that in practice the
+two infinite weights are avoided by eliminating two unknowns with these two constraints. One way to
 do that, used here: fix $\phi_0$ at the all-off output, write the last
 feature's value as the total minus the others,
 $\phi_M = \Delta - \sum_{i<M} \phi_i$ with $\Delta = f(x) - \phi_0$, and
@@ -1439,9 +1441,10 @@ and the original DeepLIFT gives all 5 dollars to the first man.
 **Better SHAP estimates explain class differences better.** Figure 5 of
 Lundberg and Lee (2017, p. 9) explains a pre-trained network that recognises
 handwritten digits (the MNIST dataset; Bach et al., 2015, Abstract, p. 1), the
-same as in the paper's reference [7]: two convolution layers,
-which slide small learned filters across the image, then two fully connected
-layers (every input joined to every output) and ten outputs, one per digit.
+same network as in Lundberg and Lee's reference [7] (p. 9): two convolution
+layers, which slide small learned filters across the image, then two fully
+connected layers (every input joined to every output) and ten outputs, one per
+digit.
 SHAP, computed with Kernel SHAP, and LIME each use 50,000 samples. Each method
 picks 20% of the pixels to mask so as to turn an 8 into a 3, and the change in
 log-odds (the logarithm of a class's probability divided by one minus it) over
@@ -1476,9 +1479,10 @@ table above.
 is Deep SHAP's chain rule, which the project does not use. The second is the
 Shapley sum the project computes.
 
-**Where the project sits in Lundberg and Lee's terms.** It evaluates all $2^{14}
-= 16{,}384$ groups of sensors for each window, so it uses none of Section 4's
-estimators: no Shapley sampling, no Kernel SHAP, no Linear, Max or Deep SHAP.
+**Where the project sits in Lundberg and Lee's terms.** It evaluates all
+$2^{14} = 16{,}384$ groups of sensors for each window, so it uses none of
+Section 4's estimators: no Shapley sampling, no Kernel SHAP, no Linear, Max or
+Deep SHAP.
 Wen et al. (2026, Section 2.4) do not say what replaces a sensor outside $S$;
 the project replaces its whole window of readings by the sensor's average
 training window (assumption A-20). In Lundberg and Lee's terms that is Eq. 12,

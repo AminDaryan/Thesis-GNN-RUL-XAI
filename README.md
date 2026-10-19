@@ -94,14 +94,24 @@ Short definitions of every technical term used in this repository. Each one
 points to a source where it is defined properly.
 
 > If you would rather have these built up in order, with figures, than
-> defined in a list, read `docs/learn/` instead — eight short pages covering
+> defined in a list, read `docs/learn/` instead — twelve pages covering
 > the same ground for a reader who has never met any of it. They are best read
-> in a browser: `python scripts/docs_ui.py`.
+> in a browser: `python scripts/docs_ui.py`. (Corrected 2026-10-19: this and
+> the table in section 9 said "eight short pages"; there are twelve, and
+> several run to hundreds of lines.)
 
 **RUL — Remaining Useful Life.** The number of flight cycles an engine will
-still run before it fails. This is the quantity being predicted. One *flight
-cycle* is one complete take-off, flight, and landing; it is the unit of time
-used everywhere in this project.
+still run before it fails. This is the quantity being predicted. Each row of
+NASA's files is "a snapshot of data taken during a single operational cycle"
+(NASA Prognostics Center of Excellence, 2008), and the paper describing the
+dataset takes "one measurement snapshot per flight" (Saxena et al., 2008,
+p. 5). Read together, they mean that one *flight cycle* is one flight. Neither
+source says it in those words; it is this project's reading of the two, as
+[Data, What one cycle is](docs/learn/01_the_problem.md#what-one-cycle-is)
+explains. The cycle is the unit of time used everywhere in this project.
+(Corrected 2026-10-19: this said a flight cycle is "one complete take-off,
+flight, and landing", which neither NASA's readme nor the dataset paper says.
+Found when the documentation pages were given their sources.)
 
 **C-MAPSS.** *Commercial Modular Aero-Propulsion System Simulation*, a NASA
 program that simulates a large turbofan engine. NASA used it to create a public
@@ -1193,7 +1203,7 @@ is defended.
 | If you want to... | Open |
 |-------------------|------|
 | Read all of this in a browser, with figures | `python scripts/docs_ui.py` |
-| Understand the method from nothing, in eight short pages | `docs/learn/`, or the **Learn** section of that site |
+| Understand the method from nothing, in twelve pages | `docs/learn/`, or the **Learn** section of that site |
 | Understand what happens to the data, step by step | `notebooks/01_preprocessing_fd001.ipynb` |
 | Understand the model and the training | `notebooks/02_model_fd001.ipynb` |
 | See what each sensor's 30-cycle window is turned into before the graph layers, and what each way of doing it scores | `notebooks/temporal/` |
@@ -1416,6 +1426,7 @@ ones that are free. The works cited above are:
 - Kipf & Welling (2017), *ICLR* — graph convolutional networks
 - Li et al. (2018), *Reliability Engineering & System Safety* — CNN baseline
 - Lundberg & Lee (2017), *NIPS* — SHAP
+- NASA Prognostics Center of Excellence (2008), `readme.txt`: the description that comes with the C-MAPSS files
 - Saxena et al. (2008), *PHM* — the C-MAPSS dataset
 - Shapley (1953), *Contributions to the Theory of Games* — the Shapley value
 - Wen et al. (2026), *Aerospace Science and Technology* — the paper re-implemented

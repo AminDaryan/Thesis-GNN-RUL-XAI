@@ -43,8 +43,18 @@ exactly as before.
 **C-MAPSS** is a NASA simulator of a large turbofan aircraft engine. NASA used
 it to generate a public benchmark dataset in which simulated engines run until
 they fail while 21 virtual sensors record the engine state once per flight
-cycle. A **flight cycle** is one take-off, flight and landing. It is the unit of
-time everywhere in this project — there are no seconds or hours anywhere.
+cycle. Each row of NASA's files is "a snapshot of data taken during a single
+operational cycle", in the words of the readme NASA ships with them, and the
+paper describing the dataset takes "one measurement snapshot per flight"
+(Saxena et al., 2008, p. 5). Read together, they mean that one **flight cycle**
+is one flight. Neither source says it in those words; it is this project's
+reading of the two, as
+[Data, What one cycle is](../../../docs/learn/01_the_problem.md#what-one-cycle-is)
+explains. The cycle is the unit of time everywhere in this project: there are
+no seconds or hours anywhere. (Corrected 2026-10-19: this said a flight cycle
+is "one take-off, flight and landing", which neither the readme nor the
+dataset paper says. Found when the documentation pages were given their
+sources.)
 
 **RUL** stands for Remaining Useful Life: the number of flight cycles an engine
 will still run before it fails. It is the number the model has to predict. A
