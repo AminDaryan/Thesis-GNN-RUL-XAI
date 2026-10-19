@@ -28,11 +28,14 @@ as the input (Lundberg & Lee, 2017, Eq. 8; Schnake et al., 2022, Eq. 9).
 | Through which sensor connections did the internal score form? | [GNN-LRP](11_gnn_lrp.md) (Schnake et al., 2022, Section 3.2), added by this project (assumption A-29) | The fixed model's multipliers, intermediate values and connections (Schnake et al., 2022, Eq. 9) | A signed share per route through the graph layers, in internal-score units |
 
 **Do not confuse a contribution with a physical cause.** Both methods explain
-the model: each divides the model's own output, not the engine's true
-remaining life (Lundberg & Lee, 2017, Eq. 5; Schnake et al., 2022, Fig. 1).
-Neither establishes which component is damaged, and neither proves the model
-predicts accurately; that follows from what they divide, and is this project's
-reading rather than a claim either source makes. A contribution is also
+the model: each divides a number the model computed, not the engine's true
+remaining life. SHAP divides the model's prediction (Lundberg & Lee, 2017,
+Eq. 5), here in cycles. GNN-LRP divides a graph network's output
+(Schnake et al., 2022, Fig. 1 and Proposition 1); here that is the internal
+score the network forms before converting it to remaining life, a project
+choice (assumption A-29). Neither establishes which component is damaged, and
+neither proves the model predicts accurately; that follows from what they
+divide, and is this project's reading rather than a claim either source makes. A contribution is also
 different from a sensor reading: one is calculated by an explanation method;
 the other was measured.
 
@@ -40,21 +43,28 @@ the other was measured.
 
 All three XAI pages use the same small demonstration: **FD001 test engine 5,
 its last three recorded cycles, and sensors T24, T30 and T50**, from NASA's
-data (NASA Prognostics Center of Excellence [NASA PCoE], 2008). These are real
-readings after smoothing (Wen et al., 2026, Section 3.2.3; assumption A-04)
-and rescaling using training engines only (assumptions A-03 and A-25). The tables
-show every value in this reduced window. The normal model receives fourteen
+data (NASA Prognostics Center of Excellence [NASA PCoE], 2008). T24, T30 and
+T50 are the total temperatures at the outlets of the low-pressure compressor,
+the high-pressure compressor and the low-pressure turbine (Wen et al., 2026,
+Section 2.3.1 and Table 2). These are real readings after smoothing
+(Wen et al., 2026, Section 3.2.3), with half the weight on the newest reading,
+which is how this project reads that section's value of 0.5 (assumption A-04).
+They were then rescaled by subtracting each sensor's mean and dividing by its
+standard deviation, its spread around that mean (assumption A-03), both
+learned from training engines only (assumption A-25). The tables show every
+value in this reduced window. The normal model receives fourteen
 sensors and a longer window (Wen et al., 2026, Tables 3 and 6); this example
 deliberately keeps the arithmetic small.
 
 The example network is **untrained**. Its multipliers are chosen to make its
 calculation inspectable, not to predict engine life well. It keeps each sensor's
 newest reading, as the project's default model does (assumption A-07). It
-combines neighbours on the chain T24 ↔ T30 ↔ T50, which are exactly the
-connections among these three sensors in Wen et al.'s (2026) Table 3, turns negative
+combines neighbours on the chain T24 ↔ T30 ↔ T50, turns negative
 mixtures into zero, and combines the results with multipliers 2, 1 and −1 plus
-an offset of 0.5. A negative combined result becomes zero. The
-[GNN-LRP example](11_gnn_lrp.md) shows every term. Its output is an arithmetic
+an offset of 0.5. A negative combined result becomes zero. Wen et al. (2026)
+call that chain "the temperature transfer chain T24→T30→T50" (p. 5), and its
+two connections are exactly the ones among these three sensors in their graph
+(Table 3). The [GNN-LRP example](11_gnn_lrp.md) shows every term. Its output is an arithmetic
 example, not a result about prediction accuracy.
 
 For an actual explanation, select the **saved run and seed** whose trained
@@ -126,8 +136,8 @@ about every engine or every moment of its life.
 #### Input
 
 This is the complete reduced example window. Each row is a cycle (NASA PCoE,
-2008); each sensor column contains rescaled readings, not temperatures or
-pressures in their original units. The remaining-life answer is kept
+2008); each sensor column contains rescaled readings, not temperatures in
+their original units. The remaining-life answer is kept
 separately; NASA supplies it as a separate list of true remaining lives for
 the test engines (NASA PCoE, 2008).
 

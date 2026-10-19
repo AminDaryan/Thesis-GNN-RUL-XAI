@@ -23,7 +23,8 @@ says which parts of each paper the project's code inherits.
 
 Section, equation, table and figure numbers below are those of each paper. The
 1997 and 2000 files are the authors' own manuscripts rather than the journal's
-typeset pages, so they are cited by section and equation; links open the PDF
+typeset pages, so they are cited by section and equation, and the one
+quotation from the 2000 paper by the page of the PDF file; links open the PDF
 at the page where the passage is.
 
 ## The problem the 1997 paper set out to solve
@@ -129,10 +130,11 @@ $0.1 \times 0.1 \times 0.5 = 0.005$ to the weight.
 Applying the second formula over and over carries the error signal back
 through the steps of the sequence. That is **back-propagation through time**
 (BPTT). Hochreiter and Schmidhuber (1997, Section 1) name it together with
-**real-time recurrent learning** (RTRL), which reaches the same derivatives
-working forwards: at every step it updates, for every weight, how much the
-units' activations depend on that weight, so the memory it needs does not grow
-with the length of the sequence (Section 4, footnote 3). Eq. 27 further down is a
+**real-time recurrent learning** (RTRL), whose memory does not grow with the
+length of the sequence (Section 4, footnote 3). RTRL reaches the same
+derivatives working forwards: at every step it updates, for every weight, how
+much the units' activations depend on that weight. The paper does not spell out
+how RTRL in general works, so that description is this page's summary. Eq. 27 further down is a
 derivative carried forwards in this way. Section 5 notes that the two give
 exactly the same gradient when BPTT is not cut short and RTRL changes the
 weights only at the end of each sequence. Section 1 says both suffer from the
@@ -182,8 +184,9 @@ readings name the same weight.
 For a single unit connected to itself there is one path, and the formula
 reduces to a product of $q$ factors $f'(\mathrm{net}(t-m))\,w$. If every factor
 is larger than 1 in size, the product grows exponentially with $q$ and the
-signal **blows up**, which may make the weights swing back and forth and the
-learning unstable. If every factor is smaller than 1, the product shrinks
+signal **blows up**, which, Hochreiter and Schmidhuber (1997, Section 3.1)
+warn, may make the weights swing back and forth and the learning unstable. If
+every factor is smaller than 1, the product shrinks
 exponentially and the signal **vanishes**: nothing learned at the last step
 reaches the earlier ones in useful size (Hochreiter & Schmidhuber, 1997,
 Section 3.1). With invented numbers, ten factors of
@@ -225,7 +228,8 @@ temperature measured at the outlet of the engine's low-pressure turbine
 (Saxena et al., 2008, [Table 2](../references/saxena_2008_damage_propagation_modeling.pdf#page=3)).
 They come from training engine 1 of **FD001** (NASA Prognostics Center of
 Excellence [NASA PCoE], 2008), the part of NASA's simulated-engine data,
-C-MAPSS, that this project uses ([C-MAPSS](cmapss.md)). The data hold one row
+C-MAPSS (Saxena et al., 2008, Section III.A, p. 2), that this project uses
+([C-MAPSS](cmapss.md)). The data hold one row
 per engine per **cycle** (NASA PCoE, 2008), which this project reads as one
 flight ([What one cycle is](../learn/01_the_problem.md#what-one-cycle-is)), and
 engine 1 ran for 192 cycles. The readings are prepared the way the project
@@ -255,7 +259,9 @@ them to get exact derivatives. The two agree.
 Every Python block on this page needs PyTorch, because the setup block imports
 it; the first two worked examples do their own arithmetic in NumPy. During
 preprocessing the project logs a warning that one sensor, P15, carries no
-usable variation; it does not affect this page.
+usable variation: it takes only two distinct values in the FD001 training
+data, although how often it sits at the lower one still changes weakly with
+wear (finding F-01). The warning does not affect this page.
 
 <details class="process-example">
 <summary>Set up the Python examples</summary>
@@ -431,7 +437,7 @@ that this causes:
 The paper notes that both conflicts exist for short time lags too, but that
 they grow with the lag, because stored information must be protected for
 longer and more already-correct outputs must be protected from disturbance
-(Section 3.2).
+(Hochreiter & Schmidhuber, 1997, Section 3.2).
 
 The key idea is that an error signal passes back through a unit unchanged only
 if the unit's slope times its self-weight is exactly 1, which forces a linear
@@ -494,7 +500,8 @@ the same previous activations. The squashed cell input
 $g(\mathrm{net}_{c_j})$ is the proposed content, and it can be negative. The
 input gate $y^{\mathrm{in}_j}$, between 0 and 1, is how much of that proposal
 is added. PyTorch's documentation calls its version of the cell input the cell
-gate, but it is the quantity being multiplied, not a multiplier.
+gate (PyTorch, n.d.), but it is the quantity being multiplied, not a
+multiplier.
 
 Hochreiter and Schmidhuber (1997, Appendix A.1) give the two squashing curves
 used in the experiments:
@@ -611,8 +618,8 @@ reaching $1.158084 + 1.136730 = 2.294814$.
 
 ### How the 1997 cell learns (Section 4 and Appendix A.1)
 
-Section 4's paragraph on learning describes a **truncated** gradient
-(Hochreiter & Schmidhuber, 1997, Section 4). An error
+The paragraph on learning in Hochreiter and Schmidhuber (1997, Section 4)
+describes a **truncated** gradient. An error
 signal that reaches one of a cell's three net inputs (the cell's own, the input
 gate's and the output gate's) is used to change that net input's incoming
 weights, and is then not passed further back in time.
@@ -770,8 +777,8 @@ The multiplications above show how.
   arising while the cell is not being read leaves the weights that decide what
   the cell stores unchanged.
 
-Section 4 sums this up as the output gate selecting which error signals are
-kept in the carousel, and the input gate deciding when they leave it, both by
+Hochreiter and Schmidhuber (1997, Section 4) sum this up as the output gate
+selecting which error signals are kept in the carousel, and the input gate deciding when they leave it, both by
 the multiplications just shown. It adds that a task does not always need both
 gates: Experiments 2a and 2b use input gates only.
 
@@ -892,7 +899,9 @@ The section also explains why three simpler remedies are not enough.
 - **A fixed self-connection weight below 1**, which makes the state decay, has
   no principled value: a rate that helps on some tasks costs the ability to
   handle delays of unknown length, and it did not significantly improve their
-  results (the state decay row of Table 2).
+  results (Gers et al., 2000,
+  [Table 2](../references/gers_2000_learning_to_forget.pdf#page=13), the state
+  decay row).
 - **Resetting the states** at the start of each sequence needs someone who
   knows where the sequences start, which is exactly the knowledge a continual
   stream lacks.
@@ -1186,7 +1195,8 @@ when to drop to zero.
 ### The equations, and where each piece comes from
 
 PyTorch's documentation for `torch.nn.LSTM` gives the cell it computes as six
-equations:
+equations (PyTorch, n.d.), three of which the code in the next section checks
+against the installed library's own documentation:
 
 $$\begin{aligned}
 i_t &= \sigma(W_{ii} x_t + b_{ii} + W_{hi} h_{t-1} + b_{hi}) \\
@@ -1217,7 +1227,7 @@ An `nn.LSTM` with hidden size $H$ (the stage uses 32, assumption A-26)
 therefore holds $H$ cells side by side, each with its own entry in each gate:
 in the 1997 vocabulary, $H$ blocks of size 1. PyTorch stores the four input-side matrices stacked into
 one array of $4H$ rows, in the order $i, f, g, o$, and the four hidden-side
-ones likewise; the
+ones likewise (PyTorch, n.d.); the
 [implementation guide](../../src/thesis_gnn_rul_xai/models/temporal/README.md)
 counts what that comes to for the stage.
 
@@ -1226,10 +1236,10 @@ counts what that comes to for the stage.
 | Input gate $i_t$ and output gate $o_t$ | Hochreiter and Schmidhuber (1997, Section 4) |
 | Forget gate $f_t$ | Gers et al. (2000, Eq. 6) |
 | $c_t = f_t \odot c_{t-1} + i_t \odot g_t$ | Gers et al. (2000, Eq. 7); with $f_t = 1$ it is the 1997 state update. The name cell state is from Gers et al. (2000, Section 2) |
-| $\tanh$ for $g_t$ | Neither paper: both use a $g$ from −2 to 2, $2\tanh(x/2)$ (Hochreiter & Schmidhuber, 1997, Eq. 5; Gers et al., 2000, Section 2) |
-| $\tanh(c_t)$ in $h_t = o_t \odot \tanh(c_t)$ | Neither paper: both use $h(x) = \tanh(x/2)$, from −1 to 1 (Hochreiter & Schmidhuber, 1997, Eq. 4; Gers et al., 2000, Section 2); the product with the output gate is the 1997 cell output $y^{\mathrm{out}}\,h(s)$ |
+| $\tanh$ for $g_t$ | Neither paper: both use a $g$ from −2 to 2 (Hochreiter & Schmidhuber, 1997, Eq. 5; Gers et al., 2000, Section 2). The 1997 Eq. 5 is $2\tanh(x/2)$; Gers et al. give only the range |
+| $\tanh(c_t)$ in $h_t = o_t \odot \tanh(c_t)$ | Not the 1997 paper, whose $h$ is $\tanh(x/2)$, from −1 to 1 (Hochreiter & Schmidhuber, 1997, Eq. 4). Gers et al. (2000, Section 2) give only the range, −1 to 1, which $\tanh$ also has, so their paper does not settle whether their $h$ is $\tanh(x/2)$ or $\tanh$. The product with the output gate is the 1997 cell output $y^{\mathrm{out}}\,h(s)$ |
 | Gates read only $x_t$ and $h_{t-1}$ | Narrower than 1997, where a gate may read any unit, other gates included (Hochreiter & Schmidhuber, 1997, Section 4) |
-| $h_0 = c_0 = 0$ unless given | The 1997 cell's $s_{c_j}(0) = 0$ (Hochreiter & Schmidhuber, 1997, Section 4); PyTorch's documentation |
+| $h_0 = c_0 = 0$ unless given | The 1997 cell's $s_{c_j}(0) = 0$ (Hochreiter & Schmidhuber, 1997, Section 4); PyTorch's documentation (PyTorch, n.d.) |
 | Derivatives through every route | Not the truncated rule of either paper; see below |
 
 **Do not confuse the hidden state with the cell state.** In the 1997
@@ -1334,10 +1344,9 @@ checks that its outputs and final cell state equal the hand-written column to
 within $10^{-14}$. The same agreement over a whole window, with the stage's own
 starting multipliers, is shown in
 [Temporal algorithm](../learn/09_temporal.md#one-lstm-per-sensor). Finally it
-recomputes the input gate at cycle 192 in the joined form of Wen et al.'s Eq. 2,
-$i_t = \sigma(W_i \cdot [h_{t-1}, x_t] + b_i)$ (Wen et al., 2026, Section 2.2,
-Eq. 2), where $[h_{t-1}, x_t]$ is the previous output and the reading written
-as one list and $W_i$ is the row $[0.5, 1.0]$ of the gate's two multipliers in that order. It gives the
+recomputes the input gate at cycle 192 in the joined form of Eq. 2 of Wen et
+al. (2026, Section 2.2), $i_t = \sigma(W_i \cdot [h_{t-1}, x_t] + b_i)$, where
+$[h_{t-1}, x_t]$ is the previous output and the reading written as one list and $W_i$ is the row $[0.5, 1.0]$ of the gate's two multipliers in that order. It gives the
 table's 0.793221; joining the two the other way round gives a different number,
 so the order matters.
 
@@ -1477,7 +1486,7 @@ The differences from the LSTM are mechanical:
   two (Gers et al., 2000, Section 3.1; Hochreiter & Schmidhuber, 1997,
   Section 4); Cho et al. (2014, Section 2.3, footnote 1) credit the LSTM with
   four, without listing them, and PyTorch's documentation also lists four,
-  counting $g_t$. The GRU has two. Its update
+  counting $g_t$ (PyTorch, n.d.). The GRU has two. Its update
   gate does in one blend what the LSTM's forget and input gates do separately:
   $z$ keeps the old value and $1 - z$ admits the new, and the two always add up
   to 1, whereas an LSTM's forget and input gates are free to be both high or
@@ -1490,7 +1499,7 @@ The differences from the LSTM are mechanical:
 One detail separates the paper from PyTorch. Cho et al. (2014, Section 2.3,
 Eq. 8) multiply the previous state by the reset gate *before* the matrix $U$;
 PyTorch's `nn.GRU` documentation applies the reset gate *after* its matrix, to
-$W_{hn} h_{t-1} + b_{hn}$. The two placements give different results in
+$W_{hn} h_{t-1} + b_{hn}$ (PyTorch, n.d.). The two placements give different results in
 general. The project's GRU route uses PyTorch's version (assumption A-36),
 worked through with numbers in
 [Temporal algorithm](../learn/09_temporal.md#one-gru-per-sensor).
@@ -1528,7 +1537,10 @@ the papers on this page it inherits:
 - **A fresh start for every window.** The stage's memory starts at zero for
   every 30-cycle window, as
   [Temporal algorithm](../learn/09_temporal.md#2--read-cycles-with-memory)
-  shows. That is the arrangement of the 1997 experiments, which reset after
+  shows. Wen et al. (2026, Section 2.2, Eq. 7) run each sensor's LSTM over one
+  window but state no starting memory; the zero start is PyTorch's default
+  (PyTorch, n.d.), which this project keeps. The restart at every window is
+  the arrangement of the 1997 experiments, which reset after
   each sequence, not the continual stream of the 2000 paper. The problem the
   forget gate was invented for does not arise in that form here, although the
   gate is present; what it contributes to this project's stage has not been
@@ -1536,7 +1548,7 @@ the papers on this page it inherits:
 - **PyTorch's default starting values, not those of either paper.** Wen et al.
   state no starting values for the stage, and the project keeps PyTorch's
   (assumption A-34): every multiplier and offset is drawn evenly from
-  $\pm 1/\sqrt{32}$. Each gate
+  $\pm 1/\sqrt{32}$ (PyTorch, n.d.). Each gate
   has two offsets, so their sum lies within $\pm 2/\sqrt{32}$. At the first
   cycle of a window, where the previous hidden state is zero, a reading of zero
   therefore gives a forget gate between 0.412521 and 0.587479. The offsets of
@@ -1604,6 +1616,8 @@ the same page's steps
 - NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
   the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
   Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)
+- PyTorch. (n.d.). https://pytorch.org/. Software, so no copy is kept; the code
+  on this page reads the documentation of the installed library.
 - Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation
   modeling for aircraft engine run-to-failure simulation. In *2008
   International Conference on Prognostics and Health Management* (pp. 1–9).

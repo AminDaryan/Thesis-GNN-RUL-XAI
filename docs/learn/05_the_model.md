@@ -4,10 +4,11 @@ The [GNN page](02_graphs.md) builds the table of permitted sensor connections
 and combining shares. This page follows sensor values through the layers that
 use it, until one window has one remaining-life prediction.
 
-There are two separate operations in a graph layer: the **fixed graph shares**
+There are two separate operations in a graph layer: the **graph shares**
 combine allowed senders, then **learned multipliers** turn that mixture into
-new values (Wen et al., 2026, Section 2.3.2, Eqs. 8–10). Training adjusts the
-latter, not the graph table.
+new values (Wen et al., 2026, Section 2.3.2, Eqs. 8–10). The paper calls only
+the multipliers learnable (Wen et al., 2026, p. 6). In this project the graph
+shares stay fixed: training adjusts the multipliers, not the graph table.
 
 ## The whole route
 
@@ -181,7 +182,7 @@ For T24's first output, every product is:
 |---|---|---|---|
 | 1 | -0.356339 | -0.009169 | 0.003267 |
 
-Their sum is `0.003267`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero (Wen et al., 2026, Eq. 8). T24's first output is therefore `0.003267`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
+Their sum is `0.003267`. Finally apply **ReLU** (Wen et al., 2026, Eq. 8), meaning keep a nonnegative total and replace a negative total with zero (Kipf & Welling, 2017, p. 2). T24's first output is therefore `0.003267`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -235,7 +236,7 @@ All fourteen sensors, each now carrying 3 calculated values. These are neither n
 
 ## 2 — Graph layer 2
 
-Combine the preceding layer’s values. A neighbour now carries information it received in layer 1, so an output can depend on sensors up to two connections away.
+Combine the preceding layer’s values. A neighbour now carries information it received in layer 1, so an output can depend on sensors up to two connections away (Kipf & Welling, 2017, Section 7.2, p. 8).
 
 ### Process
 
@@ -304,7 +305,7 @@ For T24's first output, every product is:
 | 2 | 0.000000 | 0.293752 | 0.000000 |
 | 3 | 0.417640 | 0.868567 | 0.362749 |
 
-Their sum is `0.359686`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero (Wen et al., 2026, Eq. 9). T24's first output is therefore `0.359686`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
+Their sum is `0.359686`. Finally apply **ReLU** (Wen et al., 2026, Eq. 9), meaning keep a nonnegative total and replace a negative total with zero (Kipf & Welling, 2017, p. 2). T24's first output is therefore `0.359686`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -352,7 +353,7 @@ All fourteen sensors, each now carrying 2 calculated values. These are neither n
 
 ## 3 — Graph layer 3
 
-Repeat the exchange once more. An output can now depend on sensors up to three connections away. Reducing the width reduces columns of calculated values, not the number of sensors.
+Repeat the exchange once more. An output can now depend on sensors up to three connections away (Kipf & Welling, 2017, Section 7.2, p. 8). Reducing the width reduces columns of calculated values, not the number of sensors.
 
 ### Process
 
@@ -419,7 +420,7 @@ For T24's first output, every product is:
 | 1 | 0.327411 | 0.374219 | 0.122523 |
 | 2 | 0.000000 | -0.427394 | -0.000000 |
 
-Their sum is `0.122523`. Finally apply **ReLU**, meaning keep a nonnegative total and replace a negative total with zero (Wen et al., 2026, Eq. 10). T24's first output is therefore `0.122523`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
+Their sum is `0.122523`. Finally apply **ReLU** (Wen et al., 2026, Eq. 10), meaning keep a nonnegative total and replace a negative total with zero (Kipf & Welling, 2017, p. 2). T24's first output is therefore `0.122523`. This demonstration adds no graph-layer offset: the paper's equation for this layer prints none, and the project's default follows it (assumption A-12).
 
 <details class="process-example">
 <summary>Example in Python</summary>
@@ -467,7 +468,7 @@ All fourteen sensors, each now carrying 1 calculated value. These are neither ne
 
 ## 4 — Flatten
 
-The next layer needs one list for the whole engine window. Place the sensor rows end to end so it can use every position (Wen et al., 2026, Eq. 11).
+The next layer needs one list for the whole engine window (Wen et al., 2026, Eq. 11). Place the sensor rows end to end so it can use every position.
 
 ### Process
 
@@ -524,7 +525,7 @@ All fourteen positions in the window’s one list. At the default final graph wi
 
 ## 5 — Fully connected
 
-Now combine information from the whole window, including sensor positions that cannot reach one another within three graph layers. For example, the shortest route from P15 to W32 in the paper's graph (Wen et al., 2026, Table 3) takes four connections, through T24, T30 and T50. Every output has a multiplier for every input position.
+Now combine information from the whole window, including sensor positions that cannot reach one another within three graph layers. For example, P15 and W32 are four connections apart in the paper's graph (Wen et al., 2026, Table 3), by this project's count; one of the ten equally short routes runs through T24, T30 and T50. Every output has a multiplier for every input position.
 
 ### Process
 
@@ -763,7 +764,8 @@ the updates and stopping procedure in detail.
 The paper specifies mean squared error, Adam, batches of 32 windows,
 200 **epochs** — an epoch is one pass over all the training examples — a 30-cycle window,
 and a learning rate going from 0.001 to 0.0001 (Wen et al., 2026, Table 6).
-The learning rate scales parameter changes. The project's step schedule fills an unspecified detail
+The learning rate, the stepsize α in Adam's update, scales parameter changes
+(Kingma & Ba, 2015, Algorithm 1, p. 2). The project's step schedule fills an unspecified detail
 (assumption A-17). Its optional held-back validation engines select when to
 stop and which saved weights to keep (assumption A-18).
 
@@ -784,6 +786,11 @@ page is a measured training result.
   https://arxiv.org/abs/1412.6980v9
   [Copy](../references/kingma_2015_adam.pdf). The copy held is arXiv version
   9, and page numbers here are its printed pages.
+- Kipf, T. N., & Welling, M. (2017). Semi-supervised classification with
+  graph convolutional networks. *International Conference on Learning
+  Representations (ICLR)*. https://arxiv.org/abs/1609.02907v4
+  [Copy](../references/kipf_2017_graph_convolutional_networks.pdf). The copy
+  held is arXiv version 4, and page numbers here are its printed pages.
 - NASA Prognostics Center of Excellence. (2008). readme.txt, the description of
   the C-MAPSS data set distributed inside its zip file. NASA Prognostics Data
   Repository. [Copy](../references/nasa_2008_cmapss_readme.txt)

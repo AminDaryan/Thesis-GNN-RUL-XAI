@@ -19,18 +19,23 @@ Keep three objects separate:
 | Graph table | Which sensors may send to each receiving sensor | The chosen connection rule |
 | Calculated sensor values | Results of combining inputs and applying learned multipliers | The graph layers |
 
-The temporal algorithm follows cycles **within** a sensor. The graph layers
+The temporal algorithm follows cycles **within** a sensor: Wen et al. (2026,
+Section 2.2, Eq. 7) give each sensor its own network that reads only that
+sensor's cycles, and this project's default instead passes on each sensor's
+most recent reading (assumption A-07). The graph layers
 combine information **between** sensors. A column produced by a graph layer
 is a calculated value, not another time or another physical sensor.
 
 ## Example setup
 
-The examples keep all fourteen sensor positions. The input sample shows
+The examples keep all fourteen sensor positions that Wen et al. (2026,
+Section 3.2.2, Table 3) retain. The input sample shows
 three complete FD001 rows (NASA Prognostics Center of Excellence [NASA PCoE],
 2008) with all selected sensor columns. We then build
 the implemented Physics graph and follow the same graph through rescaling.
 The graph is not inferred from those three rows: its connections are supplied
-by the project's copy of Wen et al.'s (2026) Table 3.
+by the project's copy of the paper's table of connections (Wen et al., 2026,
+Table 3).
 
 The tables stand on their own. The optional code uses the real FD001 files;
 run the setup and then the examples in page order to reproduce every table.
@@ -79,7 +84,7 @@ Architecture and training page then follows those readings through the layers.</
 
 First decide which sensor positions may exchange information. The **adjacency matrix** is that decision written as a table: a 1 permits a connection and a 0 excludes it (Wen et al., 2026, p. 5). Rows name receiving sensors; columns name sending sensors.
 
-The left table shows the permitted connections. Its diagonal is zero, as in Wen et al.'s (2026) Table 3, because including the receiving sensor itself is the next step's job. The right table previews the combining shares calculated in that next step.
+The left table shows the permitted connections. Its diagonal is zero, as in the paper's table (Wen et al., 2026, Table 3), because including the receiving sensor itself is the next step's job. The right table previews the combining shares calculated in that next step.
 
 {{figure:adjacency}}
 
@@ -255,7 +260,7 @@ scaled_output = graph_table(scaled)
 
 #### Output
 
-The complete table of combining multipliers for the **row** method. Each graph layer reuses it, and training adjusts another table of multipliers for transforming the combined values (Kipf & Welling, 2017, Eq. 2; Wen et al., 2026, Eqs. 8–10); it does not adjust these connections or their combining shares.
+The complete table of combining multipliers for the **row** method. Each graph layer reuses it (Wen et al., 2026, Eqs. 8–10). Training adjusts another table of multipliers for transforming the combined values (Kipf & Welling, 2017, Eq. 2); it does not adjust these connections or their combining shares.
 
 <!-- sample: scaled_output -->
 | Receiver | T24 | T30 | T50 | P15 | P30 | Nf | Nc | Ps30 | phi | NRf | BPR | htBleed | W31 | W32 |
@@ -298,7 +303,10 @@ layer's values; updates within a layer do not cascade through the whole graph.
 
 {{figure:reach}}
 
-Three layers do not necessarily connect every pair. The figure counts the
+Three layers do not necessarily connect every pair, although Wen et al.
+(2026, p. 6) describe the third layer as "modeling global graph-level
+patterns". In the implemented graph, P15, Nf, NRf and BPR are each four
+connections away from W32 (finding F-07). The figure counts the
 distances in the implemented graph. Later fully connected layers combine all
 sensor positions (Wen et al., 2026, Eqs. 11–12), including those that cannot
 reach each other within the graph layers. [Graph layer 1](05_the_model.md#1--graph-layer-1) starts a complete
@@ -306,15 +314,18 @@ numerical walkthrough of that process.
 
 ## Why use a graph?
 
-The Physics graph expresses a hypothesis about useful sensor relationships,
-proposed from engine structure by Wen et al. (2026, Section 2.3.1). Whether that
+Wen et al. (2026, Section 2.3.1) built the Physics graph from engine
+structure, and describe it as one that "accurately represents the spatial
+relationships among sensors" (p. 4). This project treats it as a hypothesis
+about useful sensor relationships. Whether that
 hypothesis helps prediction must be measured; the presence of a connection
 alone is not evidence of benefit or causation.
 
 Joining every sensor to every other is not a neutral replacement: after row
-rescaling, every sensor receives the same average. Different sensor positions
-then lose their distinct inputs to that layer. Some rows also coincide in the
-Physics graph. The [graph implementation guide](../../src/thesis_gnn_rul_xai/graph/README.md)
+rescaling, every sensor receives the same average (assumption A-19). Different
+sensor positions then lose their distinct inputs to that layer. Some rows also
+coincide in the Physics graph: the rescaled rows of P15, Nf, NRf and BPR are
+identical, as are those of P30 and Ps30, and of Nc and W31 (finding F-18). The [graph implementation guide](../../src/thesis_gnn_rul_xai/graph/README.md)
 explains these effects and links to the measured comparisons, with the
 configuration and training procedure each comparison used.
 
