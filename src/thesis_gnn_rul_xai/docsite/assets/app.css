@@ -870,7 +870,7 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .pg-step-n--form { background: none; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .pg-step-n--form.is-current { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
 /* The number of jobs queued behind the one running. Empty, it is not drawn. */
-.pg-jobs-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--accent); color: var(--accent-ink); }
+.pg-jobs-badge, .pg-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--accent); color: var(--accent-ink); }
 .pg-jobs-badge:empty { display: none; }
 
 /* The job running now, above whichever tab is open; every job has a row in Run history. */
@@ -966,6 +966,11 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
 .pg-block-head .pg-block-title { margin: 0; }
 /* The last row of cells brings its own space below; a card's padding takes its place. */
 .pg-block > .pg-fields { margin-bottom: -16px; }
+/* A form's button ends it on a row of its own, at the leading edge where
+   every setting's name starts. The cells above already bring their space. */
+.pg-block > .pg-fields:has(+ .pg-form-actions) { margin-bottom: 0; }
+.pg-form-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 4px; }
+.pg-form-actions .button { min-width: 96px; }
 
 /* The pipeline: the run as a flowchart, in the order the data flows. Each
    box opens its step's own flowchart; the cross takes a part out and the
@@ -1500,84 +1505,121 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-ref { font-weight: 600; white-space: nowrap; }
 .pg-ref a { color: inherit; }
 
-/* One stored run, at its own address. Read from the top: which run it is,
-   its four results, how to read them, the evidence behind them, and the
-   settings it was trained with. A caution is drawn as a card of the same
+/* One stored run, at its own address. Which run it is and what can be done
+   with it stand at the top; under them a row of tabs shows one part at a
+   time, so the screen holds the results and their notes, or the charts, or
+   the explanations, or the settings, never all four at once. Every part
+   takes the panel's whole width. A caution is drawn as a card of the same
    weight as the result it qualifies, so it is never the quieter of the two. */
-.pg-run-page { max-width: var(--measure-app); min-width: 0; }
+.pg-run-page { min-width: 0; }
 .pg-run-page .pg-detail { margin: 0 0 24px; }
 
-.pg-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: var(--ink-faint); }
+.pg-crumbs { display: flex; align-items: center; margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
 .pg-crumb-back { display: inline-flex; align-items: center; gap: 4px; margin-left: -8px; padding: 4px 8px; border-radius: 6px; color: var(--accent); font-weight: 600; text-decoration: none; }
 .pg-crumb-back:hover { background: var(--accent-soft); }
 .pg-crumb-back:focus-visible { outline: none; box-shadow: var(--focus); }
 .pg-crumb-back svg { width: 12px; height: 12px; }
-.pg-crumbs [aria-current="page"] { color: var(--ink-soft); }
 
 .pg-run-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 32px; align-items: start; padding-bottom: 16px; }
-.pg-run-kicker { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
-.pg-run-title { margin: 0 0 12px; font-size: 30px; font-weight: 600; line-height: 1.2; }
+.pg-run-title { margin: 0 0 12px; font-size: 24px; font-weight: 600; line-height: 1.2; }
+.pg-run-kind { font-weight: 400; color: var(--ink-soft); }
 .pg-run-head .chips { margin: 0; }
-.pg-run-folder { display: flex; gap: 8px; margin: 12px 0 0; font-size: 12px; line-height: 1.5; }
-.pg-run-folder span { flex: 0 0 auto; color: var(--ink-faint); font-weight: 600; }
-.pg-run-folder code { min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
 .pg-run-actions { justify-content: flex-end; align-items: center; }
 .pg-run-copy svg { width: 16px; height: 16px; }
 
-/* The parts of the run, kept in view while the page scrolls past them. */
-.pg-run-jump {
-  position: sticky; top: var(--topbar-h); z-index: 5;
-  display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none;
-  padding: 8px 0; margin: 0 0 8px;
-  background: color-mix(in srgb, var(--page) 92%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
-  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+/* The row of tabs stays in view while a long part scrolls under it: below
+   the top bar where the window scrolls, and at the very top of the content
+   column where that column scrolls, which is its 32 pixels of padding above
+   where a sticky box would otherwise stop. */
+.pg-subtabs.pg-run-tabs { position: sticky; top: var(--topbar-h); z-index: 5; margin: 0 0 20px; background: var(--page); scrollbar-width: none; }
+.pg-run-tabs::-webkit-scrollbar { display: none; }
+@media (min-width: 1200px) { .pg-subtabs.pg-run-tabs { top: -32px; } }
+.pg-run-count {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; background: var(--panel-2); color: var(--ink-soft);
 }
-.pg-run-jump::-webkit-scrollbar { display: none; }
-.pg-run-jump a { flex: 0 0 auto; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; line-height: 24px; color: var(--ink-soft); text-decoration: none; }
-.pg-run-jump a:hover { color: var(--ink); background: var(--panel); }
-.pg-run-jump a:focus-visible { outline: none; box-shadow: var(--focus); }
-.pg-run-jump a[aria-current] { color: var(--ink); background: var(--panel-2); }
-@media (min-width: 1200px) { .pg-run-jump { top: 0; } }
+.pg-subtab[aria-selected="true"] .pg-run-count { color: var(--ink); }
+/* The first tab's name starts where the page's headings do. */
+.pg-run-tabs .pg-subtab:first-child { padding-left: 0; }
+.pg-run-tabs .pg-subtab:first-child[aria-selected="true"]::after { left: 0; }
 
-.pg-run-section { margin-top: 32px; min-width: 0; scroll-margin-top: calc(var(--topbar-h) + 64px); }
+.pg-run-section { min-width: 0; scroll-margin-top: calc(var(--topbar-h) + 64px); }
+.pg-run-section + .pg-run-section { margin-top: 32px; }
 @media (min-width: 1200px) { .pg-run-section { scroll-margin-top: 64px; } }
-.pg-run-section-head { margin: 0 0 16px; max-width: var(--measure); }
-.pg-run-section-head h3 { margin: 0 0 4px; font-size: 20px; font-weight: 600; line-height: 1.4; }
+.pg-run-section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin: 0 0 12px; }
+.pg-run-section-head h3 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
 .pg-run-section-head p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
-.pg-run-section-head p + p { margin-top: 4px; }
-.pg-run-section-head a { color: var(--accent); }
+.pg-run-foot { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
 
-.pg-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 12px; }
-.pg-metric { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--page); }
-.pg-metric-name { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 8px; font-size: 14px; font-weight: 600; line-height: 1.4; }
-.pg-metric-better { font-size: 11px; font-weight: 400; color: var(--ink-faint); }
+/* The four results in one frame, a hairline between two of them: the gaps
+   of the grid show the frame's own colour. */
+.pg-metrics {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--line);
+}
+.pg-metric { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 16px 20px; background: var(--page); }
+.pg-metric-name { font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--ink-soft); }
 .pg-metric-value { font-size: 30px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
-.pg-metric-sd { font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--ink-faint); white-space: nowrap; }
-.pg-metric-paper { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: auto 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.5; color: var(--ink-faint); }
+.pg-metric-sd { font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--ink-soft); white-space: nowrap; }
+.pg-metric-paper { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-faint); }
 .pg-metric-paper > div { display: flex; gap: 4px; }
 .pg-metric-paper dt { margin: 0; }
 .pg-metric-paper dd { margin: 0; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .pg-metric .pg-faint { margin: 0; }
-@container pg-panel (width < 600px) { .pg-metric { padding: 12px; } }
 
-.pg-run-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 224px), 1fr)); gap: 12px; }
-.pg-run-note { display: flex; flex-direction: column; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--page); }
+/* The notes: one column on a phone, two on a tablet with an odd last note
+   across both, and as many as fit side by side on a wider panel. */
+.pg-run-notes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@container pg-panel (min-width: 640px) {
+  .pg-run-notes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-run-note:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@container pg-panel (min-width: 960px) {
+  .pg-run-notes { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .pg-run-note:last-child:nth-child(odd) { grid-column: auto; }
+}
+.pg-run-note { display: flex; flex-direction: column; min-width: 0; padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--page); }
 .pg-run-note--warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn-soft) 55%, var(--page)); }
 .pg-run-note-kind { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--ink-soft); }
 .pg-run-note--warn .pg-run-note-kind { color: var(--warn); }
-.pg-run-note-mark { width: 16px; height: 16px; border-radius: 50%; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; background: var(--ink-faint); color: var(--page); }
-.pg-run-note--warn .pg-run-note-mark { background: var(--warn); }
+.pg-run-note-mark { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; background: var(--ink-faint); color: var(--page); }
+.pg-run-note--warn .pg-run-note-mark, .pg-run-pointer--warn .pg-run-note-mark { background: var(--warn); }
 .pg-run-note h4 { margin: 0 0 4px; font-size: 16px; font-weight: 600; line-height: 1.4; }
 .pg-run-note p:not(.pg-run-note-kind) { margin: 0 0 12px; max-width: 70ch; font-size: 14px; line-height: 1.6; color: var(--ink-soft); }
 .pg-run-note-ref { margin-top: auto; font-size: 12px; color: var(--ink-faint); }
 
-.pg-run-page .pg-charts { margin-top: 0; }
+/* Above the charts, where the notes are not on show: how many there are, and the way to them. */
+.pg-run-pointer {
+  display: flex; align-items: baseline; gap: 8px; width: fit-content; max-width: 100%; margin: 0 0 16px; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; line-height: 1.5; color: var(--ink-soft);
+}
+.pg-run-pointer--warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn-soft) 55%, var(--page)); color: var(--warn); }
+.pg-run-pointer a { color: inherit; font-weight: 600; }
+
+/* Charts as wide as the panel: on a wide one the per-seed chart beside the
+   training curves, a third of the row and two thirds. */
+.pg-run-page .pg-charts { max-width: none; margin-top: 0; }
 .pg-figure-title { margin: 0 0 8px; font-size: 14px; font-weight: 600; line-height: 1.4; }
+.pg-figure-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 24px; margin-bottom: 8px; }
+.pg-figure-head .pg-figure-title { margin-bottom: 0; }
+.pg-figure-head .pg-figure-toolbar { margin: 0; }
+.pg-figure-as { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.pg-run-charts .pg-figure figcaption { margin: 8px 0 0; }
+@container pg-panel (min-width: 1000px) {
+  .pg-run-page .pg-run-charts { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+}
+
+.pg-run-none { margin: 0; }
+.pg-runs .data-table .pg-run-open { width: 32px; padding-left: 0; text-align: right; color: var(--ink-faint); }
+.pg-run-open svg { width: 12px; height: 12px; display: inline-block; vertical-align: middle; }
 
 /* Settings: each group's name and source to the left of its values on a
    wide panel, above them on a narrow one. */
-.pg-settings-intro { margin: 0; max-width: 80ch; }
+.pg-run-settings .pg-run-section-head { display: block; margin-bottom: 24px; }
+.pg-run-section-head .pg-settings-intro { margin-top: 4px; }
+.pg-run-section-head .pg-run-folder { display: flex; gap: 8px; margin-top: 8px; font-size: 12px; }
+.pg-run-folder span { flex: 0 0 auto; color: var(--ink-faint); font-weight: 600; }
+.pg-run-folder code { min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
 .pg-settings-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; }
 .pg-settings-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .pg-settings-group h4 { margin: 0 0 4px; font-size: 16px; font-weight: 600; line-height: 1.4; }
@@ -1605,15 +1647,36 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 @container pg-panel (min-width: 1040px) {
   .pg-settings-group { grid-template-columns: 240px minmax(0, 1fr); gap: 32px; }
 }
+@container pg-panel (min-width: 1500px) {
+  .pg-settings-group dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @container pg-panel (width < 900px) {
   .pg-run-head { grid-template-columns: minmax(0, 1fr); }
   .pg-run-actions { justify-content: flex-start; }
   .pg-metric-value { font-size: 24px; }
 }
+@container pg-panel (width < 720px) {
+  .pg-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-metric { padding: 12px 16px; }
+}
+/* On a phone a stored explanation is a short list of its own, each value
+   after its column's name, instead of a table wider than the screen. */
+@container pg-panel (width < 600px) {
+  .pg-runs .data-table.pg-run-stored, .pg-runs .data-table.pg-run-stored tbody { display: block; }
+  .pg-runs .data-table.pg-run-stored thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .pg-runs .data-table.pg-run-stored tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; padding: 12px; border-bottom: 1px solid var(--line-soft); }
+  .pg-runs .data-table.pg-run-stored tr:last-child { border-bottom: 0; }
+  .pg-runs .data-table.pg-run-stored td { grid-column: 1; padding: 0; border: 0; white-space: normal; text-align: left; font-family: inherit; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+  .pg-runs .data-table.pg-run-stored td:first-child { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .pg-runs .data-table.pg-run-stored td[data-label]::before { content: attr(data-label) " "; color: var(--ink-faint); }
+  .pg-runs .data-table.pg-run-stored td.pg-run-open { grid-column: 2; grid-row: 1 / span 5; align-self: center; width: auto; }
+}
 @container pg-panel (width < 640px) {
-  .pg-run-title { font-size: 24px; }
+  .pg-run-title { font-size: 20px; }
   .pg-run-actions .button:not(.button--quiet) { flex: 1 1 auto; }
   .pg-run-actions .pg-run-copy { order: 3; }
+  .pg-run-tabs .pg-subtab { padding: 0 8px; }
+  .pg-run-tabs .pg-subtab:first-child { padding-left: 0; }
 }
 
 /* Run history: a tab for training runs and one for explanations, each with its
@@ -1633,6 +1696,64 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-filter { display: grid; gap: 4px; font-size: 13px; font-weight: 600; line-height: 20px; }
 .pg-filter select.field { width: 100%; font-weight: 400; }
 .pg-filter--switch { display: flex; align-items: center; gap: 8px; min-height: var(--control-h); font-weight: 400; cursor: pointer; }
+/* A filter that narrows the list is marked on its own control, so the ones
+   in use are found without reading every menu. */
+.pg-filter.is-used select.field { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+/* Under the first row of filters: the way to a filter for every parameter,
+   the ones in use while they are put away, and how many runs are left. */
+.pg-filterbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 16px; }
+.pg-more-toggle svg { width: 12px; height: 12px; }
+.pg-more-toggle .pg-chevron { color: var(--ink-faint); transition: transform .16s var(--ease); }
+.pg-more-toggle[aria-expanded="true"] { background: var(--panel); box-shadow: none; }
+.pg-more-toggle[aria-expanded="true"] .pg-chevron { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .pg-more-toggle .pg-chevron { transition: none; } }
+.pg-filter-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pg-filter-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 4px 0 12px; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--panel); font-size: 12px; line-height: 16px; color: var(--ink-soft);
+}
+.pg-filter-chip strong { font-weight: 600; color: var(--ink); }
+.pg-filter-chip button {
+  display: grid; place-items: center; flex: 0 0 auto; width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: var(--ink-soft); cursor: pointer;
+}
+.pg-filter-chip button:hover { background: var(--panel-2); color: var(--ink); }
+.pg-filter-chip button:focus-visible { outline: none; box-shadow: var(--focus); }
+.pg-filter-chip svg { width: 12px; height: 12px; }
+.pg-filterbar-count { margin: 0 0 0 auto; font-size: 13px; line-height: 20px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+/* The filters for every parameter: one row for each group of the design
+   form, its name on the left and its menus beside it. */
+.pg-more {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; overflow: hidden;
+  margin: 0 0 16px; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+}
+.pg-more[hidden] { display: none; }
+.pg-more > * { grid-column: 1 / -1; }
+.pg-more > .pg-more-half { grid-column: auto; }
+/* The rule over each group is drawn one pixel above it, and the panel cuts
+   off what leaves it: so no rule stands over the first line, whichever
+   groups share it. */
+.pg-more-group { display: grid; grid-template-columns: 136px minmax(0, 1fr); column-gap: 24px; align-content: start; padding: 12px 0 16px; margin-top: -1px; border-top: 1px solid var(--line); }
+.pg-more-group h4 { margin: 0; font-size: 13px; font-weight: 600; line-height: 20px; color: var(--ink); }
+/* Wide enough for the longest names on one line, and no wider than a menu
+   needs: a group of two does not stretch across the panel. */
+.pg-more .pg-filters { margin: 0; grid-template-columns: repeat(auto-fit, minmax(208px, 264px)); }
+.pg-more .pg-filter > span { font-weight: 400; color: var(--ink-soft); }
+.pg-more > .pg-hint { margin: 12px 0; }
+.pg-more-same { padding: 12px 0; margin-top: -1px; border-top: 1px solid var(--line); font-size: 12px; line-height: 20px; color: var(--ink-soft); }
+.pg-more-same p { margin: 0 0 4px; }
+.pg-more-same dl { display: flex; flex-wrap: wrap; gap: 0 24px; margin: 0; }
+.pg-more-same dl div { display: flex; gap: 8px; }
+.pg-more-same dd { margin: 0; font-weight: 600; color: var(--ink); }
+@container pg-panel (width < 1240px) {
+  .pg-more { grid-template-columns: minmax(0, 1fr); }
+  .pg-more > .pg-more-half { grid-column: 1 / -1; }
+}
+@container pg-panel (width < 760px) {
+  .pg-more-group { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+  .pg-more .pg-filters { grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); }
+  .pg-filterbar-count { margin-left: 0; }
+}
 .pg-pager { display: flex; align-items: center; justify-content: flex-end; gap: 12px; font-size: 13px; color: var(--ink-soft); }
 .pg-pager .button svg { width: 12px; height: 12px; }
 .pg-jobrow td { vertical-align: top; }
@@ -1729,13 +1850,14 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-chart-panels, .pg-chart-panel { min-width: 0; }
 .pg-chart-panel { padding-top: 12px; }
 .pg-chart-panel > .pg-figure, .pg-chart-panel > .pg-empty { width: 100%; box-sizing: border-box; }
+.pg-chart-panel > .pg-figure + .pg-figure { margin-top: 16px; }
 .pg-figure { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 12px; background: var(--page); min-width: 0; }
 .pg-figure--wide { grid-column: 1 / -1; }
 .pg-figure figcaption { font-size: 13px; color: var(--ink-soft); margin-bottom: 8px; line-height: 1.5; }
 .pg-plot { width: 100%; height: auto; display: block; font-family: var(--sans); }
 /* The charts are drawn one unit of the drawing to one pixel of the screen,
    so their text is a size on the screen and keeps the 11-pixel floor. */
-.pg-tick { font-size: 11px; fill: var(--fig-axis); }
+.pg-tick { font-size: 11px; fill: var(--ink-faint); }
 .pg-axis { font-size: 12px; fill: var(--ink-soft); }
 .pg-node { font-size: 11px; font-weight: 600; fill: var(--fig-ink); font-family: var(--mono); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 3px; }
 .pg-strip { max-width: 640px; margin: 0 auto 8px; }
@@ -1758,7 +1880,7 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-heat-wrap { overflow-x: auto; }
 .pg-heat { display: block; font-family: var(--mono); }
 /* The heat map is drawn at its own size, not scaled, so its labels keep the 11-pixel floor. */
-.pg-heat-label { font-size: 11px; fill: var(--fig-axis); }
+.pg-heat-label { font-size: 11px; fill: var(--ink-faint); }
 /* The sensor graph never shrinks below 540 pixels, where its names are
    8.6: narrower, on a phone, it scrolls sideways. */
 .pg-graph-stage { overflow-x: auto; overscroll-behavior-x: contain; }
@@ -1780,8 +1902,7 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .pg-ring-label { font-size: 5.4px; font-weight: 700; font-family: var(--mono); fill: var(--fig-ink); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 1.2px; pointer-events: none; }
 .pg-ring-missing { font-size: 8px; fill: var(--ink-faint); }
 .pg-fig10-count { font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin: 4px 0; }
-.ev-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 16px 0; }
-.ev-controls label { display: flex; align-items: center; gap: 8px; }
+.ev-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
 .ev-layout { display: flex; gap: 4px; }
 .ev-layout [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .ev-walk-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
@@ -1816,26 +1937,162 @@ button.pg-vstep-value:hover { text-decoration: underline; }
 .ev-walk-steps div { min-width: 155px; padding: 8px 12px; background: var(--panel); border-left: 3px solid var(--accent); }
 .ev-walk-steps small, .ev-walk-steps strong { display: block; }
 .ev-walk-steps small { color: var(--ink-faint); }
-@media (max-width: 600px) {
-  .ev-controls { gap: 12px; }
+
+/* The tabs of a walk explanation. Each opens with the question it answers,
+   in the largest text of the panel, then what is drawn. */
+.pg-tabhead { margin: 4px 0 16px; }
+.pg-tabhead h3 { margin: 0 0 4px; font-size: 18px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.pg-tabhead p { margin: 0; max-width: 96ch; font-size: 14px; line-height: 1.6; color: var(--ink-soft); }
+.pg-figure-lead { margin: 0 0 12px; max-width: var(--measure); font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.pg-notes {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 8px 32px;
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-soft);
+}
+.pg-notes p { margin: 0; font-size: 13px; line-height: 2; color: var(--ink-soft); }
+.pg-notes strong { color: var(--ink); }
+.pg-notes a, .pg-check + .pg-faint a { white-space: nowrap; }
+
+/* A sensor's name where it stands for the sensor: in a walk, in an order. */
+.pg-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+  font: 600 12px/1 var(--mono); color: var(--ink); white-space: nowrap; vertical-align: middle;
+}
+.pg-chip--group i { font-style: normal; font-weight: 400; color: var(--ink-faint); }
+.pg-tag {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.pg-tag--plain { background: var(--panel-2); color: var(--ink-soft); }
+
+/* One score written as a sum in a column: name, value, bar. The rows touch,
+   so the dashed line that leaves one bar arrives at the next. */
+.pg-sum { display: grid; grid-template-columns: minmax(240px, 440px) max-content minmax(0, 1fr); margin-top: 4px; }
+.pg-sum-row { display: contents; }
+.pg-sum-name { display: grid; grid-template-columns: 12px minmax(0, 1fr); column-gap: 8px; align-content: start; padding: 8px 16px 12px 0; }
+.pg-sum-name i { width: 12px; height: 12px; margin-top: 4px; border-radius: 50%; font-style: normal; }
+.pg-sum-name b { font-size: 14px; font-weight: 600; line-height: 20px; color: var(--ink); }
+.pg-sum-name span { grid-column: 2; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.pg-sum-value {
+  padding: 8px 16px 8px 0; font: 600 16px/20px var(--mono); font-variant-numeric: tabular-nums;
+  text-align: right; white-space: nowrap; color: var(--ink);
+}
+.pg-sum-track { position: relative; min-height: 40px; }
+.pg-sum-grid { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; background: var(--line-soft); }
+.pg-sum-grid--zero { background: var(--fig-axis); }
+.pg-sum-bar { position: absolute; top: 8px; height: 20px; opacity: .85; }
+.pg-sum-bar--total { background: color-mix(in srgb, var(--fig-ink) 10%, transparent); border: 2px solid var(--fig-ink); opacity: 1; }
+.pg-sum-join { position: absolute; width: 0; margin-left: -0.5px; border-left: 1px dashed var(--line-strong); }
+.pg-sum-join--in { top: 0; height: 8px; }
+.pg-sum-join--out { top: 28px; bottom: 0; }
+.pg-sum-row--total > * { border-top: 1px solid var(--line-strong); }
+.pg-sum-row--total .pg-sum-name i { width: 12px; height: 20px; margin: 0; border-radius: 0; font: 600 14px/20px var(--mono); color: var(--ink); }
+.pg-sum-row--total .pg-sum-name { padding-bottom: 8px; }
+.pg-sum-axis { position: relative; height: 40px; border-top: 1px solid var(--fig-axis); }
+.pg-sum-axis span { position: absolute; top: 4px; transform: translateX(-50%); font-size: 11px; line-height: 16px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.pg-sum-axis em { position: absolute; left: 0; right: 0; top: 20px; text-align: center; font-size: 12px; line-height: 20px; font-style: normal; color: var(--ink-soft); }
+.pg-sum-result { margin: 12px 0 0; max-width: var(--measure); font-size: 14px; line-height: 1.6; color: var(--ink-soft); }
+.pg-sum-result strong { color: var(--ink); }
+@container pg-panel (width < 760px) {
+  .pg-sum { grid-template-columns: minmax(0, 1fr) max-content; }
+  .pg-sum-value { padding-right: 0; }
+  .pg-sum-track, .pg-sum-axis { grid-column: 1 / -1; }
+  .pg-sum-row--axis > div:empty { display: none; }
+  .pg-sum-row--total .pg-sum-track { border-top: 0; }
 }
 
-.pg-score-guide { max-width: var(--measure); margin: 22px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); }
-.pg-score-guide p { margin: 12px 0; }
-.pg-score-guide dl { margin: 16px 0; }
-.pg-score-guide dt { font-weight: 600; margin-top: 14px; }
-.pg-score-guide dd { margin: 4px 0 0; }
-.pg-walk-pick {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
-  border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px;
-  font-size: 12px; color: var(--ink-soft);
+/* A figure a reader should not miss, with the number it is about. */
+.pg-callout {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 16px; align-items: center;
+  margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
 }
-.pg-walk-pick p { margin: 0; max-width: var(--measure); }
-.pg-walk-equation {
-  display: flex; flex-wrap: wrap; justify-content: center; gap: 3px 7px;
-  margin: 2px 0 0; color: var(--ink-soft); font: 12px/1.5 var(--mono); font-variant-numeric: tabular-nums;
+.pg-callout > strong { font-size: 24px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--ink); }
+.pg-callout p { margin: 0; max-width: 96ch; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.pg-callout b { font-weight: 600; color: var(--ink); }
+
+/* The largest walks: one row per walk, one column per position of the
+   walk. Every row is its own grid on the same columns, so they line up. */
+.pg-walks { list-style: none; margin: 0; padding: 0; }
+.pg-walk, .pg-walks-head {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) 176px 96px 96px minmax(96px, 280px) 120px;
+  column-gap: 16px; align-items: center;
 }
-.pg-walk-equation b { color: var(--ink-faint); font-weight: 400; }
+.pg-walks-head { padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 600; line-height: 16px; color: var(--ink-faint); }
+.pg-walks-head .num { text-align: right; }
+.pg-walk-ends { display: flex; justify-content: space-between; gap: 8px; }
+.pg-walk { padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.pg-walk:last-child { border-bottom: 0; }
+.pg-walk-rank { font: 400 12px/1 var(--mono); color: var(--ink-faint); text-align: right; }
+.pg-walk-steps { display: grid; grid-template-columns: repeat(var(--steps, 4), minmax(0, 1fr)); column-gap: 24px; min-width: 0; }
+.pg-walk-step { position: relative; min-width: 0; }
+.pg-walk .pg-walk-step + .pg-walk-step::before {
+  content: "\2192"; position: absolute; left: -20px; top: 0; width: 16px; text-align: center;
+  font-size: 14px; line-height: 24px; color: var(--ink-faint);
+}
+.pg-walk-kind { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--ink-soft); }
+.pg-walk-kind i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; }
+.pg-walk-number { font: 400 13px/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+.pg-walk-bar { position: relative; height: 16px; }
+.pg-walk-bar::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; margin-left: -0.5px; background: var(--fig-axis); }
+.pg-walk-size, .pg-walk-share { position: absolute; }
+.pg-walk-size, .pg-legend i.pg-key-bar--size { background: color-mix(in srgb, var(--ink-faint) 16%, transparent); border: 1px solid var(--line-strong); }
+.pg-walk-size { top: 0; bottom: 0; }
+.pg-walk-share { top: 4px; bottom: 4px; }
+.pg-walk-share--up { background: var(--fig-accent); }
+.pg-walk-share--down { background: var(--fig-warn); }
+.pg-walk .button { justify-self: end; }
+.pg-legend i.pg-key-bar { width: 16px; height: 8px; border-radius: 0; vertical-align: 0; }
+.pg-walks + .pg-legend { margin-top: 12px; }
+@container pg-panel (width < 1100px) {
+  .pg-walks-head { display: none; }
+  .pg-walk { grid-template-columns: 24px minmax(0, 1fr) max-content max-content; row-gap: 8px; }
+  .pg-walk-steps { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px 24px; }
+  .pg-walk-kind { grid-column: 2; }
+  .pg-walk-number { text-align: left; }
+  .pg-walk-number::before { content: attr(data-label) " "; font-family: var(--sans); color: var(--ink-faint); }
+  .pg-walk-bar { grid-column: 2 / 4; }
+  .pg-walk .button { grid-column: 4; }
+}
+@container pg-panel (width < 620px) {
+  .pg-walk { grid-template-columns: 24px minmax(0, 1fr); }
+  .pg-walk-steps { gap: 8px; }
+  .pg-walk .pg-walk-step + .pg-walk-step::before { position: static; display: inline-block; margin-right: 8px; vertical-align: middle; }
+  .pg-walk-kind, .pg-walk-bar { grid-column: 2; }
+  .pg-walk-number { grid-column: 2; display: flex; justify-content: space-between; gap: 8px; }
+  .pg-walk .button { grid-column: 2; justify-self: start; padding-left: 0; }
+}
+
+/* The check: what the lines stand for, then the two tests side by side. */
+.pg-check-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 24px; margin: 0 0 16px; }
+.pg-check-kinds p { display: flex; align-items: baseline; margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.pg-check-kinds b { font-weight: 600; color: var(--ink); }
+.pg-check-key { flex: 0 0 auto; width: 28px; height: 10px; margin-right: 8px; }
+.pg-check { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.pg-check--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pg-check-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 4px; }
+.pg-check-head .pg-figure-title { margin: 0; font-size: 16px; }
+.pg-check-order { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 12px 0; font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
+.pg-check-order > span:first-child { margin-right: 4px; }
+.pg-check-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.4; }
+.pg-check-table th { padding: 4px 12px 4px 0; border-bottom: 1px solid var(--line); text-align: left; font-size: 11px; font-weight: 600; color: var(--ink-faint); }
+.pg-check-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; color: var(--ink-soft); }
+.pg-check-table tr:last-child td { border-bottom: 0; }
+.pg-check-name { display: flex; align-items: center; }
+.pg-check-name .pg-tag { vertical-align: 1px; }
+.pg-check-table .is-own td:first-child { font-weight: 600; color: var(--ink); }
+.pg-check-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.pg-check-table td.num, .pg-check-table th:nth-child(2) { white-space: nowrap; }
+.pg-check-table td.num { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.pg-check-table th:last-child, .pg-check-table td:last-child { padding-right: 0; }
+.pg-check-table .pg-check-range, .pg-check-table th:last-child { width: 24%; min-width: 80px; padding-right: 0; }
+.pg-range { position: relative; display: block; height: 16px; }
+.pg-range-line { position: absolute; top: 7px; height: 2px; background: var(--line-strong); }
+.pg-range-dot { position: absolute; top: 3px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; }
+.pg-check + .pg-faint { margin: 12px 0 0; max-width: 96ch; }
+.pg-check-card { container-type: inline-size; }
+@container (width < 560px) {
+  .pg-check-table .pg-check-range, .pg-check-table th[aria-hidden] { display: none; }
+}
 
 /* An inline reference is something the pointer has to hit, so its box is
    taller than the text it sits inside; the negative margin keeps the line
@@ -1847,26 +2104,53 @@ button.pg-vstep-value:hover { text-decoration: underline; }
   background: var(--accent-soft); text-decoration: none;
 }
 
-/* One small panel per sensor, holding that sensor's value at every window.
-   Every panel shares one vertical scale, so their heights can be compared. */
-.pg-smalls {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 45%), 1fr));
-  gap: 12px; margin: 8px 0 12px;
-}
-/* On a phone the panels stand two across (45% of the row) rather than one,
-   which would make the figure over 2000 pixels tall. */
+/* One chart per sensor, holding that sensor's value at every window. Every
+   chart shares one vertical scale, so their heights can be compared. The
+   page says how many stand side by side, since each is drawn at the width
+   it is shown at. */
+.pg-smalls { display: grid; gap: 20px 16px; margin: 8px 0 12px; }
 .pg-sm { margin: 0; min-width: 0; }
-.pg-sm svg { width: 100%; height: auto; display: block; background: var(--panel); border-radius: var(--radius); }
+.pg-sm svg { width: 100%; height: auto; display: block; font-family: var(--sans); }
+/* The sensor's name, then its value at the marked cycle, on one line above the chart. */
 .pg-figure .pg-sm figcaption {
-  font-size: 11px; color: var(--ink-faint); margin: 4px 0 0;
-  font-family: var(--mono); text-align: left;
+  display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; padding-left: 40px;
+  font-size: 12px; line-height: 16px; color: var(--ink-soft); max-width: none;
 }
-.pg-sm figcaption b { color: var(--ink); font-weight: 600; }
+.pg-sm figcaption b { color: var(--ink); font-weight: 600; font-size: 13px; font-family: var(--mono); }
 /* Scrubbing sideways moves the cursor; scrolling the page up and down still works. */
 .pg-smalls svg { touch-action: pan-y; cursor: crosshair; }
 .pg-sm-cursor { stroke: var(--fig-ink); stroke-width: 1; stroke-opacity: .55; pointer-events: none; }
+.pg-sm-dot { fill: var(--fig-ink); stroke: var(--fig-bg); stroke-width: 1.5; pointer-events: none; }
 .pg-sm-value { font-variant-numeric: tabular-nums; }
-/* The readout keeps its line while idle, so the panels do not jump when the pointer arrives. */
+/* The readout keeps its line while idle, so the charts do not jump when the pointer arrives. */
 .pg-sm-readout { font-size: 12px; color: var(--ink-faint); margin: 4px 0 0; }
 .pg-sm-readout.is-idle { visibility: hidden; }
 .pg-sm-readout b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* The chart in three dimensions: centred, no wider than it was drawn, and
+   turned by dragging. A sideways drag turns it on a touch screen too, while
+   an up-and-down one still scrolls the page. */
+.pg-3d-stage { display: flex; justify-content: center; cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; border-radius: var(--radius); }
+.pg-3d-stage.is-turning { cursor: grabbing; }
+.pg-3d-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-3d { margin: 0 auto; }
+/* A name or a number over the drawing keeps a rim of the page's colour, so a ribbon behind it never hides it. */
+.pg-3d-name, .pg-3d-number, .pg-3d-title { paint-order: stroke; stroke: var(--fig-bg); stroke-width: 3px; stroke-linejoin: round; }
+.pg-3d-name { font-size: 11px; font-weight: 600; font-family: var(--mono); fill: var(--fig-ink); }
+.pg-3d-title { font-weight: 600; }
+.pg-3d-ribbon:hover polyline { stroke-width: 2.2; stroke-opacity: 1; }
+.pg-3d-stage.is-turning .pg-3d-ribbon { pointer-events: none; }
+
+/* What a sensor's name stands for, shown beside the pointer wherever the
+   name is drawn: the name, the words, and a quieter second line when the
+   place has a value to add. It never takes the pointer itself. */
+[data-sensor-tip] { cursor: help; }
+.ev-node[data-sensor-tip] { cursor: pointer; }
+.sensor-tip {
+  position: fixed; z-index: 70; max-width: min(320px, calc(100vw - 16px)); padding: 8px 12px; pointer-events: none;
+  background: var(--page); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow);
+  font: 400 13px/20px var(--sans);
+}
+.sensor-tip[hidden] { display: none; }
+.sensor-tip strong { font-weight: 600; margin-right: 8px; }
+.sensor-tip small { display: block; font-size: 12px; line-height: 16px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }

@@ -843,7 +843,8 @@ def test_a_network_without_graph_layers_is_offered_no_walks(tmp_path: Path):
     script = (ROOT / "src/thesis_gnn_rul_xai/docsite/assets/playground.js").read_text(encoding="utf-8")
     assert 'return layered || option.value !== "walks";' in script
     assert "Walks through the sensor graph are not offered" in script
-    assert 'data.graph_layers === false ? "" : graph' in script
+    # Its explanation is drawn on the engine panel, which is handed the stored connections: none for such a run.
+    assert "edges: data.graph_edges === undefined ? null : data.graph_edges" in script
 
 
 # -- the site --------------------------------------------------------------------
@@ -971,18 +972,27 @@ def test_explanation_charts_share_one_full_width_tabbed_area():
 
 
 def test_project_added_charts_state_their_origin_once_and_explain_their_use():
-    """Method origin belongs in the guide; captions explain how to read the chart."""
+    """Method origin belongs in the guide; every tab of a walk explanation opens with the question it answers."""
     assets = ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets"
     script = (assets / "playground.js").read_text(encoding="utf-8")
     engine_view = (assets / "engine-view.js").read_text(encoding="utf-8")
-    walks = script.split("function drawWalks", 1)[1].split("function walkParts", 1)[0]
-    parts = walks.split("var parts =", 1)[1].split("var swarm =", 1)[0]
+    walks = script.split("function drawWalks", 1)[1].split("var FLIP_STYLES", 1)[0]
 
     assert "<strong>Not in the paper.</strong>" not in script
     assert "<strong>Not in the paper." not in engine_view
     assert walks.count("Walk explanations are added by this project") == 1
-    assert "How to read this chart." in walks
-    assert parts.index("walkParts(rows, forEngine, W, e.index)") < parts.index("partsGuide")
+    # The tabs are named for what they hold, and each begins with its question.
+    for label in ('label: "Score breakdown"', 'label: "Largest walks"', 'label: "Explanation check"'):
+        assert label in walks, label
+    for question in ("What is the score made of?", "Does the explanation agree with the network?",
+                     "How much passed along each connection, on average?"):
+        assert 'walkTabHead("' + question + '"' in walks, question
+    assert 'walkTabHead("Which walks carry the most?"' in script
+    # The chosen score as a sum comes before the same parts for every cycle or engine.
+    assert walks.index("scoreSum(data, e.index)") < walks.index("walkParts(data, e.index, W)")
+    # What the tabs were called, and the words the author could not interpret, are gone.
+    for gone in ('"Score parts"', "Authors' check\"", "model-added part", "routes within one group", "How to read this chart."):
+        assert gone not in script, gone
 
 
 def test_engine_drawing_is_compact_inside_the_full_width_chart():
@@ -999,12 +1009,12 @@ def test_engine_drawing_is_compact_inside_the_full_width_chart():
 
 
 def test_test_engine_walk_parts_are_not_drawn_as_an_ordered_engine_sequence():
-    """Engine number is an identifier; distributions and one waterfall replace its scatter plot."""
+    """Engine number is an identifier; one row of dots per part replaces its scatter plot, with the chosen engine ringed."""
     script = (ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets" / "playground.js").read_text(
         encoding="utf-8")
     section = script.split("function walkParts", 1)[1].split("function flowGraph", 1)[0]
-    assert "walkPartDistribution(rows, W)" in section
-    assert "walkWaterfall(rows[at], W)" in section
+    assert "walkPartDistribution(rows, W, at, parts)" in section
+    assert "the chosen one" in section
     assert "middle half of the engines" in section
     assert 'xlabel: "test engine"' not in section
 
@@ -1646,10 +1656,11 @@ assert.ok(P.gammaNote({gamma: [0, 0, 0]}).includes('Explain the run again'));
 const baseline = P.gammaNote({gamma_setting: 'gnn-gi', gamma: [0, 0, 0]});
 assert.ok(baseline.includes('chosen when it was made'), baseline);
 for (const text of [note, baseline]) { assert.ok(!text.includes('Explain form'), text); }
-assert.equal(P.flipName('GNN-LRP flat, walks'), 'walks, equal extra weight after the first layer');
-assert.equal(P.flipName('GNN-LRP falling, starting sensors'), 'halving extra weight, starting sensors only');
+assert.equal(P.flipName('GNN-LRP flat, walks'), 'Whole walks, equal extra weight after the first layer');
+assert.equal(P.flipName('GNN-LRP falling, starting sensors'), 'Sensor totals, halving extra weight');
 assert.notEqual(P.flipName('GNN-LRP falling, starting sensors'), P.flipName('GNN-GI, starting sensors'));
-assert.equal(P.flipName('GNN-LRP, walks'), "walks, the authors' setting");
+assert.equal(P.flipName('GNN-LRP, walks'), "Whole walks, the authors' setting");
+assert.equal(P.flipName('GNN-LRP, starting sensors'), "Sensor totals, the authors' setting");
 console.log('The rule setting passed.');
 """
     result = subprocess.run([node, "-e", script], cwd=ROOT, input=json.dumps(playground.options()),
@@ -1922,3 +1933,577 @@ assert.deepEqual(JSON.parse(JSON.stringify(P.readAddress(''))), {tab: 'design', 
 """
     rendered = subprocess.run([node, "-e", script], cwd=ROOT, text=True, encoding="utf-8", capture_output=True)
     assert rendered.returncode == 0, rendered.stderr
+
+
+def test_a_run_shows_one_part_at_a_time_and_lists_its_explanations():
+    """The address names the part, the notes stay with the results, and a stored explanation's values stay off the run's page."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the parts of a run's page.")
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const context = {window: {location: {hash: ''}}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {runTabInAddress, runTabs, runOverview, runExplanations, runNotesPointer,
+    setup: function (helpers, state) { T = helpers; S = state; }};`), context);
+const P = context.window.test;
+const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const fixed = (value, places) => value === null || value === undefined || isNaN(value)
+  ? '—' : Number(value).toFixed(places === undefined ? 2 : places);
+P.setup({escapeHtml, fixed}, {options: {gamma_settings: [{value: 'authors', label: 'The authors setting'}]}, explain: {}});
+
+// The part of the run an address names; an address from before the parts names a section.
+const run = '#/explore/playground/runs/fd001_run';
+const part = hash => { context.window.location.hash = hash; return P.runTabInAddress(); };
+assert.equal(part(run), 'overview');
+assert.equal(part(run + '#charts'), 'charts');
+assert.equal(part(run + '#explanations'), 'explanations');
+assert.equal(part(run + '#settings'), 'settings');
+assert.equal(part(run + '#pg-run-settings'), 'settings');
+assert.equal(part(run + '#pg-run-interpretation'), 'overview');
+assert.equal(part(run + '#no-such-part'), 'overview');
+
+const stored = [
+  {name: 'walks_test_seed42', method: 'walks', scope: 'test', source: 'test', seed: 42, windows: 100,
+   finished_utc: '20261102T121443Z', commit: 'a7c23d2', gamma_setting: 'authors'},
+  {name: 'shap_engine_unit69_seed42', method: 'shap', scope: 'engine', source: 'training', unit: 69, every: 1, seed: 42,
+   windows: 333, finished_utc: '20261102T110025Z', commit: 'a7c23d2', baseline_prediction: 88.688,
+   mean_abs: {P30: 14.583, T50: 9.567}}
+];
+const record = {name: 'fd001_run', has_weights: true, explanations: stored, per_seed: {'42': {}, '43': {}},
+  mean: {rmse: 16.737, score: 522.0, r2: 0.826, asue: 12.471}, std: {rmse: 0.435, score: 95.0, r2: 0.009, asue: 0.818},
+  paper_row: {label: 'ESTGNN w/o LSTM', source: 'Table 11', rmse: 14.93, score: null, r2: null, asue: null}};
+
+// The tab carries how many explanations are stored.
+const tabs = P.runTabs(record, 'explanations');
+assert.match(tabs, /id="pg-run-tab-explanations"[^>]*aria-selected="true"/);
+assert.match(tabs, /2 explanations stored for this run/);
+
+// Each stored explanation is a row that opens it; none of its values is repeated here.
+const list = P.runExplanations(record);
+assert.equal(list.split('data-action="open-explanation"').length - 1, 2);
+assert.ok(list.includes('data-run="fd001_run"') && list.includes('data-name="shap_engine_unit69_seed42"'));
+assert.ok(list.includes('Exact Shapley values') && list.includes('Training engine 69'));
+assert.ok(list.includes('Walks through the sensor graph') && list.includes('Test engines'));
+assert.ok(list.includes('2026-11-02 12:14 UTC') && list.includes('a7c23d2'));
+assert.ok(!list.includes('14.583') && !list.includes('88.688'));
+assert.ok(P.runExplanations({name: 'r', has_weights: true, explanations: []}).includes('None yet'));
+assert.ok(P.runExplanations({name: 'r', has_weights: false, explanations: []}).includes('none can be made'));
+
+// The notes stand on the same part as the results they qualify, in full.
+const cautions = [{ref: 'F-16', text: 'Saved choice <b>', level: 'warn'}, {ref: 'A-02', text: 'Capped answers', level: 'info'}];
+const overview = P.runOverview(record, cautions);
+assert.ok(overview.indexOf('class="pg-metrics"') < overview.indexOf('How to interpret this run'));
+assert.ok(overview.includes('Saved choice &lt;b&gt;') && overview.includes('Capped answers'));
+assert.ok(overview.includes('#/entry/F-16') && overview.includes('Choosing the reported weights'));
+assert.ok(overview.includes('16.737') && overview.includes('± 0.435') && overview.includes('14.93') && overview.includes('+1.81'));
+assert.ok(overview.includes('Mean ± standard deviation over 2 seeds.'));
+assert.ok(overview.includes('Compared with ESTGNN w/o LSTM, Table 11, which prints RMSE only.'));
+assert.ok(overview.includes('Lower is better for RMSE, Score and ASUE; higher is better for R².'));
+// "The paper prints none" is said once below the tiles when the paper prints RMSE only,
+// and in each tile that lacks a value when it prints more than RMSE.
+assert.ok(!overview.includes('The paper prints none'));
+const fuller = P.runOverview(Object.assign({}, record, {paper_row: {label: 'ESTGNN', source: 'Table 7', rmse: 11.78, score: 278.6,
+  r2: null, asue: null}}), []);
+assert.equal(fuller.split('The paper prints none').length - 1, 2);
+assert.ok(!fuller.includes('How to interpret this run'));
+
+// Where results are shown without the notes, one line counts them and leads to them.
+const pointer = P.runNotesPointer(record, cautions);
+assert.ok(pointer.includes('1 caution and 1 note apply to these results.'));
+assert.ok(pointer.includes('data-part="overview"') && pointer.includes('data-reach="pg-run-interpretation"'));
+assert.equal(P.runNotesPointer(record, []), '');
+"""
+    rendered = subprocess.run([node, "-e", script], cwd=ROOT, text=True, encoding="utf-8", capture_output=True)
+    assert rendered.returncode == 0, rendered.stderr
+
+
+def test_an_explanation_opens_on_its_charts_with_one_control_for_each_thing():
+    """What the author had removed stays removed, and the button that starts an explanation ends the form."""
+    assets = ROOT / "src" / "thesis_gnn_rul_xai" / "docsite" / "assets"
+    script = (assets / "playground.js").read_text(encoding="utf-8")
+    engine_view = (assets / "engine-view.js").read_text(encoding="utf-8")
+    css = (assets / "app.css").read_text(encoding="utf-8")
+
+    # The engine panel: the two layouts, and no control that hides the graph or clears a choice.
+    for gone in ("Show graph connections", "Clear selection", "data-ev-overlay", "data-ev-clear"):
+        assert gone not in engine_view, gone
+    assert 'event.key === "Escape" && state.sensor' in engine_view
+
+    # The view of a Shapley or occlusion explanation: no paragraph and no notes above the charts,
+    # and no tab that repeats the engine panel's graph.
+    view = script.split("function drawExplanation", 1)[1].split("function engineFigure", 1)[0]
+    for gone in ("Equation 14 says", "Table 12 cannot hold", "not evidence that the sensor causes",
+                 "share of the prediction's difference", "caveatList(", 'label: "Sensor graph"'):
+        assert gone not in view, gone
+    assert "function sensorGraph(" not in script
+    assert view.count("Occlusion is a comparison added by this project; the paper does not use it.") == 1
+
+    # The button is the form's last row, not a cell of the settings' grid.
+    form = script.split("function explainForm", 1)[1].split("function explainNote", 1)[0]
+    assert "cell({ control: '<button" not in form
+    assert form.index('class="pg-form-actions"') < form.index('data-action="explain">Explain</button>')
+    assert ".pg-form-actions {" in css
+
+    # The graph layers, like the sub-dataset, have no Reset of their own.
+    assert 'if (f.key === "subset" || f.key === "spatial") { return ""; }' in script
+
+
+def test_the_values_over_time_are_drawn_per_sensor_and_in_three_dimensions():
+    """One chart per sensor with numbered axes, the same values as ribbons in one space, and a name's meaning beside it."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the charts of an explanation.")
+    stored = next((p for p in sorted((ROOT / "reports").glob("*/explanations/*/summary.json"))
+                   if (s := json.loads(p.read_text(encoding="utf-8"))).get("method") == "shap"
+                   and s.get("scope") == "engine" and s.get("windows", 0) >= 30), None)
+    if stored is None:
+        pytest.skip("A stored Shapley explanation of one engine of the real FD001 data is needed.")
+    data = playground.explanation_detail(ROOT, stored.parents[2].name, stored.parent.name)
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const data = JSON.parse(fs.readFileSync(0, 'utf8'));
+const E = require('./src/thesis_gnn_rul_xai/docsite/assets/engine-view.js').ThesisEngineView;
+const context = {window: {ThesisEngineView: E}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {sensorHistory, historyScale, historyColumns, ribbons, ribbonCamera, ribbonSize, beeswarm, signedValue,
+    RIBBON_VIEW, setup: function (helpers, state) { T = helpers; S = state; }};`), context);
+const P = context.window.test;
+const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+P.setup({escapeHtml, fixed: (value, places) => Number(value).toFixed(places === undefined ? 2 : places)}, {explain: {}});
+const rows = data.values, sensors = Object.keys(data.summary.mean_abs), n = sensors.length;
+const count = (text, piece) => text.split(piece).length - 1;
+assert.equal(n, 14);
+
+// Four charts side by side on a wide screen, two on a tablet, one on a phone.
+assert.deepEqual([1794, 1100, 760, 330].map(P.historyColumns), [4, 3, 2, 1]);
+
+// One chart per sensor, each with numbers on both axes, the sensor's name and its value at the marked window.
+const width = 1794, at = 3, scale = P.historyScale(rows, sensors, width);
+const charts = P.sensorHistory(rows, sensors, at, width);
+assert.equal(count(charts, '<figure class="pg-sm"'), n);
+assert.ok(charts.includes('grid-template-columns:repeat(4,'));
+assert.ok(count(charts, 'class="pg-tick"') >= n * 6);
+for (const s of sensors) {
+  assert.ok(charts.includes('<b data-sensor-tip="' + s + '">' + s + '</b><span class="pg-sm-value">' + P.signedValue(rows[at][s]) + '</span>'), s);
+}
+// A stored value stands where the two scales put it: the first sensor at the marked window.
+const first = sensors[0], row = rows[at];
+assert.ok(charts.includes(scale.X(row.end_cycle).toFixed(1) + ',' + scale.Y(row[first]).toFixed(1)));
+// Every chart shares one vertical scale, wide enough for the largest value of any sensor.
+const all = rows.flatMap(r => sensors.map(s => r[s]));
+assert.ok(scale.lo < Math.min(...all) && scale.hi > Math.max(...all));
+assert.ok(Math.abs(scale.largest - Math.max(...all.map(Math.abs))) < 1e-12);
+assert.ok(Math.abs(scale.cycleAt(scale.X(row.end_cycle)) - row.end_cycle) < 1e-9);
+
+// The same values in one space: a ribbon and a dot per sensor, and the three axes named.
+const view = {az: P.RIBBON_VIEW.az, el: P.RIBBON_VIEW.el};
+const chart = P.ribbons(rows, sensors, width, view, at, 'SHAP value');
+assert.equal(count(chart, '<g class="pg-3d-ribbon"'), n);
+assert.equal(count(chart, '<circle'), n);
+for (const title of ['>Features</text>', '>SHAP value</text>', '>Cycle</text>']) assert.ok(chart.includes(title), title);
+for (const s of sensors) assert.ok(chart.includes('class="pg-3d-name" data-sensor-tip="' + s + '">' + s + '</text>'), s);
+assert.ok(!chart.includes('NaN'));
+// Turning it draws it from another side, and leaves the number of ribbons alone.
+const turned = P.ribbons(rows, sensors, width, {az: view.az + 90, el: 50}, at, 'SHAP value');
+assert.notEqual(turned, chart);
+assert.equal(count(turned, '<g class="pg-3d-ribbon"'), n);
+// Nothing shrinks with distance: the same height is the same length on the screen at the front and at the back.
+const size = P.ribbonSize(width), cam = P.ribbonCamera(view, size.W, size.H);
+const rise = (u, v) => cam.at(u, v, 0)[1] - cam.at(u, v, 0.4)[1];
+assert.ok(Math.abs(rise(-1, -1) - rise(1, 1)) < 1e-9 && rise(0, 0) > 0);
+
+// Every value as one dot: a row is 38 units tall on a wide screen, and each name says what it stands for.
+const swarm = P.beeswarm(rows, sensors, 1200);
+assert.ok(swarm.includes('viewBox="0 0 1200 ' + (10 + 38 * n + 36) + '"'));
+assert.equal(count(swarm, '<circle'), rows.length * n);
+for (const s of sensors) assert.ok(swarm.includes('data-sensor-tip="' + s + '">' + s + '</text>'), s);
+assert.ok(E.locations.T24.name.startsWith('Temperature'));
+"""
+    done = subprocess.run([node, "-e", script], input=json.dumps(data), text=True, encoding="utf-8",
+                          capture_output=True, cwd=ROOT, timeout=120)
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_walk_explanation_s_tabs_draw_the_stored_numbers_and_say_what_they_are():
+    """The score as a sum whose bars meet, the largest walks one position per layer, and the check as two tests."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the tabs of a walk explanation.")
+    stored = next((p for p in sorted((ROOT / "reports").glob("*/explanations/*/summary.json"))
+                   if (s := json.loads(p.read_text(encoding="utf-8"))).get("method") == "walks"
+                   and s.get("scope") == "engine" and s.get("flipping_aufc") and s.get("sensors")), None)
+    if stored is None:
+        pytest.skip("A stored walk explanation of one engine, with its check, is needed.")
+    data = playground.explanation_detail(ROOT, stored.parents[2].name, stored.parent.name)
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const data = JSON.parse(fs.readFileSync(0, 'utf8'));
+const E = require('./src/thesis_gnn_rul_xai/docsite/assets/engine-view.js').ThesisEngineView;
+const context = {window: {ThesisEngineView: E}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {scoreSum, scoreSumScale, walkParts, walkPartList, topWalks, flippingFigure, ownRanking, scoreShare,
+    setup: function (helpers, state) { T = helpers; S = state; }};`), context);
+const P = context.window.test;
+const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+P.setup({escapeHtml, fixed: (value, places) => Number(value).toFixed(places === undefined ? 2 : places)}, {explain: {}, options: {}});
+const rows = data.values, sum = data.summary, count = (text, piece) => text.split(piece).length - 1;
+const at = Math.min(7, rows.length - 1), row = rows[at];
+
+// The score, added up: three named parts and their total, each with the stored number.
+const parts = P.walkPartList(sum);
+assert.equal(parts.map(p => p.key).join('|'), 'constant|stays|moves');
+const home = (sum.groups || []).length ? 'group' : 'sensor';
+assert.equal(parts.map(p => p.name).join('|'), 'Added by the network|Walks that stay in their ' + home + '|Walks that cross to another ' + home);
+const added = P.scoreSum(data, at);
+assert.ok(added.includes('The score of cycle ' + row.end_cycle + ' of engine ' + row.unit + ', added up'));
+const shown = [...added.matchAll(/class="pg-sum-value">([^<]+)</g)].map(m => m[1]);
+assert.deepEqual(shown, [row.constant, row.stays, row.moves, row.score].map(P.scoreShare));
+// Each bar starts where the one above ended, and the total's bar ends where the last part's does.
+const bars = [...added.matchAll(/class="pg-sum-bar[^"]*" style="left:([\d.]+)%;width:([\d.]+)%/g)].map(m => [Number(m[1]), Number(m[1]) + Number(m[2])]);
+assert.equal(bars.length, 4);
+const scale = P.scoreSumScale(rows), place = v => (v - scale.lo) / (scale.hi - scale.lo) * 100;
+let total = 0;
+[row.constant, row.stays, row.moves].forEach((value, i) => {
+  const from = total; total += value;
+  assert.ok(Math.abs(bars[i][0] - place(Math.min(from, total))) < 0.02, 'part ' + i + ' starts at the running total');
+  assert.ok(Math.abs(bars[i][1] - Math.max(place(Math.max(from, total)), bars[i][0] + 0.2)) < 0.03, 'part ' + i + ' ends at the next one');
+});
+assert.ok(Math.abs(total - row.score) < 1e-9, 'the stored parts add up to the stored score');
+assert.ok(Math.abs(bars[3][0] - place(Math.min(0, row.score))) < 0.02 && Math.abs(bars[3][1] - place(Math.max(0, row.score))) < 0.03);
+// One scale holds every running total of every cycle, so bars compare as the slider moves.
+for (const r of rows) {
+  for (const v of [r.constant, r.constant + r.stays, r.score]) assert.ok(v > scale.lo && v < scale.hi);
+}
+assert.ok(added.includes('<strong>' + Number(row.predicted).toFixed(1) + ' cycles</strong>'));
+assert.ok(Math.abs(row.predicted - sum.rul_max / (1 + Math.exp(-row.score))) < 1e-3, 'the prediction is the score on the curve the sentence describes');
+
+// The same parts along the engine's life: four lines, the chosen cycle marked on each.
+const along = P.walkParts(data, at, 1200);
+assert.equal(count(along, '<polyline'), 4);
+assert.equal(count(along, 'r="5" fill="none"'), 4);
+assert.ok(along.includes('>cycle ' + row.end_cycle + '</text>'));
+
+// The largest walks: one row each, one chip per position, and the kind the score's split gives it.
+const list = P.topWalks(data);
+assert.equal(count(list, '<li class="pg-walk"'), data.top_walks.length);
+const groupOf = {};
+(sum.groups || []).forEach(g => g.forEach(s => { groupOf[s] = g.join('/'); }));
+const stays = data.top_walks.filter(w => { const steps = w.walk.split(' -> '); return steps.slice(1).every(x => x === (groupOf[steps[0]] || steps[0])); }).length;
+assert.equal(count(list, '>stays in its ' + home + '</span>'), stays);
+assert.equal(count(list, '>crosses to another ' + home + '</span>'), data.top_walks.length - stays);
+const layers = data.top_walks[0].walk.split(' -> ').length - 1;
+assert.equal(layers, sum.steps);
+for (let i = 1; i <= layers; i++) assert.ok(list.includes('<span>After layer ' + i + '</span>'));
+assert.equal(count(list, 'class="pg-walk-step"'), data.top_walks.length * (layers + 1));
+data.top_walks.forEach((w, i) => {
+  assert.ok(list.includes('data-label="average share">' + P.scoreShare(w.mean) + '<'), 'share of walk ' + i);
+  assert.ok(list.includes('data-action="walk-show" data-walk="' + i + '"'));
+});
+assert.ok(list.includes('<strong>' + Number(sum.cancellation_median).toFixed(1) + '\u00d7</strong>'));
+assert.ok(list.includes('data-sensor-tip="' + data.top_walks[0].walk.split(' -> ')[0] + '"'));
+
+// The check: two tests, a row per stored curve, this explanation's own ranking marked, and the order it took.
+const index = 0, mine = data.flipping.filter(r => Number(r.window) === index);
+const check = P.flippingFigure(data, index, 1400);
+assert.equal(count(check, 'class="pg-figure pg-check-card"'), 2);
+assert.ok(check.includes('>Adding sensors</h4><span class="pg-tag pg-tag--plain">higher is better</span>'));
+assert.ok(check.includes('>Removing sensors</h4><span class="pg-tag pg-tag--plain">lower is better</span>'));
+assert.equal(count(check, '<polyline'), mine.length);
+assert.equal(count(check, '<tr'), mine.length + 2);
+assert.equal(count(check, '>this explanation</span>'), 2);
+const own = P.ownRanking(sum, mine);
+for (const task of ['activation', 'pruning']) {
+  const r = mine.find(x => x.task === task && x.ranking === own);
+  const names = r.order.split(' ').map(i => sum.sensors[Number(i)]);
+  assert.ok(check.includes(names.map(s => '<span class="pg-chip" data-sensor-tip="' + s + '">' + s + '</span>').join('')), task + ' order');
+  assert.ok(check.includes('<td class="num">' + Number(r.aufc).toFixed(3) + '</td>'), task + ' value');
+  // What the table calls a curve's number is the mean of its points.
+  const points = Object.keys(r).filter(k => k.startsWith('step_')).map(k => r[k]);
+  assert.ok(Math.abs(points.reduce((a, b) => a + b, 0) / points.length - r.aufc) < 1e-9);
+}
+for (const a of sum.flipping_aufc) assert.ok(check.includes(Number(a.mean).toFixed(3) + ' ± ' + Number(a.std).toFixed(3)), a.ranking);
+// On a narrow panel the two tests stand one under the other.
+assert.ok(P.flippingFigure(data, index, 1400).includes('pg-check pg-check--two'));
+assert.ok(!P.flippingFigure(data, index, 700).includes('pg-check--two'));
+assert.ok(![added, along, list, check].some(text => text.includes('NaN') || text.includes('undefined')));
+"""
+    done = subprocess.run([node, "-e", script], input=json.dumps(data), text=True, encoding="utf-8",
+                          capture_output=True, cwd=ROOT, timeout=120)
+    assert done.returncode == 0, done.stderr
+
+
+def _recorded_run(root: Path, name: str, config: dict, summary: dict, per_seed: dict[int, dict]) -> Path:
+    """A finished run's record with the settings files train.py writes beside it, one training file per seed."""
+    import yaml
+
+    run = root / "reports" / name
+    run.mkdir(parents=True)
+    (run / "results.csv").write_text("seed,rmse\n42,12.0\n", encoding="utf-8")
+    (run / "preprocessing_config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+    (run / "summary.json").write_text(json.dumps({"mean": {"rmse": 12.0}, "std": {"rmse": 0.5}, **summary}),
+                                      encoding="utf-8")
+    for seed, training in per_seed.items():
+        (run / f"seed_{seed}").mkdir()
+        (run / f"seed_{seed}" / "training_config.yaml").write_text(yaml.safe_dump(training), encoding="utf-8")
+    return run
+
+
+def test_a_listed_run_carries_every_setting_it_recorded_and_none_it_did_not(tmp_path: Path):
+    """The list's filters read a run's own files: a value left empty stays, one never written is absent, no default stands in."""
+    training = {"epochs": 200, "learning_rate": 0.01, "early_stopping_patience": 20, "lr_schedule": "cosine",
+                "optimizer": "adam", "gradient_clip": None, "device": "cuda", "notes": "prose"}
+    run = _recorded_run(
+        tmp_path, "recorded",
+        config={"subset": "FD001", "window_size": 30, "smoothing_alpha": None, "validation_fraction": 0.2,
+                "seed": 42, "notes": "prose"},
+        summary={"subset": "FD001", "seeds": 3, "graph": "physics", "split": "varies_with_seed", "early_stopping": True,
+                 "lr_schedule": "cosine", "temporal_stage": "lstm", "commit": "abc1234", "finished_utc": "20261114T000000Z",
+                 "model": {"temporal": "lstm", "temporal_hidden": 32, "gcn_hidden": [32, 64, 32], "gcn_bias": False},
+                 "training": {"epochs": 200, "learning_rate": 0.01, "early_stopping_patience": 20, "lr_schedule": "cosine"}},
+        per_seed={42: {**training, "seed": 42}, 43: {**training, "seed": 43, "device": "cpu"}})
+    _recorded_run(
+        tmp_path, "older",
+        config={"subset": "FD001", "window_size": 30, "validation_fraction": 0.0},
+        summary={"subset": "FD001", "seeds": 5, "graph": "physics", "split": "varies_with_seed", "early_stopping": False,
+                 "lr_schedule": "step", "temporal_stage": "lstm", "temporal_hidden": 32, "commit": "0ldc0de-dirty",
+                 "finished_utc": "20260909T000000Z"},
+        per_seed={})
+
+    runs = {item["name"]: item["parameters"] for item in playground.list_runs(tmp_path)}
+    recorded, older = runs["recorded"], runs["older"]
+
+    # What the files hold, under the names the comparison of two runs uses.
+    assert recorded["preprocessing.window_size"] == 30 and recorded["preprocessing.seed"] == 42
+    assert recorded["model.gcn_hidden"] == [32, 64, 32] and recorded["model.gcn_bias"] is False
+    assert (recorded["training.epochs"], recorded["training.learning_rate"]) == (200, 0.01)
+    assert (recorded["seeds"], recorded["split"], recorded["early_stopping"]) == (3, "varies_with_seed", True)
+    assert (recorded["commit"], recorded["reported_weights"]) == ("abc1234", "best_validation_epoch")
+    # Left empty on purpose is a value; prose notes and the seed that differs by design are not settings.
+    assert "preprocessing.smoothing_alpha" in recorded and recorded["preprocessing.smoothing_alpha"] is None
+    assert "training.gradient_clip" in recorded and recorded["training.gradient_clip"] is None
+    assert not {"preprocessing.notes", "training.notes", "training.seed"} & set(recorded)
+    # Where the seeds agree the value stands once; where they disagree it is listed seed by seed.
+    assert recorded["training.optimizer"] == "adam"
+    assert recorded["training.device"] == ["cuda", "cpu"]
+
+    # A run that stored no model and no training settings carries none: no default stands in for them.
+    assert not [key for key in older if key.startswith("training.") and key != "training.lr_schedule"]
+    assert "model.gcn_hidden" not in older and "model.gcn_bias" not in older
+    # What its summary did write is kept: the schedule, the temporal stage and its size.
+    assert older["training.lr_schedule"] == "step"
+    assert (older["model.temporal"], older["model.temporal_hidden"]) == ("lstm", 32)
+    # The two readings the list already made: graph layers unless a run says otherwise, and with
+    # nothing held back there is no split and only the last pass to report.
+    assert older["model.spatial"] == "gcn"
+    assert (older["split"], older["reported_weights"]) == ("none", "final_epoch")
+
+    # A seed that stored no training file answers from the run's summary, which holds the passes
+    # but not the update rule: for that seed the rule is not recorded, and nothing is assumed for it.
+    import yaml
+
+    (run / "seed_44").mkdir()
+    partly = {item["name"]: item["parameters"] for item in playground.list_runs(tmp_path)}["recorded"]
+    assert partly["training.epochs"] == 200
+    assert partly["training.optimizer"] == ["adam", "adam", "not recorded"]
+
+    # A file that changes is read again, although an unchanged one is read once.
+    (run / "seed_43" / "training_config.yaml").write_text(
+        yaml.safe_dump({**training, "seed": 43, "device": "cuda", "epochs": 200}), encoding="utf-8")
+    (run / "seed_44" / "training_config.yaml").write_text(yaml.safe_dump({**training, "seed": 44}), encoding="utf-8")
+    again = {item["name"]: item["parameters"] for item in playground.list_runs(tmp_path)}["recorded"]
+    assert (again["training.device"], again["training.optimizer"]) == ("cuda", "adam")
+
+
+def test_every_stored_run_lists_the_settings_its_own_files_hold():
+    """On the runs in reports/: each listed setting is the value in the run's own file, and no file's setting is left out."""
+    import yaml
+
+    runs = playground.list_runs(ROOT)
+    if not runs:
+        pytest.skip("No stored run is in reports/.")
+    for run in runs:
+        folder, listed = ROOT / "reports" / run["name"], run["parameters"]
+        config = yaml.safe_load((folder / "preprocessing_config.yaml").read_text(encoding="utf-8")) \
+            if (folder / "preprocessing_config.yaml").is_file() else {}
+        for key, value in (config or {}).items():
+            if key != "notes":
+                assert listed[f"preprocessing.{key}"] == value, (run["name"], key)
+        files = sorted(folder.glob("seed_*/training_config.yaml"))
+        stored = [yaml.safe_load(path.read_text(encoding="utf-8")) or {} for path in files]
+        for key in {key for saved in stored for key in saved} - {"notes", "seed"}:
+            values = [saved.get(key) for saved in stored]
+            if all(value == values[0] for value in values) and len(files) == len(list(folder.glob("seed_*"))):
+                assert listed[f"training.{key}"] == values[0], (run["name"], key)
+        if not stored:
+            summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+            expected = {f"training.{key}" for key in (summary.get("training") or {}) if key not in ("notes", "seed")}
+            if summary.get("lr_schedule") is not None:
+                expected.add("training.lr_schedule")
+            assert {key for key in listed if key.startswith("training.")} == expected, run["name"]
+        assert (listed["seeds"], listed["commit"]) == (run["seeds"], run["commit"])
+
+
+def test_the_run_list_has_a_filter_for_every_parameter_the_stored_runs_differ_in():
+    """More filters: a menu where the runs hold two values or more, the value itself where they agree, and Not recorded as a choice."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the filters of the run list.")
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const options = JSON.parse(fs.readFileSync(0, 'utf8'));
+const context = {window: {location: {hash: ''}}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {noFilters, runParameters, paramToken, runShown, tidyFilters, filtersInUse, filterBar, moreFilters,
+    runFilters, resultRows, setup: function (helpers, state) { T = helpers; S = state; }, state: function () { return S; }};`), context);
+const P = context.window.test;
+const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const count = (text, part) => text.split(part).length - 1;
+const fields = {};
+options.fields.forEach(f => { fields[f.key] = f; });
+
+// Four runs: three recorded their settings, the oldest only what its summary holds.
+const common = {'preprocessing.subset': 'FD001', 'preprocessing.graph': 'physics', 'preprocessing.window_size': 30,
+  'model.temporal': 'lstm', 'model.gcn_hidden': [32, 64, 32], 'training.optimizer': 'adam', 'commit': 'abc1234',
+  'reported_weights': 'best_validation_epoch', 'split': 'varies_with_seed', 'seeds': 5};
+const run = (name, extra) => ({name, subset: 'FD001', temporal: 'lstm', graph: 'physics', has_weights: true, exploratory: false,
+  reported_weights: 'best_validation_epoch', parameters: Object.assign({}, common, extra)});
+const runs = [
+  run('a', {'preprocessing.smoothing_alpha': 0.5, 'preprocessing.normalization': 'zscore', 'training.learning_rate': 0.001,
+    'model.gcn_bias': false, 'training.early_stopping_patience': 20}),
+  run('b', {'preprocessing.smoothing_alpha': null, 'preprocessing.normalization': 'zscore', 'training.learning_rate': 0.01,
+    'model.gcn_bias': true, 'training.early_stopping_patience': null}),
+  run('c', {'preprocessing.smoothing_alpha': 0.5, 'preprocessing.normalization': 'minmax_global', 'training.learning_rate': 0.0001,
+    'model.gcn_bias': false, 'training.early_stopping_patience': 50, 'split': 'none', 'seeds': 2,
+    'preprocessing.node_feature_mode': 'window'}),
+  {name: 'old', subset: 'FD001', temporal: 'lstm', graph: 'physics', has_weights: false, exploratory: false,
+    parameters: {'preprocessing.subset': 'FD001', 'preprocessing.graph': 'physics', 'preprocessing.window_size': 30,
+      'preprocessing.smoothing_alpha': 0.5, 'preprocessing.normalization': 'zscore', 'model.temporal': 'lstm',
+      'commit': '0ldc0de-dirty', 'split': 'varies_with_seed', 'seeds': 5, 'reported_weights': 'best_validation_epoch'}}
+];
+P.setup({escapeHtml}, {options, fields, runs, jobs: [], resultsTab: 'runs', page: {runs: 0, explanations: 0}, filter: P.noFilters(false)});
+const S = P.state();
+
+const params = P.runParameters(runs);
+const by = {};
+params.forEach(p => { by[p.key] = p; });
+// The first row's four are not repeated.
+for (const key of ['preprocessing.subset', 'preprocessing.graph', 'model.temporal', 'reported_weights']) assert.ok(!(key in by), key);
+// Named as the design form names them, or as a run's Settings part does where the form has no control.
+assert.equal(by['training.learning_rate'].label, fields.learning_rate.label);
+assert.equal(by['preprocessing.smoothing_alpha'].label, fields.smoothing_alpha.label);
+assert.equal(by['seeds'].label, fields.seeds.label);
+assert.equal(by['split'].label, 'Held-back engines');
+assert.equal(by['training.optimizer'].label, 'Parameter update rule');
+assert.equal(by['preprocessing.node_feature_mode'].label, 'Node feature mode');
+// In the form's groups and order: how the engines were split stands with the repeats, the commit with the record.
+assert.deepEqual([by['preprocessing.normalization'].group, by['model.gcn_bias'].group, by['training.learning_rate'].group,
+  by['split'].group].join(' '), 'preprocessing graph training training');
+// What only a run's record holds, its commit, is given no filter.
+assert.ok(!('commit' in by));
+const order = params.map(p => p.key);
+assert.equal(order.indexOf('split'), order.indexOf('seeds') + 1);
+assert.ok(order.indexOf('preprocessing.normalization') < order.indexOf('model.gcn_bias'));
+assert.ok(order.indexOf('model.gcn_bias') < order.indexOf('training.learning_rate'));
+
+// A menu only where the runs that recorded the parameter hold two values or more.
+assert.deepEqual(params.filter(p => p.varies).map(p => p.key).sort().join(' '), ['model.gcn_bias',
+  'preprocessing.normalization', 'preprocessing.smoothing_alpha', 'seeds', 'split', 'training.early_stopping_patience',
+  'training.learning_rate'].sort().join(' '));
+assert.ok(!by['preprocessing.window_size'].varies && !by['model.gcn_hidden'].varies && !by['training.optimizer'].varies);
+assert.ok(!by['preprocessing.node_feature_mode'].varies);
+// The choices, in the form's words, numbers in order, and Not recorded only where a run recorded nothing.
+const labels = key => by[key].choices.map(c => c.label).join(' | ');
+assert.equal(labels('training.learning_rate'), '0.0001 | 0.001 | 0.01 | Not recorded');
+assert.equal(labels('preprocessing.smoothing_alpha'), '0.5 | Off');
+assert.equal(labels('model.gcn_bias'), 'Off | On | Not recorded');
+assert.equal(labels('training.early_stopping_patience'), '20 | 50 | Off | Not recorded');
+assert.equal(labels('split'), 'A different draw for every seed | None held back');
+assert.equal(labels('preprocessing.normalization'), [fields.normalization.choices.find(c => c.value === 'minmax_global').label,
+  fields.normalization.choices.find(c => c.value === 'zscore').label].sort((a, b) => a.localeCompare(b, 'en')).join(' | '));
+assert.equal(by['model.gcn_hidden'].choices[0].label, '32 · 64 · 32');
+
+// Which runs a filter leaves: the value itself, a value left empty, or nothing recorded.
+const shown = more => { S.filter = P.noFilters(true); Object.assign(S.filter.more, more); return runs.filter(P.runShown).map(r => r.name).join(''); };
+assert.equal(shown({}), 'abcold');
+assert.equal(shown({'training.learning_rate': '0.01'}), 'b');
+assert.equal(shown({'preprocessing.smoothing_alpha': 'null'}), 'b');
+assert.equal(shown({'training.learning_rate': 'unrecorded'}), 'old');
+assert.equal(shown({'preprocessing.normalization': '"zscore"', 'model.gcn_bias': 'false'}), 'a');
+assert.equal(shown({'seeds': '2', 'split': '"none"'}), 'c');
+// With the first row as well.
+S.filter = P.noFilters(false); S.filter.files = true; S.filter.more['preprocessing.normalization'] = '"zscore"';
+assert.equal(runs.filter(P.runShown).map(r => r.name).join(''), 'ab');
+assert.deepEqual(JSON.parse(JSON.stringify(P.filtersInUse())), {first: 1, more: 1});
+
+// The bar: put away, each filter in use is named and can be removed; the count says how many runs are left.
+const closed = P.filterBar(params, 2);
+assert.ok(closed.includes('aria-expanded="false"') && closed.includes('aria-controls="pg-more"'));
+assert.ok(closed.includes('<span class="pg-badge" title="1 filter in use here">1</span>'));
+assert.ok(closed.includes(escapeHtml(fields.normalization.label) + ': <strong>' +
+  escapeHtml(fields.normalization.choices.find(c => c.value === 'zscore').label) + '</strong>'));
+assert.ok(closed.includes('data-action="drop-filter" data-param="preprocessing.normalization"'));
+assert.ok(closed.includes('>2 of 4 runs</p>') && closed.includes('data-action="clear-filters"'));
+assert.ok(P.moreFilters(params).includes('id="pg-more" aria-label="More filters" hidden>'));
+// On show, the menus say it themselves, so no chip repeats them.
+S.filter.open = true;
+const open = P.filterBar(params, 2), panel = P.moreFilters(params);
+assert.ok(open.includes('aria-expanded="true"') && !open.includes('pg-filter-chip'));
+assert.ok(!panel.includes(' hidden>'));
+assert.equal(count(panel, '<select '), params.filter(p => p.varies).length);
+assert.equal(count(panel, 'class="pg-filter is-used"'), 1);
+assert.ok(panel.includes('<option value="&quot;zscore&quot;" selected>'));
+assert.ok(panel.includes('<option value="unrecorded">Not recorded</option>'));
+// A parameter the runs agree on is named with its value, not given a menu.
+assert.ok(panel.includes('The same in every stored run that recorded it, so there is nothing to filter by:'));
+assert.ok(panel.includes('<dt>' + escapeHtml(fields.window_size.label) + '</dt><dd>30</dd>'));
+assert.ok(panel.includes('<dt>Parameter update rule</dt><dd>adam</dd>'));
+assert.ok(!panel.includes('data-param="preprocessing.window_size"'));
+// Nothing in use: every run counted, nothing to clear, no badge.
+S.filter = P.noFilters(false);
+const idle = P.filterBar(params, 4);
+assert.ok(idle.includes('>4 runs</p>') && !idle.includes('clear-filters') && !idle.includes('pg-badge'));
+// A filter of the first row in use is marked on its own menu.
+S.filter.subset = 'FD001';
+assert.equal(count(P.runFilters(), 'class="pg-filter is-used"'), 1);
+
+// A filter on a value no run holds any more is taken away.
+S.filter = P.noFilters(true);
+Object.assign(S.filter.more, {'training.learning_rate': '0.5', 'seeds': '2', 'preprocessing.window_size': '30', 'no.such': '1',
+  'commit': '"abc1234"'});
+P.tidyFilters(params);
+assert.deepEqual(JSON.parse(JSON.stringify(S.filter.more)), {'seeds': '2'});
+
+// The State menu's "All" is a value the list understands: every stored run is shown again.
+S.filter = P.noFilters(false);
+assert.equal(S.filter.state, 'all');
+assert.equal(P.resultRows().length, 4);
+S.filter.state = 'done';
+assert.equal(P.resultRows().length, 4);
+S.filter.state = 'live';
+assert.equal(P.resultRows().length, 0);
+S.filter.state = 'all';
+assert.equal(P.resultRows().length, 4);
+"""
+    done = subprocess.run([node, "-e", script], input=json.dumps(playground.options()), text=True, encoding="utf-8",
+                          capture_output=True, cwd=ROOT, timeout=120)
+    assert done.returncode == 0, done.stderr

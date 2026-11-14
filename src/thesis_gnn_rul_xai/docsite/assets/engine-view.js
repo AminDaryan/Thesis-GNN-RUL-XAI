@@ -117,7 +117,8 @@
     var out = '<svg viewBox="0 0 1160 620" class="ev-drawing" role="group" aria-label="' +
       (state.layout === "engine" ? "Engine cutaway with explanation markers" : "Explanation on the sensor graph") + '">';
     if (state.layout === "engine") { out += cutaway(selected && locations[selected].part); }
-    if (state.overlay || chosenWalk) {
+    // The model's connections are always drawn: they are what makes this the sensor graph.
+    if (edges.length) {
       edges.slice().sort(function (a, b) { return Math.abs(linkValue(row, a)) - Math.abs(linkValue(row, b)); }).forEach(function (e) {
         var active = chosenWalk ? paths.indexOf(e) >= 0 : !selected || e.indexOf(selected) >= 0;
         var a = at(e[0]), b = at(e[1]), v = linkValue(row, e);
@@ -138,7 +139,7 @@
           '<circle class="ev-anchor" cx="' + loc.anchor[0] + '" cy="' + loc.anchor[1] + '" r="3"/>';
       }
       var title = s + ": " + loc.name + "; " + signed(v) + (walks ? " of the score" : " cycles");
-      out += '<g role="button" tabindex="0" data-ev-sensor="' + s + '" aria-label="' + esc(title) + '" aria-pressed="' + String(selected === s) + '" class="ev-node' + (selected === s ? " is-selected" : "") + '" opacity="' + (active ? 1 : 0.38) + '"><title>' + esc(title) + '</title>';
+      out += '<g role="button" tabindex="0" data-ev-sensor="' + s + '" data-sensor-tip="' + s + '" data-tip-note="' + esc(signed(v) + (walks ? " of the score" : " cycles")) + '" aria-label="' + esc(title) + '" aria-pressed="' + String(selected === s) + '" class="ev-node' + (selected === s ? " is-selected" : "") + '" opacity="' + (active ? 1 : 0.38) + '">';
       var shape = loc.kind === "station" ? '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="25"' :
         '<rect x="' + (p[0] - 38) + '" y="' + (p[1] - 21) + '" width="76" height="42" rx="9"';
       out += shape + ' class="ev-node-base"/>' + shape + ' fill="' + (v >= 0 ? "var(--fig-accent)" : "var(--fig-warn)") +
@@ -182,16 +183,13 @@
     var edges = edgesFor(data, sensors, opt.edges);
     var limit = peaks(data, sensors, edges);
     state.layout = state.layout || "engine";
-    if (state.overlay === undefined) { state.overlay = true; }
     if (state.walk === undefined) { state.walk = -1; }
     if (sensors.indexOf(state.sensor) < 0) { state.sensor = null; }
 
     function render(focus) {
       container.innerHTML = '<figcaption><strong>Explore the engine.</strong> A schematic cutaway of the C-MAPSS engine, with this prediction’s explanation placed by component.</figcaption>' +
         '<div class="ev-controls"><div class="ev-layout" role="group" aria-label="Explanation layout">' +
-        ['engine', 'graph'].map(function (mode) { return '<button type="button" class="button" data-ev-layout="' + mode + '" aria-pressed="' + String(state.layout === mode) + '">' + (mode === "engine" ? "Engine cutaway" : "Graph layout") + '</button>'; }).join("") + '</div>' +
-        '<label><input type="checkbox" data-ev-overlay' + (state.overlay ? " checked" : "") + '> Show graph connections</label>' +
-        '<button type="button" class="button" data-ev-clear>Clear selection</button></div>' +
+        ['engine', 'graph'].map(function (mode) { return '<button type="button" class="button" data-ev-layout="' + mode + '" aria-pressed="' + String(state.layout === mode) + '">' + (mode === "engine" ? "Engine cutaway" : "Graph layout") + '</button>'; }).join("") + '</div></div>' +
         (walks && data.top_walks && data.top_walks.length ? '<label class="ev-walk-picker">Highlight a saved walk <select data-ev-walk><option value="-1">No walk selected</option>' +
           data.top_walks.map(function (w, i) { return '<option value="' + i + '"' + (state.walk === i ? " selected" : "") + '>' + esc(w.walk.split(" -> ").join(" → ")) + '</option>'; }).join("") + '</select></label>' : "") +
         '<div class="ev-scroll" tabindex="0" aria-label="Engine diagram; scroll horizontally on narrow screens">' + graphPicture(data, opt, state, sensors, edges, limit) + '</div>' +
@@ -211,15 +209,15 @@
       var sensor = event.target.closest("[data-ev-sensor]"), mode = event.target.closest("[data-ev-layout]");
       if (sensor) { state.sensor = state.sensor === sensor.dataset.evSensor ? null : sensor.dataset.evSensor; state.walk = -1; render('[data-ev-sensor="' + sensor.dataset.evSensor + '"]'); }
       else if (mode) { state.layout = mode.dataset.evLayout; render('[data-ev-layout="' + state.layout + '"]'); }
-      else if (event.target.closest("[data-ev-clear]")) { state.sensor = null; state.walk = -1; render("[data-ev-clear]"); }
     };
     container.onchange = function (event) {
-      if (event.target.hasAttribute("data-ev-overlay")) { state.overlay = event.target.checked; state.walk = -1; render("[data-ev-overlay]"); }
       if (event.target.hasAttribute("data-ev-walk")) { state.walk = Number(event.target.value); state.sensor = null; render("[data-ev-walk]"); }
     };
     container.onkeydown = function (event) {
       var sensor = event.target.closest("[data-ev-sensor]");
       if (sensor && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); sensor.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+      // A selected marker is let go by choosing it again, or with Escape from anywhere in the panel.
+      else if (event.key === "Escape" && state.sensor) { var held = state.sensor; state.sensor = null; render('[data-ev-sensor="' + held + '"]'); }
     };
     render();
     return { update: function (index) {
@@ -236,7 +234,7 @@
       Object.keys(locations).forEach(function (sensor) {
         var loc = locations[sensor], p = loc.at;
         out += '<path class="ev-leader" d="M' + p[0] + ' ' + p[1] + ' L' + loc.anchor[0] + ' ' + loc.anchor[1] + '"/>' +
-          '<g role="button" tabindex="0" data-ev-sensor="' + sensor + '" aria-pressed="' + (selected === sensor) + '" aria-label="' + esc(sensor + ': ' + loc.name) + '" class="ev-node' + (selected === sensor ? ' is-selected' : '') + '">' +
+          '<g role="button" tabindex="0" data-ev-sensor="' + sensor + '" data-sensor-tip="' + sensor + '" aria-pressed="' + (selected === sensor) + '" aria-label="' + esc(sensor + ': ' + loc.name) + '" class="ev-node' + (selected === sensor ? ' is-selected' : '') + '">' +
           (loc.kind === 'station' ? '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="25"' : '<rect x="' + (p[0]-38) + '" y="' + (p[1]-21) + '" width="76" height="42" rx="9"') +
           ' class="ev-node-base"/><text x="' + p[0] + '" y="' + (p[1]+5) + '" class="ev-symbol">' + sensor + '</text></g>';
       });
@@ -258,6 +256,60 @@
     };
     render();
   }
+
+  // One tooltip for every place a sensor's name is drawn, on any page: the
+  // name, what it stands for, and a second line when the element gives one
+  // (data-tip-note). It follows the pointer onto an element marked
+  // data-sensor-tip and the keyboard onto one that can hold the focus.
+  function sensorTips(doc) {
+    var tip = null, shown = null;
+    function hide() {
+      if (tip) { tip.hidden = true; }
+      shown = null;
+    }
+    // Above the name and centred on it; below when there is no room above,
+    // and never past either edge of the window. Something much larger than
+    // a name, a ribbon across a whole chart, is followed at the pointer.
+    function place(target, event) {
+      var box = target.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+      if (event && event.clientX !== undefined && (box.width > 160 || box.height > 80)) {
+        box = { left: event.clientX, width: 0, top: event.clientY - 6, bottom: event.clientY + 14 };
+      }
+      var left = Math.max(8, Math.min(doc.documentElement.clientWidth - w - 8, box.left + box.width / 2 - w / 2));
+      var top = box.top - h - 8;
+      if (top < 8) { top = box.bottom + 8; }
+      tip.style.left = Math.round(left) + "px";
+      tip.style.top = Math.round(top) + "px";
+    }
+    function show(target, event) {
+      var s = target.getAttribute("data-sensor-tip"), loc = locations[s], note = target.getAttribute("data-tip-note");
+      if (!loc) { hide(); return; }
+      if (!tip) {
+        tip = doc.createElement("div");
+        tip.className = "sensor-tip";
+        tip.setAttribute("role", "tooltip");
+        doc.body.appendChild(tip);
+      }
+      tip.innerHTML = "<strong>" + esc(s) + "</strong><span>" + esc(loc.name) + "</span>" + (note ? "<small>" + esc(note) + "</small>" : "");
+      tip.hidden = false;
+      place(target, event);
+      shown = target;
+    }
+    function marked(event) { return event.target && event.target.closest ? event.target.closest("[data-sensor-tip]") : null; }
+    doc.addEventListener("pointerover", function (event) {
+      var target = marked(event);
+      if (!target) { hide(); } else if (target !== shown || tip.hidden) { show(target, event); }
+    });
+    doc.addEventListener("pointermove", function (event) {
+      if (shown && tip && !tip.hidden && marked(event) === shown) { place(shown, event); }
+    });
+    doc.addEventListener("pointerdown", function (event) { if (!marked(event)) { hide(); } });
+    doc.addEventListener("focusin", function (event) { var target = marked(event); if (target) { show(target); } });
+    doc.addEventListener("focusout", hide);
+    doc.addEventListener("scroll", hide, true);
+    doc.addEventListener("keydown", function (event) { if (event.key === "Escape") { hide(); } });
+  }
+  if (host.document && host.document.addEventListener) { sensorTips(host.document); }
 
   host.ThesisEngineView = { mount: mount, mountGuide: mountGuide, locations: locations, edgesFor: edgesFor, walkSteps: walkSteps, walkPairs: walkPairs, peaks: peaks, graphPicture: graphPicture };
 })(typeof window === "undefined" ? module.exports : window);

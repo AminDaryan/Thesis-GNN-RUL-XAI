@@ -539,9 +539,23 @@ the three tabs only corrects the address, so Back does not walk through every
 tab clicked. When the address changes while the playground is on show,
 `app.js` hands the part after `playground/` to `playground.js` (its `follow`
 function) instead of building the page again, which would lose the form and
-the list's place. A run's page is the one place with a trail of links above
-its title, "All runs / 2026-10-02 22:52 UTC", because it is the one page that
-sits below another page rather than directly below the menu.
+the list's place. A run's page is the one place with a link above its title,
+"All runs", because it is the one page that sits below another page rather
+than directly below the menu.
+
+**A run's page shows one part at a time.** Under the run's name a row of four
+tabs chooses between the overview (the four results and the notes that
+qualify them), the charts, the explanations stored for the run, and the
+settings it ran with. The author asked for this on 2026-11-14: the page first
+showed all of it in one column 1280 pixels wide, which was too much to take in
+at once and left a third of a wide screen empty. Every part now takes the
+panel's whole width. The part on show follows the run in the address, for
+example `…/runs/<folder>#charts`; the overview adds nothing, and changing part
+replaces the address rather than adding a step, so Back still leaves the run.
+An address written before the tabs existed, such as `…#pg-run-settings`, opens
+the part that holds that section. The notes stay on the same part as the
+results they qualify; the charts, which also show results, carry one line that
+counts the notes and leads to them.
 
 **Removed pages still have addresses.** The site once had separate pages for
 the sensor graph, the network's layers, every figure, the stored runs and the

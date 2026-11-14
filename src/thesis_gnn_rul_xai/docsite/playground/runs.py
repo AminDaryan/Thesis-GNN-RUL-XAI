@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 from collections.abc import Mapping
@@ -133,6 +134,77 @@ def _read_yaml(path: Path) -> dict[str, Any]:
         return {}
 
 
+@functools.lru_cache(maxsize=4096)
+def _yaml_in_state(path: str, changed: int, size: int) -> dict[str, Any]:
+    """A YAML file read once for each state it has been in, named by its time of change and its size."""
+    return _read_yaml(Path(path))
+
+
+def _seed_settings(folder: Path) -> dict[str, Any]:
+    """The training settings one seed's folder stored, empty when it stored none."""
+    path = folder / "training_config.yaml"
+    try:
+        state = path.stat()
+    except OSError:
+        return {}
+    return dict(_yaml_in_state(str(path), state.st_mtime_ns, state.st_size))
+
+
+def _seed_number(folder: Path) -> tuple[int, str]:
+    """A seed folder's place in the order of the seeds, by number where its name ends in one."""
+    tail = folder.name.removeprefix("seed_")
+    return (int(tail), "") if tail.isdigit() else (10**9, tail)
+
+
+#: What stands for a seed that stored no value where the other seeds of its run stored one.
+NOT_RECORDED = "not recorded"
+
+
+def _recorded_parameters(path: Path, summary: Mapping[str, Any], config: Mapping[str, Any],
+                         model: Mapping[str, Any] | None, described: Mapping[str, Any]) -> dict[str, Any]:
+    """Every setting one stored run recorded, on one level, named as the comparison of two runs names them."""
+    preprocessing = settings_without_notes(config)
+    for key in ("subset", "graph", "adjacency_normalization", "clip_test_labels", "validation_fraction"):
+        if key not in preprocessing and key in summary:
+            preprocessing[key] = summary[key]
+    network = dict(model or {})
+    for key, written_as in (("temporal", "temporal_stage"), ("temporal_hidden", "temporal_hidden")):
+        if key not in network and written_as in summary:
+            network[key] = summary[written_as]
+    # A run stored before the graph layers could be left out recorded no choice, and had them.
+    network.setdefault("spatial", described["spatial"])
+
+    whole_run = summary.get("training")
+    whole_run = dict(whole_run) if isinstance(whole_run, Mapping) else {}
+    folders = sorted((folder for folder in path.glob("seed_*") if folder.is_dir()), key=_seed_number)
+    # The prose notes change no number, here as in the preprocessing settings.
+    per_seed = [settings_without_notes(_seed_settings(folder) or whole_run) for folder in folders] \
+        or [settings_without_notes(whole_run)]
+    training: dict[str, Any] = {}
+    for key in dict.fromkeys(key for saved in per_seed for key in saved):
+        # The seed is what differs between the seeds of one run, by design.
+        if key == "seed":
+            continue
+        values = [saved.get(key, NOT_RECORDED) for saved in per_seed]
+        same = all(json.dumps(value, sort_keys=True) == json.dumps(values[0], sort_keys=True) for value in values)
+        training[key] = values[0] if same else values
+    if "lr_schedule" not in training and summary.get("lr_schedule") is not None:
+        training["lr_schedule"] = summary["lr_schedule"]
+
+    found: dict[str, Any] = {}
+    for group, values in (("preprocessing", preprocessing), ("model", network), ("training", training)):
+        for key, value in values.items():
+            found[f"{group}.{key}"] = value
+    found["seeds"] = described["seeds"]
+    found["commit"] = described["commit"]
+    for key in ("split", "reported_weights"):
+        if described.get(key) is not None:
+            found[key] = described[key]
+    if "early_stopping" in summary:
+        found["early_stopping"] = summary["early_stopping"]
+    return found
+
+
 def _read_csv(path: Path) -> list[dict[str, Any]]:
     """A CSV file as a list of rows, with missing values as None."""
     import pandas as pd
@@ -174,7 +246,7 @@ def _describe(path: Path, name: str | None = None) -> dict[str, Any] | None:
         "shared_across_sensors": (model or {}).get("shared_across_sensors"),
         "lr_schedule": summary.get("lr_schedule"),
     }
-    return _clean({
+    described = {
         "name": name or path.name,
         "commit": commit,
         "dirty": commit.endswith("-dirty"),
@@ -213,7 +285,10 @@ def _describe(path: Path, name: str | None = None) -> dict[str, Any] | None:
         "paper_row": row,
         "no_row_reason": reason,
         "caveats": caveats(settings_for_caveats),
-    })
+    }
+    described["parameters"] = _recorded_parameters(
+        path, summary, config, model if isinstance(model, Mapping) else None, described)
+    return _clean(described)
 
 
 def list_runs(root: Path) -> list[dict[str, Any]]:

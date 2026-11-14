@@ -293,7 +293,11 @@ can appear without moving what the pointer is on: beside a small setting's
 control, beside a list's name or its group's switch, and under a list that its
 group names. Choosing
 it leaves the keyboard's focus on the setting's control, and Reset all leaves
-it on Reset all; neither draws the form again, so the page does not move. The
+it on Reset all; neither draws the form again, so the page does not move. Two
+settings have no Reset of their own, the sub-dataset and the graph layers in
+the network: each is a short list whose first option is the default, so the
+default is one click away, and Reset all still returns both (the graph layers'
+own Reset was removed on 2026-11-14 at the author's request). The
 inputs only the chosen procedure shows stand directly under its options, on
 the same columns as every other setting. They were once indented, with a line
 down their left edge, which set them under the first option, the one they do
@@ -929,7 +933,10 @@ also announced when the very first poll already finds it ended.
 
 ### A run, and two runs
 
-An opened run shows **Settings used for this run** before its charts. Three
+An opened run shows one part at a time, chosen in a row of tabs under its
+name: **Overview**, **Charts**, **Explanations** and **Settings** (since
+2026-11-14; before that the whole run stood in one column). The Settings part
+shows **Settings used for this run** and the run's folder under `reports/`. Three
 groups show data preparation, temporal and graph layers, and training. They
 read the saved preprocessing configuration, saved model configuration and
 each seed's training configuration. Training values shared by all seeds appear
@@ -956,12 +963,35 @@ The API's `recorded_summary` and `recorded_model` preserve the saved mappings;
 Grouped study runs retain their full path below `reports/`, so opening or
 revisiting two runs named `reference` does not mix up their records.
 
+The **Explanations** part lists what is stored in the run's `explanations/`
+folder, newest first: the method, what was explained, the seed, the number of
+windows, when it finished and the commit that made it. The tab carries their
+number. A row opens that explanation in Explain predictions. None of an
+explanation's values is repeated on the run's page, because what they mean
+is read from the charts' own axes and legends, where the explanation is opened.
+
+The Overview holds the four results and, under them, the notes that qualify
+them, so a note is never on another part than the numbers it is about. One
+line under the results names the paper row they are compared with and which
+direction is better for each measure. A measure the paper prints no value for
+says so in its own tile, except where that line already says the paper prints
+RMSE only. The Charts part, which also shows results, starts with one line
+that counts the notes and leads to them.
+
 **How to interpret this run** gives each comparison note a descriptive title
 and a separate background link. Its columns use the available width, becoming
 one column in a narrow panel. The notes qualify the results; they do not
 stand in for the actual recorded settings. The test-label note appears only
 when capping was recorded, and an unknown weight-selection policy is labelled
 as unknown rather than being described as the final pass.
+
+**Correction, 2026-11-14.** For a run stored before a run's summary kept its
+training settings, the Settings part said "Not recorded" for the way the
+learning rate comes down, although each such run's `summary.json` holds it
+under `lr_schedule`. It was found when the filter for that setting listed a
+value for all 139 stored runs while the Settings part of 42 of them showed
+none. The part now shows the summary's value, marked "(run summary)" like
+every value taken from there.
 
 **Correction, 2026-10-01.** Run history previously showed only a few settings
 in badges and never exposed the complete per-seed training files. Inspecting
@@ -983,6 +1013,90 @@ to the state. Changing a filter goes back to the first page and leaves the
 focus on the filter. A row of the explanations opens that explanation in the
 Explain predictions tab.
 
+**Correction, 2026-11-14.** The State menu could not be set back. Its "All"
+wrote the value `all`, while both lists asked whether the state was `any`, the
+value they started at. So choosing "Finished" and then "All" again left both
+lists empty until the page was loaded anew. A browser check that sets every
+menu and sets it back found it. The menu and the lists now share the one
+value, and a test sets the state and returns to "All".
+
+#### More filters: one for every setting a run recorded
+
+The first row filters by four of a run's settings. A run records many more,
+on how the data was prepared, how the network was built and how it was
+trained: up to 36 in one run, in the example below. Under the first row
+stands a button, **More filters** (since 2026-11-14), which opens a panel
+between the filters and the list with a menu for each of the others. The
+panel follows four rules.
+
+1. **Only what a run recorded.** Each run in the list carries `parameters`, a
+   mapping from a setting's name to the value the run's own files hold (see
+   `list_runs` below for the names). A setting a run never wrote is absent from
+   the mapping. Today's defaults are never put in its place, for the same
+   reason a run's Settings part says "Not recorded": a default describes the
+   form as it is now, not the run as it was trained.
+2. **A menu only where there is something to choose.** A setting gets a menu
+   when the runs that recorded it hold two values or more. A setting with the
+   same value in every run that recorded it is not given a menu holding one
+   choice; it is listed at the foot of the panel with that value, so the reader
+   still sees that it was looked at and what it is.
+3. **"Not recorded" is a choice.** Where some runs recorded nothing for a
+   setting, its menu ends with "Not recorded", which leaves exactly those runs.
+   Without it the older runs would vanish under any choice and could not be
+   asked for.
+4. **The design form's names, words and groups.** A menu is named as the
+   Design form names that setting and offers the form's words for each value
+   ("Off" for smoothing left empty, "32 · 64 · 32" for the three graph layers'
+   sizes), and the menus stand in the form's groups, in the form's order. A
+   setting the form has no control for takes the name a run's Settings part
+   gives it, such as "Parameter update rule". The four settings of the first
+   row are not repeated. The commit that made a run has no menu: it is part
+   of the run's record, not a setting, and the group "Run record" that held
+   it for an hour on 2026-11-14 was taken out the same day at the author's
+   request. The list's last column still shows each run's commit.
+
+A worked example, on the 139 runs in the `reports/` folder this was built
+against on 2026-11-14. That folder is not committed, so another copy holds
+other runs and shows other menus. One run recorded between 18 and 36
+settings, its commit among them. Besides the commit and the four of the
+first row, the runs recorded 32 between them. Of these, 19 hold two values
+or more and have a menu,
+and 13 hold one value and are listed with it: the window of 30 cycles in all
+139 runs, for instance, and the update rule `adam` in the 97 that recorded
+one. The first learning rate is 0.001 in 89 runs, 0.0001 in 4 and 0.01 in 4,
+and 42 runs recorded none, which makes 139. Its menu therefore reads:
+
+```
+First learning rate:   All | 0.0001 | 0.001 | 0.01 | Not recorded
+                              4        89      4      42 runs
+```
+
+Choosing 0.01 leaves 4 rows, and the line beside the button changes from
+"139 runs" to "4 of 139 runs". Choosing "Not recorded" leaves the 42 runs
+whose files hold no training settings. Each of them finished on or before
+2026-09-09, and each of the other 97 on or after 2026-09-14.
+
+How a choice is compared: the page writes each recorded value as JSON text,
+so the number `0.01` becomes `0.01`, the word `zscore` becomes `"zscore"`
+with its quotation marks, a setting left empty becomes `null`, and a list
+keeps its brackets. A run passes a filter when its text for that setting
+equals the chosen one. The runs that recorded nothing are given the bare word
+`unrecorded`, which no JSON text can equal, because JSON would write that word
+with quotation marks. This keeps three cases apart that look alike: smoothing
+switched off (recorded, and empty), smoothing never written down (not
+recorded), and smoothing at 0.5.
+
+A filter in use is outlined in its menu. While the panel is closed, each
+filter chosen in it is named beside the button with a cross that removes it
+("First learning rate: 0.01"), and the button carries their number, so a
+closed panel never narrows the list unseen. **Clear filters** takes off every
+filter of both rows and leaves the panel as it is, open or closed. If the runs
+change so that no run holds a chosen value any more, that filter is taken
+away, because its menu would otherwise show "All" while the list was still
+narrowed. A group of up to three menus takes half the panel's width, so two
+such groups share a line; in a panel narrower than 1240 pixels every group
+has a line of its own.
+
 The list of runs gives, after when each finished, its RMSE and the paper's,
 then the settings that produced it, and last the commit; a narrow panel leaves
 the commit out, the column least needed to read a result. The date is written
@@ -997,9 +1111,12 @@ there never opens the run.
 
 Click a run and it opens on its own, in place of the list, with a button back
 to every run; the list is long, and a run's curves and predictions drawn
-underneath it were a screen's scroll away. Its charts stand in one column no
-wider than 1080 pixels, and each is drawn at the width it is shown at, again
-whenever that width changes: one unit of the drawing is then one pixel on the
+underneath it were a screen's scroll away. Its charts take the panel's whole
+width, as the author asked on 2026-11-14 (until then they stood in one column
+no wider than 1080 pixels): on a panel of 1000 pixels or more the per-seed
+chart stands beside the training curves, a third of the row and two thirds,
+with the predictions under them across the whole row. Each is drawn at the
+width it is shown at, again whenever that width changes: one unit of the drawing is then one pixel on the
 screen, so the numbers on its axes are held to the site's smallest size, 11
 pixels, and its axis names are 12, at every width. Drawn once at a fixed width
 and stretched to the column, as they first were, they fell to 4 pixels on a
@@ -1064,8 +1181,7 @@ no walks to divide its prediction among. Shapley values and occlusion only
 replace a sensor's readings and watch the prediction move, which works on any
 network. The server refuses a walk request for such a run too, as
 `scripts/explain.py` does, and an explanation of it is drawn with no
-connections between the sensors and without the "Sensor graph" chart, since
-the network never used one.
+connections between the sensors, since the network never used any.
 
 Measured
 on this machine's processor with an untrained network, one window of exact
@@ -1094,6 +1210,26 @@ the paper's Fig. 9, left." A method added by this project states that origin
 once in its introduction instead of repeating "Not in the paper" on every
 chart. The distinction remains visible without making each caption carry the
 same warning (working rule 5).
+
+Nothing stands between the form and the charts of a Shapley explanation,
+since 2026-11-14. A paragraph used to say there what a value is, and three
+notes under it said that the values add up to the prediction minus one
+constant (assumption A-24), that the paper's Table 12 cannot hold the signed
+values its own Equation 14 defines (finding F-08), and that a large value is
+not evidence that the sensor causes the engine's wear. The author had them
+removed to leave the charts the room. What each said is still in the
+project: the method's own i in the form says what a value is, that the values
+together equal the prediction minus the starting prediction, and that they
+explain the model and not the causes of engine failure; each chart's axis
+names its unit and each legend its colours; and the log holds the two entries
+in full (`docs/assumptions/A-24.md` and `docs/findings/F-08.md`). An occlusion explanation
+keeps one line there, that the paper does not use the method, as the guide
+above a walk explanation does (working rule 5).
+
+The button that starts an explanation ends the form on a row of its own, at
+the left edge where every setting's name starts. It used to be the last cell
+of the settings' grid, which put it in the middle of the form, beside "Engine
+number" and above the line of the inputs.
 
 The explanation charts share one row of tabs and one full-width viewing area.
 Only the chosen chart is visible, so the engine, remaining-life curve, sensor
@@ -1125,9 +1261,56 @@ remaining life. For held-back engine 5 of seed 42 of the default configuration
 the capped label is below the life truly left in 114 of its 240 windows. Found
 by a review of the wording around the capped label.)
 
+**All values** draws each sensor's row 38 pixels tall on a screen 700 pixels
+wide or more (28 below that; it was 20 everywhere until 2026-11-14), so the
+windows that share a value stand in a column of dots instead of on top of one
+another.
+
+**Over time** holds the same numbers twice. First one chart per sensor: the
+engine's cycles along the bottom, the sensor's value up the side, both with
+their numbers, and the sensor's name with its value at the marked cycle above
+it. Four charts stand side by side on a wide screen and never one narrower
+than 340 pixels until the screen itself is; each is drawn at the size it is
+shown at, so its numbers keep the page's 11 pixels. Every chart shares one
+vertical scale, so a tall chart means a large value and not a stretched axis.
+Until 2026-11-14 the same charts were 200 pixels wide with no numbers on
+either axis.
+
+Under them is one chart in three dimensions, with the axes Features, the
+value (called SHAP value for exact Shapley values and Occlusion value for
+occlusion) and Cycle. Each sensor is a ribbon running along the cycles, as
+high as its value, blue above zero and orange below. The ribbons are not
+joined into a surface: a surface would draw values between two sensors where
+none exist. The chart is drawn without perspective, meaning nothing shrinks
+with distance, so two heights can be compared from front to back; the price
+is that it looks flatter than a photograph would. A ribbon hides most of what
+stands behind it, which keeps fourteen noisy lines from mixing into one grey
+mass, and that is also the chart's limit: a value behind a taller ribbon
+cannot be read until the chart is turned. Dragging turns it, the arrow keys
+do the same while it holds the keyboard, and a double click or Home returns
+it to its first view. A sideways drag turns it on a touch screen while an
+up-and-down one still scrolls the page. The charts above it remain the place
+to read a number; the 3D chart shows the shape of all fourteen at once. The
+paper's PDF could not be opened where this chart was written, so its caption
+does not say whether the paper has a figure like it.
+
+**Wherever a sensor's name is drawn in an explanation**, resting the pointer
+on it shows what the name stands for: "T24, Temperature leaving the
+low-pressure compressor". The words are the ones the engine drawing already
+used, from `engine-view.js`, whose sources are named below. Where the name
+stands beside a number, the tooltip adds it as a second line. The same
+tooltip shows when the keyboard reaches a marker on the engine. It covers the
+engine, the dots, the ranking, the charts over time, the 3D chart, the heat
+map of test engines and the small graphs of the paper comparison. Since the
+tabs of a walk explanation were rebuilt, later the same day, it also covers
+every sensor they name: at each position of a walk, in a group, in the order
+the check took the sensors in, and in the picture of the average connections.
+
 Dragging updates the visible engine or graph, the selected-cycle marker on
-the remaining-life chart, the history readouts, and the selected test engine's
-score breakdown without waiting for release. Only the changing content is
+the remaining-life chart, the value each chart over time gives in its heading,
+the dots on the 3D chart, and, for a walk explanation, the score written as a
+sum, the mark of the chosen cycle or engine on the chart under it, and the
+curves of the check, without waiting for release. Only the changing content is
 replaced, at most once per browser drawing frame: the slider itself, selected
 sensor, graph layout and expanded calculation details remain in place. On
 switching chart tabs the newly visible chart uses the current selection.
@@ -1148,11 +1331,14 @@ the detailed section is closed.
 **A walk explanation shows only the GNN-LRP paper's own views**, since
 2026-10-01: the Engine tab, whose numbers are the walks added up by their
 starting sensor, which that paper says is how its method gives sensor-level
-explanations; the score split into its parts; the connections, the walks added
-up per connection, which that paper also allows; the largest walks; and
-**Authors' check**, the node-flipping curves that paper uses to test its own
-explanations (its Section 4.1), for the selected cycle or engine, with the area
-under each curve averaged over every saved one. Views borrowed from the Shapley
+explanations; **Score breakdown**, the score split into its parts; the
+connections, the walks added up per connection, which that paper also allows;
+**Largest walks**; and **Explanation check**, the curves that paper uses to
+test its own explanations (its Section 4.1, where it calls the procedure node
+flipping), for the selected cycle or engine, with the area
+under each curve averaged over every saved one. The second and the last were
+named "Score parts" and "Authors' check" until 2026-11-14; the section
+"What each tab of a walk explanation shows" below says why they changed. Views borrowed from the Shapley
 explanation or from the main paper — the remaining-life chart drawn after the
 main paper's Fig. 7, the sensors ranked by average size, the per-sensor panels
 over time and the heat map across engines — are not offered for walks, and the
@@ -1212,13 +1398,13 @@ short name (`_gamma-falling`, for example); the calculation section then gives
 its numbers, not its name again. One made with no extra weight, from the form
 or with `--gamma gnn-gi`, says that setting was chosen when it was made and
 has the stored check, unlike the γ 0 explanations from before 2026-10-01.
-**Authors' check** always compares the authors' setting with their baseline;
+**Explanation check** always compares the authors' setting with their baseline;
 an option that is neither is checked beside them, drawn in gold and named as
 the form names it. Not in orange, because orange already means a negative
 share in this view: the guide above the explanation and the legend of the
 connections say so. Not in the accent blue either, because it sits close to
-the baseline's blue-green. Gold means no sign anywhere here; it names the
-model-added part in the Score parts tab, whose own legend says so. Measured as
+the baseline's blue-green. Gold means no sign anywhere here; it names what the
+network adds in the Score breakdown tab, whose own first row says so. Measured as
 the straight-line distance between two colours in the CIE Lab colour space,
 which is built so that equal distances look roughly equally different, the
 accent blue is 32 from the baseline's colour in light mode and 23 in dark;
@@ -1248,14 +1434,13 @@ For a walk explanation over the test engines, engine number is not drawn as a
 horizontal sequence: it is an identifier, so a line or left-to-right pattern
 would have no meaning. Instead, one row per part of the score shows every
 engine, the middle half of their values and their median, the middle value after
-ordering them. Beneath it, one chosen engine is a waterfall: the contribution
-from the added constants starts at zero, the walks that stay within a sensor's
-group start from that subtotal, and the walks that move between groups start
-from the next subtotal. The final outlined bar is the saved score, so the
-adding-up claim is visible rather than left to the reader's arithmetic. These
+ordering them, with the chosen engine ringed in every row. Until 2026-11-14 a
+second chart beneath it, of bars each starting where the last one ended, built
+one chosen engine's score from its parts; the sum described in the next
+section replaced it and is drawn for one engine's cycles as well. These
 are signed totals. A small bar can mean little travelled through the graph, or
-that large positive and negative walks cancelled; the largest-walk table names
-that distinction separately.
+that large positive and negative walks cancelled; the list of the largest
+walks names that distinction separately.
 
 **Label correction, 2026-09-28.** The author could not interpret “constants”,
 “stays” and “moves”. These were internal column names presented as explanations.
@@ -1273,7 +1458,93 @@ physical engine components. A route between groups leaves its starting group
 at least once, even if it later returns. The saved numeric columns keep their
 original names; only their presentation changes. The selected-engine chart
 shows the saved addition and the resulting prediction, explicitly distinguishing
-score units from cycles.
+score units from cycles. The three names of this paragraph were replaced again
+on 2026-11-14, as the next section records.
+
+### What each tab of a walk explanation shows
+
+Rebuilt on 2026-11-14, after the author wrote that the tabs then named "Score
+parts", "Largest walks" and "Authors' check" were "very ambiguous as to what
+they are actually representing". Three things were wrong, and all three were
+about saying, not about the numbers, none of which changed:
+
+- **A tab did not say what question it answers.** Each now opens with that
+  question as its heading, "What is the score made of?", "Which walks carry
+  the most?" and "Does the explanation agree with the network?", followed by
+  one or two sentences on what is drawn. A walk is defined again in each tab
+  that uses the word, as the route one sensor's reading takes through the
+  network's graph layers, because a reader may open any tab first.
+- **Two words stood for one thing, and three names stood for nothing a reader
+  could picture.** The page said "walk" in one tab and "route" in another, and
+  called the parts "model-added part", "routes within one group" and "routes
+  between groups". It now says "walk" everywhere, and the parts are **Added by
+  the network**, **Walks that stay in their group** and **Walks that cross to
+  another group**. Where an explanation has no group, because no two sensors
+  share exactly the same connections, the last two say "sensor" in place of
+  "group". "Authors' check" did not say whose authors or a check of what; it
+  is **Explanation check**, and its heading says the rest.
+- **The explaining stood apart from the thing explained.** A caption above a
+  chart, the chart, then five paragraphs of definitions in a narrow column
+  under it. Each definition now stands in the row or the card of the thing it
+  defines.
+
+**Score breakdown.** The chosen cycle's or engine's score is written the way a
+sum is written by hand: one row per part with its name, one sentence on what
+it is, its number and a bar; a rule; and the score under it. Each bar starts
+where the bar above it ended, joined to it by a dashed line, and the outlined
+bar of the score ends where the last part's bar does, so that the parts add up
+to the score is drawn and not only asserted
+(`test_a_walk_explanation_s_tabs_draw_the_stored_numbers_and_say_what_they_are`
+in `tests/test_playground.py` checks both on a stored explanation, and that
+its three parts add up to its score). Every cycle or engine is drawn on one
+scale, wide enough for every running total, so the bars compare as the slider
+moves. Under the sum, one sentence gives the prediction that score becomes and
+says that a higher score always gives a longer one, up to the ceiling of the
+labels; the same test checks, on the stored numbers, that the prediction is
+that ceiling times the score put through the network's last step, a curve
+that rises from 0 to 1. Two notes follow: what a group is, with this
+explanation's groups, and why what the network adds differs from one cycle to
+the next. Under the sum, the same parts are drawn for every cycle of the
+engine, as lines with the chosen cycle marked on each, or for every test
+engine, as the rows of dots described above.
+
+**Largest walks.** One row per walk in place of a table of names joined by
+arrows. A walk is drawn as one chip per position under the headings "Starts
+at", "After layer 1" and so on, so the positions line up down the list and a
+reader sees at once where two walks part. A chip with several names is a group
+of sensors the graph layers cannot tell apart. Each row says whether the walk
+stays in its group or crosses to another, in the colours of those two parts of
+the score, worked out from the walk's own positions the way
+`crossing_relevance` in `explain/walks.py` does. Its average share is a solid
+bar, blue above zero and orange below, drawn inside a pale bar for its average
+size with signs ignored; a solid bar much shorter than its pale one is a walk
+whose share is positive at some cycles and negative at others. Above the list
+stands how far the walks cancel, as a number, since a list of the largest
+walks read without it suggests effects that are not there. The list is an
+average over every saved cycle or engine, and says so, because the slider
+above the tabs does not change it. "Show on engine" opens the Engine tab with
+that walk chosen in its picker.
+
+**Explanation check.** The two tests stand side by side where the panel is at
+least 1180 pixels wide, each in its own frame with its name, which way is
+better, and two sentences on what is done. The curves' legend is a table that
+also gives each curve's number at the chosen cycle and its mean and spread
+over all of them, with the mean and spread drawn on one scale beside the
+numbers, so a reader sees how far the rankings overlap before reading that one
+is ahead. The rankings are named for what they rank by: **Whole walks** value
+a set of sensors by every walk lying wholly inside it, **Sensor totals** by
+its sensors' own numbers added up, and each name ends with the setting of the
+rule. The row of this explanation's own ranking is marked, and the order in
+which that ranking took the sensors at the chosen cycle is listed under each
+chart. **A defect was found and fixed here.** Until 2026-11-14 the curves did
+not follow the slider: they stayed on the cycle or engine that was chosen when
+the explanation was last drawn, while their caption said "the selected
+window". They are now drawn again whenever the selection moves.
+
+**Connections**, the tab only an explanation of the test engines has, held
+nothing but a closed disclosure. Its picture is now drawn open under its own
+heading, which says that it is an average and that the slider does not change
+it.
 
 ### Locating the explanations on an engine
 
@@ -1335,7 +1606,12 @@ line must never be read as the same relationship. Circles locate temperature
 and pressure measurement regions. Rounded boxes identify shaft quantities,
 calculated quantities such as corrected speed, and system quantities such as
 cooling flow. Selecting a marker explains that distinction and highlights its
-component and graph neighbours. Keyboard users can select markers with Enter
+component and graph neighbours; selecting it again, or pressing Escape, lets
+it go. The model's connections are always drawn. Until 2026-11-14 a tick box
+could hide them and a button cleared the selection; the author had both
+removed, along with the separate "Sensor graph" tab, which drew the same
+graph coloured by rank as the paper's Fig. 9 (right) does. The engine panel's
+graph layout colours each sensor by the sign and size of its value instead. Keyboard users can select markers with Enter
 or Space. The surrounding chart keeps the page's full width, but the drawing
 itself stops at 1,000 pixels and stays centred so the selected sensor's
 explanation remains close below it. A narrow screen scrolls the drawing
@@ -1345,8 +1621,8 @@ The engine and graph views show the same stored values, with the same colour
 and width scales. Positive shares are blue and negative shares orange; the
 strongest absolute value across all explained windows sets the marker scale.
 The chosen cycle changes with the shared control above the chart tabs. For test
-scope, this picks one test engine's last window; the separate average-connection view remains
-under a disclosure. No model is retrained or sensor data generated to draw it.
+scope, this picks one test engine's last window; the separate average-connection view has
+its own tab, Connections. No model is retrained or sensor data generated to draw it.
 
 For graph walks, connection columns decide which edges exist, even when their
 shares are zero; both directions are added before setting a line's width.
@@ -1471,3 +1747,34 @@ folders remain distinct.  The other two functions return one run in full,
 with every seed's per-pass record and test predictions and every stored
 explanation, or two runs paired seed by seed, with the settings that differ
 and a paired *t* and *p* for each measure.
+
+Each listed run also carries `parameters`, every setting it recorded, on one
+level, which is what the run list's "More filters" reads. The names are the
+ones `compare_runs` uses for a setting that differs: `preprocessing.` before
+a key of the run's `preprocessing_config.yaml` (`preprocessing.window_size`),
+`model.` before a key of the network's description in `summary.json`
+(`model.gcn_hidden`), `training.` before a key of the training settings
+(`training.learning_rate`), and `seeds`, `split`, `commit`, `early_stopping`
+and `reported_weights` for what only the run's record holds. Four details:
+
+- The training settings are read from each seed's `training_config.yaml`,
+  which holds more than the summary does: the device, the update rule, the
+  loss. A value all seeds agree on stands once. Where they disagree, the value
+  is a list with one entry per seed, in the order of the seed numbers, and a
+  seed that did not record the setting contributes the words `not recorded`.
+  A seed with no such file is read from the summary's `training`.
+- The free-text `notes` are left out, and so is the training `seed`, which
+  differs between the seeds of one run by design.
+- A key with the value `None` is kept. It says the setting was written down
+  and left empty, which is different from a key that is absent.
+- Two values are readings, not copies, and are the ones the list's columns
+  already show: `split` is `none` for a run that held no engine back whatever
+  its record says, and `model.spatial` is `gcn` for a run stored before the
+  graph layers could be left out, which recorded no choice and had them.
+
+A seed's file is parsed once and kept, under its path, its time of change
+and its size, so a list of 139 runs does not parse several hundred files
+again on every request, while a file that is rewritten is read again. Measured
+on those 139 runs on 2026-11-14, on the machine this was built on: 0.39
+seconds for the first list after the server starts, and between 0.13 and 0.14
+seconds for each of the five after it.

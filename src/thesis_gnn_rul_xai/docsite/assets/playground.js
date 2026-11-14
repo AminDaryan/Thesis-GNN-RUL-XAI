@@ -233,7 +233,15 @@
   // can be bookmarked, reloaded and reached with Back and Forward. The list
   // is #/explore/playground/runs, explaining is .../explain, and the bare
   // address is the design tab. Opening or leaving a run adds a step to the
-  // browser's history; moving between tabs only corrects the address.
+  // browser's history; moving between tabs only corrects the address. The
+  // part of a run on show follows the run, "…/runs/<folder>#charts"; the
+  // first part, the overview, adds nothing.
+
+  var RUN_TABS = [["overview", "Overview"], ["charts", "Charts"], ["explanations", "Explanations"], ["settings", "Settings"]];
+  // The sections a run's page had before it had parts: an address that names
+  // one still opens the part that holds it.
+  var RUN_SECTIONS = { "pg-run-results": "overview", "pg-run-interpretation": "overview", "pg-run-charts": "charts",
+    "pg-run-settings": "settings" };
 
   function runAddress(name) { return ROUTE + "/runs/" + encodeURIComponent(name).replace(/%2F/g, "/"); }
 
@@ -242,15 +250,33 @@
     return S.tab === "explain" ? ROUTE + "/explain" : ROUTE;
   }
 
-  // The address on show, without a section a link may have added after it.
+  // The address on show, without what a link may have added after it: a
+  // section of a page, or the part of a run.
   function shownAddress() { return window.location.hash.replace(/^(#\/[^#]*).*$/, "$1"); }
+
+  // The part of the run on show, and the part the address names.
+  function runTabShown() {
+    return RUN_TABS.some(function (t) { return t[0] === S.runTab; }) ? S.runTab : "overview";
+  }
+  function runTabInAddress() {
+    var part = window.location.hash.split("#")[2] || "";
+    part = RUN_SECTIONS[part] || part;
+    return RUN_TABS.some(function (t) { return t[0] === part; }) ? part : "overview";
+  }
+  function runPartAddress() {
+    var part = S.tab === "results" && S.selected ? runTabShown() : "overview";
+    return part === "overview" ? "" : "#" + part;
+  }
 
   function setAddress() {
     if (!onPage()) { return; }
-    var next = address(), now = shownAddress();
+    var next = address(), now = shownAddress(), whole = next + runPartAddress();
     if (next !== now) {
       var runPage = /\/runs\/./;
-      history[runPage.test(next) || runPage.test(now) ? "pushState" : "replaceState"](null, "", next);
+      history[runPage.test(next) || runPage.test(now) ? "pushState" : "replaceState"](null, "", whole);
+    } else if (S.tab === "results" && S.selected && window.location.hash !== whole) {
+      // The same run at another of its parts.
+      history.replaceState(null, "", whole);
     }
     pageTitle();
   }
@@ -280,16 +306,29 @@
     box.scrollTo({ top: y || 0, behavior: "instant" });
     if (box !== document.scrollingElement) { window.scrollTo({ top: 0, behavior: "instant" }); }
   }
+  // The page moved on by a number of pixels, whichever of the two scrolls.
+  function scrollOn(by) {
+    var box = scroller(), before = box.scrollTop;
+    box.scrollBy({ top: by, behavior: "instant" });
+    if (box.scrollTop === before && box !== document.scrollingElement) { window.scrollBy({ top: by, behavior: "instant" }); }
+  }
 
   // Back, Forward, a typed address or a link: app.js hands the new address
   // here instead of building the whole page again.
   function follow(sub) {
     if (!S.options || !$("#pg-panel")) { return false; }
     var want = readAddress(sub), before = S.selected, beforeTab = S.tab;
-    if (want.tab === beforeTab && want.selected === before) { pageTitle(); return true; }
+    var part = want.selected ? runTabInAddress() : "overview";
+    if (want.tab === beforeTab && want.selected === before) {
+      // The run on show at another of its parts, from an address typed or pasted.
+      if (want.selected && part !== runTabShown()) { S.runTab = part; drawDetail(); }
+      pageTitle();
+      return true;
+    }
     if (want.selected && !before) { S.listScroll = beforeTab === "results" ? scrolledTo() : 0; }
     S.fromList = !!want.selected && !before && beforeTab === "results";
     if (want.selected !== before) { S.selected = want.selected; S.detail = null; }
+    S.runTab = part;
     // Back on the list, its place is found again once its rows are drawn.
     if (!want.selected && before) { S.pendingScroll = S.listScroll || 0; }
     showTab(want.tab);
@@ -538,6 +577,17 @@
         X(pts[pts.length - 1][0]).toFixed(1) + "," + zero + '"/>' +
         '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + zero + '" y2="' + zero + '" stroke="var(--fig-axis)" stroke-width="0.8"/>';
     });
+    if (spec.zero && ylo < 0 && yhi > 0) {
+      out += '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + Y(0).toFixed(1) + '" y2="' + Y(0).toFixed(1) +
+        '" stroke="var(--fig-axis)"/>';
+    }
+    (spec.vlines || []).forEach(function (v) {
+      var x = X(v.x), late = x > W - right - 96;
+      out += '<line x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + top + '" y2="' + (H - bottom) +
+        '" stroke="var(--fig-ink)" stroke-opacity="0.6" stroke-dasharray="3 3"/>' +
+        (v.label ? '<text x="' + (x + (late ? -6 : 6)).toFixed(1) + '" y="' + (top + 10) + '" text-anchor="' + (late ? "end" : "start") +
+          '" class="pg-tick">' + esc(v.label) + "</text>" : "");
+    });
     (spec.hlines || []).forEach(function (h) {
       out += '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + Y(h.y) + '" y2="' + Y(h.y) +
         '" stroke="' + h.colour + '" stroke-dasharray="5 4" stroke-width="1.5"/>' +
@@ -578,12 +628,11 @@
   // width, rather than shrinking on a phone and swelling on a wide screen.
   function chartWidth() {
     var panel = $("#pg-panel");
-    var shown = panel ? Math.min(panel.clientWidth, 1080) : 666;
+    var shown = panel ? panel.clientWidth : 666;
     return Math.max(240, Math.round(shown - 26));
   }
 
-  // Explanation charts occupy their whole tab panel rather than the narrower
-  // document measure used by the run-history charts.
+  // Explanation charts occupy their whole tab panel, as a run's charts do.
   function explanationChartWidth() {
     var panel = $("#pg-panel");
     var shown = panel ? panel.clientWidth : 666;
@@ -614,7 +663,7 @@
         var width = S.tab === "explain" ? explanationChartWidth() : chartWidth();
         if (!panel.isConnected || !onPage() || width === S.chartsDrawnAt) { return; }
         var y = window.scrollY;
-        if (S.tab === "results" && S.selected && S.detail) { drawDetail(); }
+        if (S.tab === "results" && S.selected && S.detail && runTabShown() === "charts") { drawDetail(); }
         else if (S.tab === "explain" && S.explain.shown && S.explain.values) { drawExplanation(); }
         else { return; }
         window.scrollTo({ top: y, behavior: "instant" });
@@ -633,6 +682,14 @@
     return "rgb(" + SWARM_LOW.map(function (low, i) { return Math.round(low + (SWARM_HIGH[i] - low) * t); }).join(",") + ")";
   }
 
+  // What a sensor's name stands for is shown beside the pointer wherever the
+  // name is drawn: engine-view.js holds the words and draws the tooltip. This
+  // marks an element as carrying a sensor's name; note is a second line.
+  function sensorTip(s, note) {
+    var known = window.ThesisEngineView && window.ThesisEngineView.locations[s];
+    return known ? ' data-sensor-tip="' + esc(s) + '"' + (note ? ' data-tip-note="' + esc(note) + '"' : "") : "";
+  }
+
   // Every value of every sensor as one dot, the way the paper's Fig. 9 (left)
   // draws it: the sensors ranked by the average size of their values, a red
   // frame round the four largest and a blue one round the rest, and each dot
@@ -643,7 +700,10 @@
   function beeswarm(rows, ranked, width, unit) {
     var inCycles = unit === undefined;
     var hasReadings = rows.length > 0 && rows[0]["reading_" + ranked[0]] !== undefined;
-    var rowH = 20, left = 64, right = 18, top = 10, bottom = 34, W = width || 640, dot = 2.4, step = 5.2;
+    // A row is tall enough for the dots that share a value to stand in a
+    // column beside one another, so a crowd of windows reads as a crowd.
+    var W = width || 640, wide = W >= 700;
+    var rowH = wide ? 38 : 28, left = 64, right = 18, top = 10, bottom = 36, dot = wide ? 2.8 : 2.4, step = wide ? 6 : 5.2;
     var H = top + rowH * ranked.length + bottom;
     var xs = [];
     rows.forEach(function (r) { ranked.forEach(function (s) { xs.push(r[s]); }); });
@@ -660,13 +720,13 @@
     if (ranked.length > 4) { out += frame(4, ranked.length, "var(--fig-accent)"); }
     out += '<line x1="' + X(0).toFixed(1) + '" x2="' + X(0).toFixed(1) + '" y1="' + top + '" y2="' + (H - bottom) + '" stroke="var(--fig-axis)" stroke-dasharray="3 3"/>';
     niceTicks(lo, hi, 7).forEach(function (t) {
-      out += '<text x="' + X(t).toFixed(1) + '" y="' + (H - bottom + 14) + '" text-anchor="middle" class="pg-tick">' + tickLabel(t) + "</text>";
+      out += '<text x="' + X(t).toFixed(1) + '" y="' + (H - bottom + 15) + '" text-anchor="middle" class="pg-tick">' + tickLabel(t) + "</text>";
     });
     out += '<text x="' + ((left + W - right) / 2) + '" y="' + (H - 4) + '" text-anchor="middle" class="pg-axis">' +
       (inCycles ? "value, in cycles of remaining life" : "share of the score before the sigmoid") + "</text>";
     ranked.forEach(function (s, j) {
       var cy = top + j * rowH + rowH / 2;
-      out += '<text x="' + (left - 10) + '" y="' + (cy + 3.5) + '" text-anchor="end" class="pg-tick">' + esc(s) + "</text>";
+      out += '<text x="' + (left - 10) + '" y="' + (cy + 4) + '" text-anchor="end" class="pg-tick pg-sensor-name"' + sensorTip(s) + ">" + esc(s) + "</text>";
       var pts = rows.map(function (r, i) {
         return { x: r[s], shade: hasReadings ? r["reading_" + s] : i, label: "cycle " + r.end_cycle + (r.unit !== undefined ? ", engine " + r.unit : "") };
       }).filter(function (p) { return p.x !== null && isFinite(p.x); }).sort(function (a, b) { return a.x - b.x; });
@@ -719,7 +779,7 @@
     ranked.forEach(function (s, rank) {
       var row = Math.floor(rank / perRow), col = rank % perRow;
       var cx = x0 + col * gap, cy = row * rowH + r + 11, k = st.style[s];
-      out += '<g><title>' + esc(s + ": rank " + (rank + 1) + " of " + ranked.length) + "</title>" +
+      out += "<g" + (sensorTip(s, "rank " + (rank + 1) + " of " + ranked.length) || ' aria-label="' + esc(s + ": rank " + (rank + 1) + " of " + ranked.length) + '"') + ">" +
         '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/>' +
         '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" class="pg-strip-label">' + esc(s) + "</text>" +
         '<text x="' + cx + '" y="' + (cy + r + 13) + '" text-anchor="middle" class="pg-tick">' + fixed(meanAbs[s], 2) + "</text></g>";
@@ -858,8 +918,8 @@
       restore: S.restore || {}, infos: 0, step: S.step || recall(STEP) || "data", zoom: S.zoom || null, zoomed: null,
       inside: null,
       compare: [], resultsTab: S.resultsTab || "runs", page: { runs: 0, explanations: 0 }, explanations: null,
-      filter: { subset: "all", temporal: "all", graph: "all", pass: "all", state: "any", results: false, files: false },
-      xfilter: { method: "all", scope: "all", subset: "all", state: "any" },
+      filter: noFilters(false),
+      xfilter: { method: "all", scope: "all", subset: "all", state: "all" },
       explain: { run: null, detail: null, seed: null, method: "shap", scope: "engine", engine: "",
         every: 1, gamma: null, shown: null, values: null, index: 0, chart: "engine" } };
 
@@ -875,7 +935,7 @@
       frame();
       if (sub) {
         var want = readAddress(sub);
-        S.tab = want.tab; S.selected = want.selected;
+        S.tab = want.tab; S.selected = want.selected; S.runTab = runTabInAddress();
       }
       showTab(S.tab);
       pollJobs();
@@ -1041,7 +1101,8 @@
     },
     "open-run": function (button) {
       S.fromList = false;
-      S.selected = button.getAttribute("data-run"); S.detail = null; S.runs = null; showTab("results"); scrollToTop(0);
+      S.selected = button.getAttribute("data-run"); S.detail = null; S.runTab = "overview"; S.runs = null;
+      showTab("results"); scrollToTop(0);
     },
     "open-explanation": function (button) {
       S.explain.run = button.getAttribute("data-run"); S.explain.detail = null;
@@ -1055,18 +1116,39 @@
       S.selected = null; S.detail = null; setAddress(); drawResults(); scrollToTop(0);
     },
     "copy-link": function () {
-      var link = window.location.href.split("#")[0] + address();
+      var link = window.location.href.split("#")[0] + address() + runPartAddress();
       var done = function () { T.toast("Link to this run copied."); };
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link).then(done, function () { T.toast(link, 9000); });
       } else { T.toast(link, 9000); }
     },
+    "run-part": function (control) {
+      showRunPart(control.getAttribute("data-part"), control.getAttribute("data-reach"), control.getAttribute("role") === "tab");
+    },
+    // The filters for every parameter, shown or put away; the ones in use
+    // stay in use either way.
+    "more-filters": function () { S.filter.open = !S.filter.open; filtersChanged("pg-more-toggle", true); },
+    "drop-filter": function (button) { delete S.filter.more[button.getAttribute("data-param")]; filtersChanged("pg-more-toggle"); },
+    "clear-filters": function () { S.filter = noFilters(S.filter.open); filtersChanged("pg-more-toggle"); },
     "again": function () { S.settings = settingsFromRun(S.detail); S.restore = {}; saveSettings(); showTab("design"); },
     "explain-this": function () {
       S.explain.run = S.detail.name; S.explain.detail = null; S.explain.shown = null; showTab("explain");
     },
     "explain": function () { submitExplanation(); },
     "chart-tab": function (button) { selectExplanationChart(button.getAttribute("data-chart")); },
+    // A walk chosen in the list of the largest is drawn on the engine, where
+    // the same list is the picker's.
+    "walk-show": function (button) {
+      var e = S.explain, box = $("#pg-e-view");
+      if (!box || !e.values) { return; }
+      if (!e.engineView) { e.engineView = {}; }
+      e.engineView.walk = Number(button.getAttribute("data-walk"));
+      e.engineView.sensor = null;
+      mountEngine(box, e.values);
+      selectExplanationChart("engine");
+      var tab = $("#pg-chart-tab-engine");
+      if (tab) { tab.focus(); }
+    },
     "explain-previous": function () { selectExplanationIndex(S.explain.index - 1); },
     "explain-next": function () { selectExplanationIndex(S.explain.index + 1); }
   };
@@ -1085,10 +1167,14 @@
       var runs = input.hasAttribute("data-filter");
       var f = runs ? S.filter : S.xfilter, which = input.getAttribute(runs ? "data-filter" : "data-xfilter");
       f[which] = input.type === "checkbox" ? input.checked : input.value;
-      S.page[S.resultsTab] = 0;
-      drawResultsBody();
-      var again = $("#" + input.id);
-      if (again) { again.focus({ preventScroll: true }); }
+      filtersChanged(input.id);
+      return;
+    }
+    // One of the filters under "More filters": "All" takes it away again.
+    if (input.hasAttribute("data-param")) {
+      var param = input.getAttribute("data-param");
+      if (input.value === "all") { delete S.filter.more[param]; } else { S.filter.more[param] = input.value; }
+      filtersChanged(input.id);
       return;
     }
     if (input.hasAttribute("data-compare")) { compareTicked(input); return; }
@@ -2578,8 +2664,11 @@
     });
   }
 
+  // The sub-dataset and the graph layers have no Reset of their own: each is
+  // a short list whose first option is the default, one click away, and
+  // Reset all still returns both.
   function resetHtml(f) {
-    if (f.key === "subset") { return ""; }
+    if (f.key === "subset" || f.key === "spatial") { return ""; }
     return '<span class="pg-reset-slot">' + (isChanged(f)
       ? '<button type="button" class="pg-reset" data-reset="' + f.key + '" title="Back to ' + esc(defaultText(f)) +
         '" aria-label="' + esc("Reset " + splitUnit(f.label).label) + '">Reset</button>'
@@ -2876,15 +2965,18 @@
 
   // The rows of the open tab after its filters: its jobs that are not done,
   // what is running first, then its stored runs or explanations.
+  // "all" is every state. Until 2026-11-14 the lists began at a value of
+  // their own, "any", which the State menu could not return to: choosing a
+  // state and then "All" again left both lists empty.
   function resultRows() {
     var which = S.resultsTab, kind = tabKind(which);
     var f = which === "runs" ? S.filter : S.xfilter;
     var jobs = orderedJobs().filter(function (job) {
       if (job.kind !== kind || job.status === "done") { return false; }
       var state = isLive(job) ? "live" : "ended";
-      return f.state === "any" || f.state === state;
+      return f.state === "all" || f.state === state;
     }).map(function (job) { return { job: job }; });
-    var stored = f.state === "any" || f.state === "done" ? (which === "runs" ? S.runs : S.explanations) || [] : [];
+    var stored = f.state === "all" || f.state === "done" ? (which === "runs" ? S.runs : S.explanations) || [] : [];
     stored = stored.filter(which === "runs" ? runShown : explanationShown).map(function (item) { return { item: item }; });
     return jobs.concat(stored);
   }
@@ -2894,7 +2986,8 @@
     return (f.subset === "all" || r.subset === f.subset) && (f.temporal === "all" || r.temporal === f.temporal) &&
       (f.graph === "all" || r.graph === f.graph) &&
       (f.pass === "all" || (f.pass === "final") === (r.reported_weights === "final_epoch")) &&
-      (!f.results || !r.exploratory) && (!f.files || r.has_weights);
+      (!f.results || !r.exploratory) && (!f.files || r.has_weights) &&
+      Object.keys(f.more).every(function (key) { return paramToken(r, key) === f.more[key]; });
   }
 
   function explanationShown(x) {
@@ -2909,14 +3002,17 @@
     var body = $("#pg-results-body");
     if (!body) { return; }
     var which = S.resultsTab;
+    var params = which === "runs" ? runParameters(S.runs || []) : [];
+    if (which === "runs") { tidyFilters(params); }
     var rows = resultRows();
+    var stored = rows.filter(function (row) { return row.item; }).length;
     var pages = Math.max(1, Math.ceil(rows.length / PAGE_ROWS));
     S.page[which] = Math.min(S.page[which] || 0, pages - 1);
     var first = S.page[which] * PAGE_ROWS;
     var shown = rows.slice(first, first + PAGE_ROWS);
     var none = which === "runs" ? "No run matches these filters." : "No explanation matches these filters.";
     body.innerHTML = '<div class="pg-filters">' + (which === "runs" ? runFilters() : explanationFilters()) + "</div>" +
-      (which === "runs" ? '<div id="pg-compare"></div>' : "") +
+      (which === "runs" ? filterBar(params, stored) + moreFilters(params) + '<div id="pg-compare"></div>' : "") +
       (shown.length ? (which === "runs" ? runsTable(shown) : explanationsList(shown)) +
         pagerHtml(first, shown.length, rows.length) : '<div class="pg-empty">' + none + "</div>");
     S.jobRows = jobSignature();
@@ -2927,7 +3023,7 @@
   // A filter: a name above a menu of choices, "All" first.
   function filterSelect(name, key, attr, choices, current) {
     var id = "pg-" + attr + "-" + key;
-    return '<label class="pg-filter" for="' + id + '"><span>' + name + "</span>" +
+    return '<label class="pg-filter' + (current !== "all" ? " is-used" : "") + '" for="' + id + '"><span>' + name + "</span>" +
       selectField(id, [{ value: "all", label: "All" }].concat(choices), current, attr + '="' + key + '"') + "</label>";
   }
 
@@ -2941,6 +3037,187 @@
   function stateFilter(attr, current) {
     return filterSelect("State", "state", attr, [{ value: "done", label: "Finished" },
       { value: "live", label: "Running or waiting" }, { value: "ended", label: "Failed or stopped" }], current);
+  }
+
+  // ---- a filter for every parameter
+  //
+  // A stored run arrives with every setting it recorded (its "parameters"),
+  // named as the comparison of two runs names them: "preprocessing.rul_max",
+  // "model.gcn_bias", "training.epochs", "seeds", "split", "commit".
+
+  // No filter in use. open says whether the filters under "More filters"
+  // are on show, which clearing the filters leaves as it is.
+  function noFilters(open) {
+    return { subset: "all", temporal: "all", graph: "all", pass: "all", state: "all", results: false, files: false,
+      more: {}, open: !!open };
+  }
+
+  // The parameters the first row of filters already covers.
+  var FIRST_ROW = { "preprocessing.subset": true, "model.temporal": true, "preprocessing.graph": true, "reported_weights": true };
+  // The value of a menu's choice for the runs that recorded nothing. A
+  // recorded value is written the way JSON writes it, so none can equal it.
+  var UNRECORDED = "unrecorded";
+  // The groups of the design form, in its order, then what only a run's record holds.
+  var PARAM_GROUPS = ["data", "preprocessing", "temporal", "graph", "training"];
+  // How the engines were split is recorded as "split"; the form's switch for it is "fixed_split".
+  var PARAM_FIELD = { split: "fixed_split" };
+  var FILTER_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M4.5 8h7M6.5 11.5h3" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  var DOWN = '<svg class="pg-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 L6 8 L9.5 4.5" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  // What a run recorded for one parameter, as text two runs can be compared
+  // by, or UNRECORDED when it recorded nothing.
+  function paramToken(run, key) {
+    var p = run.parameters || {};
+    return Object.prototype.hasOwnProperty.call(p, key) ? JSON.stringify(p[key]) : UNRECORDED;
+  }
+
+  // A parameter's name: the design form's where the form has a control for
+  // it, otherwise the name a run's Settings part gives the record.
+  function paramLabel(key) {
+    var last = key.split(".").pop();
+    var field = S.fields && S.fields[last];
+    return field ? field.label : RECORD_LABELS[key] || TRAINING_LABELS[last] || sentenceCase(last.replace(/_/g, " "));
+  }
+
+  // The group of the design form a parameter stands in. The form has no
+  // control for how the engines were split, for what only the training
+  // files hold or for the commit; they join the group they belong to.
+  function paramGroup(key) {
+    var parts = key.split("."), field = S.fields && S.fields[parts[parts.length - 1]];
+    var group = field ? (field.group === "procedure" ? "training" : field.group)
+      : key === "split" ? "training" : parts.length < 2 ? "record" : parts[0] === "model" ? "graph" : parts[0];
+    return PARAM_GROUPS.indexOf(group) < 0 ? "record" : group;
+  }
+
+  // A value in the design form's words. A setting left empty says what that
+  // means, and a switch says On or Off.
+  function paramWords(key, value) {
+    if (value === null) { return UNSET_WORDS[key.split(".").pop()] || "None"; }
+    if (value === true || value === false) { return value ? "On" : "Off"; }
+    if (key === "split") { return sentenceCase(RECORD_WORDS[value] || String(value)); }
+    return settingWords(key, value);
+  }
+
+  // Every parameter the stored runs recorded that the first row has no
+  // filter for, in the design form's order, each with the values the runs
+  // hold for it. It varies when they hold at least two.
+  function runParameters(runs) {
+    var seen = {}, keys = [], place = {};
+    runs.forEach(function (run) {
+      var p = run.parameters || {};
+      Object.keys(p).forEach(function (key) {
+        if (FIRST_ROW[key]) { return; }
+        if (!seen[key]) { seen[key] = { values: {}, recorded: 0 }; keys.push(key); }
+        seen[key].values[JSON.stringify(p[key])] = p[key];
+        seen[key].recorded += 1;
+      });
+    });
+    ((S.options && S.options.fields) || []).forEach(function (f, i) { place[f.key] = i; });
+    return keys.map(function (key) {
+      var values = seen[key].values, last = key.split(".").pop();
+      var choices = Object.keys(values).map(function (token) {
+        return { value: token, raw: values[token], label: paramWords(key, values[token]) };
+      }).sort(function (a, b) {
+        return typeof a.raw === "number" && typeof b.raw === "number" ? a.raw - b.raw
+          : a.label.localeCompare(b.label, "en", { numeric: true });
+      });
+      if (seen[key].recorded < runs.length) { choices.push({ value: UNRECORDED, label: "Not recorded" }); }
+      var at = place[PARAM_FIELD[key] || last];
+      return { key: key, label: paramLabel(key), group: paramGroup(key), place: at === undefined ? 1000 : at,
+        choices: choices, varies: Object.keys(values).length > 1 };
+    }).filter(function (p) {
+      // What only a run's record holds, such as its commit, is given no
+      // filter (the author's decision of 2026-11-14): it is not a setting.
+      return p.group !== "record";
+    }).sort(function (a, b) {
+      return PARAM_GROUPS.indexOf(a.group) - PARAM_GROUPS.indexOf(b.group) || a.place - b.place ||
+        a.label.localeCompare(b.label, "en");
+    });
+  }
+
+  // A filter on a value no stored run holds any more is taken away, so no
+  // menu shows "All" while it still narrows the list.
+  function tidyFilters(params) {
+    var more = S.filter.more;
+    Object.keys(more).forEach(function (key) {
+      var p = params.filter(function (x) { return x.key === key; })[0];
+      if (!p || !p.varies || !p.choices.some(function (c) { return c.value === more[key]; })) { delete more[key]; }
+    });
+  }
+
+  // How many filters are in use: in the first row, and under "More filters".
+  function filtersInUse() {
+    var f = S.filter;
+    return {
+      first: ["subset", "temporal", "graph", "pass"].filter(function (key) { return f[key] !== "all"; }).length +
+        (f.state !== "all" ? 1 : 0) + (f.results ? 1 : 0) + (f.files ? 1 : 0),
+      more: Object.keys(f.more).length
+    };
+  }
+
+  // After a filter moved: the list goes back to its first page, and the
+  // focus stays on the control that was used.
+  function filtersChanged(id, samePage) {
+    if (!samePage) { S.page[S.resultsTab] = 0; }
+    drawResultsBody();
+    var again = id ? $("#" + id) : null;
+    if (again) { again.focus({ preventScroll: true }); }
+  }
+
+  // Under the first row: the way to the filters for every parameter, each
+  // one in use while they are put away, how many runs are left, and the way
+  // to take every filter off at once.
+  function filterBar(params, shown) {
+    var f = S.filter, used = filtersInUse(), total = (S.runs || []).length;
+    var chips = f.open ? "" : Object.keys(f.more).map(function (key) {
+      var p = params.filter(function (x) { return x.key === key; })[0];
+      var choice = p.choices.filter(function (c) { return c.value === f.more[key]; })[0];
+      return '<li class="pg-filter-chip"><span>' + esc(p.label) + ": <strong>" + esc(choice.label) + "</strong></span>" +
+        '<button type="button" data-action="drop-filter" data-param="' + esc(key) + '" aria-label="Remove the filter ' +
+        esc(p.label) + '">' + CROSS + "</button></li>";
+    }).join("");
+    return '<div class="pg-filterbar"><button type="button" class="button button--small pg-more-toggle" id="pg-more-toggle" ' +
+      'data-action="more-filters" aria-expanded="' + f.open + '" aria-controls="pg-more">' + FILTER_ICON + "More filters" +
+      (used.more ? '<span class="pg-badge" title="' + esc(plural(used.more, "filter") + " in use here") + '">' +
+        count(used.more) + "</span>" : "") + DOWN + "</button>" +
+      (chips ? '<ul class="pg-filter-chips" aria-label="Filters in use">' + chips + "</ul>" : "") +
+      '<p class="pg-filterbar-count" aria-live="polite">' +
+      (shown === total ? plural(total, "run") : count(shown) + " of " + plural(total, "run")) + "</p>" +
+      (used.first + used.more ? '<button type="button" class="button button--small button--quiet" data-action="clear-filters">' +
+        "Clear filters</button>" : "") + "</div>";
+  }
+
+  // The filters for every parameter, in the groups of the design form. A
+  // parameter on which every run agrees is named with its value instead of
+  // being given a menu, since there is nothing to choose between. A group of
+  // up to three menus takes half the panel's width where the panel is wide,
+  // so two short groups share a line; beside is how many halves are open on
+  // the line being filled, and decides whether the last block fits there.
+  function moreFilters(params) {
+    var f = S.filter, beside = 0;
+    var groups = PARAM_GROUPS.map(function (group) {
+      var own = params.filter(function (p) { return p.group === group && p.varies; });
+      if (!own.length) { return ""; }
+      var half = own.length <= 3;
+      beside = half ? (beside + 1) % 2 : 0;
+      return '<div class="pg-more-group' + (half ? " pg-more-half" : "") + '" role="group" aria-labelledby="pg-more-' + group +
+        '"><h4 id="pg-more-' + group + '">' +
+        esc(groupLabel(group)) + '</h4><div class="pg-filters">' + own.map(function (p) {
+          var id = "pg-param-" + p.key.replace(/[^a-z0-9]+/gi, "-");
+          return '<label class="pg-filter' + (f.more[p.key] ? " is-used" : "") + '" for="' + id + '"><span>' + esc(p.label) +
+            "</span>" + selectField(id, [{ value: "all", label: "All" }].concat(p.choices), f.more[p.key] || "all",
+              'data-param="' + esc(p.key) + '"') + "</label>";
+        }).join("") + "</div></div>";
+    }).join("");
+    var same = params.filter(function (p) { return !p.varies; });
+    return '<section class="pg-more" id="pg-more" aria-label="More filters"' + (f.open ? "" : " hidden") + ">" +
+      (groups || '<p class="pg-hint">The stored runs differ in nothing but what the filters above choose.</p>') +
+      (same.length ? '<div class="pg-more-same' + (beside ? " pg-more-half" : "") +
+        '"><p>The same in every stored run that recorded it, so there is nothing to filter by:</p><dl>' +
+        same.map(function (p) { return "<div><dt>" + esc(p.label) + "</dt><dd>" + esc(p.choices[0].label) + "</dd></div>"; }).join("") +
+        "</dl></div>" : "") + "</section>";
   }
 
   function runFilters() {
@@ -3026,7 +3303,7 @@
 
   function openRun(name) {
     S.listScroll = scrolledTo(); S.fromList = true;
-    S.selected = name; S.detail = null;
+    S.selected = name; S.detail = null; S.runTab = "overview";
     setAddress();
     scrollToTop(0);
     drawDetail();
@@ -3162,13 +3439,22 @@
   // A run already read is drawn again over its old drawing, with no loading
   // line between: the page never shrinks to one line and back, which would
   // throw the reader to its top.
+  // What a setting left empty means, and the names of the training settings:
+  // said the same way in a run's Settings part and in the filters of the list.
+  var UNSET_WORDS = { smoothing_alpha: "Off", early_stopping_patience: "Off", gradient_clip: "Off",
+    lr_step_epoch: "Automatic: halfway when using the step schedule", temporal_hidden: "Not used" };
+  var TRAINING_LABELS = {
+    epochs: "Maximum passes over the training data", batch_size: "Windows per update",
+    learning_rate: "Initial learning rate", final_learning_rate: "Final learning-rate setting",
+    optimizer: "Parameter update rule", loss: "Training error measure", lr_schedule: "Learning-rate schedule",
+    lr_step_epoch: "Pass at the learning-rate step", early_stopping_patience: "Passes without improvement before stopping",
+    min_improvement: "Minimum improvement to reset the wait", gradient_clip: "Gradient limit (loss derivatives)",
+    seed: "Training seed", device: "Requested computing device", notes: "Saved notes"
+  };
+
   function savedSettingValue(key, value) {
     if (value === undefined) { return '<span class="pg-setting-missing">Not recorded</span>'; }
-    if (value === null) {
-      var unset = { smoothing_alpha: "Off", early_stopping_patience: "Off", gradient_clip: "Off",
-        lr_step_epoch: "Automatic: halfway when using the step schedule", temporal_hidden: "Not used" };
-      return esc(unset[key] || "None");
-    }
+    if (value === null) { return esc(UNSET_WORDS[key] || "None"); }
     if (typeof value === "boolean") { return value ? "Yes" : "No"; }
     if (Array.isArray(value)) { return esc(JSON.stringify(value)); }
     if (typeof value === "object") { return esc(JSON.stringify(value)); }
@@ -3208,7 +3494,13 @@
 
   function runConfiguration(d) {
     var summary = d.recorded_summary || {}, preprocessing = copy(d.preprocessing || {});
-    var model = copy(d.model || {}), training = summary.training || d.training || {};
+    var model = copy(d.model || {}), training = copy(summary.training || d.training || {});
+    // A run from before the training settings were stored wrote its
+    // learning-rate schedule in its summary alone; it is shown from there,
+    // as the list's filter for it reads it.
+    if (training.lr_schedule === undefined && summary.lr_schedule !== undefined && summary.lr_schedule !== null) {
+      training.lr_schedule = summary.lr_schedule;
+    }
     var preparationFallback = {}, modelFallback = {};
     ["subset", "graph", "adjacency_normalization", "clip_test_labels", "validation_fraction"].forEach(function (key) {
       if (preprocessing[key] === undefined && summary[key] !== undefined) {
@@ -3248,22 +3540,15 @@
         return '<li><span>Seed ' + esc(row.seed) + ':</span> ' + rendered(row) + '</li>';
       }).join("") + '</ul>';
     }
-    var recordLabels = { seeds: "Number of seeds", split: "Engine split across seeds",
-      early_stopping: "Early stopping enabled for this run", reported_weights: "Weights used for the results",
-      commit: "Code version", config_digest: "Configuration identifier", finished_utc: "Finished, UTC" };
-    var record = {};
-    Object.keys(recordLabels).forEach(function (key) { record[key] = summary[key]; });
-    // The split as it happened: a run that held nothing back before 2026-10-03
-    // was recorded as "varies_with_seed" (audit item D-4); the record is shown too.
-    var recordedSplit = summary.split;
-    if (d.split !== undefined && d.split !== recordedSplit) { record.split = d.split; }
     var raw = { "summary.json": summary, "preprocessing_config.yaml": d.preprocessing || {},
       "model_config.yaml": d.recorded_model || {} };
     seeds.forEach(function (seed) { raw['seed_' + seed + '/training_config.yaml'] = recordedSeeds[seed]; });
     return '<section class="pg-run-section pg-run-settings" id="pg-run-settings" aria-labelledby="pg-run-settings-title">' +
       '<div class="pg-run-section-head"><h3 id="pg-run-settings-title">Settings used for this run</h3>' +
       '<p class="pg-settings-intro">Values saved with this run. Missing values are marked “Not recorded”. ' +
-      'Training settings are shown for every seed when they differ.</p></div><div class="pg-settings-grid">' +
+      'Training settings are shown for every seed when they differ.</p>' +
+      (d.name ? '<p class="pg-run-folder"><span>Folder</span><code>reports/' + esc(d.name) + "</code></p>" : "") +
+      '</div><div class="pg-settings-grid">' +
       savedSettingsGroup("Data and preprocessing", "Saved preprocessing configuration; summary values identified when used", {
         subset: "Data subset", window_size: "Cycles per window", window_stride: "Cycles between windows",
         rul_max: "Remaining-life ceiling (cycles)", clip_test_labels: "Cap test answers at that ceiling",
@@ -3285,22 +3570,8 @@
         }
         return savedSettingValue(key, model[key]) + (modelFallback[key] ? ' <span class="pg-setting-raw">(run summary)</span>' : '');
       }) +
-      savedSettingsGroup("Training", "Per-seed training files, with run-summary values identified when used", {
-        epochs: "Maximum passes over the training data", batch_size: "Windows per update",
-        learning_rate: "Initial learning rate", final_learning_rate: "Final learning-rate setting",
-        optimizer: "Parameter update rule", loss: "Training error measure", lr_schedule: "Learning-rate schedule",
-        lr_step_epoch: "Pass at the learning-rate step", early_stopping_patience: "Passes without improvement before stopping",
-        min_improvement: "Minimum improvement to reset the wait", gradient_clip: "Gradient limit (loss derivatives)",
-        seed: "Training seed", device: "Requested computing device", notes: "Saved notes"
-      }, trainingKeys, trainingValue) + '</div>' +
-      savedSettingsGroup("Run record", "Saved run summary", recordLabels, record, function (key) {
-        // The value in brackets is the one in the file, so a split shown as it
-        // happened names what was recorded there instead of its own code.
-        var shown = savedSettingValue(key, record[key]);
-        return key === "split" && record.split !== recordedSplit ? shown.replace(
-          '<span class="pg-setting-raw">(' + esc(String(record.split)) + ")</span>",
-          '<span class="pg-setting-raw">(recorded as ' + esc(String(recordedSplit)) + ")</span>") : shown;
-      }) +
+      savedSettingsGroup("Training", "Per-seed training files, with run-summary values identified when used",
+        TRAINING_LABELS, trainingKeys, trainingValue) + '</div>' +
       '<details class="pg-recorded-files"><summary>Inspect the complete saved configuration and source record</summary>' +
       '<p>These are the recorded fields, including additional settings and the software environment when available. ' +
       'An empty object means no readable record was available.</p><pre><code>' +
@@ -3323,163 +3594,239 @@
       }).join("") + '</div></section>';
   }
 
+  // One stored run. Its page shows one part at a time, chosen in a row of
+  // tabs under its name: the results with the notes that qualify them, the
+  // charts, the explanations stored for it, and the settings it ran with.
   function drawDetail() {
     var panel = $("#pg-panel");
     if (!panel || !S.selected) { return Promise.resolve(); }
     var held = S.detail && S.detail.name === S.selected;
-    if (!held) { panel.innerHTML = '<div class="pg-run-page">' + runCrumbs() + '<div class="loading">Reading the run…</div></div>'; }
+    if (!held) { panel.innerHTML = '<div class="pg-run-page">' + runBack() + '<div class="loading">Reading the run…</div></div>'; }
     var load = held ? Promise.resolve(S.detail)
       : T.get("/api/playground/run?name=" + encodeURIComponent(S.selected));
     return load.then(function (d) {
       if (S.tab !== "results") { return; }
       S.detail = d;
-      var seeds = Object.keys(d.per_seed);
-      var paperRow = d.paper_row;
-      // Each measure with its spread, and the paper's figure at the paper's
-      // own precision with the gap to it; nothing where the paper prints none.
-      var cards = MEASURES.map(function (m) {
-        var mean = (d.mean || {})[m[0]], sd = (d.std || {})[m[0]];
-        var paper = paperRow ? paperRow[m[0]] : null;
-        var published = paper !== null && paper !== undefined;
-        var shown = published ? paperNumber(m[0], paper) : null;
-        var gap = published && mean !== null && mean !== undefined ? mean - paper : null;
-        return '<div class="pg-metric"><div class="pg-metric-name"><span>' + m[1] + '</span><span class="pg-metric-better">' +
-          (m[0] === "r2" ? "higher is better" : "lower is better") + '</span></div><div class="pg-metric-value">' + number(mean, m[2]) +
-          (sd !== null && sd !== undefined ? '<span class="pg-metric-sd"> ± ' + number(sd, m[2]) + "</span>" : "") + "</div>" +
-          (published ? '<dl class="pg-metric-paper"><div><dt>paper</dt><dd>' + shown.text + "</dd></div>" +
-            (gap !== null ? "<div><dt>gap</dt><dd>" + (gap > 0 ? "+" : "") + number(gap, shown.places) + "</dd></div>" : "") + "</dl>"
-            : paperRow ? '<div class="pg-metric-paper pg-metric-paper--none">The paper prints none</div>' : "") +
-          // ASUE averages over the engines predicted early; runs since 2026-10-03
-          // record how many, and with none it is not a number (assumption A-39).
-          (m[0] === "asue" && (d.mean || {}).n_early !== undefined && (d.mean || {}).n_early !== null ?
-            '<div class="pg-faint">over ' + number(d.mean.n_early, 1) + " engines predicted early</div>" : "") + "</div>";
-      }).join("");
-      var compared = paperRow
-        ? '<p class="pg-faint">Compared with ' + esc(paperRow.label) + ", " + esc(paperRow.source) +
-          (paperRow.score === null || paperRow.score === undefined ? ", which prints RMSE only." : ".") + "</p>"
-        : '<p class="pg-faint">' + esc(d.no_row_reason) + "</p>";
+      var which = runTabShown();
       var cautions = (d.caveats || []).filter(function (c) { return cautionFor(c, "run"); });
-
-      var W = S.chartsDrawnAt = chartWidth();
-      var perSeedPlot = plot({
-        width: W, height: 200, xlabel: "seed", ylabel: "test RMSE (cycles)", label: "test RMSE per seed",
-        series: [{ points: d.results.map(function (r) { return [r.seed, r.rmse]; }), colour: "var(--fig-accent)", dots: true, line: false, radius: 5 }],
-        hlines: paperRow ? [{ y: paperRow.rmse, label: "paper", colour: "var(--fig-lpc)" }] : []
-      });
-      var curves = seeds.length && d.per_seed[seeds[0]].history.length;
-      var hasValidation = curves && d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== undefined &&
-        d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== null;
-      var curvePlot = curves ? plot({
-        width: W, height: chartHeight(W), xlabel: "pass over the training data", label: "training curves",
-        ylabel: hasValidation ? "held-back RMSE (cycles)" : "training loss (scaled MSE)",
-        series: seeds.map(function (s, i) {
-          var h = d.per_seed[s].history;
-          var result = d.results.filter(function (r) { return String(r.seed) === s; })[0] || {};
-          var key = hasValidation ? "validation_rmse_cycles" : "train_loss";
-          var best = h.filter(function (x) { return x.epoch === result.best_epoch; })[0];
-          return { name: "seed " + s, colour: PALETTE[i % PALETTE.length],
-            points: h.map(function (x) { return [x.epoch, x[key]]; }),
-            marks: hasValidation && best ? [[best.epoch, best[key], "pass " + best.epoch]] : [] };
-        })
-      }) : "";
-      var seedChoice = S.predSeed && d.per_seed[S.predSeed] ? S.predSeed : seeds[0];
-      // The paper's Fig. 8 puts the test engines in unit order and joins the
-      // points of each series; ordering them by their label instead
-      // shows how the error changes along the life, so both are offered.
-      var byUnit = S.predOrder !== "rul";
-      var testLife = lifeSeriesName(d.clip_test_labels, d.rul_max);
-      var predictions = seeds.length ? d.per_seed[seedChoice].predictions.slice().sort(byUnit
-        ? function (a, b) { return a.unit - b.unit; } : function (a, b) { return a.rul - b.rul; }) : [];
-      var predPlot = predictions.length ? plot({
-        width: W, height: chartHeight(W), ylabel: "remaining life (cycles)", label: predictionsChartName(d.clip_test_labels, d.rul_max), xlabel: "test engine",
-        series: byUnit ? [
-          { name: testLife, colour: "var(--fig-burn)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.rul]; }) },
-          { name: "predicted", colour: "var(--fig-accent)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.predicted]; }) }
-        ] : [
-          { name: testLife, colour: "var(--fig-ink)", points: predictions.map(function (p, i) { return [i + 1, p.rul]; }), width: 2 },
-          { name: "predicted", colour: "var(--fig-warn)", dots: true, line: false, points: predictions.map(function (p, i) { return [i + 1, p.predicted]; }) }
-        ]
-      }) : "";
-
-      var hasSeeds = !!seeds.length;
-      panel.innerHTML = '<div class="pg-run-page">' + runCrumbs(d) +
-        '<section class="pg-detail"><header class="pg-run-head"><div class="pg-run-id">' +
-        '<p class="pg-run-kicker">Training run</p><h2 class="pg-run-title" id="pg-run-title">' + keepDate(runTime(d.name)) + "</h2>" +
-        '<div class="chips">' +
-        chip(d.dirty ? "warn" : "", "commit " + d.commit) + chip("", plural(d.seeds, "seed")) + chip("", d.subset) +
-        (d.temporal ? chip("", stageName(d.temporal, d.temporal_hidden)) : "") +
-        (d.graph ? chip("", graphName(d.graph, d.adjacency_normalization) + " graph") : "") +
-        chip("", d.reported_weights === "final_epoch" ? "final pass reported" :
-          d.reported_weights === "best_validation_epoch" ? "best pass restored" : "reported weights not recorded") + "</div>" +
-        '<p class="pg-run-folder"><span>Folder</span><code>reports/' + esc(d.name) + "</code></p></div>" +
-        '<div class="pg-actions pg-run-actions">' +
-        '<button type="button" class="button button--quiet pg-run-copy" data-action="copy-link" title="Copy a link to this run">' +
-        LINK_ICON + "Copy link</button>" +
-        '<button type="button" class="button" data-action="again">Set these settings up again</button>' +
-        (d.has_weights ? '<button type="button" class="button button--primary" data-action="explain-this">Explain this run</button>' : "") + "</div></header>" +
-        '<nav class="pg-run-jump" aria-label="Parts of this run">' +
-        [["pg-run-results", "Results"], ["pg-run-interpretation", "How to interpret"], ["pg-run-charts", "Charts"],
-          ["pg-run-settings", "Settings"]].map(function (part) {
-          return '<a href="#' + part[0] + '" data-jump="' + part[0] + '">' + part[1] + "</a>";
-        }).join("") + "</nav>" +
-        '<section class="pg-run-section" id="pg-run-results" aria-labelledby="pg-run-results-title">' +
-        '<div class="pg-run-section-head"><h3 id="pg-run-results-title">Results on the test engines</h3>' +
-        '<p class="pg-run-section-note">Mean ± standard deviation over ' + plural(seeds.length || d.seeds, "seed") + ".</p>" +
-        compared + (cautions.length ? '<p>Read the ' + (cautions.length === 1 ? "note" : plural(cautions.length, "note")) +
-          ' under <a href="#pg-run-interpretation">How to interpret this run</a> before comparing these numbers.</p>' : "") + "</div>" +
-        '<div class="pg-metrics">' + cards + "</div></section>" + runInterpretation(cautions, "") +
-        '<section class="pg-run-section" id="pg-run-charts" aria-labelledby="pg-run-charts-title">' +
-        '<div class="pg-run-section-head"><h3 id="pg-run-charts-title">Charts</h3></div>' +
-        '<div class="pg-charts"><figure class="pg-figure pg-figure--wide"><h4 class="pg-figure-title">Test RMSE per seed</h4>' + perSeedPlot + "</figure>" +
-        (curves ? '<figure class="pg-figure pg-figure--wide"><h4 class="pg-figure-title">Training curves</h4>' +
-          (hasValidation ? "<figcaption>A ring marks the reported pass.</figcaption>" : "") +
-          curvePlot + "</figure>"
-          : '<div class="pg-empty pg-figure--wide">This run kept no per-seed files, so it has no curves, predictions or weights.</div>') +
-        (predPlot ? '<figure class="pg-figure pg-figure--wide"><h4 class="pg-figure-title">' +
-          esc(sentenceCase(predictionsChartName(d.clip_test_labels, d.rul_max))) + "</h4>" +
-          '<figcaption><strong>As the paper\'s Fig. 8.</strong></figcaption>' +
-          '<div class="pg-toolbar pg-figure-toolbar"><label for="pg-pred-seed">Seed</label>' +
-          selectField("pg-pred-seed", seeds.map(function (s) { return { value: s, label: s }; }), seedChoice, "data-pred-seed") +
-          segmented("pg-pred-order", [{ value: "unit", label: "by unit number" }, { value: "rul", label: "by " + lifeLabel(d.clip_test_labels) }],
-            byUnit ? "unit" : "rul", 'data-pred-order') + "</div>" + predPlot + "</figure>" : "") +
-        "</div></section>" + runConfiguration(d) + "</section></div>";
-      watchRunParts();
+      S.chartsDrawnAt = chartWidth();
+      var part = which === "charts" ? runCharts(d, cautions) : which === "explanations" ? runExplanations(d)
+        : which === "settings" ? runConfiguration(d) : runOverview(d, cautions);
+      panel.innerHTML = '<div class="pg-run-page">' + runBack() + '<section class="pg-detail">' + runHeader(d) + runTabs(d, which) +
+        '<div class="pg-run-part" role="tabpanel" id="pg-run-part" aria-labelledby="pg-run-tab-' + which + '">' + part +
+        "</div></section></div>";
       pageTitle();
-      // An address that names a part of the run, "…/runs/<folder>#pg-run-settings",
-      // reaches it once the run has been drawn; app.js looked before it was.
-      var part = window.location.hash.split("#")[2];
-      if (part && !held && document.getElementById(part)) { document.getElementById(part).scrollIntoView({ behavior: "instant" }); }
     }).catch(function (error) {
-      panel.innerHTML = '<div class="pg-run-page">' + runCrumbs() + errorBox(error.message) + "</div>";
+      panel.innerHTML = '<div class="pg-run-page">' + runBack() + errorBox(error.message) + "</div>";
     });
   }
 
   function sentenceCase(text) { return text ? text.charAt(0).toUpperCase() + text.slice(1) : text; }
 
-  // The way back to the list, and where this run sits under it.
-  function runCrumbs(d) {
+  // The way back to the list of runs.
+  function runBack() {
     return '<nav class="pg-crumbs" aria-label="Breadcrumb"><a href="' + ROUTE + '/runs" data-action="back" class="pg-crumb-back">' +
-      BACK + "All runs</a>" + '<span class="pg-crumb-sep" aria-hidden="true">/</span><span aria-current="page">' +
-      keepDate(runTime(d ? d.name : S.selected)) + "</span></nav>";
+      BACK + "All runs</a></nav>";
   }
 
-  // The part of the run on show is marked in the row of links above it.
-  function watchRunParts() {
-    if (S.partWatch) { S.partWatch.disconnect(); S.partWatch = null; }
-    if (!window.IntersectionObserver) { return; }
-    var links = $all(".pg-run-jump a");
-    var shown = {};
-    S.partWatch = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) { shown[entry.target.id] = entry.isIntersecting; });
-      var first = links.filter(function (link) { return shown[link.getAttribute("data-jump")]; })[0];
-      links.forEach(function (link) {
-        if (link === first) { link.setAttribute("aria-current", "true"); } else { link.removeAttribute("aria-current"); }
-      });
-    }, { rootMargin: "-96px 0px -55% 0px" });
-    links.forEach(function (link) {
-      var part = document.getElementById(link.getAttribute("data-jump"));
-      if (part) { S.partWatch.observe(part); }
+  // Which run this is, what it was, and what can be done with it.
+  function runHeader(d) {
+    return '<header class="pg-run-head"><div class="pg-run-id">' +
+      '<h2 class="pg-run-title" id="pg-run-title"><span class="pg-run-kind">Training run</span> ' + keepDate(runTime(d.name)) + "</h2>" +
+      '<div class="chips">' +
+      chip(d.dirty ? "warn" : "", "commit " + d.commit) + chip("", plural(d.seeds, "seed")) + chip("", d.subset) +
+      (d.temporal ? chip("", stageName(d.temporal, d.temporal_hidden)) : "") +
+      (d.graph ? chip("", graphName(d.graph, d.adjacency_normalization) + " graph") : "") +
+      chip("", d.reported_weights === "final_epoch" ? "final pass reported" :
+        d.reported_weights === "best_validation_epoch" ? "best pass restored" : "reported weights not recorded") + "</div></div>" +
+      '<div class="pg-actions pg-run-actions">' +
+      '<button type="button" class="button button--quiet pg-run-copy" data-action="copy-link" title="Copy a link to this run">' +
+      LINK_ICON + "Copy link</button>" +
+      '<button type="button" class="button" data-action="again">Set these settings up again</button>' +
+      (d.has_weights ? '<button type="button" class="button button--primary" data-action="explain-this">Explain this run</button>' : "") +
+      "</div></header>";
+  }
+
+  // The parts of the run, with how many explanations are stored for it.
+  function runTabs(d, which) {
+    var stored = (d.explanations || []).length;
+    return '<div class="pg-subtabs pg-run-tabs" role="tablist" aria-label="Parts of this run">' + RUN_TABS.map(function (t) {
+      var on = t[0] === which;
+      return '<button type="button" role="tab" class="pg-subtab" id="pg-run-tab-' + t[0] + '" data-action="run-part" data-part="' + t[0] +
+        '" aria-controls="pg-run-part" aria-selected="' + on + '" tabindex="' + (on ? 0 : -1) + '">' + t[1] +
+        (t[0] === "explanations" ? ' <span class="pg-run-count" title="' + esc(plural(stored, "explanation") + " stored for this run") +
+          '">' + count(stored) + "</span>" : "") + "</button>";
+    }).join("") + "</div>";
+  }
+
+  // Another part of the run on show. The address names it without adding a
+  // step to the browser's history. A page scrolled past its row of tabs
+  // moves back to where the new part begins, so its start is never off screen.
+  function showRunPart(which, reach, fromTab) {
+    S.runTab = which;
+    setAddress();
+    return drawDetail().then(function () {
+      var tabs = $(".pg-run-tabs"), head = $(".pg-run-head");
+      if (tabs && head) {
+        var past = tabs.getBoundingClientRect().top - head.getBoundingClientRect().bottom;
+        if (past > 1) { scrollOn(-past); }
+      }
+      var place = reach ? document.getElementById(reach) : null;
+      if (place) { place.scrollIntoView({ behavior: "instant", block: "start" }); }
+      var tab = fromTab ? $("#pg-run-tab-" + which) : null;
+      if (tab) { tab.focus({ preventScroll: true }); }
     });
+  }
+
+  // The first part: each measure with its spread over the seeds, the paper's
+  // figure at the paper's own precision with the gap to it, and under them
+  // the notes that say how far the comparison goes.
+  function runOverview(d, cautions) {
+    var seeds = Object.keys(d.per_seed);
+    var paperRow = d.paper_row;
+    var rmseOnly = !!paperRow && (paperRow.score === null || paperRow.score === undefined);
+    var cards = MEASURES.map(function (m) {
+      var mean = (d.mean || {})[m[0]], sd = (d.std || {})[m[0]];
+      var paper = paperRow ? paperRow[m[0]] : null;
+      var published = paper !== null && paper !== undefined;
+      var shown = published ? paperNumber(m[0], paper) : null;
+      var gap = published && mean !== null && mean !== undefined ? mean - paper : null;
+      // Where the line under the tiles already says the paper prints RMSE
+      // only, the other three tiles do not each repeat it.
+      var saidBelow = rmseOnly && m[0] !== "rmse";
+      return '<div class="pg-metric"><div class="pg-metric-name">' + m[1] + '</div><div class="pg-metric-value">' + number(mean, m[2]) +
+        (sd !== null && sd !== undefined ? '<span class="pg-metric-sd"> ± ' + number(sd, m[2]) + "</span>" : "") + "</div>" +
+        (published ? '<dl class="pg-metric-paper"><div><dt>paper</dt><dd>' + shown.text + "</dd></div>" +
+          (gap !== null ? "<div><dt>gap</dt><dd>" + (gap > 0 ? "+" : "") + number(gap, shown.places) + "</dd></div>" : "") + "</dl>"
+          : paperRow && !saidBelow ? '<div class="pg-metric-paper pg-metric-paper--none">The paper prints none</div>' : "") +
+        // ASUE averages over the engines predicted early; runs since 2026-10-03
+        // record how many, and with none it is not a number (assumption A-39).
+        (m[0] === "asue" && (d.mean || {}).n_early !== undefined && (d.mean || {}).n_early !== null ?
+          '<div class="pg-faint">over ' + number(d.mean.n_early, 1) + " engines predicted early</div>" : "") + "</div>";
+    }).join("");
+    var lower = MEASURES.filter(function (m) { return m[0] !== "r2"; }).map(function (m) { return m[1]; });
+    var higher = MEASURES.filter(function (m) { return m[0] === "r2"; })[0][1];
+    var better = "Lower is better for " + lower.slice(0, -1).join(", ") + " and " + lower[lower.length - 1] +
+      "; higher is better for " + higher + ".";
+    var compared = paperRow
+      ? "Compared with " + esc(paperRow.label) + ", " + esc(paperRow.source) + (rmseOnly ? ", which prints RMSE only." : ".")
+      : esc(d.no_row_reason);
+    return '<section class="pg-run-section" id="pg-run-results" aria-labelledby="pg-run-results-title">' +
+      '<div class="pg-run-section-head"><h3 id="pg-run-results-title">Results on the test engines</h3>' +
+      "<p>Mean ± standard deviation over " + plural(seeds.length || d.seeds, "seed") + ".</p></div>" +
+      '<div class="pg-metrics">' + cards + "</div>" +
+      '<p class="pg-run-foot">' + compared + " " + better + "</p></section>" +
+      (cautions.length ? runInterpretation(cautions, "") : "");
+  }
+
+  // Where results are shown without their notes beside them, one line says
+  // how many notes qualify them and leads to the notes.
+  function runNotesPointer(d, cautions) {
+    if (!cautions.length) { return ""; }
+    var warn = cautions.filter(function (c) { return c.level === "warn"; }).length, info = cautions.length - warn;
+    var said = [warn ? plural(warn, "caution") : "", info ? plural(info, "note") : ""].filter(Boolean).join(" and ");
+    return '<p class="pg-run-pointer' + (warn ? " pg-run-pointer--warn" : "") + '">' +
+      '<span class="pg-run-note-mark" aria-hidden="true">' + (warn ? "!" : "i") + "</span><span>" + said +
+      (cautions.length === 1 ? " applies" : " apply") + ' to these results. <a href="' + runAddress(d.name) +
+      '" data-action="run-part" data-part="overview" data-reach="pg-run-interpretation">Read ' +
+      (cautions.length === 1 ? "it" : "them") + " in Overview</a></span></p>";
+  }
+
+  // The widths a run's charts are drawn at. On a wide panel the per-seed
+  // chart stands beside the training curves, a third of the row and two
+  // thirds; the predictions keep the whole row. The numbers follow the style
+  // sheet: 12 pixels between two figures, and 13 of border and padding on
+  // each side of one.
+  function runChartWidths() {
+    var full = chartWidth(), panel = full + 26;
+    if (panel < 1000) { return { full: full, seeds: full, curves: full, beside: false }; }
+    var third = (panel - 12) / 3;
+    return { full: full, seeds: Math.round(third - 26), curves: Math.round(2 * third - 26), beside: true };
+  }
+
+  function runCharts(d, cautions) {
+    var seeds = Object.keys(d.per_seed);
+    var paperRow = d.paper_row;
+    var widths = runChartWidths(), W = widths.full;
+    var rowHeight = chartHeight(widths.curves);
+    var perSeedPlot = plot({
+      width: widths.seeds, height: widths.beside ? rowHeight : 200, xlabel: "seed", ylabel: "test RMSE (cycles)", label: "test RMSE per seed",
+      series: [{ points: d.results.map(function (r) { return [r.seed, r.rmse]; }), colour: "var(--fig-accent)", dots: true, line: false, radius: 5 }],
+      hlines: paperRow ? [{ y: paperRow.rmse, label: "paper", colour: "var(--fig-lpc)" }] : []
+    });
+    var curves = seeds.length && d.per_seed[seeds[0]].history.length;
+    var hasValidation = curves && d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== undefined &&
+      d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== null;
+    var curvePlot = curves ? plot({
+      width: widths.curves, height: rowHeight, xlabel: "pass over the training data", label: "training curves",
+      ylabel: hasValidation ? "held-back RMSE (cycles)" : "training loss (scaled MSE)",
+      series: seeds.map(function (s, i) {
+        var h = d.per_seed[s].history;
+        var result = d.results.filter(function (r) { return String(r.seed) === s; })[0] || {};
+        var key = hasValidation ? "validation_rmse_cycles" : "train_loss";
+        var best = h.filter(function (x) { return x.epoch === result.best_epoch; })[0];
+        return { name: "seed " + s, colour: PALETTE[i % PALETTE.length],
+          points: h.map(function (x) { return [x.epoch, x[key]]; }),
+          marks: hasValidation && best ? [[best.epoch, best[key], "pass " + best.epoch]] : [] };
+      })
+    }) : "";
+    var seedChoice = S.predSeed && d.per_seed[S.predSeed] ? S.predSeed : seeds[0];
+    // The paper's Fig. 8 puts the test engines in unit order and joins the
+    // points of each series; ordering them by their label instead
+    // shows how the error changes along the life, so both are offered.
+    var byUnit = S.predOrder !== "rul";
+    var testLife = lifeSeriesName(d.clip_test_labels, d.rul_max);
+    var predictions = seeds.length ? d.per_seed[seedChoice].predictions.slice().sort(byUnit
+      ? function (a, b) { return a.unit - b.unit; } : function (a, b) { return a.rul - b.rul; }) : [];
+    var predPlot = predictions.length ? plot({
+      width: W, height: chartHeight(W), ylabel: "remaining life (cycles)", label: predictionsChartName(d.clip_test_labels, d.rul_max), xlabel: "test engine",
+      series: byUnit ? [
+        { name: testLife, colour: "var(--fig-burn)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.rul]; }) },
+        { name: "predicted", colour: "var(--fig-accent)", dots: true, radius: 2.8, width: 1.3, points: predictions.map(function (p) { return [p.unit, p.predicted]; }) }
+      ] : [
+        { name: testLife, colour: "var(--fig-ink)", points: predictions.map(function (p, i) { return [i + 1, p.rul]; }), width: 2 },
+        { name: "predicted", colour: "var(--fig-warn)", dots: true, line: false, points: predictions.map(function (p, i) { return [i + 1, p.predicted]; }) }
+      ]
+    }) : "";
+    return '<section class="pg-run-section" id="pg-run-charts" aria-label="Charts">' + runNotesPointer(d, cautions) +
+      '<div class="pg-charts pg-run-charts"><figure class="pg-figure"><h3 class="pg-figure-title">Test RMSE per seed</h3>' + perSeedPlot + "</figure>" +
+      (curves ? '<figure class="pg-figure"><h3 class="pg-figure-title">Training curves</h3>' + curvePlot +
+        // Under the chart rather than over it, so the two charts of a row start level.
+        (hasValidation ? "<figcaption>A ring marks the reported pass.</figcaption>" : "") + "</figure>"
+        : '<div class="pg-empty">This run kept no per-seed files, so it has no curves, predictions or weights.</div>') +
+      (predPlot ? '<figure class="pg-figure pg-figure--wide"><div class="pg-figure-head"><div><h3 class="pg-figure-title">' +
+        esc(sentenceCase(predictionsChartName(d.clip_test_labels, d.rul_max))) + "</h3>" +
+        '<p class="pg-figure-as"><strong>As the paper\'s Fig. 8.</strong></p></div>' +
+        '<div class="pg-toolbar pg-figure-toolbar"><label for="pg-pred-seed">Seed</label>' +
+        selectField("pg-pred-seed", seeds.map(function (s) { return { value: s, label: s }; }), seedChoice, "data-pred-seed") +
+        segmented("pg-pred-order", [{ value: "unit", label: "by unit number" }, { value: "rul", label: "by " + lifeLabel(d.clip_test_labels) }],
+          byUnit ? "unit" : "rul", 'data-pred-order') + "</div></div>" + predPlot + "</figure>" : "") +
+      "</div></section>";
+  }
+
+  // The explanations stored for this run, newest first. A row opens one in
+  // the Explain tab, where its charts stand with the words that say how to
+  // read them; none of its values is repeated here without those words.
+  function runExplanations(d) {
+    var stored = d.explanations || [];
+    var open = '<section class="pg-run-section" id="pg-run-explanations" aria-labelledby="pg-run-explanations-title">' +
+      '<div class="pg-run-section-head"><h3 id="pg-run-explanations-title">Explanations stored for this run</h3>';
+    if (!stored.length) {
+      return open + "</div>" + '<div class="pg-empty pg-run-none">' + (d.has_weights
+        ? "None yet. Explain this run, above, opens Explain predictions with this run chosen."
+        : "None, and none can be made: this run kept no weights.") + "</div></section>";
+    }
+    return open + "<p>Select a row to open it in Explain predictions.</p></div>" +
+      '<div class="pg-runs"><table class="data-table pg-run-stored"><thead><tr><th>Method</th><th>What it explains</th><th>Seed</th>' +
+      '<th class="num">Windows</th><th>Finished</th><th class="col-commit">Commit</th>' +
+      '<th class="pg-run-open"><span class="visually-hidden">Open</span></th></tr></thead><tbody>' +
+      stored.map(function (x) {
+        return '<tr data-action="open-explanation" data-run="' + esc(d.name) + '" data-name="' + esc(x.name) + '" tabindex="0"><td>' +
+          esc(methodLabel(x)) + "</td><td>" + esc(sentenceCase(explainedWhat(x))) + '</td><td data-label="Seed">' + esc(x.seed) +
+          '</td><td class="num" data-label="Windows">' + count(x.windows) + '</td><td data-label="Finished">' + when(x.finished_utc) +
+          '</td><td class="col-commit"><code class="pg-commit">' + esc(x.commit || "") + "</code></td>" +
+          '<td class="pg-run-open">' + NEXT + "</td></tr>";
+      }).join("") + "</tbody></table></div></section>";
   }
 
   function settingsFromRun(d) {
@@ -3626,8 +3973,10 @@
           "every n-th window after it, reducing computation but hiding changes between those windows. " +
           "This counts windows, not cycles; their spacing was set when the run was prepared.", "", S.options.explain_more.every),
         control: '<input class="field" type="number" id="pg-e-every" min="1" max="100" value="' + e.every + '" data-explain="every">' }) +
-      cell({ control: '<button type="button" class="button button--primary" data-action="explain">Explain</button>' }) +
-      "</div></section>";
+      // The button ends the form on a row of its own, at the leading edge
+      // where every setting's name starts, instead of in a cell beside the
+      // last settings.
+      '</div><div class="pg-form-actions"><button type="button" class="button button--primary" data-action="explain">Explain</button></div></section>';
   }
 
   // An Explain option's i: what it does in plain words, then its source and
@@ -3830,13 +4179,15 @@
       if (e.chart === "engine" && e.engineController) { e.engineController.update(e.index); }
       var panel = box.querySelector("#pg-chart-panel-" + e.chart);
       if (e.chart === "life" && panel) { panel.innerHTML = lifeFigure(data.values, row, W); }
-      var graph = box.querySelector("[data-selected-sensor-graph]");
-      if (e.chart === "graph" && graph) { graph.innerHTML = sensorGraph(row, sensorOrder); }
-      var waterfall = box.querySelector("[data-walk-waterfall]");
-      if (e.chart === "parts" && waterfall) { waterfall.innerHTML = walkWaterfall(row, W); }
+      var total = box.querySelector("[data-walk-sum]"), along = box.querySelector("[data-walk-parts]");
+      if (e.chart === "parts" && total) { total.innerHTML = scoreSum(data, e.index); }
+      if (e.chart === "parts" && along) { along.innerHTML = walkParts(data, e.index, W); }
+      var check = box.querySelector("[data-walk-check]");
+      if (e.chart === "check" && check) { check.innerHTML = flippingFigure(data, e.index, W); }
       var example = box.querySelector("[data-walk-example]");
       if (example) { example.innerHTML = walkExample(data, e.index); }
       if (historyCursor) { historyCursor(e.index); }
+      if (e.chart === "history" && ribbonsRedraw) { ribbonsRedraw(); }
     };
     updateExplanationSelection();
   }
@@ -3871,26 +4222,11 @@
       var exact = sum.method === "shap";
       var forEngine = sum.scope === "engine";
 
-      // The head says once what a value is, its sign and its unit; the
-      // cautions after it say what the numbers can and cannot be read as.
-      var cautions = exact
-        ? [{ level: "info", ref: "A-24", text: "Equation 14 says a window's values add up to its prediction minus one constant. " +
-            "The paper's constant is the average label; here it is the prediction at the average training window instead. " +
-            "Checked here: the largest gap is " + Number(sum.sum_gap_max).toExponential(1) + " cycles." },
-          { level: "info", ref: "F-08", text: "The paper's Table 12 cannot hold the signed values its own Equation 14 defines, " +
-            "so only its ranking by size, not its numbers, can be set beside these." }]
-        : [{ level: "info", text: "Occlusion values are separate replacement comparisons, so their sum need not equal " +
-            "the prediction minus the prediction with every sensor replaced. The largest difference here is " +
-            fixed(sum.sum_gap_max, 2) + " cycles; a nonzero difference alone does not indicate an error." }];
-      cautions.push({ level: "info", text: "A large value is not evidence that the sensor causes the engine's wear." });
-      var meaning = exact
-        ? "Each value is a sensor's share of the prediction's difference from the baseline of " +
-          fixed(sum.baseline_prediction, 2) + " cycles, where every sensor is replaced by its average training window. "
-        : "Each value is the original prediction minus the prediction with just that sensor replaced by its average training window, in cycles. ";
-      var origin = exact ? "" : "Occlusion is a comparison added by this project; the paper does not use it. ";
-      var head = '<section class="pg-detail"><p class="pg-lead">' + origin + meaning +
-        "Positive values raise the predicted remaining life in this comparison; negative values lower it. Computed in " +
-        duration(sum.seconds) + ".</p>" + caveatList(cautions);
+      // The charts carry the reading: each axis names its unit and each
+      // legend its colours. Only a method the paper does not use says so
+      // above them, once, as the walk view does.
+      var head = '<section class="pg-detail">' + (exact ? ""
+        : '<p class="pg-lead">Occlusion is a comparison added by this project; the paper does not use it.</p>');
 
       var mean = {};
       sensorOrder.forEach(function (s) { mean[s] = sum.mean_abs[s]; });
@@ -3907,26 +4243,34 @@
       var body;
       if (forEngine) {
         var current = rows[e.index];
-        var graph = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, right.</strong> The sensor graph at the selected engine cycle, ' +
-          'coloured by the rank of its contributions.</figcaption><div data-selected-sensor-graph>' +
-          sensorGraph(current, sensorOrder) + '</div>' +
-          '<p class="pg-faint">The paper does not say whether influence is the size of a value or the value itself; here it is the size, ignoring the sign.</p></figure>';
-        var history = '<figure class="pg-figure pg-figure--wide"><figcaption>' +
-          "Every sensor, across the whole life. Point at any panel to read every sensor at that cycle.</figcaption>" +
-          sensorHistory(rows, symbols, e.index) + "</figure>";
+        // The two angles the 3D chart is seen from belong to the
+        // explanation on screen: another explanation opens at the first view.
+        if (e.ribbonViewName !== e.shown) { e.ribbonView = { az: RIBBON_VIEW.az, el: RIBBON_VIEW.el }; e.ribbonViewName = e.shown; }
+        var valueName = exact ? "SHAP value" : "Occlusion value";
+        var history = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>One chart per sensor.</strong> ' +
+          "How each sensor's value changed over the engine's life: the cycle along the bottom, the value up the side, " +
+          "in cycles of remaining life. Point at any chart to read every sensor at that cycle.</figcaption>" +
+          sensorHistory(rows, symbols, e.index, W) + "</figure>" +
+          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Every sensor in one space.</strong> ' +
+          "The same values as the charts above: each sensor is a ribbon along the engine's cycles, and its height is its " +
+          esc(valueName) + ", in cycles of remaining life. Blue stands above zero and orange below; the dots mark the engine cycle chosen above. " +
+          "Drag the chart to turn it.</figcaption>" +
+          '<div class="pg-3d-stage" data-ribbons tabindex="0" role="group" aria-label="Three-dimensional chart. The arrow keys turn it; Home returns it to its first view.">' +
+          ribbons(rows, symbols, W, e.ribbonView, e.index, valueName) + "</div>" +
+          '<div class="pg-faint">Features are the fourteen sensors, in the order of the average size of their values. ' +
+          "The ribbons are not joined into a surface, because no value exists between two sensors. " +
+          "The arrow keys turn the chart too; a double click returns it to this view.</div></figure>";
         body = head + explanationCharts([
           { key: "engine", label: "Engine", html: engineFigure() },
           { key: "life", label: "Remaining life", html: lifeFigure(rows, current, W) },
           { key: "values", label: "All values", html: swarm },
           { key: "ranking", label: "Sensor ranking", html: strip },
-          { key: "graph", label: "Sensor graph", html: data.graph_layers === false ? "" : graph },
           { key: "history", label: "Over time", html: history },
           { key: "paper", label: "Paper comparison", html: exact ? paperComparison(rows, sensorOrder, sum) : "" }
         ]) + "</section>";
       } else {
-        // With no single window to show, Fig. 9 (right) would repeat Fig. 9
-        // (middle) on the graph; the heat map carries the colour key instead
-        // of the history chart, which needs one engine's life.
+        // The heat map takes the place of the history chart, which needs
+        // one engine's life.
         var heat = '<figure class="pg-figure pg-figure--wide"><figcaption>Every sensor at every ' +
           "test engine (columns, by engine number). Blue raised the predicted remaining life, orange lowered it; the stronger the colour, the more cycles.</figcaption>" +
           heatmap(rows, sensorOrder) + "</figure>";
@@ -3939,7 +4283,8 @@
       }
       box.innerHTML = body;
       mountEngine(box, data);
-      wireHistory(box, forEngine ? rows : []);
+      wireHistory(box, forEngine ? rows : [], symbols, W);
+      wireRibbons(box, forEngine ? rows : [], symbols, W, exact ? "SHAP value" : "Occlusion value");
       wireExplanationSelection(box, data, sensorOrder, W);
     }).catch(function (error) {
       box.innerHTML = errorBox(error.message);
@@ -4045,10 +4390,137 @@
     }, 0);
     return '<strong>Example from the selected ' + (data.summary.scope === "engine" ? 'engine cycle' : 'test engine') + '.</strong> Engine ' + esc(selected.unit) +
       ', cycle ' + esc(selected.end_cycle) + ': the sensor contributions total <strong>' + scoreShare(sensorTotal) +
-      '</strong>, and the model-added part contributes <strong>' + scoreShare(Number(selected.constant)) +
+      '</strong>, and what the network adds contributes <strong>' + scoreShare(Number(selected.constant)) +
       '</strong>. Together they give the internal score <strong>' + scoreShare(Number(selected.score)) +
       '</strong>, which the model converts to <strong>' + fixed(selected.predicted, 1) +
       ' cycles</strong> of remaining life. These displayed numbers are rounded.';
+  }
+
+  // What every tab of a walk explanation opens with: the question the tab
+  // answers, then what is drawn, in a sentence or two.
+  function walkTabHead(question, text) {
+    return '<header class="pg-tabhead"><h3>' + question + "</h3><p>" + text + "</p></header>";
+  }
+
+  // What a walk is, in one clause, with the number of graph layers the
+  // explanation itself recorded.
+  function walkMeaning(sum) {
+    return "the route one sensor's reading takes through the network's " + (sum.steps ? sum.steps + " " : "") + "graph layers";
+  }
+
+  // The three parts a walk explanation splits a score into, named for what
+  // they are. Where the graph cannot tell some sensors apart they count as
+  // one group, and a walk stays when it never leaves its group; with no such
+  // group it stays when it never leaves its sensor.
+  function walkPartList(sum) {
+    var home = (sum.groups || []).length ? "group" : "sensor";
+    return [
+      { key: "constant", name: "Added by the network", colour: "var(--fig-core)",
+        about: "What the numbers the network learned to add inside its calculations, its biases, contribute. It traces back to no sensor." },
+      { key: "stays", name: "Walks that stay in their " + home, colour: "var(--fig-lpt)",
+        about: "The share of every walk that never leaves the " + home + " it starts in." },
+      { key: "moves", name: "Walks that cross to another " + home, colour: "var(--fig-lpc)",
+        about: "The share of every walk that reaches another " + home + " at least once, even if it comes back." }
+    ];
+  }
+
+  // A sensor's name as a chip that says what the sensor measures when pointed at.
+  function sensorChip(s) {
+    return '<span class="pg-chip"' + sensorTip(s) + ">" + esc(s) + "</span>";
+  }
+
+  // One position of a walk: a sensor, or a group of sensors the graph layers
+  // cannot tell apart, written with slashes as the stored walk names it.
+  function walkStep(step) {
+    var names = String(step).split("/");
+    if (names.length < 2) { return sensorChip(step); }
+    return '<span class="pg-chip pg-chip--group">' + names.map(function (s) {
+      return "<span" + sensorTip(s) + ">" + esc(s) + "</span>";
+    }).join("<i>/</i>") + "</span>";
+  }
+
+  // What a reader of the score's parts is most likely to misread, said once
+  // under the sum: what a group is, where the explanation has any, and why
+  // the part no sensor owns is not the same at every cycle or engine.
+  function scoreNotes(sum) {
+    var groups = sum.groups || [];
+    return '<div class="pg-notes">' + (groups.length ? "<p><strong>What a group is.</strong> Sensors joined to exactly the same sensors get identical numbers " +
+      "from every graph layer, so the network cannot tell them apart and they count as one group: " +
+      groups.map(function (g) { return walkStep(g.join("/")); }).join(" ") +
+      ". Every other sensor is a group of its own (" + refLink("F-18") + "). A group belongs to the network's arithmetic; it is not a part of the engine.</p>" : "") +
+      "<p><strong>Why what the network adds is not one fixed number.</strong> Its learned numbers are fixed after training, but what they contribute differs from one " +
+      (sum.scope === "engine" ? "cycle" : "engine") + " to the next, because the readings decide which calculations pass them on. " +
+      "It is not the score of a reference engine.</p></div>";
+  }
+
+  // Words wrapped onto lines of at most so many letters, for a label drawn in a chart.
+  function wrapWords(text, width) {
+    var lines = [""];
+    String(text).split(" ").forEach(function (word) {
+      var last = lines[lines.length - 1];
+      if (last && (last + " " + word).length > width) { lines.push(word); } else { lines[lines.length - 1] = last ? last + " " + word : word; }
+    });
+    return lines;
+  }
+
+  // The range every score sum of an explanation is drawn on: wide enough for
+  // each running total of each cycle or engine, so that bars compare as the
+  // slider moves.
+  function scoreSumScale(rows) {
+    var lo = 0, hi = 0;
+    rows.forEach(function (r) {
+      var c = Number(r.constant), s = c + Number(r.stays), m = s + Number(r.moves);
+      [c, s, m, Number(r.score)].forEach(function (v) {
+        if (isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+      });
+    });
+    var room = (hi - lo) * 0.04 || 1;
+    return { lo: lo - room, hi: hi + room };
+  }
+
+  // One score written the way a sum is written by hand: the parts in a
+  // column, each bar starting where the one above ended, a rule, and the
+  // total under it. The total's bar ends where the last part's does, which
+  // is the adding-up drawn rather than asserted.
+  function scoreSum(data, index) {
+    var sum = data.summary, rows = data.values, forEngine = sum.scope === "engine";
+    var row = rows[Math.max(0, Math.min(index || 0, rows.length - 1))];
+    var k = scoreSumScale(rows), span = k.hi - k.lo;
+    var at = function (v) { return ((v - k.lo) / span * 100).toFixed(2); };
+    var ticks = niceTicks(k.lo, k.hi, 6);
+    var grid = ticks.map(function (t) {
+      return '<span class="pg-sum-grid' + (t === 0 ? " pg-sum-grid--zero" : "") + '" style="left:' + at(t) + '%"></span>';
+    }).join("");
+    var bar = function (from, to, colour) {
+      var a = Math.min(from, to), b = Math.max(from, to);
+      return '<span class="pg-sum-bar' + (colour ? "" : " pg-sum-bar--total") + '" style="left:' + at(a) + "%;width:" +
+        Math.max(0.2, (b - a) / span * 100).toFixed(2) + "%" + (colour ? ";background:" + colour : "") + '"></span>';
+    };
+    var join = function (v, way) { return '<span class="pg-sum-join pg-sum-join--' + way + '" style="left:' + at(v) + '%"></span>'; };
+    var from = 0;
+    var body = walkPartList(sum).map(function (part, i) {
+      var value = Number(row[part.key]), to = from + value;
+      var html = '<div class="pg-sum-row"><div class="pg-sum-name"><i style="background:' + part.colour + '"></i><b>' + esc(part.name) +
+        "</b><span>" + esc(part.about) + '</span></div><div class="pg-sum-value">' + scoreShare(value) +
+        '</div><div class="pg-sum-track" aria-hidden="true">' + grid + (i ? join(from, "in") : "") + bar(from, to, part.colour) + join(to, "out") +
+        "</div></div>";
+      from = to;
+      return html;
+    }).join("");
+    var score = Number(row.score), ceiling = Number(sum.rul_max);
+    var total = '<div class="pg-sum-row pg-sum-row--total"><div class="pg-sum-name"><i aria-hidden="true">=</i><b>Score</b>' +
+      '<span>The three parts added together.</span></div><div class="pg-sum-value">' + scoreShare(score) +
+      '</div><div class="pg-sum-track" aria-hidden="true">' + grid + join(from, "in") + bar(0, score, "") + "</div></div>";
+    var axis = '<div class="pg-sum-row pg-sum-row--axis" aria-hidden="true"><div></div><div></div><div class="pg-sum-axis">' +
+      ticks.map(function (t) { return '<span style="left:' + at(t) + '%">' + tickLabel(t) + "</span>"; }).join("") +
+      "<em>score, a number with no unit</em></div></div>";
+    var who = forEngine ? "cycle " + esc(row.end_cycle) + " of engine " + esc(row.unit) : "test engine " + esc(row.unit);
+    return '<h4 class="pg-figure-title">The score of ' + who + ", added up</h4>" +
+      '<div class="pg-sum" role="group" aria-label="The parts of the score and their total">' + body + total + axis + "</div>" +
+      '<p class="pg-sum-result">The network turns this score into <strong>' + fixed(row.predicted, 1) +
+      " cycles</strong> of predicted remaining life. A higher score always gives a longer prediction" +
+      (isFinite(ceiling) && ceiling > 0 ? ", and none can pass the ceiling of " + fixed(ceiling, 0) + " cycles" : "") + ".</p>" +
+      scoreNotes(sum);
   }
 
   // A walk explanation. Its numbers are shares of the score before the
@@ -4059,7 +4531,7 @@
   // the other methods can read it. The paper has no walks, so nothing here
   // is set beside its figures, and the beeswarm already ranks the sensors.
   function drawWalks(box, data) {
-    var e = S.explain, sum = data.summary, rows = data.values, top = data.top_walks || [];
+    var e = S.explain, sum = data.summary, rows = data.values;
     var symbols = walkSensors(sum);
     if (!symbols.length) {
       box.innerHTML = errorBox("This walk explanation stored no share for any sensor.");
@@ -4078,7 +4550,7 @@
       'in several calculation steps. A sequence of sensors followed through those steps is called a <strong>walk</strong>. ' +
       'This explanation adds the contributions from all walks starting at a sensor to get the number shown beneath its label.</p>' +
       '<p><strong>How the total becomes a prediction.</strong> Inside its calculations, the model also adds numbers learned during training, called biases. ' +
-      'Their contribution is shown as the model-added part in the Score parts tab. Add that contribution to all the sensor contributions ' +
+      'Their contribution is the part named "Added by the network" in the Score breakdown tab. Add that contribution to all the sensor contributions ' +
       'to get the internal score. The model then converts that total into remaining life; a larger total gives a longer prediction.</p>' +
       '<p data-walk-example>' + walkExample(data, e.index) + '</p>' +
       '<p><strong>Check on the addition.</strong> Across this saved explanation, the largest difference between the sum ' +
@@ -4120,40 +4592,34 @@
       '><summary>How this explanation is calculated and checked</summary>' + methodNotes + '</details></div>';
 
     var W = S.chartsDrawnAt = explanationChartWidth();
-    var what = forEngine ? "window" : "engine";
-    var partsGuide = '<div class="pg-score-guide" aria-label="Definitions for the score-parts chart"><p><strong>What is being added up?</strong> These are parts of the model\'s internal score, ' +
-      'not sensor readings or remaining cycles. The total score is converted to the remaining-life prediction.</p>' +
-      '<dl><dt>Model-added part</dt><dd>The contribution from numbers the model learned to add inside its calculations ' +
-      '(called biases). This part is kept separate from contributions traced back to sensor inputs. The learned numbers are fixed after training, ' +
-      'but their contribution can change because the input changes which calculations pass them on. This is not a reference engine or a constant sensor.</dd>' +
-      '<dt>Routes within one group</dt><dd>Contributions from routes that never leave their starting sensor\'s group. ' +
-      'A route, also called a walk, follows sensor positions through successive calculation layers; nothing physically moves on the engine.</dd>' +
-      '<dt>Routes between groups</dt><dd>Contributions from all other routes: they reach a sensor outside the starting group at least once, even if they later return.</dd></dl>' +
-      '<p><strong>What is a group?</strong> Sensors are grouped when they have matching connections in this model, so combining their neighbours gives them the same result. ' +
-      'These are calculation groups, not physical engine components. ' + (groups.length ? 'Here the shared groups are <strong>' +
-        esc(groups.map(function (group) { return group.join(" / "); }).join("; ")) + '</strong>. Every other sensor is its own group.' :
-        'In this saved explanation, every sensor is its own group.') + '</p>' +
-      '<p>Positive contributions add to the score; negative ones subtract. Green, purple and gold identify the three categories, not healthy or damaged parts. ' +
-      'Large positive and negative contributions can cancel inside a category.</p></div>';
-    var partsCaption = forEngine
-      ? "How to read this chart. The dashed line is the total score that becomes the remaining-life prediction; the three coloured lines add to it at every cycle. Compare each coloured line's distance from zero to see which part has the largest net effect. Lines on the same side of zero reinforce one another; lines on opposite sides cancel. When the dashed line changes, the coloured line that changes with it shows which part moved the prediction."
-      : "How to read these charts. The first compares each score part across test engines; the second builds the selected engine's score step by step. Use them to see which part usually has the largest net effect and where positive and negative parts cancel.";
-    var parts = '<figure class="pg-figure pg-figure--wide"><figcaption>' +
-      partsCaption + "</figcaption>" + walkParts(rows, forEngine, W, e.index) + partsGuide + "</figure>";
-    var walks = topWalks(top, sum);
-    var check = flippingFigure(data, e.index, W);
-    var fleetFlow = forEngine ? "" : '<details class="pg-figure pg-figure--wide"><summary>Average connection shares across all test engines</summary>' +
-      '<p>Both directions and all graph layers together, averaged over the test engines. This is separate from the chosen engine above.</p>' +
-      flowGraph(rows, null, sensorOrder) + '</details>';
+    var item = forEngine ? "cycle" : "test engine";
+    // Each tab opens with the question it answers. Score breakdown: the
+    // chosen score as a sum, then the same parts for every cycle or engine.
+    var parts = walkTabHead("What is the score made of?",
+      "Before it gives a number of cycles, the network computes one number, the score. A walk explanation splits that score into three parts " +
+      "that add up to it exactly: two kinds of walk, a walk being " + walkMeaning(sum) + ", and what the network adds by itself.") +
+      '<figure class="pg-figure pg-figure--wide" data-walk-sum>' + scoreSum(data, e.index) + "</figure>" +
+      '<figure class="pg-figure pg-figure--wide" data-walk-parts>' + walkParts(data, e.index, W) + "</figure>";
+    var walks = topWalks(data);
+    var check = walkTabHead("Does the explanation agree with the network?",
+      "The check the method's own authors run on their explanations (Schnake et al., 2022, Section 4.1). An explanation says what any set of sensors " +
+      "is worth to the score. The check adds sensors to an empty graph, or removes them from the full one, in the order that worth gives, " +
+      "runs the network on the graph that is left after every step, and follows the score. The curves are for the chosen " + item + ".") +
+      '<div data-walk-check>' + flippingFigure(data, e.index, W) + "</div>";
+    var fleetFlow = forEngine ? "" : walkTabHead("How much passed along each connection, on average?",
+      "Each line is one connection of the sensor graph, as wide as the share of the score that passed along it, both directions and all graph layers together, " +
+      "averaged over the " + count(rows.length) + " test engines. The Test engine control above does not change this picture; the Engine tab draws the chosen engine. " +
+      "A wide line is not what the prediction would lose if that connection were removed.") +
+      '<figure class="pg-figure pg-figure--wide">' + flowGraph(rows, null, sensorOrder) + "</figure>";
 
     // Only views the method's own paper uses, or this project's split of the
     // score: no view borrowed from the Shapley explanation or the main paper.
     var body = head + explanationCharts([
       { key: "engine", label: "Engine", html: engineFigure() },
-      { key: "parts", label: "Score parts", html: parts },
+      { key: "parts", label: "Score breakdown", html: parts },
       { key: "connections", label: "Connections", html: fleetFlow },
       { key: "walks", label: "Largest walks", html: walks },
-      { key: "check", label: "Authors' check", html: check }
+      { key: "check", label: "Explanation check", html: check }
     ]) + "</section>";
     box.innerHTML = body;
     mountEngine(box, data);
@@ -4168,14 +4634,15 @@
     "GNN-LRP, starting sensors": { colour: "var(--fig-ink)", dash: "6 4" },
     "GNN-GI, walks": { colour: "var(--fig-cool)", width: 2.2 },
     "GNN-GI, starting sensors": { colour: "var(--fig-cool)", dash: "6 4" },
-    "random": { colour: "var(--fig-muted)", dash: "2 4" }
+    // The axis grey, not the paler one beside it: a drawn line needs 3 to 1 against the page.
+    "random": { colour: "var(--fig-axis)", dash: "2 4" }
   };
   var FLIP_NAMES = {
-    "GNN-LRP, walks": "walks, the authors' setting",
-    "GNN-LRP, starting sensors": "their starting sensors only",
-    "GNN-GI, walks": "walks, the simpler baseline (\u03b3 0)",
-    "GNN-GI, starting sensors": "its starting sensors only",
-    "random": "random orders, averaged"
+    "GNN-LRP, walks": "Whole walks, the authors' setting",
+    "GNN-LRP, starting sensors": "Sensor totals, the authors' setting",
+    "GNN-GI, walks": "Whole walks, the simpler baseline (\u03b3\u00a00)",
+    "GNN-GI, starting sensors": "Sensor totals, the simpler baseline (\u03b3\u00a00)",
+    "random": "Random orders, averaged"
   };
 
   // A third setting of the rule, chosen when the explanation was made, is
@@ -4192,9 +4659,8 @@
 
   function flipName(ranking) {
     var chosen = chosenRanking(ranking);
-    // Named in full on both lines, since the baseline's line already reads
-    // "its starting sensors only".
-    if (chosen) { return chosen.walks ? "walks, " + lowerFirst(chosen.label) : lowerFirst(chosen.label) + ", starting sensors only"; }
+    // Named the way the two stored settings are: the kind of ranking, then the setting.
+    if (chosen) { return (chosen.walks ? "Whole walks, " : "Sensor totals, ") + lowerFirst(chosen.label); }
     return FLIP_NAMES[ranking] || ranking;
   }
 
@@ -4204,90 +4670,141 @@
     return FLIP_STYLES[ranking] || { colour: "var(--fig-axis)" };
   }
 
+  // Which stored ranking is this explanation's own: its whole walks, under
+  // the setting of the rule it was made with.
+  function ownRanking(sum, rows) {
+    var setting = gammaSettingOf(sum);
+    var wanted = setting === "gnn-gi" ? "GNN-GI, walks" : setting && setting !== "authors" ? "GNN-LRP " + setting + ", walks" : "GNN-LRP, walks";
+    return rows.some(function (r) { return r.ranking === wanted; }) ? wanted : "GNN-LRP, walks";
+  }
+
+  // A short sample of the line a ranking is drawn with, for a table or a sentence.
+  function lineKey(style) {
+    return '<svg class="pg-check-key" viewBox="0 0 28 10" aria-hidden="true"><line x1="1" x2="27" y1="5" y2="5" stroke="' + style.colour +
+      '" stroke-width="' + (style.width || 1.7) + '"' + (style.dash ? ' stroke-dasharray="' + style.dash + '"' : "") + "/></svg>";
+  }
+
+  // The check's two tests for the chosen cycle or engine, side by side where
+  // there is room: the curves, the order this explanation's own ranking
+  // took the sensors in, and a table that is the curves' legend as well,
+  // with each curve's mean here and over every saved cycle or engine.
   function flippingFigure(data, index, W) {
+    var sum = data.summary, forEngine = sum.scope === "engine";
     var rows = (data.flipping || []).filter(function (r) { return Number(r.window) === index; });
     if (!rows.length) {
-      return '<div class="pg-empty">This saved explanation was made before the authors\' check was stored. Explain the run again to add it.</div>';
+      return '<div class="pg-empty">This saved explanation was made before the check was stored with it. Explain the run again to add it.</div>';
     }
+    var chosen = data.values[index], sensors = walkSensors(sum);
+    var here = forEngine ? "cycle " + chosen.end_cycle : "engine " + chosen.unit;
+    var averages = sum.flipping_aufc || [], own = ownRanking(sum, rows);
     var steps = Object.keys(rows[0]).filter(function (k) { return k.indexOf("step_") === 0; }).length;
-    var H = chartHeight(W);
-    function chart(task) {
-      var series = rows.filter(function (r) { return r.task === task; }).map(function (r) {
-        var style = flipStyle(r.ranking);
+    // Two cards share the panel's width less the 16 between them; each keeps 26 for its own frame.
+    var two = W >= 1180, cardW = two ? Math.floor(W / 2 - 21) : W;
+    var H = Math.round(Math.max(220, Math.min(320, cardW * 0.46)));
+    var all = averages.length ? "all " + count(averages[0].windows) + (forEngine ? " cycles" : " engines") : "";
+
+    function card(task) {
+      var adding = task === "activation";
+      var mine = rows.filter(function (r) { return r.task === task; });
+      var curve = function (r) {
         var points = [];
         for (var k = 0; k < steps; k++) { points.push([k, Number(r["step_" + k])]); }
-        return { name: flipName(r.ranking), colour: style.colour, width: style.width, dash: style.dash, points: points };
+        return points;
+      };
+      var chart = plot({ width: cardW, height: H,
+        series: mine.map(function (r) {
+          var style = flipStyle(r.ranking);
+          return { name: flipName(r.ranking), colour: style.colour, width: style.width, dash: style.dash, points: curve(r), nolegend: true };
+        }),
+        label: adding ? "The score as sensors are added" : "How far the score has moved as sensors are removed",
+        xlabel: adding ? "sensors added so far" : "sensors removed so far",
+        ylabel: adding ? "score" : "distance from the full graph's score" });
+      var mineOwn = mine.filter(function (r) { return r.ranking === own; })[0];
+      var order = mineOwn && mineOwn.order ? String(mineOwn.order).split(" ").map(function (i) { return sensors[Number(i)]; }) : [];
+      var chips = order.length && order.every(Boolean) ? '<p class="pg-check-order"><span>At ' + esc(here) + ", this explanation " +
+        (adding ? "adds" : "removes") + " them in this order:</span>" + order.map(sensorChip).join("") + "</p>" : "";
+      var stats = averages.filter(function (a) { return a.task === task; });
+      var lo = Infinity, hi = -Infinity;
+      stats.forEach(function (a) {
+        var spread = Number(a.std) || 0;
+        lo = Math.min(lo, a.mean - spread); hi = Math.max(hi, a.mean + spread);
       });
-      return plot({ width: W, height: H, series: series,
-        label: task === "activation" ? "Score as sensors are added" : "Change in score as sensors are removed",
-        xlabel: task === "activation" ? "sensors added to an empty graph" : "sensors removed from the full graph",
-        ylabel: task === "activation" ? "score before the sigmoid" : "distance from the full graph's score" });
+      var room = (hi - lo) * 0.05 || 1;
+      lo -= room; hi += room;
+      var pos = function (v) { return ((v - lo) / (hi - lo) * 100).toFixed(2); };
+      var body = mine.map(function (r) {
+        var style = flipStyle(r.ranking), a = stats.filter(function (x) { return x.ranking === r.ranking; })[0];
+        var spread = a && a.std !== null && a.std !== undefined ? Number(a.std) : null;
+        // The mean of a curve's points is what the authors call its area.
+        var area = isFinite(Number(r.aufc)) && r.aufc !== null ? Number(r.aufc)
+          : curve(r).reduce(function (total, p) { return total + p[1]; }, 0) / steps;
+        return "<tr" + (r.ranking === own ? ' class="is-own"' : "") + '><td><div class="pg-check-name">' + lineKey(style) + "<span>" + esc(flipName(r.ranking)) +
+          (r.ranking === own ? ' <span class="pg-tag">this explanation</span>' : "") + '</span></div></td><td class="num">' + fixed(area, 3) +
+          '</td><td class="num">' + (a ? fixed(a.mean, 3) + (spread !== null ? " ± " + fixed(spread, 3) : "") : "") + "</td>" +
+          (stats.length ? '<td class="pg-check-range" aria-hidden="true">' + (a ? '<span class="pg-range">' +
+            (spread !== null ? '<span class="pg-range-line" style="left:' + pos(a.mean - spread) + "%;width:" +
+              (2 * spread / (hi - lo) * 100).toFixed(2) + '%"></span>' : "") +
+            '<span class="pg-range-dot" style="left:' + pos(a.mean) + "%;background:" + style.colour + '"></span></span>' : "") + "</td>" : "") + "</tr>";
+      }).join("");
+      var table = '<table class="pg-check-table"><thead><tr><th>Order taken from</th><th class="num">At ' + esc(here) + "</th>" +
+        (stats.length ? '<th class="num">Mean ± spread, ' + all + '</th><th aria-hidden="true"></th>' : '<th class="num"></th>') +
+        "</tr></thead><tbody>" + body + "</tbody></table>";
+      return '<section class="pg-figure pg-check-card"><div class="pg-check-head"><h4 class="pg-figure-title">' +
+        (adding ? "Adding sensors" : "Removing sensors") + '</h4><span class="pg-tag pg-tag--plain">' +
+        (adding ? "higher is better" : "lower is better") + '</span></div><p class="pg-figure-lead">' +
+        (adding ? "Start from a graph with no sensor in it and add one at a time, each time the sensor that the ranking says makes the set worth most. " +
+          "A ranking that describes the network well raises the score fastest."
+          : "Start from the full graph and remove one at a time, each time the sensor whose loss the ranking says costs least. " +
+          "A ranking that describes the network well moves the score least.") + "</p>" + chart + chips + table + "</section>";
     }
-    var averages = (data.summary.flipping_aufc || []);
-    var table = "";
-    if (averages.length) {
-      // In the order the check stored them: the authors' setting, their
-      // baseline, a third setting chosen when it was made, then random orders.
-      var names = averages.map(function (a) { return a.ranking; }).filter(function (name, i, all) {
-        return all.indexOf(name) === i;
-      });
-      table = '<table class="pg-mini"><thead><tr><th>Order from</th><th class="num">Adding: higher is better</th>' +
-        '<th class="num">Removing: lower is better</th></tr></thead><tbody>' + names.map(function (name) {
-          var cell = function (task) {
-            var a = averages.filter(function (x) { return x.ranking === name && x.task === task; })[0];
-            return a ? fixed(a.mean, 3) + (a.std !== null && a.std !== undefined ? " \u00b1 " + fixed(a.std, 3) : "") : "";
-          };
-          return "<tr><td>" + esc(flipName(name)) + '</td><td class="num">' + cell("activation") +
-            '</td><td class="num">' + cell("pruning") + "</td></tr>";
-        }).join("") + "</tbody></table>";
-    }
-    var what = data.summary.scope === "engine" ? "window" : "test engine";
-    return '<figure class="pg-figure pg-figure--wide"><figcaption>Not in the paper. The check the GNN-LRP paper uses on its own explanations ' +
-      '(Schnake et al., 2022, Section 4.1), on the selected ' + what + '. Sensors are added to an empty graph, or removed from the full one, ' +
-      'one at a time in the order each ranking gives; a sensor is taken out by cutting all its connections, its link to itself included (' + refLink("A-33") + '). ' +
-      'A ranking that describes the network well raises the score fastest when adding and moves it least when removing.</figcaption>' +
-      chart("activation") + chart("pruning") +
-      (table ? '<p class="pg-faint">The mean of each curve, its area under the flipping curve, averaged over all ' + count(averages[0].windows) + " " + what +
-        (averages[0].windows === 1 ? "" : "s") + ' of this explanation, with the spread between them:</p>' + table : "") + "</figure>";
+
+    var kinds = '<div class="pg-check-kinds"><p>' + lineKey({ colour: "var(--fig-ink)", width: 2.2 }) +
+      "<span><b>Whole walks</b> value a set of sensors by every walk that lies wholly inside it.</span></p><p>" +
+      lineKey({ colour: "var(--fig-ink)", dash: "6 4" }) +
+      "<span><b>Sensor totals</b> value it by its sensors' own numbers added up, the ones the Engine tab shows: every walk that starts in the set, wherever it goes.</span></p><p>" +
+      lineKey(FLIP_STYLES.random) + "<span><b>Random orders</b>, averaged, show what an order that knows nothing about the network reaches.</span></p></div>";
+    return kinds + '<div class="pg-check' + (two ? " pg-check--two" : "") + '">' + card("activation") + card("pruning") + "</div>" +
+      '<p class="pg-faint">The number given for a curve is the mean of its points, which the method\'s authors call the area under the flipping curve.' +
+      (averages.length ? " The spread is the standard deviation between " + all.replace("all ", "the ") + "." : "") +
+      " A sensor that is out of the graph keeps its readings but has every connection cut, its link to itself included, " +
+      "so nothing of it reaches the score through the graph layers (" + refLink("A-33") + ").</p>";
   }
 
-  // Each score split into walks that stay, walks that move, and the part no sensor owns.
-  function walkParts(rows, forEngine, W, index) {
+  // The same three parts and their total for every cycle of one engine, as
+  // lines with the chosen cycle marked, or across the test engines, as one
+  // row of dots per part with the chosen engine ringed.
+  function walkParts(data, index, W) {
+    var sum = data.summary, rows = data.values, forEngine = sum.scope === "engine";
+    var at = Math.max(0, Math.min(index || 0, rows.length - 1)), row = rows[at];
+    var parts = walkPartList(sum).concat([{ key: "score", name: "Score", colour: "var(--fig-ink)" }]);
     if (!forEngine) {
-      var at = Math.max(0, Math.min(index || 0, rows.length - 1));
-      return walkPartDistribution(rows, W) +
-        '<div class="pg-walk-pick"><p><strong>One score, assembled.</strong> Use the Test engine control above the chart tabs to choose an engine. ' +
-        'These are net shares: positive and negative walks may already have cancelled inside the green and purple bars.</p></div>' +
-        '<div data-walk-waterfall>' + walkWaterfall(rows[at], W) + '</div>';
+      return '<h4 class="pg-figure-title">The same parts across the ' + count(rows.length) + " test engines</h4>" +
+        '<p class="pg-figure-lead">One dot is one engine, and the ringed dot is the chosen one. The engines are not set out in order, ' +
+        "because an engine's number is a name and not a quantity.</p>" + walkPartDistribution(rows, W, at, parts);
     }
-    var series = [["stays", "routes within one group", "var(--fig-lpt)"],
-      ["moves", "routes between groups", "var(--fig-lpc)"],
-      ["constant", "model-added part", "var(--fig-core)"],
-      ["score", "total score", "var(--fig-ink)"]].map(function (s) {
-      var points = rows.map(function (r) { return [r.end_cycle, r[s[0]]]; });
-      var line = { name: s[1], colour: s[2], points: points, line: true, dots: false };
-      if (s[0] === "score") {
-        line.dash = "5 4";
-        line.width = 1.5;
-      }
+    var series = parts.map(function (part) {
+      var line = { name: part.name, colour: part.colour,
+        points: rows.map(function (r) { return [r.end_cycle, r[part.key]]; }),
+        marks: [[row.end_cycle, row[part.key], part.name + " at cycle " + row.end_cycle + ": " + scoreShare(Number(row[part.key]))]] };
+      if (part.key === "score") { line.dash = "5 4"; line.width = 1.5; }
       return line;
     });
-    return plot({ width: W, height: chartHeight(W), xlabel: "cycle at the end of the window",
-      ylabel: "internal score (not cycles)", label: "each score split into its parts", series: series });
+    return '<h4 class="pg-figure-title">The same parts at every cycle of engine ' + esc(row.unit) + "</h4>" +
+      '<p class="pg-figure-lead">The dashed line is the score, and at every cycle the three coloured lines add up to it. ' +
+      "Where the dashed line moves, the coloured line that moves with it is the part that changed the prediction.</p>" +
+      plot({ width: W, height: chartHeight(W), xlabel: "cycle at the end of the window", ylabel: "score (no unit)",
+        label: "each part of the score along the engine's life", series: series, zero: true,
+        vlines: [{ x: row.end_cycle, label: "cycle " + row.end_cycle }] });
   }
 
-  // Four horizontal distributions. Engine number is deliberately absent: it
-  // is an identifier, not an ordered quantity from which a trend can be read.
-  function walkPartDistribution(rows, W) {
-    var parts = [
-      { key: "constant", label: "model-added part", lines: ["Model-added", "part"], colour: "var(--fig-core)" },
-      { key: "stays", label: "routes within one group", lines: ["Routes within", "one group"], colour: "var(--fig-lpt)" },
-      { key: "moves", label: "routes between groups", lines: ["Routes between", "groups"], colour: "var(--fig-lpc)" },
-      { key: "score", label: "total score", lines: ["Total score"], colour: "var(--fig-ink)" }
-    ];
-    var values = [];
+  // One row per part of the score, holding every test engine. Engine number
+  // is deliberately absent: it is an identifier, not an ordered quantity from
+  // which a trend can be read. The chosen engine is ringed in every row.
+  function walkPartDistribution(rows, W, chosen, parts) {
+    var narrow = W < 420, values = [];
     parts.forEach(function (part) {
       part.values = rows.map(function (row) { return Number(row[part.key]); });
+      part.lines = wrapWords(part.name, narrow ? 16 : 22);
       values = values.concat(part.values);
     });
     var sortedAt = function (list, share) {
@@ -4298,7 +4815,7 @@
     var lo = Math.min(0, Math.min.apply(null, values)), hi = Math.max(0, Math.max.apply(null, values));
     var pad = (hi - lo) * 0.06 || 1;
     lo -= pad; hi += pad;
-    var left = W < 420 ? 104 : 142, right = 14, top = 16, rowH = 48, bottom = 40;
+    var left = narrow ? 112 : 156, right = 14, top = 16, rowH = 48, bottom = 40;
     var H = top + parts.length * rowH + bottom;
     var X = function (v) { return left + (v - lo) / (hi - lo) * (W - left - right); };
     var out = '<svg class="pg-plot" viewBox="0 0 ' + W + " " + H +
@@ -4324,90 +4841,26 @@
         var jitter = ((engineIndex * 5) % 9 - 4) * 1.4;
         out += '<circle cx="' + X(value).toFixed(1) + '" cy="' + (cy + jitter).toFixed(1) +
           '" r="2" fill="' + part.colour + '" fill-opacity="0.34"><title>' +
-          esc(part.label + " · engine " + rows[engineIndex].unit + ": " + scoreShare(value)) + "</title></circle>";
+          esc(part.name + " · engine " + rows[engineIndex].unit + ": " + scoreShare(value)) + "</title></circle>";
       });
       out += '<rect x="' + X(q1).toFixed(1) + '" y="' + (cy - 7) + '" width="' +
         Math.max(1, X(q3) - X(q1)).toFixed(1) + '" height="14" rx="3" fill="' + part.colour +
         '" fill-opacity="0.20" stroke="' + part.colour + '"/><line x1="' + X(median).toFixed(1) + '" x2="' +
         X(median).toFixed(1) + '" y1="' + (cy - 10) + '" y2="' + (cy + 10) + '" stroke="' + part.colour +
-        '" stroke-width="2"><title>' + esc(part.label + " median: " + scoreShare(median)) + "</title></line>";
+        '" stroke-width="2"><title>' + esc(part.name + " median: " + scoreShare(median)) + "</title></line>";
+      out += '<circle cx="' + X(part.values[chosen]).toFixed(1) + '" cy="' + cy + '" r="5" fill="var(--fig-bg)" stroke="var(--fig-ink)" stroke-width="2"><title>' +
+        esc(part.name + " · engine " + rows[chosen].unit + ", the chosen one: " + scoreShare(part.values[chosen])) + "</title></circle>";
     });
     out += '<text x="' + ((left + W - right) / 2) + '" y="' + (H - 5) +
-      '" text-anchor="middle" class="pg-axis">internal score (not cycles)</text></svg>';
-    var medians = parts.map(function (part) { return part.label + " " + scoreShare(sortedAt(part.values, 0.5)); });
+      '" text-anchor="middle" class="pg-axis">score (no unit)</text></svg>';
+    var medians = parts.map(function (part) { return lowerFirst(part.name) + " " + scoreShare(sortedAt(part.values, 0.5)); });
     var positiveConstants = parts[0].values.filter(function (value) { return value > 0; }).length;
     return out + '<div class="pg-legend"><span><i style="background:var(--fig-axis);opacity:.45"></i>one test engine</span>' +
+      '<span><i style="background:var(--fig-bg);box-shadow:inset 0 0 0 2px var(--fig-ink)"></i>engine ' + esc(rows[chosen].unit) + ", the chosen one</span>" +
       '<span><i style="background:var(--fig-accent);opacity:.20;border-radius:2px"></i>middle half of the engines</span>' +
       '<span><i style="background:var(--fig-ink);width:2px;border-radius:0"></i>median, the middle engine after ordering</span></div>' +
-      '<p class="pg-faint">The model-added part is positive for ' + positiveConstants + " of " + rows.length +
-      " engines. Medians: " + esc(medians.join("; ")) + ". A value near zero can still hide large positive and negative walks that cancel.</p>";
-  }
-
-  // A waterfall makes the addition visible for one engine: each coloured bar
-  // starts at the subtotal left by the previous one, and the outline checks it.
-  function walkWaterfall(row, W) {
-    var narrow = W < 500, tiny = W < 300;
-    var steps = [
-      { label: "model-added part", lines: tiny ? ["Model-", "added", "part"] : narrow ? ["Model-", "added part"] : ["Model-added", "part"], value: Number(row.constant), colour: "var(--fig-core)" },
-      { label: "routes within one group", lines: tiny ? ["Routes", "within", "one", "group"] : narrow ? ["Routes", "within one", "group"] : ["Routes within", "one group"], value: Number(row.stays), colour: "var(--fig-lpt)" },
-      { label: "routes between groups", lines: narrow ? ["Routes", "between", "groups"] : ["Routes between", "groups"], value: Number(row.moves), colour: "var(--fig-lpc)" }
-    ];
-    var totals = [0];
-    steps.forEach(function (step) { totals.push(totals[totals.length - 1] + step.value); });
-    var score = Number(row.score), scaleValues = totals.concat([score]);
-    var lo = Math.min(0, Math.min.apply(null, scaleValues)), hi = Math.max(0, Math.max.apply(null, scaleValues));
-    var pad = (hi - lo) * 0.12 || 1;
-    lo -= pad; hi += pad;
-    var left = 48, right = 14, top = 28, bottom = tiny ? 78 : narrow ? 64 : 48, H = Math.max(250, Math.min(280, W * 0.38));
-    var plotW = W - left - right, gap = plotW / 4, barW = Math.max(24, Math.min(66, gap * 0.58));
-    var X = function (index) { return left + gap * (index + 0.5); };
-    var Y = function (value) { return top + (1 - (value - lo) / (hi - lo)) * (H - top - bottom); };
-    var out = '<svg class="pg-plot" viewBox="0 0 ' + W + " " + H +
-      '" role="img" aria-label="The three parts assembled into test engine ' + esc(row.unit) + '\'s score">';
-    niceTicks(lo, hi, 5).forEach(function (tick) {
-      out += '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + Y(tick).toFixed(1) + '" y2="' +
-        Y(tick).toFixed(1) + '" stroke="var(--line-soft)"/><text x="' + (left - 6) + '" y="' +
-        (Y(tick) + 4).toFixed(1) + '" text-anchor="end" class="pg-tick">' + tickLabel(tick) + "</text>";
-    });
-    out += '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + Y(0).toFixed(1) + '" y2="' +
-      Y(0).toFixed(1) + '" stroke="var(--fig-axis)" stroke-width="1.2"/>';
-    steps.forEach(function (step, index) {
-      var from = totals[index], to = totals[index + 1], x = X(index);
-      var y = Math.min(Y(from), Y(to)), height = Math.max(1.5, Math.abs(Y(from) - Y(to)));
-      out += '<rect x="' + (x - barW / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) +
-        '" height="' + height.toFixed(1) + '" rx="3" fill="' + step.colour + '" fill-opacity="0.78"><title>' +
-        esc(step.label + ": " + scoreShare(step.value) + "; subtotal " + scoreShare(to)) + "</title></rect>";
-      var numberY = step.value >= 0 ? y - 6 : y + height + 14;
-      out += '<text x="' + x.toFixed(1) + '" y="' + numberY.toFixed(1) +
-        '" text-anchor="middle" class="pg-tick">' + scoreShare(step.value) + "</text>";
-      step.lines.forEach(function (line, i) {
-        out += '<text x="' + x.toFixed(1) + '" y="' + (H - bottom + 18 + i * 14) +
-          '" text-anchor="middle" class="pg-tick">' + esc(line) + "</text>";
-      });
-      if (index < steps.length - 1) {
-        out += '<line x1="' + (x + barW / 2).toFixed(1) + '" x2="' + (X(index + 1) - barW / 2).toFixed(1) +
-          '" y1="' + Y(to).toFixed(1) + '" y2="' + Y(to).toFixed(1) +
-          '" stroke="var(--fig-axis)" stroke-dasharray="3 3"/>';
-      }
-    });
-    var finalX = X(3), finalY = Math.min(Y(0), Y(score)), finalHeight = Math.max(1.5, Math.abs(Y(0) - Y(score)));
-    out += '<rect x="' + (finalX - barW / 2).toFixed(1) + '" y="' + finalY.toFixed(1) + '" width="' +
-      barW.toFixed(1) + '" height="' + finalHeight.toFixed(1) +
-      '" rx="3" fill="var(--fig-ink)" fill-opacity="0.08" stroke="var(--fig-ink)" stroke-width="2"><title>' +
-      esc("total score: " + scoreShare(score)) + "</title></rect>";
-    out += '<text x="' + finalX.toFixed(1) + '" y="' + (finalY - 6).toFixed(1) +
-      '" text-anchor="middle" class="pg-tick">' + scoreShare(score) + '</text>';
-    (narrow ? ["Total", "score"] : ["Total score"]).forEach(function (line, i) {
-      out += '<text x="' + finalX.toFixed(1) + '" y="' + (H - bottom + 18 + i * 14) +
-        '" text-anchor="middle" class="pg-tick">' + line + '</text>';
-    });
-    out += '<text transform="translate(13,' + ((top + H - bottom) / 2) +
-      ') rotate(-90)" text-anchor="middle" class="pg-axis">internal score (not cycles)</text></svg>';
-    return out + '<p class="pg-walk-equation"><span>Model-added part (' + scoreShare(steps[0].value) + ")</span><b> + </b><span>Routes within one group (" +
-      scoreShare(steps[1].value) + ")</span><b> + </b><span>Routes between groups (" + scoreShare(steps[2].value) +
-      ")</span><b> = </b><span>Total score " + scoreShare(score) + "</span></p>" +
-      '<p class="pg-faint">For test engine ' + esc(row.unit) + ', the model converts this total score to ' + fixed(row.predicted, 1) +
-      ' cycles of predicted remaining life. The parts are not cycle counts. Displayed numbers are rounded.</p>';
+      '<p class="pg-faint">Medians: ' + esc(medians.join("; ")) + ". What the network adds is above zero for " + positiveConstants + " of " + rows.length +
+      " engines. A part near zero can still hide large positive and negative walks that cancel.</p>";
   }
 
   // The sensor graph with what passed along each connection: one line per
@@ -4464,10 +4917,12 @@
       var p = g.positions[s];
       if (!p) { return; }
       var self = shown["link_" + s + "_" + s];
-      var title = "<title>" + esc(s + (self !== undefined ? " · along its connection to itself: " + scoreShare(Number(self)) : "")) + "</title>";
-      out += "<g>" + title + '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale +
+      var note = self !== undefined ? "along its connection to itself: " + scoreShare(Number(self)) : "";
+      var tip = sensorTip(s, note);
+      var title = tip ? "" : "<title>" + esc(s + (note ? " · " + note : "")) + "</title>";
+      out += "<g" + tip + ">" + title + '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale +
         '" r="17" fill="var(--fig-bg)" stroke="var(--fig-axis)" stroke-width="1.5"/></g>';
-      names += "<g>" + title + '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
+      names += "<g" + tip + ">" + title + '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
     });
     return '<div class="pg-graph-stage">' + out + names + "</svg></div>" +
       '<div class="pg-legend"><span><i style="background:var(--fig-accent)"></i>raised the prediction</span>' +
@@ -4476,41 +4931,102 @@
       "to read what passed each way, and at a sensor for what passed along its connection to itself.</p>";
   }
 
-  // The walks with the largest average size, the size being a share with
-  // its sign ignored, and how far the walks cancel one another.
-  function topWalks(top, sum) {
+  // The walks with the largest average size, each drawn as the sensors it
+  // passes through, one per graph layer, beside how much it carries: its
+  // average share as a solid bar, inside its average size with signs
+  // ignored. A walk stays when every position after its start is its own
+  // start's group, which is how the score's two walk parts are told apart.
+  function topWalks(data) {
+    var top = data.top_walks || [], sum = data.summary;
     if (!top.length) { return ""; }
-    var groups = sum.groups || [];
-    return '<figure class="pg-figure pg-figure--wide"><figcaption>The ' + count(top.length) +
-      " walks with the largest average size, the size being a share with its sign ignored." +
-      (groups.length ? " Names separated by a slash are sensor positions with matching connections, which the model combines in the same way." : "") + "</figcaption>" +
-      '<table class="pg-mini"><thead><tr><th>Walk</th><th class="num">Average share</th><th class="num">Average size</th></tr></thead><tbody>' +
-      top.map(function (w) {
-        return "<tr><td>" + esc(String(w.walk).split(" -> ").join(" → ")) + '</td><td class="num">' + scoreShare(Number(w.mean)) +
-          '</td><td class="num">' + fixed(Number(w.mean_abs), 3) + "</td></tr>";
-      }).join("") + "</tbody></table>" +
-      (isFinite(Number(sum.cancellation_median)) ? '<p class="pg-faint">Added up with their signs ignored, a ' +
-        (sum.scope === "engine" ? "window's" : "test engine's") + " walks come to a median of " +
-        fixed(Number(sum.cancellation_median), 1) + " times their total with signs kept: most of what one walk adds, another takes away.</p>" : "") +
-      "</figure>";
+    var forEngine = sum.scope === "engine", n = data.values.length;
+    var over = "the " + count(n) + (forEngine ? " cycles of engine " + esc(data.values[0].unit) : " test engines");
+    var home = (sum.groups || []).length ? "group" : "sensor";
+    var groupOf = {};
+    (sum.groups || []).forEach(function (g) { g.forEach(function (s) { groupOf[s] = g.join("/"); }); });
+    var peak = Math.max.apply(null, top.map(function (w) { return Number(w.mean_abs) || 0; })) || 1;
+    var layers = String(top[0].walk).split(" -> ").length - 1;
+    var heads = "<span>Starts at</span>";
+    for (var i = 1; i <= layers; i++) { heads += "<span>After layer " + i + "</span>"; }
+    var half = function (v) { return (Math.abs(v) / peak * 50).toFixed(2); };
+    var list = top.map(function (w, index) {
+      var steps = String(w.walk).split(" -> ");
+      var start = groupOf[steps[0]] || steps[0];
+      var stays = steps.slice(1).every(function (step) { return step === start; });
+      var mean = Number(w.mean), size = Number(w.mean_abs), side = mean >= 0 ? "left:50%" : "right:50%";
+      var kind = stays ? "stays in its " + home : "crosses to another " + home;
+      return '<li class="pg-walk" aria-label="' + esc("Walk " + (index + 1) + ": " + steps.join(", then ") + "; " + kind + "; average share " +
+        scoreShare(mean) + "; average size " + fixed(size, 3)) + '"><span class="pg-walk-rank">' + (index + 1) + "</span>" +
+        '<span class="pg-walk-steps" style="--steps:' + steps.length + '">' + steps.map(function (step) {
+          return '<span class="pg-walk-step">' + walkStep(step) + "</span>";
+        }).join("") + '</span><span class="pg-walk-kind"><i style="background:' + (stays ? "var(--fig-lpt)" : "var(--fig-lpc)") + '"></i>' + kind + "</span>" +
+        '<span class="pg-walk-number" data-label="average share">' + scoreShare(mean) + "</span>" +
+        '<span class="pg-walk-number" data-label="average size">' + fixed(size, 3) + "</span>" +
+        '<span class="pg-walk-bar" aria-hidden="true"><span class="pg-walk-size" style="' + side + ";width:" + half(size) + '%"></span>' +
+        '<span class="pg-walk-share pg-walk-share--' + (mean >= 0 ? "up" : "down") + '" style="' + side + ";width:" + half(mean) + '%"></span></span>' +
+        '<button type="button" class="button button--quiet button--small" data-action="walk-show" data-walk="' + index + '">Show on engine</button></li>';
+    }).join("");
+    var cancel = Number(sum.cancellation_median);
+    var callout = isFinite(cancel) ? '<div class="pg-callout"><strong>' + fixed(cancel, 1) + "×</strong><p><b>Walks mostly cancel one another.</b> " +
+      "Added up with their signs ignored, the walks of one " + (forEngine ? "cycle" : "engine") + " come to " + fixed(cancel, 1) +
+      " times their sum with signs kept, as a median over " + over + ": most of what one walk adds, another takes away. " +
+      "So a large walk in this list is not, on its own, a large effect on the prediction.</p></div>" : "";
+    return walkTabHead("Which walks carry the most?",
+      "A walk is " + walkMeaning(sum) + ": the sensor it starts at, then the sensor" + (home === "group" ? " or group" : "") +
+      " that holds it after each layer. These are the " + count(top.length) + " walks with the largest average size over " + over +
+      ". They are averages, so the " + (forEngine ? "Engine cycle" : "Test engine") + " control above does not change this list.") + callout +
+      '<figure class="pg-figure pg-figure--wide"><div class="pg-walks-head" aria-hidden="true"><span></span><span class="pg-walk-steps" style="--steps:' +
+      (layers + 1) + '">' + heads + "</span><span>Kind</span><span class=\"num\">Average share</span><span class=\"num\">Average size</span>" +
+      '<span class="pg-walk-ends"><span>lowers the score</span><span>raises it</span></span><span></span></div>' +
+      '<ol class="pg-walks">' + list + "</ol>" +
+      '<div class="pg-legend"><span><i class="pg-key-bar" style="background:var(--fig-accent)"></i>average share, positive</span>' +
+      '<span><i class="pg-key-bar" style="background:var(--fig-warn)"></i>average share, negative</span>' +
+      '<span><i class="pg-key-bar pg-key-bar--size"></i>average size, signs ignored</span></div>' +
+      '<p class="pg-faint">A share is a part of the score, a number with no unit. Where the solid bar is much shorter than the pale one, the walk\'s share is positive at some ' +
+      (forEngine ? "cycles" : "engines") + " and negative at others." +
+      ((sum.groups || []).length ? " Names in one chip are a group of sensors the graph layers cannot tell apart, so the walks through them are added together." : "") +
+      "</p></figure>";
   }
 
-  // One panel per sensor, holding that sensor's value at every window of the
-  // engine's life, every panel on ONE vertical scale so that a tall panel
+  // One chart per sensor, holding that sensor's value at every window of the
+  // engine's life, every chart on ONE vertical scale so that a tall chart
   // means a large value and not a large axis. This is the counterpart of
   // plot_contributions_over_time in explain/plots.py, which draws the same
-  // thing for the notebooks. A cursor marks one window in every panel at once
-  // and each caption reads that sensor's value there; wireHistory moves it.
-  // As for the beeswarm, unit is left out for cycles and "" for score shares.
-  var HISTORY_W = 260, HISTORY_H = 104, HISTORY_PAD = 5;
+  // thing for the notebooks. Each chart is drawn at the size it is shown at,
+  // so the cycles along its bottom and the values up its side are read at
+  // the page's own text size. A cursor marks one window in every chart at
+  // once and each heading reads that sensor's value there; wireHistory moves
+  // it. As for the beeswarm, unit is left out for cycles and "" for score
+  // shares.
+  var HISTORY_GAP = 16, HISTORY_PAD = { left: 40, right: 12, top: 10, bottom: 24 };
   var historyCursor = null;   // moves the cursor to a window, while the chart is on screen
 
-  function historyScale(rows) {
+  // How many charts stand side by side at a width: four at most, and none
+  // narrower than 340 pixels until the screen itself is.
+  function historyColumns(width) {
+    return Math.max(1, Math.min(4, Math.floor(width / 340)));
+  }
+
+  // Where a cycle and a value land in one chart: shared by every chart, by
+  // the drawing and by the pointer that reads a cycle back from it.
+  function historyScale(rows, symbols, width) {
+    var cols = historyColumns(width), p = HISTORY_PAD;
+    var W = Math.floor((width - (cols - 1) * HISTORY_GAP) / cols);
+    var H = Math.round(Math.max(168, Math.min(220, W * 0.46)));
     var cycles = rows.map(function (r) { return r.end_cycle; });
     var x0 = Math.min.apply(null, cycles), x1 = Math.max.apply(null, cycles);
+    var lo = 0, hi = 0;
+    symbols.forEach(function (s) {
+      rows.forEach(function (r) { if (isFinite(r[s])) { lo = Math.min(lo, r[s]); hi = Math.max(hi, r[s]); } });
+    });
+    var largest = Math.max(-lo, hi);
+    var room = (hi - lo) * 0.06 || 1;
+    lo -= room; hi += room;
     return {
-      x0: x0, x1: x1,
-      X: function (c) { return HISTORY_PAD + (c - x0) / ((x1 - x0) || 1) * (HISTORY_W - 2 * HISTORY_PAD); }
+      cols: cols, W: W, H: H, x0: x0, x1: x1, lo: lo, hi: hi, largest: largest,
+      X: function (c) { return p.left + (c - x0) / ((x1 - x0) || 1) * (W - p.left - p.right); },
+      Y: function (v) { return p.top + (hi - v) / (hi - lo) * (H - p.top - p.bottom); },
+      cycleAt: function (x) { return x0 + (x - p.left) / (W - p.left - p.right) * (x1 - x0); }
     };
   }
 
@@ -4518,14 +5034,9 @@
     return (v > 0 ? "+" : "") + fixed(v, 2);
   }
 
-  function sensorHistory(rows, symbols, current, unit) {
-    var scale = historyScale(rows), X = scale.X;
-    var limit = 0;
-    symbols.forEach(function (s) {
-      rows.forEach(function (r) { if (isFinite(r[s])) { limit = Math.max(limit, Math.abs(r[s])); } });
-    });
-    var largest = limit;
-    limit = (limit || 1) * 1.08;
+  function sensorHistory(rows, symbols, current, width, unit) {
+    var k = historyScale(rows, symbols, width), X = k.X, Y = k.Y, p = HISTORY_PAD;
+    var W = k.W, H = k.H, zero = Y(0), floor = H - p.bottom, edge = W - p.right;
 
     // The cycle at which the capped remaining life first falls below its
     // ceiling: before it the label is flat, after it the label is falling.
@@ -4535,56 +5046,67 @@
       if (rows[i].rul < ceiling) { knee = rows[i].end_cycle; break; }
     }
 
-    var W = HISTORY_W, H = HISTORY_H, pad = HISTORY_PAD, mid = H / 2;
-    var Y = function (v) { return mid - (v / limit) * (mid - pad); };
     var marked = rows[current] || rows[0];
     var cursorX = X(marked.end_cycle).toFixed(1);
+    // The same lines and numbers behind every chart: values up the side,
+    // cycles along the bottom.
+    var grid = niceTicks(k.lo, k.hi, 4).map(function (t) {
+      var y = Y(t).toFixed(1);
+      return '<line x1="' + p.left + '" x2="' + edge + '" y1="' + y + '" y2="' + y + '" stroke="var(--line-soft)"/>' +
+        '<text x="' + (p.left - 6) + '" y="' + (Y(t) + 4).toFixed(1) + '" text-anchor="end" class="pg-tick">' + tickLabel(t) + "</text>";
+    }).join("") + niceTicks(k.x0, k.x1, W < 400 ? 4 : 6).map(function (t) {
+      var x = X(t).toFixed(1);
+      return '<line x1="' + x + '" x2="' + x + '" y1="' + floor + '" y2="' + (floor + 4) + '" stroke="var(--fig-axis)"/>' +
+        '<text x="' + x + '" y="' + (floor + 17) + '" text-anchor="middle" class="pg-tick">' + tickLabel(t) + "</text>";
+    }).join("") + '<line x1="' + p.left + '" x2="' + edge + '" y1="' + floor + '" y2="' + floor + '" stroke="var(--fig-axis)"/>';
 
     var panels = symbols.map(function (s, index) {
       var pts = rows.map(function (r) { return X(r.end_cycle).toFixed(1) + "," + Y(r[s]).toFixed(1); }).join(" ");
-      var area = X(rows[0].end_cycle).toFixed(1) + "," + mid + " " + pts + " " +
-                 X(rows[rows.length - 1].end_cycle).toFixed(1) + "," + mid;
+      var area = X(rows[0].end_cycle).toFixed(1) + "," + zero.toFixed(1) + " " + pts + " " +
+                 X(rows[rows.length - 1].end_cycle).toFixed(1) + "," + zero.toFixed(1);
       var up = "pg-up" + index, down = "pg-down" + index;
       return '<figure class="pg-sm" data-sensor="' + esc(s) + '">' +
+        '<figcaption><b' + sensorTip(s) + ">" + esc(s) + '</b><span class="pg-sm-value">' + signedValue(marked[s]) + "</span></figcaption>" +
         '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(s + " over the engine's life") + '">' +
         "<defs>" +
-        '<clipPath id="' + up + '"><rect x="0" y="0" width="' + W + '" height="' + mid + '"/></clipPath>' +
-        '<clipPath id="' + down + '"><rect x="0" y="' + mid + '" width="' + W + '" height="' + mid + '"/></clipPath>' +
-        "</defs>" +
+        '<clipPath id="' + up + '"><rect x="0" y="0" width="' + W + '" height="' + zero.toFixed(1) + '"/></clipPath>' +
+        '<clipPath id="' + down + '"><rect x="0" y="' + zero.toFixed(1) + '" width="' + W + '" height="' + (H - zero).toFixed(1) + '"/></clipPath>' +
+        "</defs>" + grid +
         (knee !== null ? '<line x1="' + X(knee).toFixed(1) + '" x2="' + X(knee).toFixed(1) +
-          '" y1="' + pad + '" y2="' + (H - pad) + '" stroke="var(--fig-edge)" stroke-dasharray="3 3"/>' : "") +
+          '" y1="' + p.top + '" y2="' + floor + '" stroke="var(--fig-axis)" stroke-dasharray="3 3"/>' : "") +
         '<polygon points="' + area + '" fill="var(--fig-accent)" fill-opacity="0.28" clip-path="url(#' + up + ')"/>' +
         '<polygon points="' + area + '" fill="var(--fig-warn)" fill-opacity="0.28" clip-path="url(#' + down + ')"/>' +
-        '<line x1="' + pad + '" x2="' + (W - pad) + '" y1="' + mid + '" y2="' + mid + '" stroke="var(--fig-axis)" stroke-width="0.8"/>' +
-        '<polyline points="' + pts + '" fill="none" stroke="var(--fig-ink)" stroke-width="1.2"/>' +
-        '<line class="pg-sm-cursor" x1="' + cursorX + '" x2="' + cursorX + '" y1="0" y2="' + H + '"/>' +
-        "</svg>" +
-        '<figcaption><b>' + esc(s) + '</b> <span class="pg-sm-value">' + signedValue(marked[s]) + "</span></figcaption></figure>";
+        '<line x1="' + p.left + '" x2="' + edge + '" y1="' + zero.toFixed(1) + '" y2="' + zero.toFixed(1) + '" stroke="var(--fig-axis)" stroke-width="0.8"/>' +
+        '<polyline points="' + pts + '" fill="none" stroke="var(--fig-ink)" stroke-width="1.3" stroke-linejoin="round"/>' +
+        '<line class="pg-sm-cursor" x1="' + cursorX + '" x2="' + cursorX + '" y1="' + p.top + '" y2="' + floor + '"/>' +
+        '<circle class="pg-sm-dot" cx="' + cursorX + '" cy="' + Y(marked[s]).toFixed(1) + '" r="3"/>' +
+        "</svg></figure>";
     }).join("");
 
-    // The readout names the cycle only while the pointer is on a panel; the
+    // The readout names the cycle only while the pointer is on a chart; the
     // rest of the time the slider's caption already says which window is marked.
     return '<div class="pg-sm-readout is-idle" aria-live="polite">Values at cycle <b>' + marked.end_cycle + "</b></div>" +
-      '<div class="pg-smalls">' + panels + "</div>" +
+      '<div class="pg-smalls" style="grid-template-columns:repeat(' + k.cols + ',minmax(0,1fr))">' + panels + "</div>" +
       '<div class="pg-faint">Blue raised the predicted remaining life, orange lowered it. ' +
-      "Every panel shares one scale; the largest value is " + fixed(largest, 2) + (unit === undefined ? " cycles" : "") + "." +
+      "Every chart shares one scale; the largest value is " + fixed(k.largest, 2) + (unit === undefined ? " cycles" : "") + "." +
       (knee !== null ? " The dashed line is cycle " + knee + ", where the capped remaining life starts falling." : "") +
       "</div>";
   }
 
-  // Pointing at any panel moves the cursor in all of them to the nearest
+  // Pointing at any chart moves the cursor in all of them to the nearest
   // window; leaving puts it back on the window the slider has chosen.
-  function wireHistory(scope, rows) {
+  function wireHistory(scope, rows, symbols, width) {
     historyCursor = null;
     var grid = scope.querySelector(".pg-smalls");
     if (!grid || !rows.length) { return; }
-    var scale = historyScale(rows);
+    var scale = historyScale(rows, symbols, width);
     var readoutBox = scope.querySelector(".pg-sm-readout");
     var readout = readoutBox && readoutBox.querySelector("b");
     var panels = Array.prototype.map.call(grid.querySelectorAll(".pg-sm"), function (panel) {
       return {
         sensor: panel.getAttribute("data-sensor"),
         cursor: panel.querySelector(".pg-sm-cursor"),
+        dot: panel.querySelector(".pg-sm-dot"),
         value: panel.querySelector(".pg-sm-value")
       };
     });
@@ -4596,6 +5118,8 @@
       panels.forEach(function (p) {
         p.cursor.setAttribute("x1", x);
         p.cursor.setAttribute("x2", x);
+        p.dot.setAttribute("cx", x);
+        p.dot.setAttribute("cy", scale.Y(row[p.sensor]).toFixed(1));
         p.value.textContent = signedValue(row[p.sensor]);
       });
       if (readout) { readout.textContent = row.end_cycle; }
@@ -4605,8 +5129,7 @@
       var svg = event.target.closest && event.target.closest("svg");
       if (!svg) { return; }
       var box = svg.getBoundingClientRect();
-      var inView = (event.clientX - box.left) / (box.width || 1) * HISTORY_W;
-      var cycle = scale.x0 + (inView - HISTORY_PAD) / (HISTORY_W - 2 * HISTORY_PAD) * (scale.x1 - scale.x0);
+      var cycle = scale.cycleAt((event.clientX - box.left) / (box.width || 1) * scale.W);
       var best = 0;
       rows.forEach(function (r, i) {
         if (Math.abs(r.end_cycle - cycle) < Math.abs(rows[best].end_cycle - cycle)) { best = i; }
@@ -4621,6 +5144,237 @@
     historyCursor = show;
   }
 
+  // The same values in one space: a ribbon per sensor running along the
+  // engine's cycles, its height the value. Sensors are separate things, so
+  // the ribbons are not joined into a surface, which would draw values
+  // between two sensors where none exist. Nothing shrinks with distance:
+  // equal lengths along one axis stay equal on the screen, so two heights
+  // can be compared from front to back. The ground the ribbons stand on is
+  // the value zero. RIBBON_BOX holds the lengths of the feature, cycle and
+  // value axes against one another, and RIBBON_VIEW the two angles the
+  // chart is first seen from, in degrees: az turns it about the value axis
+  // and el tilts its top towards the reader.
+  var RIBBON_BOX = { a: 2, b: 2, c: 0.8 };
+  var RIBBON_VIEW = { az: -45, el: 30 };
+  var ribbonsRedraw = null;   // draws the 3D chart again, while it is on screen
+
+  // How large the 3D chart is drawn inside a panel of a given width.
+  function ribbonSize(width) {
+    var W = Math.max(440, Math.min(width, 1100));
+    return { W: W, H: Math.round(Math.max(360, Math.min(680, W * 0.62))) };
+  }
+
+  // Turns a place in the box (u along the features, v along the cycles, w
+  // up the values, each measured from the box's centre) into a place on the
+  // screen, for one pair of angles. The box is sized to the widest it can
+  // look from any side, so turning it never changes its size.
+  function ribbonCamera(view, W, H) {
+    var t = view.az * Math.PI / 180, f = view.el * Math.PI / 180;
+    var ct = Math.cos(t), st = Math.sin(t), cf = Math.cos(f), sf = Math.sin(f);
+    var B = RIBBON_BOX, m = { left: 84, right: 84, top: 16, bottom: 56 };
+    var across = Math.sqrt(B.a * B.a + B.b * B.b);
+    var scale = Math.min((W - m.left - m.right) / across, (H - m.top - m.bottom) / (B.c * cf + across * sf));
+    var cx = m.left + (W - m.left - m.right) / 2, cy = m.top + (H - m.top - m.bottom) / 2;
+    return {
+      // Which end of the feature axis and of the cycle axis faces the reader.
+      near: { u: st > 0 ? -1 : 1, v: ct > 0 ? -1 : 1 },
+      depth: function (u, v) { return u * st + v * ct; },
+      at: function (u, v, w) {
+        return [cx + (u * ct - v * st) * scale, cy - (w * cf + (u * st + v * ct) * sf) * scale];
+      }
+    };
+  }
+
+  // Every k-th label along an axis, k being the smallest step at which two
+  // neighbours no longer overlap: from is one label's place on the screen,
+  // to the next one's, and room the width a label needs.
+  function labelStep(from, to, room) {
+    var dx = Math.abs(to[0] - from[0]), dy = Math.abs(to[1] - from[1]);
+    if (dx < 0.01 && dy < 0.01) { return 1; }
+    return Math.max(1, Math.min(dx > 0.01 ? Math.ceil(room / dx) : Infinity, dy > 0.01 ? Math.ceil(13 / dy) : Infinity));
+  }
+
+  function ribbons(rows, symbols, width, view, current, valueName) {
+    var size = ribbonSize(width), W = size.W, H = size.H, B = RIBBON_BOX;
+    var cam = ribbonCamera(view, W, H), near = cam.near;
+    // The box is sized for every side it can be seen from, so from any one
+    // side some of its height is unused. The highest and lowest places drawn
+    // are noted, and the drawing is set midway between the top and the
+    // bottom of its frame.
+    var highest = Infinity, lowest = -Infinity;
+    var at = function (u, v, w) {
+      var p = cam.at(u, v, w);
+      highest = Math.min(highest, p[1]);
+      lowest = Math.max(lowest, p[1]);
+      return p;
+    };
+    var n = symbols.length;
+    var cycles = rows.map(function (r) { return r.end_cycle; });
+    var c0 = Math.min.apply(null, cycles), c1 = Math.max.apply(null, cycles);
+    var lo = 0, hi = 0;
+    symbols.forEach(function (s) {
+      rows.forEach(function (r) { if (isFinite(r[s])) { lo = Math.min(lo, r[s]); hi = Math.max(hi, r[s]); } });
+    });
+    var room = (hi - lo) * 0.05 || 1;
+    lo -= room; hi += room;
+    var U = function (j) { return (n > 1 ? j / (n - 1) - 0.5 : 0) * B.a; };
+    var V = function (c) { return ((c - c0) / ((c1 - c0) || 1) - 0.5) * B.b; };
+    var Z = function (v) { return ((v - lo) / (hi - lo) - 0.5) * B.c; };
+    var z0 = Z(0), half = { u: B.a / 2, v: B.b / 2, w: B.c / 2 };
+    var pt = function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); };
+    var line = function (a, b, stroke, more) {
+      return '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) +
+        '" stroke="' + stroke + '"' + (more || "") + "/>";
+    };
+    var valueTicks = niceTicks(lo, hi, 5), cycleTicks = niceTicks(c0, c1, 6);
+    var farU = -near.u * half.u, farV = -near.v * half.v, nearU = near.u * half.u, nearV = near.v * half.v;
+
+    var out = '<svg class="pg-plot pg-3d" viewBox="0 0 ' + W + " " + H + '" style="max-width:' + W + 'px" role="img" aria-label="' +
+      esc("Every sensor's " + valueName + " over the engine's cycles, in three dimensions") + '">';
+    var body = "";
+
+    // The two walls behind the ribbons, with a line at every value the
+    // vertical axis names; the line at zero is the darker one.
+    body += '<polygon points="' + [at(farU, -half.v, -half.w), at(farU, half.v, -half.w), at(farU, half.v, half.w), at(farU, -half.v, half.w)].map(pt).join(" ") +
+      '" fill="var(--panel)" fill-opacity="0.6" stroke="var(--line)"/>' +
+      '<polygon points="' + [at(-half.u, farV, -half.w), at(half.u, farV, -half.w), at(half.u, farV, half.w), at(-half.u, farV, half.w)].map(pt).join(" ") +
+      '" fill="var(--panel)" fill-opacity="0.6" stroke="var(--line)"/>';
+    valueTicks.forEach(function (t) {
+      var stroke = t === 0 ? "var(--fig-axis)" : "var(--line)";
+      body += line(at(farU, -half.v, Z(t)), at(farU, half.v, Z(t)), stroke) + line(at(-half.u, farV, Z(t)), at(half.u, farV, Z(t)), stroke);
+    });
+    // The ground at the value zero: its edge, and a line at every cycle the cycle axis names.
+    body += '<polygon points="' + [at(-half.u, -half.v, z0), at(half.u, -half.v, z0), at(half.u, half.v, z0), at(-half.u, half.v, z0)].map(pt).join(" ") +
+      '" fill="none" stroke="var(--fig-axis)" stroke-width="0.8"/>';
+    cycleTicks.forEach(function (t) { body += line(at(-half.u, V(t), z0), at(half.u, V(t), z0), "var(--line)"); });
+
+    // The ribbons, the farthest first, so a nearer one is drawn over it.
+    var order = symbols.map(function (s, j) { return j; }).sort(function (a, b) { return cam.depth(U(b), 0) - cam.depth(U(a), 0); });
+    order.forEach(function (j, place) {
+      var s = symbols[j], u = U(j);
+      var pts = rows.filter(function (r) { return isFinite(r[s]); }).map(function (r) { return [r.end_cycle, r[s]]; });
+      if (!pts.length) { return; }
+      // Each side of zero is filled in its own colour, so a point is added
+      // wherever the line crosses zero between two windows.
+      var path = [];
+      pts.forEach(function (p, i) {
+        if (i && (pts[i - 1][1] > 0) !== (p[1] > 0) && pts[i - 1][1] !== 0 && p[1] !== 0) {
+          var before = pts[i - 1], share = before[1] / (before[1] - p[1]);
+          path.push([before[0] + (p[0] - before[0]) * share, 0]);
+        }
+        path.push(p);
+      });
+      var side = function (keep) {
+        return pt(at(u, V(path[0][0]), z0)) + " " + path.map(function (p) { return pt(at(u, V(p[0]), Z(keep(p[1])))); }).join(" ") + " " +
+          pt(at(u, V(path[path.length - 1][0]), z0));
+      };
+      var nearness = n > 1 ? place / (n - 1) : 1;
+      // Under its colour each side is first painted in the page's own, so a
+      // ribbon hides most of what stands behind it instead of mixing with it.
+      var above = side(function (v) { return Math.max(v, 0); }), below = side(function (v) { return Math.min(v, 0); });
+      body += '<g class="pg-3d-ribbon"' + sensorTip(s) + ">" +
+        '<polygon points="' + above + '" fill="var(--fig-bg)" fill-opacity="0.82"/>' +
+        '<polygon points="' + below + '" fill="var(--fig-bg)" fill-opacity="0.82"/>' +
+        '<polygon points="' + above + '" fill="var(--fig-accent)" fill-opacity="0.3"/>' +
+        '<polygon points="' + below + '" fill="var(--fig-warn)" fill-opacity="0.3"/>' +
+        line(at(u, -half.v, z0), at(u, half.v, z0), "var(--fig-axis)", ' stroke-width="0.8"') +
+        '<polyline points="' + pts.map(function (p) { return pt(at(u, V(p[0]), Z(p[1]))); }).join(" ") +
+        '" fill="none" stroke="var(--fig-ink)" stroke-width="1.1" stroke-linejoin="round" stroke-opacity="' + (0.6 + 0.4 * nearness).toFixed(2) + '"/></g>';
+    });
+
+    // The engine cycle chosen above: a line across the ground and a dot on every ribbon.
+    var marked = rows[current] || rows[0], vm = V(marked.end_cycle);
+    body += line(at(-half.u, vm, z0), at(half.u, vm, z0), "var(--fig-ink)", ' stroke-dasharray="4 3"');
+    symbols.forEach(function (s, j) {
+      if (!isFinite(marked[s])) { return; }
+      var p = at(U(j), vm, Z(marked[s]));
+      body += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="2.6" fill="var(--fig-ink)" stroke="var(--fig-bg)" stroke-width="1"/>';
+    });
+
+    // The three axes. A name or a number is set outwards from its edge, on
+    // the side the edge faces, and anchored on that side.
+    var label = function (place, away, gap, text, cls, more) {
+      var len = Math.sqrt(away[0] * away[0] + away[1] * away[1]) || 1, nx = away[0] / len, ny = away[1] / len;
+      highest = Math.min(highest, place[1] + ny * gap - 10);
+      lowest = Math.max(lowest, place[1] + ny * gap + 10);
+      return '<text x="' + (place[0] + nx * gap).toFixed(1) + '" y="' + (place[1] + ny * gap + 4).toFixed(1) + '" text-anchor="' +
+        (nx > 0.35 ? "start" : nx < -0.35 ? "end" : "middle") + '" class="' + cls + '"' + (more || "") + ">" + esc(text) + "</text>";
+    };
+    var centre = at(0, 0, z0);
+    var awayV = [at(0, nearV, z0)[0] - centre[0], at(0, nearV, z0)[1] - centre[1]];
+    var awayU = [at(nearU, 0, z0)[0] - centre[0], at(nearU, 0, z0)[1] - centre[1]];
+    // Features: along the ground's edge that faces the reader, where each ribbon begins or ends.
+    var stepF = n > 1 ? labelStep(at(U(0), nearV, z0), at(U(1), nearV, z0), 50) : 1;
+    symbols.forEach(function (s, j) {
+      if (j % stepF) { return; }
+      body += label(at(U(j), nearV, z0), awayV, 10, s, "pg-3d-name", sensorTip(s));
+    });
+    body += label(at(0, nearV, z0), awayV, 76, "Features", "pg-axis pg-3d-title");
+    // Cycles: along the other edge that faces the reader.
+    var stepC = cycleTicks.length > 1 ? labelStep(at(nearU, V(cycleTicks[0]), z0), at(nearU, V(cycleTicks[1]), z0), 30) : 1;
+    var end = at(nearU, farV, z0);
+    cycleTicks.forEach(function (t, i) {
+      var place = at(nearU, V(t), z0);
+      // A cycle's number is left out where it would meet the numbers of the value axis, which starts where this edge ends.
+      if (i % stepC || Math.abs(place[0] - end[0]) + Math.abs(place[1] - end[1]) < 24) { return; }
+      body += label(place, awayU, 10, tickLabel(t), "pg-tick pg-3d-number");
+    });
+    body += label(at(nearU, 0, z0), awayU, 52, "Cycle", "pg-axis pg-3d-title");
+    // Values: up the upright edge where the cycle axis ends, the one edge
+    // of the outline that no feature's name stands beside.
+    var post = [nearU, farV], foot = at(post[0], post[1], 0), side = foot[0] >= centre[0] ? 1 : -1;
+    body += line(at(post[0], post[1], -half.w), at(post[0], post[1], half.w), "var(--fig-axis)");
+    valueTicks.forEach(function (t) {
+      var p = at(post[0], post[1], Z(t));
+      body += line(p, [p[0] + side * 5, p[1]], "var(--fig-axis)") +
+        '<text x="' + (p[0] + side * 9).toFixed(1) + '" y="' + (p[1] + 4).toFixed(1) + '" text-anchor="' + (side > 0 ? "start" : "end") +
+        '" class="pg-tick pg-3d-number">' + tickLabel(t) + "</text>";
+    });
+    body += '<text transform="translate(' + (foot[0] + side * 52).toFixed(1) + "," + foot[1].toFixed(1) + ') rotate(-90)" text-anchor="middle" class="pg-axis pg-3d-title">' +
+      esc(valueName) + "</text>";
+    return out + '<g transform="translate(0,' + ((H - highest - lowest) / 2).toFixed(1) + ')">' + body + "</g></svg>";
+  }
+
+  // Dragging turns the chart, and so do the arrow keys while it holds the
+  // keyboard; a double click, or Home, returns it to the view it opened in.
+  // The angles are kept with the explanation, so drawing the page again at
+  // another width leaves the chart as the reader turned it.
+  function wireRibbons(scope, rows, symbols, width, valueName) {
+    ribbonsRedraw = null;
+    var stage = scope.querySelector("[data-ribbons]");
+    if (!stage || !rows.length) { return; }
+    var e = S.explain, view = e.ribbonView, frame = null, drag = null;
+    function draw() {
+      frame = null;
+      if (stage.isConnected) { stage.innerHTML = ribbons(rows, symbols, width, view, e.index, valueName); }
+    }
+    function later() { if (!frame) { frame = window.requestAnimationFrame(draw); } }
+    function turn(az, el) {
+      view.az = ((az + 180) % 360 + 360) % 360 - 180;
+      view.el = Math.max(8, Math.min(72, el));
+      later();
+    }
+    stage.addEventListener("pointerdown", function (event) {
+      if (event.button) { return; }
+      drag = { x: event.clientX, y: event.clientY, az: view.az, el: view.el };
+      stage.setPointerCapture(event.pointerId);
+      stage.classList.add("is-turning");
+    });
+    stage.addEventListener("pointermove", function (event) {
+      if (drag) { turn(drag.az + (event.clientX - drag.x) * 0.4, drag.el + (event.clientY - drag.y) * 0.25); }
+    });
+    ["pointerup", "pointercancel"].forEach(function (name) {
+      stage.addEventListener(name, function () { drag = null; stage.classList.remove("is-turning"); });
+    });
+    stage.addEventListener("dblclick", function () { turn(RIBBON_VIEW.az, RIBBON_VIEW.el); });
+    stage.addEventListener("keydown", function (event) {
+      var step = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, 6], ArrowDown: [0, -6] }[event.key];
+      if (event.key === "Home") { event.preventDefault(); turn(RIBBON_VIEW.az, RIBBON_VIEW.el); }
+      else if (step) { event.preventDefault(); turn(view.az + step[0], view.el + step[1]); }
+    });
+    ribbonsRedraw = later;
+  }
+
   // Every sensor at every test engine, one coloured cell each; unit as for the beeswarm.
   function heatmap(rows, sensors, unit) {
     var after = unit === undefined ? " cycles" : "";
@@ -4632,7 +5386,7 @@
     var out = '<div class="pg-heat-wrap"><svg class="pg-heat" viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H + '">';
     sensors.forEach(function (s, j) {
       // This drawing is not scaled to fit, so its labels are a size on the screen and keep to the 11-pixel floor.
-      out += '<text x="54" y="' + (j * 16 + 12) + '" text-anchor="end" class="pg-heat-label">' + esc(s) + "</text>";
+      out += '<text x="54" y="' + (j * 16 + 12) + '" text-anchor="end" class="pg-heat-label pg-sensor-name"' + sensorTip(s) + ">" + esc(s) + "</text>";
       rows.forEach(function (r, i) {
         var v = r[s];
         out += '<rect x="' + (60 + i * cell) + '" y="' + (j * 16) + '" width="' + cell + '" height="15" fill="' + (v >= 0 ? "var(--fig-accent)" : "var(--fig-warn)") +
@@ -4654,28 +5408,6 @@
         opacity: rank < 4 ? 0.45 + 0.55 * Math.abs(values[s]) / top : 1 - (rank - 4) / 10 * 0.8 };
     });
     return { ranked: ranked, style: style };
-  }
-
-  function sensorGraph(values, sensors) {
-    var g = S.options.graph, st = fig10Style(values, sensors);
-    // At 0.8 of the layout's own size no circle meets a neighbour's name;
-    // the names are drawn after every circle, so none is ever covered, and
-    // each carries its circle's words, shown when the pointer rests on it.
-    // The graph scrolls sideways rather than shrink past reading on a phone.
-    var scale = 0.8, names = "";
-    var out = '<svg class="pg-graph" viewBox="0 0 ' + g.width * scale + " " + (g.height - 30) * scale + '">';
-    g.edges.forEach(function (edge) {
-      var a = g.positions[edge[0]], b = g.positions[edge[1]];
-      out += '<line x1="' + a[0] * scale + '" y1="' + a[1] * scale + '" x2="' + b[0] * scale + '" y2="' + b[1] * scale + '" stroke="var(--fig-edge)" stroke-width="1.2"/>';
-    });
-    st.ranked.forEach(function (s, rank) {
-      var p = g.positions[s], k = st.style[s];
-      var title = "<title>" + esc(s + ": rank " + (rank + 1) + ", " + signedValue(Number(values[s])) + " cycles") + "</title>";
-      out += "<g>" + title +
-        '<circle cx="' + p[0] * scale + '" cy="' + p[1] * scale + '" r="17" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-bg)" stroke-width="2"/></g>';
-      names += "<g>" + title + '<text x="' + p[0] * scale + '" y="' + (p[1] * scale + 30) + '" text-anchor="middle" class="pg-node">' + esc(s) + "</text></g>";
-    });
-    return '<div class="pg-graph-stage">' + out + names + "</svg></div>";
   }
 
   // How many times a sensor joins the red four, going from each graph in the
@@ -4727,7 +5459,9 @@
     // The names after every circle, so a later circle never covers one.
     ring.forEach(function (s) {
       var p = at[s], k = st.style[s], v = Number(values[s]);
-      out += "<g><title>" + esc(label + " · " + s + ": rank " + (k.rank + 1) + " of " + n + ", " + (unit ? signedValue(v) + " " + unit : fixed(v, 2))) + "</title>" +
+      var note = label + " · rank " + (k.rank + 1) + " of " + n + ", " + (unit ? signedValue(v) + " " + unit : fixed(v, 2));
+      var tip = sensorTip(s, note);
+      out += "<g" + tip + ">" + (tip ? "" : "<title>" + esc(s + ": " + note) + "</title>") +
         '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="' + k.colour + '" fill-opacity="' + k.opacity.toFixed(2) + '" stroke="var(--fig-ink)" stroke-width="0.35"/></g>';
       if (k.rank < 4) { names += ringLabel(p, s); }
     });
@@ -4741,7 +5475,7 @@
     var names = "";
     S.options.table12.ring.forEach(function (s) {
       var p = at[s];
-      out += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="var(--fig-bg)" stroke="var(--fig-axis)" stroke-width="0.5"/>';
+      out += "<g" + sensorTip(s) + '><circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8.4" fill="var(--fig-bg)" stroke="var(--fig-axis)" stroke-width="0.5"/></g>';
       names += ringLabel(p, s);
     });
     return out + names + "</svg><figcaption>key</figcaption></figure>";
