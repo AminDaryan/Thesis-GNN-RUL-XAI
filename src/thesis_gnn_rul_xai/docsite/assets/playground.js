@@ -3444,7 +3444,7 @@
   var UNSET_WORDS = { smoothing_alpha: "Off", early_stopping_patience: "Off", gradient_clip: "Off",
     lr_step_epoch: "Automatic: halfway when using the step schedule", temporal_hidden: "Not used" };
   var TRAINING_LABELS = {
-    epochs: "Maximum passes over the training data", batch_size: "Windows per update",
+    epochs: "Maximum epochs (passes over the training data)", batch_size: "Windows per update",
     learning_rate: "Initial learning rate", final_learning_rate: "Final learning-rate setting",
     optimizer: "Parameter update rule", loss: "Training error measure", lr_schedule: "Learning-rate schedule",
     lr_step_epoch: "Pass at the learning-rate step", early_stopping_patience: "Passes without improvement before stopping",
@@ -3758,7 +3758,7 @@
     var hasValidation = curves && d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== undefined &&
       d.per_seed[seeds[0]].history[0].validation_rmse_cycles !== null;
     var curvePlot = curves ? plot({
-      width: widths.curves, height: rowHeight, xlabel: "pass over the training data", label: "training curves",
+      width: widths.curves, height: rowHeight, xlabel: "epoch (one pass over the training data)", label: "training curves",
       ylabel: hasValidation ? "held-back RMSE (cycles)" : "training loss (scaled MSE)",
       series: seeds.map(function (s, i) {
         var h = d.per_seed[s].history;
@@ -3790,9 +3790,7 @@
     }) : "";
     return '<section class="pg-run-section" id="pg-run-charts" aria-label="Charts">' + runNotesPointer(d, cautions) +
       '<div class="pg-charts pg-run-charts"><figure class="pg-figure"><h3 class="pg-figure-title">Test RMSE per seed</h3>' + perSeedPlot + "</figure>" +
-      (curves ? '<figure class="pg-figure"><h3 class="pg-figure-title">Training curves</h3>' + curvePlot +
-        // Under the chart rather than over it, so the two charts of a row start level.
-        (hasValidation ? "<figcaption>A ring marks the reported pass.</figcaption>" : "") + "</figure>"
+      (curves ? '<figure class="pg-figure"><h3 class="pg-figure-title">Training curves</h3>' + curvePlot + "</figure>"
         : '<div class="pg-empty">This run kept no per-seed files, so it has no curves, predictions or weights.</div>') +
       (predPlot ? '<figure class="pg-figure pg-figure--wide"><div class="pg-figure-head"><div><h3 class="pg-figure-title">' +
         esc(sentenceCase(predictionsChartName(d.clip_test_labels, d.rul_max))) + "</h3>" +
