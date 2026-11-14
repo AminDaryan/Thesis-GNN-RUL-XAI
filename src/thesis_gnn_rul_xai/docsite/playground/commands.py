@@ -66,10 +66,16 @@ def train_arguments(
                       "--temporal-out-features", str(settings["temporal_out_features"])]
         if settings["shared_across_sensors"]:
             arguments.append("--shared-across-sensors")
-    arguments += ["--gcn-hidden", *(str(w) for w in settings["gcn_hidden"]),
-                  "--fc-hidden", str(settings["fc_hidden"])]
-    if settings["gcn_bias"]:
-        arguments.append("--gcn-bias")
+    # Without graph layers their widths and offsets describe nothing, so the
+    # command leaves them at the script's defaults rather than name them; the
+    # default network's command is the same as before the choice existed.
+    if settings.get("spatial", "gcn") == "none":
+        arguments += ["--spatial", "none", "--fc-hidden", str(settings["fc_hidden"])]
+    else:
+        arguments += ["--gcn-hidden", *(str(w) for w in settings["gcn_hidden"]),
+                      "--fc-hidden", str(settings["fc_hidden"])]
+        if settings["gcn_bias"]:
+            arguments.append("--gcn-bias")
     arguments += [
         "--epochs", str(settings["epochs"]),  # epochs: complete passes over the training data
         "--batch-size", str(settings["batch_size"]),

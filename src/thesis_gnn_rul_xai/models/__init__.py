@@ -5,7 +5,7 @@ Needs PyTorch: pip install -e ".[model]"
 Read README.md in this folder. It explains everything these files do.
 """
 
-from .config import ModelConfig, build_model, load_model_config
+from .config import SPATIAL_STAGES, ModelConfig, build_model, load_model_config
 from .estgnn import ESTGNN
 from .layers import GraphConvolution
 from .temporal import (
@@ -20,6 +20,7 @@ from .temporal import (
 
 __all__ = [
     "ESTGNN",
+    "SPATIAL_STAGES",
     "GraphConvolution",
     "LSTMStage",
     "LastCycle",

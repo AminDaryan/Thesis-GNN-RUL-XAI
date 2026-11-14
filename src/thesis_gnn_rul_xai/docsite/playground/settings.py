@@ -209,9 +209,30 @@ FIELDS: tuple[dict[str, Any], ...] = (
                "reduces the number of learned numbers; it does not mix readings from different sensors. "
                "Each window still starts with a fresh memory."),
      "source": _extension("")},
-    # -- graph layers: the graph they run on, then their sizes -------------
-    # The sensor graph is built while the data is prepared, but it is drawn
-    # with the layers that use it, where the page's pipeline shows it too.
+    # -- graph layers: whether there are any, the graph they run on, then
+    # their sizes. The sensor graph is built while the data is prepared, but it
+    # is drawn with the layers that use it, where the page's pipeline shows it too.
+    {"key": "spatial", "group": "graph", "label": "Graph layers in the network", "kind": "choice",
+     "default": "gcn",
+     "choices": [
+         {"value": "gcn", "label": "Three graph layers",
+          "about": ("Each sensor's numbers from the temporal stage pass through three graph layers, in which "
+                    "every sensor combines its own numbers with those of the sensors it is connected to. Only "
+                    "then are all sensors' numbers laid end to end for the fully connected layers."),
+          "source": _paper("Table 4", "")},
+         {"value": "none", "label": "w/o GCN: no graph layers",
+          "about": ("Leaves the graph layers out. Each sensor's numbers from the temporal stage are laid end "
+                    "to end in one row and go straight into the first fully connected layer, so no sensor "
+                    "receives anything from a connected sensor and the sensor graph is not used at all. "
+                    "'w/o GCN' means without the graph convolutional network, the paper's name for the graph "
+                    "layers."),
+          "source": _choice("A-42", "the paper reports this model but never says what replaced the graph "
+                                    "layers")},
+     ],
+     "about": ("Decides whether the network has graph layers at all. With them, sensors exchange numbers "
+               "along the connections of the sensor graph. Without them, the fully connected layers are the "
+               "only place where different sensors' numbers meet."),
+     "source": None},
     {"key": "graph", "group": "graph", "label": "Sensor graph", "kind": "choice",
      "default": "physics",
      "choices": [
@@ -377,14 +398,14 @@ GROUPS = (
 
 # The four model variants of Table 11, as settings: a stored run is set beside
 # the row whose settings it has. Taking the LSTM out of the page's pipeline
-# gives "w/o LSTM", taking the physics prior out gives "w/o Physics prior".
-# "w/o GCN" has no settings: the graph layers are the one part this playground
-# keeps, so their box has nothing to take them out with.
+# gives "w/o LSTM", taking the physics prior out gives "w/o Physics prior",
+# and taking the graph layers out gives "w/o GCN", which names no sensor graph
+# because a network without graph layers never uses one.
 ABLATIONS = (
-    {"key": "full", "settings": {"temporal": "lstm", "graph": "physics"}},
-    {"key": "without_lstm", "settings": {"temporal": "last_cycle", "graph": "physics"}},
-    {"key": "without_physics_prior", "settings": {"temporal": "lstm", "graph": "complete"}},
-    {"key": "without_gcn", "settings": None},
+    {"key": "full", "settings": {"temporal": "lstm", "graph": "physics", "spatial": "gcn"}},
+    {"key": "without_lstm", "settings": {"temporal": "last_cycle", "graph": "physics", "spatial": "gcn"}},
+    {"key": "without_physics_prior", "settings": {"temporal": "lstm", "graph": "complete", "spatial": "gcn"}},
+    {"key": "without_gcn", "settings": {"temporal": "lstm", "spatial": "none"}},
 )
 
 # What the choice of procedure is for, behind the i beside its name.
@@ -497,6 +518,8 @@ _READ_MORE: dict[str, tuple[str, str]] = {
     "temporal_hidden": ("docs/learn/09_temporal.md", "One LSTM per sensor"),
     "temporal_out_features": ("docs/learn/09_temporal.md", "4 — Turn into numbers per sensor"),
     "shared_across_sensors": ("docs/learn/09_temporal.md", "One LSTM for all sensors"),
+    "spatial": (_MODEL, "1 — Graph layer 1"),
+    "spatial=none": ("entry", "A-42"),
     "graph": (_GRAPHS, "1 — Sensor graph"),
     "graph=physics": ("src/thesis_gnn_rul_xai/graph/README.md", "Where this graph comes from"),
     "graph=complete": ("entry", "A-19"),
@@ -658,9 +681,22 @@ def fixed_graph_refusal(settings: Mapping[str, Any]) -> str:
 
 
 def paper_row_for(
-    subset: str, temporal: str | None, graph: str | None
+    subset: str, temporal: str | None, graph: str | None, spatial: str | None = None
 ) -> tuple[dict[str, Any] | None, str]:
     """The row of the paper a configuration may be set beside, or why there is none."""
+    # A run stored before the graph layers could be left out recorded no
+    # choice, and every such run has them.
+    spatial = spatial or "gcn"
+    if spatial == "none":
+        # ASSUMPTION A-42: without graph layers the temporal stage's numbers go
+        # straight into the fully connected layers. With the LSTM stage that is
+        # the w/o GCN row whatever sensor graph was asked for, since none is used.
+        if temporal is None:
+            return None, "The run did not record its temporal stage, so no row can be chosen."
+        if temporal != "lstm":
+            return None, ("Two parts are removed at once: the graph layers, and the paper's LSTM stage; "
+                          "Table 11 removes one at a time.")
+        return _row("without_gcn", subset), ""
     if graph == "correlation":
         # ASSUMPTION A-19: only every sensor joined is set beside the w/o Physics
         # prior row. The paper describes no graph built from correlations for its
@@ -678,15 +714,20 @@ def paper_row_for(
                       "prior row used instead; only every sensor joined is set beside that row, "
                       "so no row describes this run.")
     for variant in ABLATIONS:
-        if variant["settings"] == {"temporal": temporal, "graph": graph}:
-            row = published_row(variant["key"], subset)
-            return {"key": row.key, "label": row.label, "source": row.source, "rmse": row.rmse,
-                    "score": row.score, "r2": row.r2, "asue": row.asue}, ""
+        if variant["settings"] == {"temporal": temporal, "graph": graph, "spatial": spatial}:
+            return _row(variant["key"], subset), ""
     if temporal is None:
         return None, "The run did not record its temporal stage, so no row can be chosen."
     if temporal == "last_cycle" and graph == "complete":
         return None, "Two parts are removed at once; Table 11 removes one at a time."
     return None, "The paper has no row for this temporal stage."
+
+
+def _row(key: str, subset: str) -> dict[str, Any]:
+    """One published row's four measures, as the page shows them."""
+    row = published_row(key, subset)
+    return {"key": row.key, "label": row.label, "source": row.source, "rmse": row.rmse,
+            "score": row.score, "r2": row.r2, "asue": row.asue}
 
 
 # The one vocabulary the page uses for temporal stages and explanation methods.

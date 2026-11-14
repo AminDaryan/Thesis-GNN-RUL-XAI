@@ -38,6 +38,9 @@ def validate_explain(payload: Mapping[str, Any], root: Path) -> dict[str, Any]:
     seed = payload.get("seed")
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise SettingsError(f"seed must be a whole number, got {seed!r}.")
+    if method == "walks" and _spatial_of(run) == "none":
+        raise SettingsError("This run's network has no graph layers, so there are no walks through the "
+                            "sensor graph to explain; Shapley values and occlusion still apply.")
     if not (run / f"seed_{seed}" / "model.pt").is_file():
         raise SettingsError(
             f"This run saved no weights for seed {seed}. Runs made before 2026-09-14 "
@@ -65,6 +68,24 @@ def validate_explain(payload: Mapping[str, Any], root: Path) -> dict[str, Any]:
 
 
 # -- stored runs ------------------------------------------------------------
+
+
+def _spatial(summary: Mapping[str, Any], model: Mapping[str, Any] | None) -> str:
+    """Whether a stored run's network had graph layers: "gcn", or "none" when they were left out."""
+    # A run stored before the choice existed recorded nothing, and had them.
+    return str((model or {}).get("spatial") or summary.get("spatial") or "gcn")
+
+
+def _spatial_of(run: Path) -> str:
+    """The graph-layer choice of the run stored in one folder, read from its summary and model files."""
+    try:
+        summary = json.loads((run / "summary.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "gcn"
+    model = summary.get("model") or (
+        _read_yaml(run / "model_config.yaml") if (run / "model_config.yaml").is_file() else None)
+    return _spatial(summary, model if isinstance(model, Mapping) else None)
+
 
 
 def _clean(value: Any) -> Any:
@@ -135,14 +156,15 @@ def _describe(path: Path, name: str | None = None) -> dict[str, Any] | None:
         _read_yaml(path / "model_config.yaml") if (path / "model_config.yaml").is_file() else None
     )
     temporal = summary.get("temporal_stage")
+    spatial = _spatial(summary, model if isinstance(model, Mapping) else None)
     subset = str(summary.get("subset", config.get("subset", "")))
     validation_fraction = config.get("validation_fraction", summary.get("validation_fraction"))
-    row, reason = (paper_row_for(subset, temporal, summary.get("graph"))
+    row, reason = (paper_row_for(subset, temporal, summary.get("graph"), spatial)
                    if subset in SUBSETS else (None, "Unknown sub-dataset."))
     seeds = int(summary.get("seeds", 0))
     commit = str(summary.get("commit", "unknown"))
     settings_for_caveats = {
-        "seeds": seeds, "temporal": temporal, "subset": subset,
+        "seeds": seeds, "temporal": temporal, "spatial": spatial, "subset": subset,
         "window_size": config.get("window_size"),
         "graph": summary.get("graph"), "clip_test_labels": summary.get("clip_test_labels"),
         "validation_fraction": validation_fraction or 0.0,
@@ -162,6 +184,7 @@ def _describe(path: Path, name: str | None = None) -> dict[str, Any] | None:
         "exploratory": seeds < RESULT_SEEDS,
         "temporal": temporal,
         "temporal_hidden": summary.get("temporal_hidden"),
+        "spatial": spatial,
         "graph": summary.get("graph"),
         "adjacency_normalization": (summary.get("adjacency_normalization")
                                     or config.get("adjacency_normalization")),
@@ -258,6 +281,7 @@ def list_explanations(root: Path) -> list[dict[str, Any]]:
             found.append({**stored, "name": summary_path.parent.name, "run": run["name"],
                           "run_subset": run.get("subset"), "run_temporal": run.get("temporal"),
                           "run_temporal_hidden": run.get("temporal_hidden"), "run_graph": run.get("graph"),
+                          "run_spatial": run.get("spatial"),
                           "run_finished": run.get("finished")})
     found.sort(key=lambda item: str(item.get("finished_utc", "")), reverse=True)
     return _clean(found)
@@ -297,6 +321,7 @@ def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
     if not (folder / "summary.json").is_file():
         raise SettingsError(f"Run {run!r} has no explanation called {name!r}.")
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    layers = _spatial_of(path.parent) != "none"
     return _clean({
         "summary": summary,
         "values": _read_csv(folder / "values.csv"),
@@ -304,8 +329,11 @@ def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
         "top_walks": _read_csv(folder / "top_walks.csv"),
         # The GNN-LRP paper's own check, stored only with walk explanations.
         "flipping": _read_csv(folder / "flipping.csv"),
+        # A network with no graph layers never used its sensor graph, so it
+        # has no connections to draw, whatever graph its data were prepared with.
+        "graph_layers": layers,
         "graph_edges": (None if summary.get("method") == "walks"
-                        else _explanation_edges(path.parent, summary)),
+                        else _explanation_edges(path.parent, summary) if layers else []),
     })
 
 

@@ -161,6 +161,15 @@ mixing what an encoder produced, not raw cycles. `RawWindow` trips it, and so
 does `WindowSummary`, which is three numbers wide and learns nothing; both are
 built only when named. So would a hand-written passthrough someone added later.
 
+**Without graph layers the check still runs.** A network built with
+`spatial="none"` (assumption A-42) has no graph weight matrix for the cycles to
+land in, so they land in the first dense layer instead: `RawWindow(30)` then
+hands it 14 × 30 = 420 numbers, and the refusal says its multipliers become
+`(420, 128)`. Those multipliers do a temporal stage's work without being named
+one, which is what the check exists to stop, so the same flag is asked for.
+`models/README.md`, under "A network without graph layers", says what else
+changes.
+
 **Its one honest limit.** A stage that holds parameters *and* still passes
 cycles through — a learned per-cycle scaling, say — would get past the check.
 The check closes the accident; this page closes the deliberate case.

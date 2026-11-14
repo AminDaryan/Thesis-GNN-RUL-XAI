@@ -40,6 +40,12 @@ number of connections::
     python scripts/train.py --graph random --seeds 5
     python scripts/train.py --graph rewired --seeds 5
 
+The paper's "ESTGNN w/o GCN", with the graph layers removed and nothing put in
+their place, so each sensor's number goes straight to the dense layers (A-42);
+with --temporal lstm it is the row Table 11 prints, at the size A-26 chose::
+
+    python scripts/train.py --spatial none --temporal lstm --seeds 5
+
 The paper's own procedure, with no validation set and a fixed 200 epochs, comes
 from a configuration that holds no engine back, alone: with nothing to stop on,
 every pass runs and the last one's weights are kept, with or without
@@ -191,6 +197,12 @@ def main() -> int:
     parser.add_argument("--shared-across-sensors", action="store_true",
                         help="One recurrent network for all sensors instead of "
                              "the dedicated one per sensor of Section 2.2")
+    parser.add_argument("--spatial", choices=["gcn", "none"], default="gcn",
+                        help="What sits between the temporal stage and the dense "
+                             "layers. 'gcn' is Table 4's three graph layers; "
+                             "'none' removes them and puts nothing in their "
+                             "place, the paper's 'ESTGNN w/o GCN' as this "
+                             "project reads it (A-42)")
     parser.add_argument("--gcn-hidden", type=int, nargs="+", default=None,
                         help="Output width of each graph layer (Table 4: 32 64 32)")
     parser.add_argument("--fc-hidden", type=int, default=None,
@@ -250,15 +262,19 @@ def main() -> int:
             and not preprocessing.validation_fraction):
         parser.error(fixed_graph_refusal)
 
-    model_config = ModelConfig(
-        temporal=arguments.temporal,
-        temporal_hidden=arguments.temporal_hidden,
-        temporal_out_features=arguments.temporal_out_features,
-        shared_across_sensors=arguments.shared_across_sensors,
-        **({"gcn_hidden": tuple(arguments.gcn_hidden)} if arguments.gcn_hidden else {}),
-        **({"fc_hidden": arguments.fc_hidden} if arguments.fc_hidden else {}),
-        gcn_bias=arguments.gcn_bias,
-    )
+    try:
+        model_config = ModelConfig(
+            temporal=arguments.temporal,
+            temporal_hidden=arguments.temporal_hidden,
+            temporal_out_features=arguments.temporal_out_features,
+            shared_across_sensors=arguments.shared_across_sensors,
+            **({"gcn_hidden": tuple(arguments.gcn_hidden)} if arguments.gcn_hidden else {}),
+            **({"fc_hidden": arguments.fc_hidden} if arguments.fc_hidden else {}),
+            gcn_bias=arguments.gcn_bias,
+            spatial=arguments.spatial,
+        )
+    except ValueError as refused:
+        parser.error(str(refused))
     # Everything a seed does not change. Built once, so the settings written
     # beside the results are the ones every seed used.
     training_template = TrainingConfig(
@@ -276,7 +292,8 @@ def main() -> int:
         training_template = replace(training_template, early_stopping_patience=None)
     progress = Progress(arguments.progress)
     progress("start", seeds=arguments.seeds, epochs=training_template.epochs,
-             subset=preprocessing.subset, temporal=arguments.temporal)
+             subset=preprocessing.subset, temporal=arguments.temporal,
+             spatial=arguments.spatial)
 
     commit = current_commit()
     # Read now, while the code on disk is the code this process imported.
@@ -428,6 +445,9 @@ def main() -> int:
         "\nWhich row above this run may be set beside depends on its temporal\n"
         "stage. Without one -- the default -- it is 'ESTGNN w/o LSTM'; with\n"
         "--temporal lstm it is the full ESTGNN, under the size A-26 chose.\n"
+        "With --spatial none and --temporal lstm it is 'ESTGNN w/o GCN', under\n"
+        "the same size and A-42's reading of what was removed; --spatial none\n"
+        "without the recurrent stage removes two parts, and no row applies.\n"
         "Any other stage is not in the paper, and no row above applies to it.\n"
         "See docs/assumptions/ for every way this pipeline differs from the\n"
         "paper."
@@ -481,8 +501,11 @@ def main() -> int:
         [kept["split"]["validation"] for kept in artefacts], arguments.fixed_split
     )
     stamp = utc_stamp()
+    # The spatial stage is written into the name in words, like the temporal
+    # stage, so it does not count as a difference for the `net` digest either.
     default_model = ModelConfig(
-        temporal=arguments.temporal, temporal_hidden=arguments.temporal_hidden
+        temporal=arguments.temporal, temporal_hidden=arguments.temporal_hidden,
+        spatial=arguments.spatial,
     )
     training_settings = {
         key: getattr(training_template, key)
@@ -507,6 +530,9 @@ def main() -> int:
            else f"_{arguments.temporal}{arguments.temporal_hidden}"
            if arguments.temporal in ("lstm", "gru")
            else f"_{arguments.temporal}")
+        # ASSUMPTION A-42: no graph layers, nothing in their place. Marked after
+        # the temporal stage; the default (Table 4's graph layers) stays silent.
+        + ("_nogcn" if arguments.spatial == "none" else "")
         + ("_noearlystop" if arguments.no_early_stopping else "")
         + ("" if arguments.lr_schedule == "step" else f"_{arguments.lr_schedule}")
         + ("" if model_config == default_model else f"_net{model_config.digest()}")

@@ -661,3 +661,36 @@ def test_flipping_refuses_an_explanation_of_another_window(model, windows):
     other = walk_relevance(model, windows[1:2])
     with pytest.raises(ValueError, match="different networks or windows"):
         node_flipping(model, windows[0:1], {"GNN-LRP": other}, random_orders=0)
+
+
+# --- a network without graph layers is refused (assumption A-42, 2026-11-13) ----
+
+
+def test_every_explanation_of_the_graph_refuses_a_network_without_graph_layers(prepared, windows):
+    """Walks, cycle shares, connection removal, node flipping and sensor groups all describe graph layers it lacks."""
+    from thesis_gnn_rul_xai.explain import (
+        connection_removal,
+        cycle_relevance,
+        node_flipping,
+        subgraph_scores,
+    )
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    torch.manual_seed(3)
+    network = build_model(prepared.adjacency_normalized, ModelConfig(spatial="none"),
+                          window_size=prepared.train.features.shape[2],
+                          rul_max=prepared.config.rul_max)
+    attempts = {
+        "walks": lambda: walk_relevance(network, windows[:2]),
+        "cycles": lambda: cycle_relevance(network, windows[:2]),
+        "removal": lambda: connection_removal(
+            network, windows[:2], prepared.adjacency_raw, prepared.sensor_symbols,
+            method=prepared.config.adjacency_normalization),
+        "flipping": lambda: node_flipping(network, windows[:2], {}),
+        "subgraphs": lambda: subgraph_scores(network, windows[0], np.ones((1, 14), dtype=bool)),
+        "groups": lambda: indistinguishable_sensors(network, prepared.sensor_symbols),
+    }
+    for name, attempt in attempts.items():
+        with pytest.raises(ValueError, match="built without graph layers"):
+            attempt()
+            pytest.fail(f"{name} explained a network without graph layers")

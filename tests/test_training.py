@@ -241,3 +241,20 @@ def test_the_loop_warns_when_plateau_can_never_fire(prepared, caplog):
         train(model, prepared.train, None, config)
 
     assert any("never reach" in record.getMessage() for record in caplog.records)
+
+
+def test_a_network_without_graph_layers_trains_like_any_other(prepared):
+    """The training loop asks nothing of the graph layers, so removing them (assumption A-42) changes nothing in it."""
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    torch.manual_seed(0)
+    model = build_model(prepared.adjacency_normalized, ModelConfig(spatial="none"),
+                        window_size=prepared.train.features.shape[2],
+                        rul_max=prepared.config.rul_max)
+    history = train(model, prepared.train, prepared.validation,
+                    TrainingConfig(epochs=3, device="cpu", early_stopping_patience=None))
+    losses = history.epochs["train_loss"]
+    assert len(losses) == 3 and losses.iloc[-1] < losses.iloc[0]
+    predicted = predict(model, prepared.test)
+    assert predicted.shape == (len(prepared.test),)
+    assert predicted.min() >= 0 and predicted.max() <= prepared.config.rul_max

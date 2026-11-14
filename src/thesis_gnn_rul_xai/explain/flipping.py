@@ -148,6 +148,7 @@ def node_flipping(
     random_orders: int = RANDOM_ORDERS,
 ) -> pd.DataFrame:
     """One row per window, task and ranking: the order sensors were flipped and the curve the paper plots."""
+    _check_model(model)
     single = features.ndim == 2
     batch = features[None, ...] if single else features
     if not explanations:
@@ -159,7 +160,6 @@ def node_flipping(
             )
     n_nodes = model.n_nodes
     rows: list[dict[str, object]] = []
-    _check_model(model)
     for index, window in enumerate(batch):
         nodes = _stage_output(model, window)
         full = _scores(model, nodes, np.ones((1, n_nodes), dtype=bool))[0]

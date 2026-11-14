@@ -20,6 +20,7 @@ from ..utils.logging_setup import get_logger
 
 __all__ = [
     "MAX_WALKS_PER_EXAMPLE",
+    "NO_GRAPH_LAYERS",
     "PAPER_GAMMA_START",
     "WalkRelevance",
     "connection_relevance",
@@ -29,6 +30,7 @@ __all__ = [
     "indistinguishable_sensors",
     "node_relevance",
     "paper_gammas",
+    "refuse_without_graph_layers",
     "step_relevance",
     "top_walks",
     "walk_relevance",
@@ -74,10 +76,27 @@ class WalkRelevance:
         return int(self.relevance.ndim - 2)
 
 
+# Said wherever an explanation of the graph meets a network without one.
+NO_GRAPH_LAYERS = (
+    "This network was built without graph layers (spatial 'none', assumption "
+    "A-42): no sensor passes anything to another, so there are no walks through "
+    "the sensor graph, no connections whose removal could move the prediction, "
+    "and no graph to take sensors out of. Its predictions can still be explained "
+    "sensor by sensor with Shapley values or occlusion."
+)
+
+
+def refuse_without_graph_layers(model: ESTGNN) -> None:
+    """Refuse a network with no graph layers, which no explanation of the graph can describe."""
+    if not model.has_graph_layers:
+        raise ValueError(NO_GRAPH_LAYERS)
+
+
 def _check_model(model: ESTGNN) -> None:
     """Refuse a network this file does not know how to split into walks."""
     if not isinstance(model, ESTGNN):
         raise TypeError(f"walk_relevance explains an ESTGNN, got {type(model).__name__}.")
+    refuse_without_graph_layers(model)
     for index, layer in enumerate(model.graph_layers, start=1):
         if type(layer) is not GraphConvolution:
             raise TypeError(
@@ -480,6 +499,7 @@ def cycle_relevance(
 
 def indistinguishable_sensors(model: ESTGNN, symbols: Sequence[str]) -> list[tuple[str, ...]]:
     """Groups of sensors with identical rows in the rescaled graph, which the graph layers cannot tell apart."""
+    refuse_without_graph_layers(model)
     if len(symbols) != model.n_nodes:
         raise ValueError(
             f"the network has {model.n_nodes} node(s) but {len(symbols)} symbol(s) were given."

@@ -59,7 +59,10 @@ def job_label(settings: Mapping[str, Any]) -> str:
         parts.append(stage)
     graph = str(settings.get("graph") or "physics")
     rescaling = settings.get("adjacency_normalization")
-    parts.append(f"{graph} graph" if rescaling in (None, "row") else f"{graph} · {rescaling} graph")
+    if settings.get("spatial") == "none":
+        parts.append("w/o GCN")  # no graph layers, so the sensor graph is not used
+    else:
+        parts.append(f"{graph} graph" if rescaling in (None, "row") else f"{graph} · {rescaling} graph")
     parts.append("best pass" if float(settings.get("validation_fraction") or 0.0) > 0
                  else "final pass")
     seeds = int(settings.get("seeds") or 0)

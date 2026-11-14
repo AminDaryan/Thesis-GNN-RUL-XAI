@@ -18,6 +18,7 @@ from ..graph.adjacency import (
     normalize_adjacency,
 )
 from ..models.estgnn import ESTGNN
+from .walks import refuse_without_graph_layers
 
 __all__ = ["connection_removal", "connections_of"]
 
@@ -33,6 +34,7 @@ def connection_removal(
     batch_size: int = 512,
 ) -> pd.DataFrame:
     """Prediction with the graph as trained, minus the prediction with one connection removed, in cycles."""
+    refuse_without_graph_layers(model)
     raw = np.asarray(raw_adjacency, dtype=np.float64)
     if len(symbols) != raw.shape[0]:
         raise ValueError(

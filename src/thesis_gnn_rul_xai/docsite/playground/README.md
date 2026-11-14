@@ -72,8 +72,9 @@ be revisited independently, so they carry no step numbers:
    LSTM, a kind of recurrent network, one for each sensor), the sensor graph
    and the widths of the graph layers (GCN, for graph convolutional network,
    the layers in which each sensor's numbers are mixed with its neighbours'
-   in the graph), and the training settings. The graph layers themselves stay
-   the three of the paper's Table 4; only their sizes change.
+   in the graph), and the training settings. The graph layers are the three of
+   the paper's Table 4, and can be left out altogether (the paper's "w/o GCN"
+   model, below); otherwise only their sizes change.
 2. **Explain predictions.** Select a stored trained run, apply an explanation
    method, and explore its output. The run can be changed here directly.
 3. **Run history.** Everything that has been run, under two tabs of its own:
@@ -439,7 +440,7 @@ property of the step rather than as the thing passed from one step to the next.
 | 1 Data | the training engines, the test engines and the file of their remaining life, side by side; a remaining life for every row; and the 14 of 21 sensors kept, in Table 3's order |
 | 2 Preprocessing | capping the labels, smoothing, holding engines back, finding the operating conditions, rescaling and cutting windows; the groups appear immediately after holding engines back and persist through the remaining steps |
 | 3 Temporal stage | for the LSTM or the GRU: splitting the window by sensor, one network per sensor (or one shared by all), its last hidden state, and the one weighted sum, shared by all sensors, that turns it into the numbers the graph layers receive; for the other stages, what each does to a window instead |
-| 4 Graph layers | the sensor graph, its rescaling, the three graph layers, the flattening, the fully connected layer, the output and its scaling to cycles |
+| 4 Graph layers | the sensor graph, its rescaling, the three graph layers, the flattening, the fully connected layer, the output and its scaling to cycles; with the graph layers left out, only the flattening of the temporal stage's numbers and the steps after it |
 
 **A tag never claims a value the paper did not print.** Where a step is an
 operation the paper describes, its tag names that part of the paper whatever
@@ -642,34 +643,58 @@ the only copy there.
 ### Which row of the paper a run is set beside
 
 Removing one part of a model to see what it was worth is called an
-**ablation**, and the pipeline makes the two that can be built here. The cross
-on the temporal stage's box keeps only each window's last cycle, which is the
-w/o LSTM row's stage, and the box leaves the flowchart. The **physics prior**
-is the paper's own sensor graph, the matrix of its Table 3, which the authors
-built by hand from how a turbofan engine works; the form calls it "The paper's
-physics graph". It is not drawn on the overview, whose boxes are stages; it is
-the first step of the graph layers' own flowchart, "Sensor graph", and the
-cross on that step joins every sensor to every other instead, the w/o Physics
-prior row's graph. Each cross leaves a dashed button in its place that puts
-the part back as it was, however it was taken out: a GRU, the smaller recurrent
-network this project offers beside the LSTM, comes back as a GRU. The graph
-layers' box has a cross drawn faint that does nothing and says why when
-pointed at: a network without graph layers is not built here, so "w/o GCN" has
-no settings.
+**ablation**, and the pipeline makes all three of the paper's Table 11. The
+cross on the temporal stage's box keeps only each window's last cycle, which
+is the w/o LSTM row's stage, and the box leaves the flowchart. The **physics
+prior** is the paper's own sensor graph, the matrix of its Table 3, which the
+authors built by hand from how a turbofan engine works; the form calls it "The
+paper's physics graph". It is not drawn on the overview, whose boxes are
+stages; it is the first step of the graph layers' own flowchart, "Sensor
+graph", and the cross on that step joins every sensor to every other instead,
+the w/o Physics prior row's graph. The cross on the graph layers' box (GCN,
+for graph convolutional network, the paper's name for them) takes the three
+graph layers out, the w/o GCN row's network, and the box leaves the flowchart,
+which then runs from the temporal stage straight to the remaining life. Each
+cross leaves a dashed button in its place that puts the part back as it was,
+however it was taken out: a GRU, the smaller recurrent network this project
+offers beside the LSTM, comes back as a GRU.
+
+What a network without graph layers does instead is this project's choice,
+because the paper names its w/o GCN model and never says what took the
+layers' place: nothing does. Each sensor's numbers from the temporal stage are
+laid end to end in one row and go straight into the first fully connected
+layer (assumption A-42). With the default LSTM stage, which hands on one number
+per sensor, that row is 14 numbers long, where the graph layers would have
+handed on 14 x 32 = 448. No sensor then receives anything from a connected
+sensor, so the sensor graph is never used: the Graph layers tab keeps its
+sensor graph, rescaling and layer-size controls in view, faded and out of use
+(a note saying why was taken out on 2026-11-14 at the author's request), and
+the training command leaves out the
+layer-size and offset flags and adds `--spatial none`. The default network's
+command is unchanged, word for word.
+
+(Corrected 2026-11-13: this section said the graph layers' box had a cross
+drawn faint that did nothing, because a network without graph layers was not
+built here, so "w/o GCN" had no settings. The network code can now leave the
+graph layers out, so the cross works and the row below has settings.)
 
 A stored run is set beside one row of the paper, decided by what its settings
-remove, one part at a time, the way the paper's Table 11 does:
+remove, one part at a time, the way the paper's Table 11 does. A run stored
+before the graph layers could be left out recorded no such choice; it had
+them, and is read as having them.
 
-| Temporal stage | Sensor graph | Published row |
-|---|---|---|
-| LSTM | the paper's | ESTGNN (Full), Tables 7 to 10 |
-| w/o LSTM | the paper's | ESTGNN w/o LSTM, Table 11 |
-| LSTM | every sensor joined | ESTGNN w/o Physics prior, Table 11 |
-| w/o LSTM | every sensor joined | none: two parts removed at once |
-| anything | the 41 most correlated pairs | none: the paper describes no such graph for its network and never says what its w/o Physics prior row used, and this project sets only every sensor joined beside that row |
-| anything | 41 pairs picked at random, or the paper's graph rewired | none: the paper describes no such graph and never says what its w/o Physics prior row used, and this project sets only every sensor joined beside that row |
-| anything else | the paper's or every sensor joined | none: the paper has no row for the stage |
-| not recorded, in an older stored run | the paper's or every sensor joined | none: no row can be chosen |
+| Temporal stage | Graph layers | Sensor graph | Published row |
+|---|---|---|---|
+| LSTM | in | the paper's | ESTGNN (Full), Tables 7 to 10 |
+| w/o LSTM | in | the paper's | ESTGNN w/o LSTM, Table 11 |
+| LSTM | in | every sensor joined | ESTGNN w/o Physics prior, Table 11 |
+| LSTM | out | any: it is not used | ESTGNN w/o GCN, Table 11 (16.42 RMSE on FD001) |
+| w/o LSTM, or any stage but the LSTM | out | any | none: two parts removed at once |
+| w/o LSTM | in | every sensor joined | none: two parts removed at once |
+| anything | in | the 41 most correlated pairs | none: the paper describes no such graph for its network and never says what its w/o Physics prior row used, and this project sets only every sensor joined beside that row |
+| anything | in | 41 pairs picked at random, or the paper's graph rewired | none: the paper describes no such graph and never says what its w/o Physics prior row used, and this project sets only every sensor joined beside that row |
+| anything else | in | the paper's or every sensor joined | none: the paper has no row for the stage |
+| not recorded, in an older stored run | either | any | none: no row can be chosen |
 
 (Corrected 2026-10-03: the row for the 41 most correlated pairs said "the
 paper builds no such graph". It describes none for its network, but it never
@@ -1030,6 +1055,17 @@ page points to Design a run.
 The selected method starts `scripts/explain.py`: exact Shapley values,
 occlusion, or walks through the sensor graph. `explain/README.md` explains
 these methods.
+
+A run whose network has no graph layers (the w/o GCN model above) is offered
+only the first two, with one line under the methods saying why. A walk is a
+route a sensor's number takes from one sensor to a connected one through the
+graph layers, one connection per layer, so a network without graph layers has
+no walks to divide its prediction among. Shapley values and occlusion only
+replace a sensor's readings and watch the prediction move, which works on any
+network. The server refuses a walk request for such a run too, as
+`scripts/explain.py` does, and an explanation of it is drawn with no
+connections between the sensors and without the "Sensor graph" chart, since
+the network never used one.
 
 Measured
 on this machine's processor with an untrained network, one window of exact
@@ -1403,14 +1439,16 @@ the process starts, which then never starts, or finds the process and ends it.
 
 ## What each name means
 
-### `validate_settings(payload)` and `paper_row_for(subset, temporal, graph)`
+### `validate_settings(payload)` and `paper_row_for(subset, temporal, graph, spatial)`
 
 The first takes the settings the page sent, a dictionary, and returns every
 setting checked against its range and filled from its default; an unknown
 setting or a value out of range raises a `SettingsError`, whose message is what
 the page shows. The second returns the row of the paper's results those
 settings may be set beside, as a dictionary of its four measures, or `None`
-together with the reason there is none.
+together with the reason there is none. `spatial` is `"gcn"` for a network with
+graph layers and `"none"` for one without; left out or `None`, as a run stored
+before the choice existed gives it, it means `"gcn"`.
 
 ### `JobManager(root)`
 

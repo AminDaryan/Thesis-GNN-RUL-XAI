@@ -168,7 +168,10 @@ def test_the_script_reproduces_the_stored_scores_and_writes_its_records(raw_dir,
                           "--data-dir", str(raw_dir), "--output-root", str(tmp_path)])
     assert status == 0
     (folder,) = list(tmp_path.iterdir())
-    assert folder.name.startswith(f"baselines_{script.short_name(run.name)}_seeds{seed}_2of14models_")
+    # The name lists the seeds only when they are not all of the run's, so a
+    # one-seed run, such as a smoke run stored in reports/, has no _seeds part.
+    seeds_part = "" if run.seeds == [seed] else f"_seeds{seed}"
+    assert folder.name.startswith(f"baselines_{script.short_name(run.name)}{seeds_part}_2of14models_")
 
     results = pd.read_csv(folder / "results.csv").set_index("model")
     stored = float(run.results.loc[run.results["seed"] == seed, "rmse"].iloc[0])

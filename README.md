@@ -1360,6 +1360,16 @@ is still what the default does (assumption A-11). The paper publishes this exact
 configuration itself, as the "ESTGNN w/o LSTM" row of its ablation table.
 Comparisons must be made against that row.
 
+**The network without graph layers is built but not yet measured.** The paper's
+"ESTGNN w/o GCN" row (16.42 on FD001, Table 11) never says what replaced the
+graph layers. Since 2026-11-13 `--spatial none` removes them and puts nothing
+in their place, so each sensor's number goes straight to the dense layers
+(assumption A-42). With `--temporal lstm` it is the run to set beside that row,
+under the same warnings as the full network's. Removing the layers also removes
+most of what the network learns, 2,049 numbers against 61,729 with the default
+stage, so a difference in error does not separate the connections between
+sensors from the size of the network. No five-seed run of it exists yet.
+
 **Only FD001 is handled so far.** The per-condition *scaler* is written and
 tested, but the pipeline is not yet ready for FD002 or FD004. The paper's own
 step order (Fig. 1) smooths in raw physical units before the per-condition

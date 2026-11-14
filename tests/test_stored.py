@@ -215,3 +215,44 @@ def test_a_rebuild_that_only_adds_connections_names_what_it_adds(tmp_path, raw_d
     with pytest.raises(ValueError, match=r"not the one recorded in seed_42/graph\.json") as refused:
         load_seed(run, 42, data_dir=raw_dir)
     assert f"the rebuild joins 1 pair(s) that graph does not ({first[0]}-{first[1]})." in str(refused.value)
+
+
+# --- a stored network without graph layers (assumption A-42, 2026-11-13) -------
+
+
+def test_a_stored_network_without_graph_layers_reloads_and_walks_are_refused(tmp_path, raw_dir, settings):
+    """load_seed rebuilds it from model_config.yaml alone; scripts/explain.py --method walks then says why it cannot."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    config = ModelConfig(temporal="lstm", spatial="none")
+    run = tmp_path / "fd001_physics_row_cap_1seed_varsplit_lstm32_nogcn_test"
+    (run / "seed_7").mkdir(parents=True)
+    settings.save(run / "preprocessing_config.yaml")
+    config.save(run / "model_config.yaml")
+    pd.DataFrame({"seed": [7], "rmse": [20.0]}).to_csv(run / "results.csv", index=False)
+    (run / "summary.json").write_text(json.dumps({
+        "seeds": 1, "split": "varies_with_seed", "commit": "abc1234",
+        "temporal_stage": "lstm", "model": config.to_dict(), "finished_utc": "20261113T000000Z",
+    }), encoding="utf-8")
+    prepared = run_preprocessing(settings, data_dir=raw_dir)
+    torch.manual_seed(7)
+    trained = build_model(prepared.adjacency_normalized, config, window_size=20, rul_max=125)
+    torch.save(trained.state_dict(), run / "seed_7" / "model.pt")
+
+    model, _ = load_seed(read_run(run), 7, data_dir=raw_dir)
+    assert not model.has_graph_layers
+    for name, tensor in trained.state_dict().items():
+        assert torch.equal(model.state_dict()[name], tensor), name
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "explain.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "--run", str(run), "--method", "walks",
+         "--scope", "test", "--data-dir", str(raw_dir), "--quiet"],
+        capture_output=True, text=True, check=False,
+    )
+    assert completed.returncode != 0
+    assert "--method walks cannot explain" in completed.stderr
+    assert "built without graph layers" in completed.stderr
+    assert not (run / "explanations").exists()

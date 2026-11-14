@@ -41,7 +41,9 @@ Three methods are available, and only the first is the paper's:
     gives the first graph layer 0, whose inputs can be negative. For three
     graph layers the last two are (0, 0.5, 0.25) and (0, 1, 1), the settings
     A-29 compares with the authors' when it measures how far a ranking of
-    connections moves with gamma.
+    connections moves with gamma. A run trained with ``--spatial none`` has no
+    graph layers, so no walks and nothing to flip, and is refused (A-42);
+    ``shap`` and ``occlusion`` explain it as they explain any other.
 
 and two things can be explained:
 
@@ -252,6 +254,12 @@ def main() -> int:
     except (FileNotFoundError, ValueError) as refused:
         raise SystemExit(str(refused)) from refused
     run = stored.path
+    # Walks, connection removal and node flipping all describe the sensor
+    # graph's part in a prediction; a network without graph layers has none.
+    if arguments.method == "walks" and not model.has_graph_layers:
+        from thesis_gnn_rul_xai.explain import NO_GRAPH_LAYERS
+
+        raise SystemExit(f"--method walks cannot explain {run.name}. {NO_GRAPH_LAYERS}")
 
     device = resolve_device(arguments.device)
     model.to(device).eval()

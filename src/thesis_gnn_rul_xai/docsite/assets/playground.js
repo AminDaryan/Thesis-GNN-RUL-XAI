@@ -70,11 +70,10 @@
   var MENU = { lr_schedule: true };
   var SUBSETS = ["FD001", "FD002", "FD003", "FD004"];
   // The value that takes a part out of the pipeline. Each is the setting of a
-  // variant of Table 11: "w/o LSTM" and "w/o Physics prior".
-  var REMOVED = { temporal: "last_cycle", graph: "complete" };
+  // variant of Table 11: "w/o LSTM", "w/o Physics prior" and "w/o GCN".
+  var REMOVED = { temporal: "last_cycle", graph: "complete", spatial: "none" };
   // What the pipeline calls the sensor graph the graph layers run on.
   var PRIOR = { physics: "Physics prior", correlation: "Correlation graph" };
-  var GCN_FIXED = "The graph layers cannot be taken out: a network without them is not built here";
   var CROSS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3 L9 9 M9 3 L3 9" ' +
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   var BACK = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 L4 6 L7.5 9.5" fill="none" ' +
@@ -325,6 +324,12 @@
   // A run that recorded no graph gets nothing.
   function graphName(graph, rescaling) {
     return graph ? graph + (rescaling && rescaling !== "row" ? " · " + rescaling : "") : "";
+  }
+
+  // A stored run's Graph column: its graph, or "w/o GCN" for a network with
+  // no graph layers, which never used the graph its data were prepared with.
+  function runGraphName(run) {
+    return run.spatial === REMOVED.spatial ? "w/o GCN" : graphName(run.graph, run.adjacency_normalization);
   }
 
   function statusWord(status) { return STATUS[status] || status; }
@@ -1603,10 +1608,14 @@
       { name: "Turn into numbers per sensor",
         picture: "project", fields: ["temporal_out_features"] }
     ],
+    // With the graph layers out of the network, the sensor graph, its
+    // rescaling and the layers' sizes decide nothing: their groups stay in
+    // view, faded and out of use.
     graph: [
-      { name: "Sensor graph", picture: "graph", fields: ["graph"] },
-      { name: "Rescale the graph", picture: "table", fields: ["adjacency_normalization"] },
-      { name: "Graph layers", picture: "gcn", fields: ["gcn_hidden", "gcn_bias"],
+      { name: "Graph layers in the network", picture: "gcn", fields: ["spatial"] },
+      { name: "Sensor graph", picture: "graph", fields: ["graph"], unused: graphLayersOut },
+      { name: "Rescale the graph", picture: "table", fields: ["adjacency_normalization"], unused: graphLayersOut },
+      { name: "Graph layers", picture: "gcn", fields: ["gcn_hidden", "gcn_bias"], unused: graphLayersOut,
         about: "Each layer combines a sensor's numbers with those of its connected neighbours, using the graph's fixed weights. " +
           "Learned multipliers then turn that combination into new numbers for the sensor. Optional learned offsets are added, " +
           "and negative results become zero. The multipliers are shared across sensors. Each layer's width sets how many " +
@@ -1623,6 +1632,20 @@
   };
 
   function sectionName(section) { return typeof section.name === "function" ? section.name() : section.name || ""; }
+
+  // Whether the graph layers are out of the network, the setting of "w/o GCN".
+  function graphLayersOut() { return S.settings.spatial === REMOVED.spatial; }
+
+  // Whether a group's settings are out of use: its step switched off, or a
+  // step it depends on taken out of the network.
+  function sectionOff(section) {
+    return (!!section.toggle && !S.settings[section.toggle]) || (!!section.unused && section.unused());
+  }
+
+  function sectionNote(section) {
+    var text = section.note ? section.note() : "";
+    return '<p class="pg-faint pg-section-note"' + (text ? "" : " hidden") + ">" + esc(text) + "</p>";
+  }
 
   function sectionHelp(section, destination) {
     if (section.procedure) { return infoCard(S.options.procedure_about, "", S.options.procedure_more); }
@@ -1680,8 +1703,8 @@
     var toggle = section.toggle ? S.fields[section.toggle] : null;
     var id = "pg-section-" + group + "-" + index;
     var hidden = !toggle && fields.length > 0 && fields.every(function (f) { return !visible(f.key); });
-    var off = !!toggle && !S.settings[toggle.key];
-    var body = cells(lone ? id : null);
+    var off = sectionOff(section);
+    var body = cells(lone ? id : null) + (section.note ? sectionNote(section) : "");
     if (off) { body = body.replace(/<(input|select)\b/g, "<$1 disabled"); }
     return '<section class="pg-section' + (off ? " is-off" : "") + '" data-section="' + group + "-" + index +
       '" aria-labelledby="' + id + '"' + (hidden ? " hidden" : "") + '><div class="pg-section-head"' +
@@ -1705,8 +1728,14 @@
       var at = box.getAttribute("data-section").split("-"), section = SECTIONS[at[0]][Number(at[1])];
       var cells = Array.prototype.slice.call(box.querySelectorAll(".pg-fields > .pg-field"));
       box.hidden = !section.toggle && cells.length > 0 && cells.every(function (c) { return c.hidden; });
-      var off = !!section.toggle && !S.settings[section.toggle];
+      var off = sectionOff(section);
       box.classList.toggle("is-off", off);
+      var note = box.querySelector(".pg-section-note");
+      if (note) {
+        var text = section.note ? section.note() : "";
+        if (note.textContent !== text) { note.textContent = text; }
+        note.hidden = !text;
+      }
       Array.prototype.forEach.call(box.querySelectorAll(".pg-fields input, .pg-fields select"), function (control) {
         control.disabled = off;
       });
@@ -1826,22 +1855,27 @@
 
   // The data that go in, drawn as words with their picture as the remaining
   // life that comes out is, then preprocessing, the temporal stage when there
-  // is one, the graph layers, and what comes out. The graph layers cannot be
-  // taken out, and their cross says why instead of doing nothing silently;
-  // the sensor graph they run on is a step of their own flowchart, taken out there.
+  // is one, the graph layers when there are any, and what comes out. A part
+  // taken out leaves the + that puts it back on the arrow between the boxes
+  // either side of it, so the flow reads preprocessing → temporal stage →
+  // remaining life without the graph layers. The sensor graph they run on is
+  // a step of their own flowchart, taken out there.
   function flowHtml() {
     var s = S.settings;
-    var temporal = s.temporal === REMOVED.temporal
-      ? flowLink(addButton("temporal"))
-      : flowLink("") + stageBox("temporal", removeButton("temporal", "pg-stage-x")) + flowLink("");
-    var fixedCross = '<button type="button" class="pg-stage-x" aria-disabled="true" title="' + GCN_FIXED + '" aria-label="' +
-      GCN_FIXED + '">' + CROSS + "</button>";
-    return '<div class="pg-flow-end pg-flow-in" role="listitem"><button type="button" class="pg-flow-input" data-zoom="' +
+    var html = '<div class="pg-flow-end pg-flow-in" role="listitem"><button type="button" class="pg-flow-input" data-zoom="' +
       INPUT + '" aria-label="' + esc("Data: " + s.subset + ", its flowchart") + '"><span class="pg-flow-input-icon' +
       (S.step === INPUT ? " is-current" : "") + '" data-step="' + INPUT + '">' + ICONS.data + "</span>" + esc(s.subset) +
-      "</button></div>" + flowLink("") + stageBox("preprocessing", "") + temporal + stageBox("graph", fixedCross) +
-      '<div class="pg-flow-link pg-flow-out" aria-hidden="true"></div>' +
-      '<div class="pg-flow-end pg-flow-out" role="listitem">' + ICONS.output + "Remaining life</div>";
+      "</button></div>" + flowLink("") + stageBox("preprocessing", "");
+    var gap = s.temporal === REMOVED.temporal;
+    html += gap ? flowLink(addButton("temporal"))
+      : flowLink("") + stageBox("temporal", removeButton("temporal", "pg-stage-x"));
+    if (s.spatial === REMOVED.spatial) {
+      html += flowLink(addButton("spatial"));
+    } else {
+      html += (gap ? "" : flowLink("")) + stageBox("graph", removeButton("spatial", "pg-stage-x")) +
+        '<div class="pg-flow-link pg-flow-out" aria-hidden="true"></div>';
+    }
+    return html + '<div class="pg-flow-end pg-flow-out" role="listitem">' + ICONS.output + "Remaining life</div>";
   }
 
   // One box: its step's number in the top left corner, its picture, and
@@ -2150,7 +2184,9 @@
     clearTimeout(S.zoomTimer);
     S.zoom = null;
     paintPipeline();
-    var box = $('button[data-zoom="' + was + '"]') || $('[data-action="add-part"][data-part="' + was + '"]');
+    // The graph layers' box is taken out by its own setting, not by its group's name.
+    var part = was === "graph" ? "spatial" : was;
+    var box = $('button[data-zoom="' + was + '"]') || $('[data-action="add-part"][data-part="' + part + '"]');
     if (box) { box.focus(); }
   }
 
@@ -2226,8 +2262,10 @@
     return S.settings.graph === REMOVED.graph ? addButton("graph") : removeButton("graph", "pg-stage-x");
   }
 
-  // What the pipeline calls a part with a given value: "LSTM", "Physics prior".
+  // What the pipeline calls a part with a given value: "LSTM", "Physics prior",
+  // "GCN" for the graph layers, as their box names them.
   function partName(part, value) {
+    if (part === "spatial") { return "GCN"; }
     return part === "temporal" ? capitalise(temporalName(value)) : (PRIOR[value] || choiceLabel(part, value));
   }
 
@@ -2646,7 +2684,7 @@
     var active = box.contains(document.activeElement) ? document.activeElement : null;
     var had = active && (active.matches(".pg-train") ? ".pg-train" : null);
     var summary = [S.settings.subset, stageName(S.settings.temporal, S.settings.temporal_hidden),
-      graphName(S.settings.graph, S.settings.adjacency_normalization) + " graph",
+      graphLayersOut() ? "w/o GCN: no graph layers" : graphName(S.settings.graph, S.settings.adjacency_normalization) + " graph",
       S.settings.window_size + " cycles per window"].join(" · ");
     box.innerHTML = '<div class="pg-section-head"><span class="pg-section-picture">' + PICTURES.dense +
       '</span><h3 class="pg-section-name">Run summary</h3></div><p class="pg-run-summary">' + esc(summary) +
@@ -2918,7 +2956,7 @@
           '<td class="num">' + number(m.rmse, 3) + (sd.rmse !== null && sd.rmse !== undefined ? ' <span class="sd">± ' + number(sd.rmse, 3) + "</span>" : "") + "</td>" +
           '<td class="num" title="' + esc(r.paper_row ? r.paper_row.label + ", " + r.paper_row.source : r.no_row_reason) + '">' +
           (r.paper_row ? fixed(r.paper_row.rmse, 2) : "—") + "</td>" + (showData ? "<td>" + esc(r.subset) + "</td>" : "") +
-          "<td>" + esc(stageName(r.temporal, r.temporal_hidden)) + "</td><td>" + esc(graphName(r.graph, r.adjacency_normalization)) + "</td>" +
+          "<td>" + esc(stageName(r.temporal, r.temporal_hidden)) + "</td><td>" + esc(runGraphName(r)) + "</td>" +
           '<td><span class="chip' + (r.exploratory ? " chip--warn" : "") + '">' + count(r.seeds) + "</span></td>" +
           "<td>" + (r.reported_weights === "final_epoch" ? "final pass" :
             r.reported_weights === "best_validation_epoch" ? "best pass" : "not recorded") +
@@ -2940,7 +2978,8 @@
           '<td title="' + esc(when(x.finished_utc)) + '">' + whenShort(x.finished_utc) + "</td><td>" +
           esc(methodLabel(x)) + "</td><td>" + esc(explainedWhat(x)) + "</td><td>" + esc(x.seed) + "</td>" +
           '<td class="num">' + count(x.windows) + "</td><td>" + esc(x.run_subset || "") + "</td><td>" +
-          esc([stageName(x.run_temporal, x.run_temporal_hidden), graphName(x.run_graph)].filter(Boolean).join(" · ")) +
+          esc([stageName(x.run_temporal, x.run_temporal_hidden),
+            runGraphName({ spatial: x.run_spatial, graph: x.run_graph })].filter(Boolean).join(" · ")) +
           ' <span class="pg-faint">' + esc(whenShort(x.run_finished)) + "</span></td></tr>";
       }).join("") + "</tbody></table></div>";
   }
@@ -3045,8 +3084,10 @@
       best_validation_epoch: "Best pass on held-back engines", final_epoch: "Final training pass",
       auto: "Automatic device selection", cpu: "CPU", cuda: "CUDA graphics processor"
     };
+    // "none" already names a split; for the graph layers it means there are none.
+    if (key === "spatial") { names = { gcn: "Three graph layers", none: "No graph layers (w/o GCN)" }; }
     var namedChoice = ["normalization", "graph", "adjacency_normalization", "temporal", "optimizer",
-      "loss", "lr_schedule", "split", "reported_weights", "device"].indexOf(key) >= 0;
+      "loss", "lr_schedule", "split", "reported_weights", "device", "spatial"].indexOf(key) >= 0;
     return namedChoice && Object.prototype.hasOwnProperty.call(names, value)
       ? esc(names[value]) + ' <span class="pg-setting-raw">(' + esc(value) + ")</span>" : esc(String(value));
   }
@@ -3075,6 +3116,10 @@
       var saved = summary[key === "temporal" ? "temporal_stage" : key];
       if (model[key] === undefined && saved !== undefined) { model[key] = saved; modelFallback[key] = true; }
     });
+    // A run stored before the graph layers could be left out recorded no
+    // choice and had them; the server says so, and the page marks it.
+    var spatialAssumed = model.spatial === undefined && d.spatial !== undefined;
+    if (spatialAssumed) { model.spatial = d.spatial; }
     var seeds = Object.keys(d.per_seed || {});
     (d.results || []).forEach(function (row) {
       if (row.seed !== null && row.seed !== undefined && seeds.indexOf(String(row.seed)) < 0) { seeds.push(String(row.seed)); }
@@ -3129,9 +3174,12 @@
         (model.temporal && model.temporal !== "lstm" && model.temporal !== "gru" ?
           " Memory size, conversion width and recurrent sharing are unused by this temporal route." : ""), {
         temporal: "Temporal algorithm", temporal_hidden: "Memory size", temporal_out_features: "Graph-input values per sensor",
-        shared_across_sensors: "Share the recurrent network across sensors", gcn_hidden: "Values after each graph layer",
-        fc_hidden: "Fully connected width", gcn_bias: "Add offsets in graph layers"
+        shared_across_sensors: "Share the recurrent network across sensors", spatial: "Graph layers in the network",
+        gcn_hidden: "Values after each graph layer", fc_hidden: "Fully connected width", gcn_bias: "Add offsets in graph layers"
       }, model, function (key) {
+        if (key === "spatial" && spatialAssumed) {
+          return savedSettingValue(key, model[key]) + ' <span class="pg-setting-raw">(not recorded: stored before the choice existed)</span>';
+        }
         return savedSettingValue(key, model[key]) + (modelFallback[key] ? ' <span class="pg-setting-raw">(run summary)</span>' : '');
       }) +
       savedSettingsGroup("Training", "Per-seed training files, with run-summary values identified when used", {
@@ -3160,7 +3208,7 @@
     var titles = { "A-26": "Temporal choices", "F-16": "Choosing the reported weights", "A-02": "Test-label ceiling",
       "D-6": "Last-reading temporal route", "Section 2.2": "Shared sensor network", "Table 4": "Different layer widths",
       "A-17": "Learning-rate schedule", "D-2": "Complete sensor graph", "A-27": "Graph varies with the training engines",
-      "A-23": "Test engines left out" };
+      "A-23": "Test engines left out", "A-42": "No graph layers" };
     return '<section class="pg-run-interpretation" aria-labelledby="pg-run-interpretation-title">' +
       '<h2 id="pg-run-interpretation-title">How to interpret this run</h2>' + compared +
       '<div class="pg-run-notes">' + cautions.map(function (c) {
@@ -3350,9 +3398,13 @@
   function explainRunLabel(run) {
     var graph = graphName(run.graph, run.adjacency_normalization);
     return [when(run.finished), run.subset, stageName(run.temporal, run.temporal_hidden),
-      graph ? graph + " graph" : "", plural(run.seeds, "seed")]
+      run.spatial === REMOVED.spatial ? "w/o GCN" : graph ? graph + " graph" : "", plural(run.seeds, "seed")]
       .filter(Boolean).join(" · ");
   }
+
+  // Whether a stored run's network has graph layers; a run stored before the
+  // choice existed recorded none, and has them.
+  function hasGraphLayers(run) { return !run || run.spatial !== REMOVED.spatial; }
 
   function explainForm(run, seeds, runs) {
     var e = S.explain;
@@ -3363,6 +3415,10 @@
     });
     var seedChoices = seeds.map(function (s) { return { value: s, label: s }; });
     var forEngine = e.scope === "engine";
+    // Walks follow the sensor graph through the graph layers, so a network
+    // without them offers only the two methods that vary the input.
+    var layered = hasGraphLayers(run);
+    if (!layered && e.method === "walks") { e.method = "shap"; }
     return '<section class="pg-block"><div class="pg-fields">' +
       cell({ id: "pg-e-run", label: "Trained run", size: "wide",
         control: selectField("pg-e-run", choices, e.run, 'data-explain="run"') +
@@ -3384,7 +3440,10 @@
             " GNN-LRP of Schnake et al. (2022) (" + refLink("A-29") + "). " +
             "Their node-flipping check is stored with every explanation (" + refLink("A-33") +
             "). Identical graph outputs are grouped where routes end (" + refLink("F-18") + ")." }
-        ], e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) }) +
+        ].filter(function (option) { return layered || option.value !== "walks"; }),
+        e.method, 'data-explain="method"', explainNote, nameIds("pg-e-method")) +
+          (layered ? "" : '<p class="pg-faint" data-no-walks>Walks through the sensor graph are not offered: this ' +
+            "run's network has no graph layers, so no sensor's numbers travel along a connection.</p>") }) +
       // The walk rule's setting, for walks only; the server takes its name,
       // never numbers, and every name gives the first graph layer 0.
       cell({ key: "pg-e-gamma", label: "How walk shares are divided (γ)", size: "wide", hidden: e.method !== "walks",
@@ -3700,7 +3759,7 @@
           { key: "life", label: "Remaining life", html: lifeFigure(rows, current, W) },
           { key: "values", label: "All values", html: swarm },
           { key: "ranking", label: "Sensor ranking", html: strip },
-          { key: "graph", label: "Sensor graph", html: graph },
+          { key: "graph", label: "Sensor graph", html: data.graph_layers === false ? "" : graph },
           { key: "history", label: "Over time", html: history },
           { key: "paper", label: "Paper comparison", html: exact ? paperComparison(rows, sensorOrder, sum) : "" }
         ]) + "</section>";
@@ -3734,6 +3793,8 @@
   function mountEngine(box, data) {
     var e = S.explain;
     if (e.engineViewName !== e.shown) { e.engineView = {}; e.engineViewName = e.shown; }
+    // A network with no graph layers is sent no connections: its sensors
+    // are drawn where they sit on the engine, with no line between them.
     e.engineController = window.ThesisEngineView.mount(box.querySelector("[data-engine-view]"), data, {
       index: e.index, graph: S.options.graph,
       edges: data.graph_edges === undefined ? null : data.graph_edges

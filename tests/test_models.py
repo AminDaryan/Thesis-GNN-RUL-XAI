@@ -350,3 +350,133 @@ def test_the_input_row_carries_the_stage_and_every_learned_number_appears_once(a
     assert first["parameters"] == learned
     assert first["from"] == {"lstm": "LSTM", "gru": "GRU"}.get(name, "")
     assert sum(int(row["parameters"]) for row in rows) == model.count_parameters()
+
+
+# --- spatial="none": the paper's "ESTGNN w/o GCN" as assumption A-42 reads it ---
+
+
+def _built(adjacency, temporal: str, spatial: str):
+    """A network from a ModelConfig, on the paper's graph, for 30-cycle windows."""
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    return build_model(adjacency, ModelConfig(temporal=temporal, spatial=spatial),
+                       window_size=30, rul_max=125)
+
+
+def test_without_graph_layers_each_sensors_number_goes_straight_to_the_dense_layers(adjacency):
+    """(B, 14, 30) -> stage -> (B, 14, 1) -> flatten (B, 14) -> FC-1 (B, 128) -> FC-2 (B,)."""
+    model = _built(adjacency, "last_cycle", "none")
+    assert model.has_graph_layers is False and len(model.graph_layers) == 0
+    assert model.flattened_size == 14 * 1
+    assert tuple(model.fc1.weight.shape) == (128, 14)
+    assert model(torch.zeros(5, 14, 30)).shape == torch.Size([5])
+    rows = model.layer_summary()
+    assert [row["layer"] for row in rows] == ["Input", "Flatten", "FC-1", "FC-2"]
+    assert rows[1]["in"] == "(B, 14, 1)" and rows[1]["out"] == "(B, 14)"
+    assert sum(int(row["parameters"]) for row in rows) == model.count_parameters()
+    assert _built(adjacency, "last_cycle", "gcn").has_graph_layers is True
+
+
+def test_the_four_networks_count_what_their_layers_hold(adjacency):
+    """Default 61,729; the same without graph layers 2,049; recurrent 124,482 and 64,802 without."""
+    counts = {(t, s): _built(adjacency, t, s).count_parameters()
+              for t in ("last_cycle", "lstm") for s in ("gcn", "none")}
+    graph_layers = 1 * 32 + 32 * 64 + 64 * 32             # 4,128, no offsets (A-12)
+    assert counts[("last_cycle", "gcn")] == 61_729
+    # FC-1 shrinks from 448 x 128 + 128 to 14 x 128 + 128, and the graph layers go.
+    assert counts[("last_cycle", "none")] == 14 * 128 + 128 + 128 * 1 + 1 == 2_049
+    assert counts[("last_cycle", "gcn")] - counts[("last_cycle", "none")] == graph_layers + (448 - 14) * 128
+    assert counts[("lstm", "gcn")] == 124_482
+    assert counts[("lstm", "none")] == 2_049 + 62_753 == 64_802
+
+
+def test_without_graph_layers_the_graph_is_kept_but_never_read(adjacency):
+    """The graph stays in the saved weights, so a stored network loads unchanged, and the prediction ignores it."""
+    model = _built(adjacency, "lstm", "none").eval()
+    assert "adjacency" in model.state_dict()
+    window = torch.linspace(-1, 1, 14 * 30).reshape(1, 14, 30)
+    with torch.no_grad():
+        before = model(window)
+        model.adjacency.fill_(float("nan"))
+        after = model(window)
+    assert torch.isfinite(after).all() and torch.equal(before, after)
+
+
+def test_the_spatial_setting_is_checked_and_its_default_changes_no_record():
+    """Every stored name and digest was made before the setting existed, so the default must not move them."""
+    from thesis_gnn_rul_xai.models import ModelConfig
+
+    with pytest.raises(ValueError, match=r"spatial must be one of \['gcn', 'none'\], got 'gat'"):
+        ModelConfig(spatial="gat")
+    with pytest.raises(ValueError, match="there are none"):
+        ModelConfig(spatial="none", gcn_hidden=(16,))
+    with pytest.raises(ValueError, match="there are none"):
+        ModelConfig(spatial="none", gcn_bias=True)
+    with pytest.raises(ValueError, match="no graph layers to give one to"):
+        ESTGNN(normalize_adjacency(build_physics_adjacency()[0]), spatial="none", gcn_bias=True)
+
+    assert "spatial" not in ModelConfig().to_dict()
+    assert ModelConfig(spatial="gcn") == ModelConfig()
+    assert ModelConfig().digest() == "4e49f2"
+    assert ModelConfig(temporal="lstm").digest() == "a4cd38"
+    removed = ModelConfig(spatial="none")
+    assert removed.to_dict()["spatial"] == "none" and removed.has_graph_layers is False
+    assert removed.digest() not in {"4e49f2", ModelConfig(temporal="lstm", spatial="none").digest()}
+
+
+def test_a_network_without_graph_layers_saves_and_loads_back(adjacency, tmp_path):
+    """model_config.yaml says spatial: none, and the weights go back into the network it rebuilds."""
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model, load_model_config
+
+    saved = ModelConfig(temporal="lstm", spatial="none").save(tmp_path / "model_config.yaml")
+    assert "spatial: none" in saved.read_text(encoding="utf-8")
+    config = load_model_config(saved)
+    assert config == ModelConfig(temporal="lstm", spatial="none")
+    torch.manual_seed(1)
+    trained = build_model(adjacency, config, window_size=30, rul_max=125)
+    torch.manual_seed(2)
+    rebuilt = build_model(adjacency, config, window_size=30, rul_max=125)
+    rebuilt.load_state_dict(trained.state_dict())
+    window = torch.zeros(2, 14, 30)
+    assert torch.equal(rebuilt(window), trained(window))
+
+
+def test_raw_cycles_reaching_the_dense_layer_are_refused_unless_asked_for(adjacency):
+    """With no graph layers 30 raw cycles per sensor land in FC-1, a temporal encoder not named one."""
+    with pytest.raises(ValueError, match=r"first fully connected weight matrix becomes \(420, 128\)"):
+        ESTGNN(adjacency, temporal=RawWindow(30), spatial="none")
+    allowed = ESTGNN(adjacency, temporal=RawWindow(30), spatial="none",
+                     allow_time_in_the_graph_layer=True)
+    assert allowed.time_folded_into_graph_layer is True
+    assert tuple(allowed.fc1.weight.shape) == (128, 420)
+
+
+def test_the_default_networks_start_from_the_weights_they_started_from_before_spatial_existed(adjacency):
+    """Building the graph layers must draw the same random numbers as before; a fact about PyTorch 2.15 only.
+
+    The digests were taken on 2026-11-13 before spatial was added, under
+    PyTorch 2.15.0, on the row-rescaled Table 3 graph after torch.manual_seed(42).
+    Another PyTorch version may draw other numbers, so it is skipped there; the
+    second half, gcn spelled out equals gcn left out, holds on any version.
+    """
+    import hashlib
+
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    graph = normalize_adjacency(build_physics_adjacency()[0], method="row")
+
+    def digest(config):
+        torch.manual_seed(42)
+        model = build_model(graph, config, window_size=30, rul_max=125)
+        h = hashlib.sha256()
+        for name, tensor in model.state_dict().items():
+            h.update(name.encode())
+            h.update(tensor.detach().cpu().numpy().astype(np.float32).tobytes())
+        return h.hexdigest()
+
+    for temporal in ("last_cycle", "lstm"):
+        assert digest(ModelConfig(temporal=temporal, spatial="gcn")) == digest(ModelConfig(temporal=temporal))
+    if not torch.__version__.startswith("2.15."):
+        pytest.skip(f"digests measured under PyTorch 2.15.0, this is {torch.__version__}")
+    assert digest(ModelConfig()) == "50960d99e96174c2ea4672c99b8219589899245f8cefc89fb50e6f3d3b2be14b"
+    assert digest(ModelConfig(temporal="lstm")) == "2bd20188f1d791ad22e2d0a7bc9b8a75dd14bf39b7806b8b64cef75920262011"

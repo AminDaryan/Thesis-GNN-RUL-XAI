@@ -228,7 +228,8 @@ published_row("transformer", "FD001")
 ```
 
 **Which row a run may be set beside is not decided here.** It depends on what
-the run built — above all whether it had a temporal stage — and the rule is
+the run built — above all whether it had a temporal stage, and since
+2026-11-13 whether it had graph layers (assumption A-42) — and the rule is
 written out in `models/README.md`, under "What these results may be compared
 with". This file only answers "what did the paper print for that row".
 

@@ -42,7 +42,12 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     if settings.get("shared_across_sensors") and settings.get("temporal") in ("lstm", "gru"):
         add("info", "Section 2.2", "One shared network is not the paper's stage, which "
             "gives each sensor its own.")
-    if list(settings.get("gcn_hidden") or [32, 64, 32]) != [32, 64, 32] or \
+    layers = (settings.get("spatial") or "gcn") != "none"
+    if not layers:
+        add("info", "A-42", "Without graph layers, each sensor's numbers from the temporal stage are laid end to "
+            "end and go straight into the first fully connected layer, so the sensor graph is not used. The "
+            "paper reports a w/o GCN model but never says what replaced its graph layers.")
+    if (layers and list(settings.get("gcn_hidden") or [32, 64, 32]) != [32, 64, 32]) or \
             int(settings.get("fc_hidden") or 128) != 128:
         add("info", "Table 4", "The layer widths differ from Table 4.")
     if float(settings.get("validation_fraction") or 0.0) > 0:
@@ -54,14 +59,14 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     if settings.get("clip_test_labels") is True:
         add("info", "A-02", "Test answers are capped at the prediction ceiling. This cannot increase "
             "RMSE or the NASA score for these bounded predictions, but R² and ASUE need not improve.")
-    if settings.get("graph") == "complete":
+    if settings.get("graph") == "complete" and layers:
         # Every sensor of the complete graph has the same number of neighbours,
         # so both rescalings give the same matrix, 1/14 everywhere.
         add("info", "D-2", "The complete graph averages every sensor equally, so it "
             "measures the cost of averaging as much as the value of the physics.")
     # Only with engines held back, each seed drawing its own, do seeds get different graphs.
     varies = float(settings.get("validation_fraction") or 0.0) > 0 and not settings.get("fixed_split")
-    if settings.get("graph") == "correlation" and varies:
+    if settings.get("graph") == "correlation" and varies and layers:
         add("info", "A-27", "The graph is rebuilt from each seed's own training engines, "
             "so two seeds can be given slightly different graphs.")
     # A random or rewired graph is drawn from the seed the data is prepared
@@ -70,6 +75,8 @@ def caveats(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
     # engines with none held back. The Design tab never shows that refusal as
     # a caution: validate_settings refuses the request before it is drawn.
     if settings.get("graph") in ("random", "rewired"):
+        # The training script still draws the graph, and still refuses one it
+        # cannot give every seed, even when no graph layer will read it.
         refusal = fixed_graph_refusal(settings)
         if refusal:
             add("warn", "A-41", refusal)
@@ -183,14 +190,26 @@ def _network(settings: Mapping[str, Any], matrix: Any = None) -> Any:
 
 def _model_config(settings: Mapping[str, Any], factory: Any) -> Any:
     """The ModelConfig the settings describe."""
+    # The default network is described without naming the choice, so a
+    # ModelConfig that predates it still builds it; leaving the graph layers
+    # out needs one that knows the choice, and is refused in words otherwise.
+    spatial = settings.get("spatial") or "gcn"
+    extra: dict[str, Any] = {}
+    if spatial != "gcn":
+        if "spatial" not in getattr(factory, "__dataclass_fields__", {}):
+            raise ValueError("This version of the network code cannot leave the graph layers out.")
+        extra["spatial"] = spatial
+    else:
+        # With no graph layers their widths and offsets describe nothing, and
+        # are left at the defaults, as the training command leaves them.
+        extra.update(gcn_hidden=tuple(settings["gcn_hidden"]), gcn_bias=bool(settings["gcn_bias"]))
     return factory(
         temporal=settings["temporal"],
         temporal_hidden=int(settings["temporal_hidden"]),
         temporal_out_features=int(settings["temporal_out_features"]),
         shared_across_sensors=bool(settings["shared_across_sensors"]),
-        gcn_hidden=tuple(settings["gcn_hidden"]),
         fc_hidden=int(settings["fc_hidden"]),
-        gcn_bias=bool(settings["gcn_bias"]),
+        **extra,
     )
 
 
@@ -225,7 +244,8 @@ def stage_detail(stage: str, settings: Mapping[str, Any]) -> dict[str, Any]:
     from ...data.loading import DOWNLOAD_URL
 
     answer: dict[str, Any] = {"stage": stage, "steps": []}
-    needs_files = stage in ("data", "preprocessing") or (stage == "graph" and settings["graph"] == "correlation")
+    needs_files = stage in ("data", "preprocessing") or (
+        stage == "graph" and settings["graph"] == "correlation" and _graph_layers(settings))
     if needs_files and not _files_present(settings["subset"]):
         answer["note"] = (f"The NASA files for {settings['subset']} are not in data/raw/, so nothing here is "
                           f"counted. They can be downloaded from {DOWNLOAD_URL}")
@@ -925,7 +945,7 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
                   parts=[("last · average · change", "temporal")], shape=f"(B, {nodes}, 3)", source=chosen,
                   picture="stack"),
         ]
-    else:
+    elif _graph_layers(settings):
         first = int(settings["gcn_hidden"][0])
         steps.append(_step(
             "Pass every cycle",
@@ -935,8 +955,26 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
             "extension of the paper's architecture, which processes time separately before the graph layers.",
             parts=[(f"all {readings}", "temporal")], shape=f"(B, {nodes}, {window})", source=chosen,
             picture="window"))
-    steps.append(_edge("To the graph layers", f"(B, {nodes}, {k})", icon="graph"))
+    else:
+        steps.append(_step(
+            "Pass every cycle",
+            (f"All {readings} go on unchanged" if window > 1 else "The single reading goes on unchanged")
+            + ". With the graph layers left out, the first fully connected layer gives every cycle of every "
+            "sensor a learned weight of its own. This is an extension of the paper's architecture, which "
+            "processes time separately.",
+            parts=[(f"all {readings}", "temporal")], shape=f"(B, {nodes}, {window})", source=chosen,
+            picture="window"))
+    if _graph_layers(settings):
+        steps.append(_edge("To the graph layers", f"(B, {nodes}, {k})", icon="graph"))
+    else:
+        steps.append(_edge("To the fully connected layers, with no graph layers", f"(B, {nodes}, {k})",
+                           icon="output"))
     return steps
+
+
+def _graph_layers(settings: Mapping[str, Any]) -> bool:
+    """Whether these settings keep the graph layers in the network."""
+    return (settings.get("spatial") or "gcn") != "none"
 
 
 def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -951,6 +989,8 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
         pairs_beyond_reach,
     )
 
+    if not _graph_layers(settings):
+        return _no_graph_steps(settings)
     graph, rescaling, seed = settings["graph"], settings["adjacency_normalization"], settings["seed"]
     symbols = list(PAPER_SENSOR_SYMBOLS)
     if graph == "correlation":
@@ -1074,18 +1114,49 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
             shape=row["out"], learned=int(row["parameters"]), source=_cite(f"Eq. {7 + index}"),
             picture="gcn"))
         index += 1
+    steps += _output_steps(settings, layers, _step(
+        "Flatten",
+        f"Place the {nodes} sensor positions' computed numbers end to end in a single list for each "
+        "window. No values are averaged or changed. The next layer can assign a separate learned "
+        "weight to every position in this list.",
+        parts=[(f"{nodes} x {width_out} = {layers['Flatten']['out'].split(',')[-1].strip(' )')}", None)],
+        shape=layers["Flatten"]["out"], source=_cite("Eq. 11"), picture="flatten"))
+    return steps
+
+
+def _no_graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Box 4 with the graph layers left out: the temporal stage's numbers laid end to end, then the output layers."""
+    model = _built(settings)
+    layers = {row["layer"]: row for row in model.layer_summary()}
+    nodes, k = model.n_nodes, int(model.in_features)
+    flat = layers["Flatten"]
+    flat_width = flat["out"].split(",")[-1].strip(" )")
+    tag, _ = _decided("spatial", "none")
+    # ASSUMPTION A-42: with no graph layers, the temporal stage's numbers are
+    # laid end to end and go straight into the first fully connected layer.
+    return [_edge("From the temporal stage, B windows at a time", f"(B, {nodes}, {k})", icon="temporal"),
+            *_output_steps(settings, layers, _step(
+                "Flatten",
+                f"The graph layers are left out, so no sensor receives numbers from a connected sensor and the "
+                f"sensor graph is not used. Place the {nodes} sensors' {_plural(k, 'number')} from the temporal "
+                "stage end to end in a single list for each window. No values are averaged or changed. The "
+                "paper reports a model without graph layers but never says what took their place; laying the "
+                "numbers end to end is our choice (assumption A-42).",
+                parts=[(f"{nodes} x {k} = {flat_width}", None), ("no graph layers", "spatial")],
+                shape=flat["out"], source=tag,
+                picture="flatten"))]
+
+
+def _output_steps(settings: Mapping[str, Any], layers: Mapping[str, Any],
+                  flatten: dict[str, Any]) -> list[dict[str, Any]]:
+    """The steps after the graph layers, or after the temporal stage when there are none: flatten to remaining life."""
     flat, fc1, fc2 = layers["Flatten"], layers["FC-1"], layers["FC-2"]
     flat_width = flat["out"].split(",")[-1].strip(" )")
     fc = int(settings["fc_hidden"])
     _, fc_note = _decided("fc_hidden", fc)
     _, ceiling_note = _decided("rul_max", int(settings["rul_max"]))
-    steps += [
-        _step("Flatten",
-              f"Place the {nodes} sensor positions' computed numbers end to end in a single list for each "
-              "window. No values are averaged or changed. The next layer can assign a separate learned "
-              "weight to every position in this list.",
-              parts=[(f"{nodes} x {width_out} = {flat_width}", None)], shape=flat["out"], source=_cite("Eq. 11"),
-              picture="flatten"),
+    return [
+        flatten,
         _step("Fully connected",
               (f"Each of the {fc} outputs is" if fc > 1 else "Its one output is")
               + f" a sum of all {flat_width} input numbers multiplied by learned weights, plus a learned "
@@ -1111,4 +1182,3 @@ def _graph_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
               source={"kind": "assumption", "ref": "A-13", "text": ""}, picture="scale"),
         _edge("Remaining life, one number per window", "(B,)", icon="output"),
     ]
-    return steps

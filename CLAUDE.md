@@ -151,9 +151,15 @@ produced it**, and a run records that in its directory name and in
   follows the paper's procedure**. F-16 measured the stage at +3.19 cycles with
   the best checkpoint restored and +0.77 (p = 0.117) with the epoch-200
   weights the paper describes. Say which one a number is.
+- `--spatial none` removes the graph layers and puts nothing in their place
+  (A-42; `_nogcn` in the name). With `--temporal lstm` it compares against
+  **"ESTGNN w/o GCN"** (16.42), under the same two warnings as the line above;
+  with `last_cycle` two parts are gone and no row applies. Its error moves with
+  network size as well as with the connections (61,729 → 2,049 numbers).
 
-Neither is a reproduction. The first omits a stage the paper has; the second
-fills in numbers the paper does not give.
+None is a reproduction. The first omits a stage the paper has; the second
+fills in numbers the paper does not give; the third adds a reading of what the
+paper removed that it never describes.
 
 ### 6. Correct errors plainly, including your own
 

@@ -389,3 +389,26 @@ def test_the_figure_names_its_grey_line_the_capped_label(model, prepared, baseli
     assert table.loc[table["rul"] < 125, "end_cycle"].iloc[0] == 163
     assert (len(table), int((table["rul"] < truly_left).sum())) == (268, 142)
     matplotlib.pyplot.close("all")
+
+
+# --- a network without graph layers (assumption A-42, added 2026-11-13) --------
+
+
+@pytest.mark.parametrize("stage", ["last_cycle", "lstm"])
+def test_efficiency_holds_on_a_network_without_graph_layers(prepared, baseline, stage):
+    """Equation 14 still holds when the stage's numbers go straight to the dense layers, for both stages."""
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    torch.manual_seed(5)
+    network = build_model(prepared.adjacency_normalized,
+                          ModelConfig(temporal=stage, spatial="none"),
+                          window_size=20, rul_max=125).eval()
+    assert not network.has_graph_layers
+    features = prepared.test.features[:3]
+    values = shap_values(network, features, baseline)
+    assert efficiency_error(network, features, baseline, values) < 1e-4
+    # The stage-once shortcut agrees with the whole network run on all 16,384 groups.
+    np.testing.assert_allclose(
+        values[0], _every_group_through_the_whole_network(network, features[0], baseline),
+        rtol=0, atol=1e-5,
+    )

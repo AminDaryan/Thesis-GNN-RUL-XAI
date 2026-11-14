@@ -22,9 +22,9 @@ pip install -e ".[model]"
 | File | What it is |
 |------|------------|
 | `layers.py` | `GraphConvolution`, one graph convolution layer. |
-| `estgnn.py` | `ESTGNN`, the whole network: a temporal stage, three graph convolutions, a flatten, two dense layers. |
+| `estgnn.py` | `ESTGNN`, the whole network: a temporal stage, three graph convolutions, a flatten, two dense layers. Built with `spatial="none"` it has no graph convolutions at all ([A network without graph layers](#a-network-without-graph-layers)). |
 | `temporal/` | The temporal stages, each a different way of turning one sensor's 30-cycle window into what the graph layers read. That folder has its own README. |
-| `config.py` | `ModelConfig`, the seven settings that decide the network's shape, kept in one record a run can save; and `build_model`, which builds the network such a record describes. Explained under [Writing down which network a run used](#writing-down-which-network-a-run-used). |
+| `config.py` | `ModelConfig`, the eight settings that decide the network's shape, kept in one record a run can save; and `build_model`, which builds the network such a record describes. Explained under [Writing down which network a run used](#writing-down-which-network-a-run-used). |
 | `__init__.py` | Re-exports the names above, so `from thesis_gnn_rul_xai.models import ModelConfig` works. |
 
 ## What the network is
@@ -263,7 +263,8 @@ So: `ESTGNN.forward()` returns the normalised value in `[0, 1]`, and
 
 ### What these results may be compared with
 
-It depends on the temporal stage the run used, and every run records which.
+It depends on the temporal stage the run used and on whether it had graph
+layers, and every run records both.
 
 With **`last_cycle`**, the default, there is no recurrent network, so results
 must be compared against the paper's own **"ESTGNN w/o LSTM"** ablation, which
@@ -277,12 +278,129 @@ never states their size, so this project had to choose one (assumption A-26).
 What the stage is worth when trained depends on whether the best pass's weights
 are kept, which the paper never describes (finding F-16).
 
+With **`lstm` and `spatial="none"`**, the paper's **"ESTGNN w/o GCN"** row
+(**16.42 RMSE on FD001**, Table 11) is the comparison, under the same two
+warnings as the line above, and under this project's reading of what that row
+removed (assumption A-42).
+
+With **`last_cycle` and `spatial="none"`**, two parts of the paper's network are
+gone, the recurrent stage and the graph layers. Table 11 has no row that
+removes both, so no published number applies.
+
+## A network without graph layers
+
+### Why it exists
+
+The paper reports a version of its network with the graph layers taken out,
+"ESTGNN w/o GCN" (GCN, graph convolutional network, being the three graph
+layers), and prints its error in Table 11: 16.42 on FD001. It is how the paper
+argues that passing numbers between connected sensors is worth something. It
+never says what the network looked like with those layers gone. This project
+reads it literally: the layers are removed and nothing is put in their place
+(assumption A-42). `ModelConfig(spatial="none")`, or `scripts/train.py --spatial
+none`, builds that network.
+
+### What it computes
+
+The full network and this one differ only in the middle. Following one batch
+of `B` windows, each holding 14 sensors and 30 cycles:
+
+```text
+full network (spatial="gcn"):
+  window (B, 14, 30) -> temporal stage (B, 14, 1) -> GCN-1 (B, 14, 32)
+    -> GCN-2 (B, 14, 64) -> GCN-3 (B, 14, 32) -> flatten (B, 448)
+    -> FC-1 (B, 128) -> FC-2 (B, 1) -> sigmoid x 125 -> cycles
+
+without graph layers (spatial="none"):
+  window (B, 14, 30) -> temporal stage (B, 14, 1)  -> flatten (B, 14)
+    -> FC-1 (B, 128) -> FC-2 (B, 1) -> sigmoid x 125 -> cycles
+```
+
+In the full network, each graph layer replaces a sensor's numbers with a
+weighted average of its own and its neighbours' numbers, then multiplies by a
+table of learned multipliers; that is the only place one sensor's reading can
+reach another sensor's numbers before the dense layers. Without the graph
+layers, the fourteen numbers the temporal stage hands on, one per sensor, are
+written out as one row of 14 (the flatten) and go straight into FC-1, a dense
+layer: each of its 128 outputs is its own weighted sum of all 14 numbers, plus
+an offset, with negative results then set to zero (ReLU). Every sensor still
+reaches the prediction, and FC-1 still combines all fourteen, but only once,
+inside a layer that knows nothing of which sensors the paper's graph connects.
+
+`layer_summary()` then has four rows, not seven: Input, Flatten, FC-1 and FC-2,
+with the flatten going from `(B, 14, 1)` to `(B, 14)`.
+
+### A worked example on a real window
+
+`tests/test_examples_torch.py` builds this network (untrained, starting values
+drawn after `torch.manual_seed(0)`) with the default stage and follows the
+last window of test engine 1 through it. The default stage keeps each sensor's
+latest reading, after smoothing and rescaling, so FC-1 receives these fourteen
+numbers:
+
+```text
+T24 -0.4272   T30 -1.2246   T50 -1.1072   P15  0.2280   P30   1.0624
+Nf  -0.2107   Nc  -0.6090   Ps30 -0.9797  phi  0.6584   NRf  -0.3687
+BPR -0.9152   htBleed -0.7095   W31 0.5842   W32 0.8267
+```
+
+The first of FC-1's 128 outputs multiplies them by the first row of FC-1's
+multipliers, `-0.0020, 0.1434, -0.2200, ...`, adds them up, and adds its offset
+0.2127; the total is -0.3182, so ReLU sets it to 0. Over all 128 outputs, 63
+come out at 0. FC-2 adds the 128 up, each times its own multiplier, plus an
+offset, giving -0.2406; the sigmoid turns that into 1 / (1 + e^0.2406) = 0.4401,
+and times the ceiling of 125 that is 55.017 cycles, the network's own
+prediction to the third decimal (55.0172 before rounding the score). The test repeats the whole calculation with
+NumPy and checks it against the network.
+
+### How much it learns, and why that matters
+
+| Temporal stage | With the graph layers | Without |
+|---|---|---|
+| `last_cycle`, the default | 61,729 | 2,049 |
+| `lstm`, at the size this project chose (assumption A-26) | 124,482 | 64,802 |
+
+FC-1's multipliers go from 448 × 128 to 14 × 128, and the three graph layers'
+1 × 32 + 32 × 64 + 64 × 32 = 4,128 go with them: 14 × 128 + 128 + 128 + 1 =
+2,049. The recurrent stage's own 62,753 stay, so 2,049 + 62,753 = 64,802.
+
+So removing the graph layers removes two things at once: the passing of
+numbers between connected sensors, and most of the numbers the network learns.
+A difference in error between the two networks cannot say which of the two
+caused it. Do not confuse this comparison with a test of the connections
+alone: that test would keep all three graph layers and every learned number,
+and run them on a graph in which each sensor is joined only to itself, so no
+sensor ever receives a neighbour's numbers. That graph is not built here
+(assumption A-42 says what was measured of it elsewhere).
+
+### What stays the same, and what refuses it
+
+- **The graph is still stored in the network.** The rescaled sensor graph is
+  kept in `adjacency` as before, so the weights a run saved load back into a
+  rebuilt network unchanged. Nothing in the prediction reads it; a test fills
+  it with "not a number" values and gets the same prediction.
+- **The guard on raw cycles still applies.** A stage that hands on more than
+  one number per sensor without learning anything, `raw_window` or
+  `window_summary`, still has to be asked for by name. Without graph layers its
+  numbers land in FC-1 instead, as 14 × 30 = 420 inputs for `raw_window`, and
+  FC-1's multipliers then do the temporal stage's work without being named one,
+  so the same refusal is raised and `allow_time_in_the_graph_layer` lets it
+  through. The flag's name predates this option; with no graph layers it
+  covers FC-1.
+- **The explanations of the graph refuse it.** The walks through the sensor
+  graph, the removal of one connection and the taking out of sensors (node
+  flipping) in `explain/` each describe what the graph layers did with the
+  graph, and refuse a network whose `has_graph_layers` is `False`, with a
+  message saying so. Shapley values and occlusion only swap sensors' readings
+  and read the prediction, so they explain it as they explain any other
+  network.
+
 ## Writing down which network a run used
 
 ### The problem
 
 A stored result is worth quoting only if someone can say which network
-produced it. The shape of the network is decided by seven settings, and they
+produced it. The shape of the network is decided by eight settings, and they
 arrive from different places: the training script's command line, the
 documentation site's playground, and, when an explanation is computed later,
 the folder of a run that finished days ago. If each of those places built the
@@ -290,11 +408,11 @@ network its own way, two of them could read the same settings and build two
 different networks, and nothing would say so.
 
 `config.py` answers that with two things. `ModelConfig` is one record holding
-all seven settings. `build_model` is the one function that turns such a record
+all eight settings. `build_model` is the one function that turns such a record
 into a network. The training script, the playground and the reader of stored
 runs in `training/stored.py` all go through both.
 
-### The seven settings
+### The eight settings
 
 | Setting | Default | Where the default comes from |
 |---|---|---|
@@ -305,6 +423,7 @@ runs in `training/stored.py` all go through both.
 | `gcn_hidden` | `(32, 64, 32)` | Table 4: GCN-1, GCN-2 and GCN-3 output 32, 64 and 32 numbers per sensor. |
 | `fc_hidden` | `128` | Table 4: FC-1 outputs 128. |
 | `gcn_bias` | `False` | Our choice: Table 4 lists only a weight matrix for each graph layer (assumption A-12). |
+| `spatial` | `"gcn"` | What sits between the temporal stage and the dense layers. `"gcn"` is Table 4's three graph layers; `"none"` removes them and puts nothing in their place, which is how this project reads the paper's "ESTGNN w/o GCN" (assumption A-42). Explained under [A network without graph layers](#a-network-without-graph-layers). |
 
 A record checks its values the moment it is made, so a bad setting stops the
 program before any training starts rather than after an hour of it:
@@ -314,10 +433,20 @@ ModelConfig(temporal="transformer")
   -> ValueError: temporal must be one of ['last_cycle', 'mean_window', 'window_summary', 'raw_window', 'lstm', 'gru'], got 'transformer'.
 ModelConfig(fc_hidden=0)
   -> ValueError: fc_hidden must be at least 1, got 0.
+ModelConfig(spatial="gat")
+  -> ValueError: spatial must be one of ['gcn', 'none'], got 'gat'.
+ModelConfig(spatial="none", gcn_hidden=(16,))
+  -> ValueError: gcn_hidden and gcn_bias describe the graph layers, and with spatial='none' there are none; leave both at their defaults.
 ```
+
+The last refusal exists because the network's fingerprint, described below, is
+made from every setting. A width for graph layers that are not built would
+change the fingerprint and the folder name without changing the network, and
+one network would be filed under two names.
 
 `recurrent` is a yes-or-no answer read off the record: `True` for `lstm` and
 `gru`, the two stages that have a hidden size at all, and `False` otherwise.
+`has_graph_layers` is another: `False` only when `spatial` is `"none"`.
 
 ### Saving the record beside a run, and reading it back
 
@@ -338,6 +467,14 @@ fc_hidden: 128
 gcn_bias: false
 ```
 
+`spatial` is missing from it on purpose. `to_dict()`, which both the file and
+the fingerprint below are made from, leaves `spatial` out while it is `"gcn"`,
+so the record of a default network is the same, character for character, as
+it was before the setting existed, and every stored run's name and fingerprint
+still describe it. A network without graph layers gets one more line,
+`spatial: none`. A file without the line loads as `"gcn"`, which is what every
+run stored before 2026-11-13 trained.
+
 `load_model_config(path)` reads such a file back into a `ModelConfig`, and
 refuses a key it does not know. Python would refuse one anyway, with
 `ModelConfig.__init__() got an unexpected keyword argument 'hidden'`; the check
@@ -354,7 +491,7 @@ from those two, with every other setting at its default.
 ### The six-character name of a network
 
 A run folder's name has to change whenever the network does, or two different
-networks would be filed under one name. Writing all seven settings into a
+networks would be filed under one name. Writing all eight settings into a
 folder name would make it unreadable, so the record is reduced to a short
 **fingerprint**: a few characters computed from the settings, which come out
 the same every time for the same settings and completely different when any
@@ -383,7 +520,9 @@ nothing in common with the first.
 `scripts/train.py` uses it like this. The temporal stage is already written
 into a run's folder name in words — nothing for `last_cycle`, the default, and
 `_lstm32` for an LSTM of hidden size 32 — so the stage and its size do not
-count as a difference. Any other setting that differs from the default adds
+count as a difference. Nor does `spatial`, which is written in words too:
+nothing for `"gcn"`, and `_nogcn` after the temporal stage's mark for
+`"none"`, so `fd001_physics_row_cap_5seed_varsplit_lstm32_nogcn_cfg818b40_...`. Any other setting that differs from the default adds
 `_net<digest>`, so a run with `fc_hidden` at 64 carries `_netf98ee3`. Six
 characters allow 16 million different names, which makes two different
 networks sharing one unlikely but not impossible, and that is why the full
@@ -412,6 +551,11 @@ window of 30, the stages give these sizes, from `count_parameters()`:
 | `window_summary` | 61,793 |
 | `lstm` | 124,482 |
 | `raw_window` | 62,657 |
+
+With `spatial="none"` the same stages give 2,049 (`last_cycle` and
+`mean_window`), 5,633 (`window_summary`), 64,802 (`lstm`) and 54,017
+(`raw_window`); [A network without graph layers](#a-network-without-graph-layers)
+works the first and the fourth out.
 
 The first two match because neither stage learns anything: one keeps the last
 reading and the other averages the thirty, and both hand over one number per
@@ -517,12 +661,14 @@ enhancement for aeroengine RUL prediction. *Aerospace Science and Technology*,
 | `gcn_hidden` | How wide each graph convolution is. Defaults to Table 4's `(32, 64, 32)`. |
 | `fc_hidden` | How wide the first fully connected layer is. Table 4 gives 128. |
 | `gcn_bias` | Whether the graph convolutions carry a bias. Defaults to `False`, as explained above (assumption A-12). |
+| `spatial` | `"gcn"`, the default, builds the graph convolutions; `"none"` builds none and flattens the temporal stage's output straight into the first dense layer (assumption A-42). `gcn_hidden` is then not read, and `gcn_bias=True` is refused. |
 
 | Method | What it does |
 |---|---|
 | `forward(features)` | The prediction as a fraction between 0 and 1, one per example. This is what training uses. |
 | `predict_cycles(features)` | The same thing multiplied by `rul_max`, so it is in flight cycles. This is what scoring uses. |
 | `count_parameters()` | How many numbers the network learns. Compare it with Table 4. |
+| `has_graph_layers` | `True` when the network has graph convolutions, `False` when it was built with `spatial="none"`. Read as a value, without brackets. The explanations of the graph in `explain/` refuse a network for which it is `False`. |
 | `layer_summary()` | One dictionary per row of Table 4 — its name, the shape going in and out, how many numbers it learns, and its activation. The temporal stage is folded into the Input row, which counts what the stage learns and names it when it learns anything; see [The Input row holds the temporal stage](#the-input-row-holds-the-temporal-stage). |
 
 `adjacency` is stored as a **buffer** — a number the model carries but training

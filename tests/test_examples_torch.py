@@ -279,6 +279,46 @@ def test_example_how_many_numbers_the_network_learns_with_each_temporal_stage():
     assert sizes["window_summary"] == 61_729 - 1 * 32 + 3 * 32 == 61_793
 
 
+def test_example_without_graph_layers_the_fourteen_readings_go_straight_into_fc1(raw_dir):
+    """What `ModelConfig(spatial="none")` builds, followed on a real FD001 window (assumption A-42).
+
+    With the graph layers gone, nothing passes a number from one sensor to
+    another. The default stage keeps each sensor's latest reading, so a window
+    shaped (14 sensors, 30 cycles) becomes 14 numbers, a (14, 1) array; the
+    flatten writes them out as one row of 14; FC-1 multiplies that row by a
+    128 x 14 table of learned multipliers and adds 128 offsets; ReLU sets the
+    negative results to zero; FC-2 turns the 128 into one number; the sigmoid
+    squeezes it between 0 and 1; and times the ceiling of 125 it is in cycles.
+    Done by hand below with NumPy, it gives the network's own prediction. The
+    learned numbers are 14 x 128 + 128 = 2,048 in FC-1 and 128 + 1 = 129 in
+    FC-2, 2,049 in all, against 61,729 with the graph layers.
+    """
+    from thesis_gnn_rul_xai.config import PreprocessingConfig
+    from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+    from thesis_gnn_rul_xai.models import ModelConfig, build_model
+
+    prepared = run_preprocessing(PreprocessingConfig(), data_dir=raw_dir)
+    torch.manual_seed(0)
+    model = build_model(prepared.adjacency_normalized, ModelConfig(spatial="none"),
+                        window_size=30, rul_max=125).eval()
+    window = prepared.test.features[0]                         # (14, 30), engine 1
+    assert window.shape == (14, 30) and prepared.test.units[0] == 1
+
+    latest = window[:, -1].astype(np.float64)                  # the flatten's 14 numbers
+    w1 = model.fc1.weight.detach().double().numpy()            # (128, 14)
+    b1 = model.fc1.bias.detach().double().numpy()              # (128,)
+    w2 = model.fc2.weight.detach().double().numpy()[0]         # (128,)
+    b2 = float(model.fc2.bias.detach().double())
+    hidden = np.maximum(w1 @ latest + b1, 0.0)                 # FC-1, then ReLU
+    by_hand = 125.0 / (1.0 + np.exp(-(w2 @ hidden + b2)))       # FC-2, sigmoid, cycles
+
+    with torch.no_grad():
+        network = float(model.predict_cycles(torch.from_numpy(window[None]))[0])
+    assert by_hand == pytest.approx(network, abs=1e-4)
+    assert w1.shape == (128, 14)
+    assert model.count_parameters() == 14 * 128 + 128 + 128 + 1 == 2_049
+
+
 # --- explain/shap.py ----------------------------------------------------
 
 

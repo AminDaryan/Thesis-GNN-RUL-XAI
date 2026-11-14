@@ -29,6 +29,7 @@ from .shap import (
 )
 from .walks import (
     MAX_WALKS_PER_EXAMPLE,
+    NO_GRAPH_LAYERS,
     PAPER_GAMMA_START,
     WalkRelevance,
     connection_relevance,
@@ -38,6 +39,7 @@ from .walks import (
     indistinguishable_sensors,
     node_relevance,
     paper_gammas,
+    refuse_without_graph_layers,
     step_relevance,
     top_walks,
     walk_relevance,
@@ -47,6 +49,7 @@ __all__ = [
     "FLIPPING_TASKS",
     "MAX_EXACT_NODES",
     "MAX_WALKS_PER_EXAMPLE",
+    "NO_GRAPH_LAYERS",
     "PAPER_GAMMA_START",
     "RANDOM_ORDERS",
     "SeedExplanation",
@@ -69,6 +72,7 @@ __all__ = [
     "occlusion_values",
     "paper_gammas",
     "plot_contributions_over_time",
+    "refuse_without_graph_layers",
     "shap_for_each_seed",
     "shap_summary",
     "shap_values",

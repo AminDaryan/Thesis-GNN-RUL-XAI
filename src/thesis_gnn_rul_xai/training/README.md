@@ -350,7 +350,10 @@ which engines were held back**, so the data a seed's network was trained on can
 only be rebuilt with that seed. `load_seed` does that: it reads the settings the
 run saved beside itself, replaces the seed unless the run held the split fixed,
 runs the pipeline, builds the network those settings describe on the graph that
-pipeline produced, and loads the weights into it. Rebuilding with any other seed
+pipeline produced, and loads the weights into it. A network trained without
+graph layers is rebuilt without them the same way, from the `spatial: none` in
+its `model_config.yaml`, and its saved weights still hold the sensor graph, so
+the check of that graph below runs on it too. Rebuilding with any other seed
 would hand back engines the network learned from under the name "held back".
 A run that held nothing back is rebuilt under each seed too, unless it recorded
 `"fixed"`, because the seed still matters to its data;
@@ -373,7 +376,7 @@ older runs lack it, and nothing reads it as required.
 |---|---|
 | `summary.json` | The commit, the settings' digest, when it finished, the mean and spread of the four measures, and every setting that changes the number. Since 2026-10-03 also the mean and spread of `n_early`, and `null` for a mean or spread that is undefined, such as an ASUE when a seed predicted no engine early (assumption A-39). |
 | `results.csv` | One row per seed: the four measures, the best pass, the held-back error, how many passes ran, how many test engines were predicted late (`n_late`) and, since 2026-10-03, early (`n_early`, the count ASUE averages over; for an older run it is `n_engines` minus `n_late`). |
-| `preprocessing_config.yaml`, `model_config.yaml` | The data and network settings in full. |
+| `preprocessing_config.yaml`, `model_config.yaml` | The data and network settings in full. A network without graph layers has the line `spatial: none` in `model_config.yaml`, and `"spatial": "none"` under `summary.json`'s `model`; for a network with them the line is left out, as it was before the setting existed on 2026-11-13, and a missing line reads as the graph layers (`models/README.md`, under "The eight settings"). |
 | `seed_N/model.pt` | That seed's trained weights. |
 | `seed_N/training_history.csv`, `seed_N/training_config.yaml` | The error after every pass, and the training settings. |
 | `seed_N/test_predictions.csv` | One row per test engine: its number, last cycle, label and prediction. |
@@ -394,7 +397,9 @@ sub-dataset, the sensor graph, how the graph is rescaled, whether the test
 labels are capped, the number of seeds, whether the held-back engines change
 with the seed (`varsplit`, `fixedsplit` or, since 2026-10-03, `nosplit`; the
 next section), a mark for each network or training choice away from its
-default (such as `_lstm32` for the recurrent stage of hidden size 32), then
+default (such as `_lstm32` for the recurrent stage of hidden size 32, or,
+since 2026-11-13, `_nogcn` after it for a network with its graph layers removed,
+assumption A-42), then
 `cfg` and six characters, then the commit and the time it finished. The six
 characters are the digest of the preprocessing settings, a short code that
 changes whenever any setting does; the package's own `README.md`, one folder

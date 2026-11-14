@@ -257,6 +257,10 @@ def main() -> int:
         raise SystemExit(str(refused)) from refused
     if not stored.has_weights():
         raise SystemExit(f"{stored.name} saved no weights, so its networks cannot be explained.")
+    if not stored.model_config.has_graph_layers:
+        from thesis_gnn_rul_xai.explain import NO_GRAPH_LAYERS
+
+        raise SystemExit(f"{stored.name}: {NO_GRAPH_LAYERS}")
 
     rows, connection_rows = [], []
     flows_by_seed: dict[int, pd.Series] = {}

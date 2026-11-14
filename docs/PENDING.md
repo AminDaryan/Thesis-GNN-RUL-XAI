@@ -224,3 +224,32 @@ and compare seed by seed.
 **What finishing looks like:** A-07's paragraph on the two figures says which
 of code, version or device moves them, and the Reading results page names the
 PyTorch version (and device) its figure was trained under.
+
+## P-32 — The network without graph layers is built, not measured, and its clean control is not built
+
+Since 2026-11-13 `scripts/train.py --spatial none` removes the three graph
+layers and puts nothing in their place (assumption A-42), so the paper's
+"ESTGNN w/o GCN" row (16.42 on FD001, Table 11) can be set beside a run. Only
+smoke runs of one seed and three passes exist, which are not results.
+
+**What is left.**
+
+- **The five-seed runs**, from a clean checkout of the commit that adds the
+  option, each beside the same configuration with its graph layers at the same
+  commit, paired by seed: `--spatial none --temporal lstm` against
+  `--temporal lstm`, and `--spatial none` against the default. Test RMSE is the
+  measure; both comparisons read together at 0.05 / 2 (assumption A-37). The
+  recurrent pair needs saying which weights were kept (finding F-16). Then A-42's
+  "How much it matters", its summary row and `README.md` section 12 filled from
+  them.
+- **The control that keeps every learned number.** Removing the graph layers
+  removes 59,680 of the default's 61,729 learned numbers, so it cannot separate
+  the connections from the size. A graph in which each sensor is joined only to
+  itself, run through the same three graph layers, keeps all 61,729 and removes
+  only the passing between sensors. The audit of 2026-09-08 measured one over
+  three seeds outside any stored run (item D-2); here it would be a new
+  `--graph` value with its own assumption entry, then the same paired runs.
+
+**What finishing looks like:** the runs stored and written up in A-42, the
+control built, trained and written up (or the author deciding against it), and
+this entry deleted.

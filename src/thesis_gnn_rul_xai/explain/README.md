@@ -1336,6 +1336,38 @@ the random start too.
 network's own graph, since every removal would then be measured against the
 wrong one.
 
+## A network without graph layers
+
+A network trained with `--spatial none` has no graph layers (assumption A-42;
+`models/README.md`, under "A network without graph layers", describes it): the
+temporal stage hands each sensor's one number straight to the dense layers, and
+no sensor ever receives another's numbers. The methods of this folder split
+into two kinds, and the split is about what each one reads.
+
+**Shapley values and occlusion work unchanged.** Both only swap a sensor's
+readings for its average training window and read the prediction that comes
+out, so they need nothing from the inside of the network but the temporal
+stage, which `shap_values` runs once per window ([Why the temporal stage runs
+only once per window](#why-the-temporal-stage-runs-only-once-per-window)).
+After that stage `_after_stage` in `shap.py` repeats the rest of the network:
+the graph layers, of which there are none, then the dense layers. The check
+that this shortcut agrees with the whole network still runs and still passes,
+and the values still add up to the prediction minus the prediction at the
+average window, to rounding: `tests/test_shap.py` checks both, with the
+last-cycle stage and with the recurrent stage.
+
+**The explanations of the graph refuse it.** Walks (`walk_relevance`,
+`cycle_relevance`), the removal of one connection (`connection_removal`), the
+authors' node-flipping check (`node_flipping`, `subgraph_scores`) and the
+sensors the graph cannot tell apart (`indistinguishable_sensors`) all describe
+what the graph layers did with the sensor graph. A network without graph
+layers did nothing with it: there are no walks to split a score into, removing
+a connection cannot move a prediction no connection reaches, and taking a
+sensor out of a graph nobody reads changes nothing. Each of them raises an
+error saying so, rather than returning shares that would all be zero or empty
+and look like a finding about the engine. `scripts/explain.py --method walks`
+refuses such a run the same way before it computes anything.
+
 ## Judgement calls made in this folder
 
 - **What "a sensor not considered" means.** Equation 15 needs a prediction with
@@ -1445,6 +1477,7 @@ Everything the files listed at the top offer.
 | `connections_of(raw_adjacency)` | Defined beside the graph inspection tools in `graph/adjacency.py` and re-exported here for existing explanation code. Every connection of the raw graph once, as pairs of sensor positions. |
 | `top_walks(result, symbols, count=20, pool=())` | The walks that carried the most across the windows given, named by sensor. `pool` takes groups of sensors, usually from `indistinguishable_sensors`, and adds together walks that differ only by which member of a group they pass through or end at. The columns are listed below. |
 | `indistinguishable_sensors(model, symbols)` | Groups of sensors whose rows of the network's rescaled graph are identical, so the graph layers give every member the same numbers. A list of tuples of names; on the paper's graph, three groups. Read the trap above before reading walks that end in one. |
+| `refuse_without_graph_layers(model)` | From `walks.py`. Raises an error saying the network has no graph layers when `model.has_graph_layers` is `False`, and does nothing otherwise. Every explanation of the graph above calls it first; `NO_GRAPH_LAYERS` is the sentence it raises. |
 | `MAX_WALKS_PER_EXAMPLE` | One million. Every walk is stored, so a network with more graph layers than this allows is refused rather than sampled. |
 
 `dynamic_shap` returns these columns, in cycle order:

@@ -16,10 +16,10 @@ from typing import Any, get_args
 import numpy as np
 import yaml
 
-from .estgnn import ESTGNN, FC_HIDDEN_SIZE, GCN_HIDDEN_SIZES
+from .estgnn import ESTGNN, FC_HIDDEN_SIZE, GCN_HIDDEN_SIZES, SPATIAL_STAGES
 from .temporal import TemporalStageName, build_temporal_stage
 
-__all__ = ["ModelConfig", "build_model", "load_model_config"]
+__all__ = ["SPATIAL_STAGES", "ModelConfig", "build_model", "load_model_config"]
 
 
 @dataclass
@@ -37,6 +37,10 @@ class ModelConfig:
     fc_hidden: int = FC_HIDDEN_SIZE
     # ASSUMPTION A-12: the graph layers carry no bias. Table 4 lists only W.
     gcn_bias: bool = False
+    # ASSUMPTION A-42: "none" removes the graph layers and nothing replaces them;
+    # the temporal stage's (B, 14, F) is flattened straight into FC-1. Section 4.3
+    # names "ESTGNN w/o GCN" and never says what its layers were.
+    spatial: str = "gcn"
 
     def __post_init__(self) -> None:
         """Check every value, so a bad setting fails before any training starts."""
@@ -44,6 +48,10 @@ class ModelConfig:
         if self.temporal not in stages:
             raise ValueError(
                 f"temporal must be one of {list(stages)}, got {self.temporal!r}."
+            )
+        if self.spatial not in SPATIAL_STAGES:
+            raise ValueError(
+                f"spatial must be one of {list(SPATIAL_STAGES)}, got {self.spatial!r}."
             )
         self.gcn_hidden = tuple(int(width) for width in self.gcn_hidden)
         if not self.gcn_hidden or min(self.gcn_hidden) < 1:
@@ -53,16 +61,32 @@ class ModelConfig:
         for name in ("temporal_hidden", "temporal_out_features", "fc_hidden"):
             if int(getattr(self, name)) < 1:
                 raise ValueError(f"{name} must be at least 1, got {getattr(self, name)}.")
+        # Two settings that would change the name and the digest of a network
+        # they cannot change are refused, so one network never gets two names.
+        if self.spatial == "none" and (self.gcn_hidden != GCN_HIDDEN_SIZES or self.gcn_bias):
+            raise ValueError(
+                "gcn_hidden and gcn_bias describe the graph layers, and with "
+                "spatial='none' there are none; leave both at their defaults."
+            )
 
     @property
     def recurrent(self) -> bool:
         """Whether the temporal stage has a hidden size at all."""
         return self.temporal in ("lstm", "gru")
 
+    @property
+    def has_graph_layers(self) -> bool:
+        """Whether the network these settings describe has graph layers at all."""
+        return self.spatial != "none"
+
     def to_dict(self) -> dict[str, Any]:
-        """Return the settings as a plain dictionary, ready to be saved."""
+        """Return the settings as a plain dictionary, ready to be saved; spatial is left out at its default."""
         settings = dataclasses.asdict(self)
         settings["gcn_hidden"] = list(self.gcn_hidden)
+        # Left out at "gcn" so every record, digest and run name made before the
+        # setting existed stays what it was; README.md says why.
+        if self.spatial == "gcn":
+            del settings["spatial"]
         return settings
 
     def digest(self) -> str:
@@ -114,6 +138,7 @@ def build_model(
         gcn_hidden=config.gcn_hidden,
         fc_hidden=config.fc_hidden,
         gcn_bias=config.gcn_bias,
+        spatial=config.spatial,
         # Asked for by name, so these are the stages the guard lets through.
         # ASSUMPTION A-28: the window summary hands the first graph layer three
         # numbers made from the cycles, so its weights mix time; named, not hidden.

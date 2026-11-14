@@ -41,6 +41,12 @@ and building it would take the following:
   fully connected layers once the graph layers are gone), and five-seed runs of
   both, after which the paper's "ESTGNN w/o GCN" row of Table 11 (16.42 RMSE
   on FD001) could be set beside a measured number for the first time.
+  *Note added 2026-11-13:* the half without graph layers is built, not as a
+  `NoSpatialStage` class in a `models/spatial/` package but as the setting
+  `ModelConfig.spatial = "none"` (`--spatial none`, `_nogcn` in a run folder's
+  name), and its entry is assumption A-42, since A-30 had been taken by the
+  removal of one connection. Its five-seed runs are still to come
+  (`docs/PENDING.md`). The attention stage is not built.
 - **Step 9, explanations of connections and of parts of the graph.** A common
   record saying what each explanation is about, a sensor, a connection or a
   walk, so that values of different kinds are never compared, and Shapley

@@ -23,7 +23,7 @@ from ..utils.logging_setup import get_logger
 from .layers import GraphConvolution
 from .temporal import LastCycle, TemporalStage
 
-__all__ = ["ESTGNN"]
+__all__ = ["ESTGNN", "SPATIAL_STAGES"]
 
 logger = get_logger(__name__)
 
@@ -32,6 +32,10 @@ GCN_HIDDEN_SIZES: tuple[int, int, int] = (32, 64, 32)
 
 # How wide the first fully connected layer is, from Table 4.
 FC_HIDDEN_SIZE: int = 128
+
+# What may sit between the temporal stage and the dense layers: Table 4's graph
+# layers ("gcn"), or nothing at all ("none", assumption A-42).
+SPATIAL_STAGES: tuple[str, ...] = ("gcn", "none")
 
 
 class ESTGNN(nn.Module):
@@ -52,6 +56,7 @@ class ESTGNN(nn.Module):
         gcn_hidden: Sequence[int] = GCN_HIDDEN_SIZES,
         fc_hidden: int = FC_HIDDEN_SIZE,
         gcn_bias: bool = False,
+        spatial: str = "gcn",
         allow_time_in_the_graph_layer: bool = False,
     ) -> None:
         super().__init__()
@@ -71,10 +76,23 @@ class ESTGNN(nn.Module):
             )
         if rul_max < 1:
             raise ValueError(f"rul_max must be positive, got {rul_max}.")
-        if len(gcn_hidden) < 1:
+        if spatial not in SPATIAL_STAGES:
+            raise ValueError(
+                f"spatial must be one of {list(SPATIAL_STAGES)}, got {spatial!r}."
+            )
+        if spatial == "gcn" and len(gcn_hidden) < 1:
             raise ValueError("at least one graph convolution layer is required.")
+        if spatial == "none" and gcn_bias:
+            raise ValueError(
+                "gcn_bias gives the graph layers an offset, and with spatial='none' "
+                "there are no graph layers to give one to."
+            )
 
+        # Kept even with spatial="none", so a stored network's saved weights,
+        # which hold the graph, load back into it unchanged. With no graph
+        # layers nothing in forward() reads it.
         self.register_buffer("adjacency", matrix)
+        self.spatial = spatial
         self.n_nodes = int(matrix.shape[0])
         self.rul_max = int(rul_max)
 
@@ -98,26 +116,40 @@ class ESTGNN(nn.Module):
             self.in_features > 1 and not learns_across_time
         )
         if self.time_folded_into_graph_layer and not allow_time_in_the_graph_layer:
+            # With no graph layers the cycles land in FC-1 instead, one set of
+            # multipliers per sensor and cycle: still a temporal encoder that
+            # is not named one, so the same flag is asked for (README.md).
+            where = (
+                f"the first graph weight matrix becomes ({self.in_features}, "
+                f"{int(gcn_hidden[0])}). Those are multipliers learned over time "
+                "and shared across sensors"
+                if spatial == "gcn"
+                else "with no graph layers the first fully connected weight matrix "
+                f"becomes ({self.n_nodes * self.in_features}, {int(fc_hidden)}). "
+                "Those are multipliers learned over time for every sensor"
+            )
             raise ValueError(
                 f"{type(self.temporal).__name__} puts {self.in_features} numbers "
                 "on each sensor without learning anything across the cycles, so "
-                f"the first graph weight matrix becomes ({self.in_features}, "
-                f"{int(gcn_hidden[0])}). Those are multipliers learned over time "
-                "and shared across sensors -- a temporal encoder, inside a layer "
+                f"{where} -- a temporal encoder, inside a layer "
                 "that is not named one. That is the arrangement removed on "
                 "2026-08-28; see A-07. To build it deliberately pass "
                 "allow_time_in_the_graph_layer=True, which records the choice in "
                 "the run."
             )
 
-        widths = [self.in_features, *(int(w) for w in gcn_hidden)]
+        # ASSUMPTION A-42: spatial="none" builds no graph layer and puts nothing
+        # in their place, so the temporal stage's (B, 14, F) goes straight to
+        # the flatten and FC-1. The paper's "ESTGNN w/o GCN" (Table 11) never
+        # says what its layers were. Written up in docs/assumptions/A-42.md.
+        widths = [self.in_features, *(int(w) for w in gcn_hidden)] if spatial == "gcn" else [self.in_features]
         self.graph_layers = nn.ModuleList(
             GraphConvolution(widths[i], widths[i + 1], bias=gcn_bias)
             for i in range(len(widths) - 1)
         )
 
         # Flatten turns (batch, nodes, last_width) into (batch, nodes*last_width).
-        # For Table 4 that is 14 * 32 = 448.
+        # For Table 4 that is 14 * 32 = 448; with no graph layers, 14 * F.
         self.flattened_size = self.n_nodes * widths[-1]
         self.fc1 = nn.Linear(self.flattened_size, int(fc_hidden))
         self.fc2 = nn.Linear(int(fc_hidden), 1)
@@ -127,7 +159,7 @@ class ESTGNN(nn.Module):
             "flatten to %d, dense %d -> 1. %d trainable parameters.",
             self.n_nodes,
             self.in_features,
-            list(gcn_hidden),
+            [layer.out_features for layer in self.graph_layers] or "none",
             self.flattened_size,
             int(fc_hidden),
             self.count_parameters(),
@@ -153,6 +185,11 @@ class ESTGNN(nn.Module):
         return self.forward(features) * float(self.rul_max)
 
     # -- introspection -----------------------------------------------------
+
+    @property
+    def has_graph_layers(self) -> bool:
+        """Whether any graph layer sits between the temporal stage and the dense layers."""
+        return len(self.graph_layers) > 0
 
     def count_parameters(self, trainable_only: bool = True) -> int:
         """How many numbers the network learns. Compare it with Table 4."""
@@ -230,5 +267,5 @@ class ESTGNN(nn.Module):
     def extra_repr(self) -> str:  # pragma: no cover - display only
         return (
             f"nodes={self.n_nodes}, temporal={type(self.temporal).__name__}, "
-            f"in_features={self.in_features}, rul_max={self.rul_max}"
+            f"spatial={self.spatial}, in_features={self.in_features}, rul_max={self.rul_max}"
         )

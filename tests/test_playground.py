@@ -157,9 +157,9 @@ def test_where_a_default_comes_from_is_said_once_per_setting():
             untagged_rows.add(field["key"])
         else:
             assert all(c["source"] is None for c in field.get("choices", [])), field["key"]
-    # Two settings whose options come from different places, and two nothing sets.
-    assert untagged_rows == {"graph", "temporal", "seed", "device"}
-    for key in ("graph", "temporal"):
+    # Three settings whose options come from different places, and two nothing sets.
+    assert untagged_rows == {"graph", "temporal", "spatial", "seed", "device"}
+    for key in ("graph", "temporal", "spatial"):
         spec = next(f for f in playground.FIELDS if f["key"] == key)
         assert all(c["source"] is not None for c in spec["choices"]), key
 
@@ -196,13 +196,13 @@ def test_the_pipeline_takes_out_one_part_at_a_time_as_table_11_does():
     # The pipeline opens on the full model.
     assert all(defaults[key] == value for key, value in full.items())
     taken_out = {}
-    for key in ("without_lstm", "without_physics_prior"):
+    for key in ("without_lstm", "without_physics_prior", "without_gcn"):
         moved = {k: v for k, v in variants[key].items() if full[k] != v}
         assert len(moved) == 1, key
         taken_out.update(moved)
-    assert removed == taken_out == {"temporal": "last_cycle", "graph": "complete"}
-    # A model without graph layers is not built, so that box has no cross.
-    assert variants["without_gcn"] is None
+    assert removed == taken_out == {"temporal": "last_cycle", "graph": "complete", "spatial": "none"}
+    # A network without graph layers uses no sensor graph, so its row names none.
+    assert "graph" not in variants["without_gcn"]
     # The sensor graph is a step of the graph layers' own flowchart, so its
     # setting is in their group, where that step's link leads.
     groups = {f["key"]: f["group"] for f in playground.FIELDS}
@@ -289,6 +289,8 @@ def test_diagram_links_open_matching_tutorial_sections(stage, settings, raw_dir)
     {"temporal": "raw_window", "gcn_hidden": [1, 2, 3], "gcn_bias": True},
     {"temporal": "lstm", "shared_across_sensors": True},
     {"temporal": "gru", "shared_across_sensors": False},
+    {"spatial": "none"},
+    {"spatial": "none", "temporal": "raw_window"},
 ])
 def test_diagram_cards_share_matching_help_and_explain_every_output(raw_dir, changes):
     """All diagram layouts explain their outputs and keep matching operation help and tutorial links."""
@@ -577,6 +579,44 @@ def test_a_configuration_is_set_beside_the_one_row_it_may_be(temporal, graph, ex
     row, reason = playground.paper_row_for("FD001", temporal, graph)
     assert (row["key"] if row else None) == expected
     assert bool(reason) == (expected is None)
+    # A stored run that recorded no graph-layer choice had them: the same row.
+    assert playground.paper_row_for("FD001", temporal, graph, "gcn") == (row, reason)
+
+
+@pytest.mark.parametrize(
+    ("temporal", "graph", "expected"),
+    [
+        # With the graph layers out, the sensor graph is unused, so any graph
+        # asked for gives the w/o GCN row with the LSTM stage.
+        ("lstm", "physics", "without_gcn"),
+        ("lstm", "complete", "without_gcn"),
+        ("lstm", "correlation", "without_gcn"),
+        ("last_cycle", "physics", None),
+        ("last_cycle", "complete", None),
+        ("gru", "physics", None),
+        (None, "physics", None),
+    ],
+)
+def test_a_network_without_graph_layers_is_set_beside_the_w_o_gcn_row_only_with_the_lstm(
+        temporal, graph, expected):
+    row, reason = playground.paper_row_for("FD001", temporal, graph, "none")
+    assert (row["key"] if row else None) == expected
+    assert bool(reason) == (expected is None)
+    if expected:
+        assert (row["label"], row["source"], row["rmse"]) == ("ESTGNN w/o GCN", "Table 11", 16.42)
+    elif temporal is not None:
+        assert reason.startswith("Two parts are removed at once")
+
+
+def test_the_four_combinations_of_the_two_parts_the_overview_takes_out():
+    """LSTM in or out, graph layers in or out, on the paper's graph: three rows and one refusal."""
+    keys = {}
+    for temporal in ("lstm", "last_cycle"):
+        for spatial in ("gcn", "none"):
+            row, _ = playground.paper_row_for("FD001", temporal, "physics", spatial)
+            keys[(temporal, spatial)] = row["key"] if row else None
+    assert keys == {("lstm", "gcn"): "full", ("lstm", "none"): "without_gcn",
+                    ("last_cycle", "gcn"): "without_lstm", ("last_cycle", "none"): None}
 
 
 def _cautions(**changes) -> list[dict]:
@@ -699,6 +739,111 @@ def test_the_command_is_a_list_of_arguments_never_a_shell_string():
     shown = playground.train_arguments(settings, Path("config.yaml"), None, display=True)
     assert shown[:2] == ["python", "scripts/train.py"]
     assert "--progress" not in shown
+
+
+def test_the_graph_layers_can_be_left_out_and_say_where_that_choice_comes_from():
+    spec = next(f for f in playground.FIELDS if f["key"] == "spatial")
+    assert (spec["group"], spec["kind"], spec["default"]) == ("graph", "choice", "gcn")
+    choices = {c["value"]: c for c in spec["choices"]}
+    assert set(choices) == {"gcn", "none"}
+    assert choices["gcn"]["source"]["kind"] == "paper"
+    assert (choices["none"]["source"]["kind"], choices["none"]["source"]["ref"]) == ("assumption", "A-42")
+    assert playground.read_more("spatial=none") == "#/entry/A-42"
+    assert playground.validate_settings({})["spatial"] == "gcn"
+    assert playground.validate_settings({"spatial": "none"})["spatial"] == "none"
+    with pytest.raises(playground.SettingsError, match="Graph layers in the network"):
+        playground.validate_settings({"spatial": "gat"})
+
+
+def test_the_default_command_is_unchanged_and_no_graph_layers_add_one_flag():
+    """The default network's command names no graph-layer choice; leaving them out
+    passes --spatial none and drops the widths and offsets of layers that do not exist."""
+    default = playground.train_arguments(playground.validate_settings({}), Path("config.yaml"), None, display=True)
+    assert default == [
+        "python", "scripts/train.py", "--config", "config.yaml", "--seeds", "5", "--temporal", "lstm",
+        "--temporal-hidden", "32", "--temporal-out-features", "1", "--gcn-hidden", "32", "64", "32",
+        "--fc-hidden", "128", "--epochs", "200", "--batch-size", "32", "--learning-rate", "0.001",
+        "--final-learning-rate", "0.0001", "--lr-schedule", "step", "--early-stopping-patience", "20",
+        "--device", "auto"]
+    settings = playground.validate_settings({"spatial": "none", "gcn_bias": True, "gcn_hidden": [8, 8, 8]})
+    shown = playground.train_arguments(settings, Path("config.yaml"), None, display=True)
+    start = default.index("--gcn-hidden")
+    assert shown == [*default[:start], "--spatial", "none", *default[start + 4:]]
+
+
+def test_a_network_without_graph_layers_is_cautioned_and_named_in_its_job():
+    settings = playground.validate_settings({"spatial": "none", "graph": "complete", "gcn_hidden": [8, 8, 8]})
+    refs = [note["ref"] for note in playground.caveats(settings)]
+    assert "A-42" in refs
+    # The unused graph and widths raise none of their own cautions.
+    assert "D-2" not in refs and "Table 4" not in refs
+    assert "w/o GCN" in playground.job_label(settings)
+    assert "graph" not in playground.job_label(settings)
+    assert "physics graph" in playground.job_label(playground.validate_settings({}))
+
+
+def test_the_graph_box_without_graph_layers_flattens_the_temporal_stage_into_the_first_dense_layer():
+    pytest.importorskip("torch")
+    settings = playground.validate_settings({"spatial": "none", "gcn_hidden": [8, 8, 8], "gcn_bias": True})
+    steps = playground.stage_detail("graph", settings)["steps"]
+    names = [step["name"] for step in steps]
+    assert not any(name.startswith(("Graph layer", "Sensor graph", "Rescale the graph")) for name in names)
+    assert all(step.get("kind") != "branch" for step in steps)
+    flatten = next(step for step in steps if step["name"] == "Flatten")
+    assert (flatten["shape"], flatten["source"]["ref"]) == ("(B, 14)", "A-42")
+    assert [part["text"] for part in flatten["parts"]] == ["14 x 1 = 14", "no graph layers"]
+    temporal = playground.stage_detail("temporal", settings)["steps"]
+    assert temporal[-1]["name"] == "To the fully connected layers, with no graph layers"
+    preview = playground.preview(settings)
+    assert [row["layer"] for row in preview["layers"]] == ["Input", "Flatten", "FC-1", "FC-2"]
+
+
+def _stored_run(tmp_path: Path, name: str, model: dict | None) -> Path:
+    """A finished run's record, the way train.py writes one, with or without the graph-layer choice."""
+    run = tmp_path / "reports" / name
+    (run / "seed_42").mkdir(parents=True)
+    (run / "results.csv").write_text("seed,rmse\n42,12.0\n", encoding="utf-8")
+    (run / "seed_42" / "model.pt").write_bytes(b"")
+    summary = {"mean": {"rmse": 12.0}, "std": {"rmse": None}, "subset": "FD001", "seeds": 1,
+               "temporal_stage": "lstm", "graph": "physics", "finished_utc": "20261113T000000Z"}
+    if model is not None:
+        summary["model"] = model
+    (run / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    return run
+
+
+def test_a_stored_run_is_read_as_having_graph_layers_unless_it_says_otherwise(tmp_path: Path):
+    _stored_run(tmp_path, "old", None)
+    _stored_run(tmp_path, "full", {"temporal": "lstm", "spatial": "gcn"})
+    _stored_run(tmp_path, "nogcn", {"temporal": "lstm", "spatial": "none"})
+    runs = {run["name"]: run for run in playground.list_runs(tmp_path)}
+    assert {name: run["spatial"] for name, run in runs.items()} == {"old": "gcn", "full": "gcn", "nogcn": "none"}
+    assert runs["old"]["paper_row"]["key"] == runs["full"]["paper_row"]["key"] == "full"
+    assert runs["nogcn"]["paper_row"]["key"] == "without_gcn"
+    assert playground.run_detail(tmp_path, "nogcn")["spatial"] == "none"
+
+
+def test_a_network_without_graph_layers_is_offered_no_walks(tmp_path: Path):
+    """Walks follow connections through the graph layers; the other two methods vary the input only."""
+    _stored_run(tmp_path, "nogcn", {"temporal": "lstm", "spatial": "none"})
+    _stored_run(tmp_path, "old", None)
+    base = {"run": "nogcn", "seed": 42, "scope": "engine", "engine": 7, "every": 1}
+    for method in ("shap", "occlusion"):
+        assert playground.validate_explain({**base, "method": method}, tmp_path)["method"] == method
+    with pytest.raises(playground.SettingsError, match="no graph layers"):
+        playground.validate_explain({**base, "method": "walks"}, tmp_path)
+    assert playground.validate_explain({**base, "run": "old", "method": "walks"}, tmp_path)["gamma"] == "authors"
+    # A stored explanation of it carries no connections to draw.
+    folder = tmp_path / "reports" / "nogcn" / "explanations" / "shap_engine"
+    folder.mkdir(parents=True)
+    (folder / "summary.json").write_text(json.dumps({"method": "shap", "seed": 42}), encoding="utf-8")
+    detail = playground.explanation_detail(tmp_path, "nogcn", "shap_engine")
+    assert (detail["graph_layers"], detail["graph_edges"]) == (False, [])
+    # The page leaves walks out of the method list for such a run, and says why.
+    script = (ROOT / "src/thesis_gnn_rul_xai/docsite/assets/playground.js").read_text(encoding="utf-8")
+    assert 'return layered || option.value !== "walks";' in script
+    assert "Walks through the sensor graph are not offered" in script
+    assert 'data.graph_layers === false ? "" : graph' in script
 
 
 # -- the site --------------------------------------------------------------------
