@@ -380,6 +380,7 @@ older runs lack it, and nothing reads it as required.
 | `seed_N/model.pt` | That seed's trained weights. |
 | `seed_N/training_history.csv`, `seed_N/training_config.yaml` | The error after every pass, and the training settings. |
 | `seed_N/test_predictions.csv` | One row per test engine: its number, last cycle, label and prediction. |
+| `summary.json` → `preprocessing` | Since 2026-11-14: every preprocessing setting, the same values as `preprocessing_config.yaml` without its notes, so the sensor scaling, smoothing weight, window length, stride and label ceiling can be read from this one file. Runs stored before that date have them only in `preprocessing_config.yaml`. |
 | `summary.json` → `command` | The command line the run was started with. |
 | `summary.json` → `environment` | Python, the operating system, the processor, and every library version a number depends on (`utils/README.md`). |
 | `summary.json` → `data_files` | The fingerprint of each NASA file read, so a changed file is caught. |
@@ -393,7 +394,9 @@ older runs lack it, and nothing reads it as required.
 
 A run folder's name reads like
 `fd001_physics_row_cap_5seed_varsplit_cfg818b40_<commit>_<time>`: the
-sub-dataset, the sensor graph, how the graph is rescaled, whether the test
+sub-dataset, the sensor graph, how the graph is rescaled, since 2026-11-14 the
+sensor scaling when it is not the default of subtracting each sensor's average
+and dividing by its spread (for example `_minmax_global`), whether the test
 labels are capped, the number of seeds, whether the held-back engines change
 with the seed (`varsplit`, `fixedsplit` or, since 2026-10-03, `nosplit`; the
 next section), a mark for each network or training choice away from its
@@ -435,6 +438,38 @@ names do. `find_runs` compares the saved settings, never the name, and is the
 way to collect every run of one configuration across the change.
 `tests/test_run_records.py` checks that every stored name carries the code of
 the settings saved beside it, under one rule or the other.
+
+#### One table of every stored run: `scripts/list_runs.py`
+
+A folder name carries only some of a run's settings, so runs compared by name
+alone can look alike when they are not. On 2026-11-14 a comparison read from
+folder names and `summary.json` reported every stored run as using the default
+sensor scaling, when three runs had rescaled each sensor to the range 0 to 1
+instead, and the sensitivity study (finding F-19) had compared the two on the
+network with the recurrent stage. Neither the names nor the summaries of those
+runs said so; only their `preprocessing_config.yaml` did.
+
+`python scripts/list_runs.py` reads every settings file of every finished run
+under `reports/`, at any depth, so the runs the sensitivity study keeps inside
+its own folder are included, and writes one row per run to
+`reports/runs_index.csv`:
+
+| Columns | What they hold |
+|---|---|
+| `run`, `commit`, `dirty`, `finished_utc`, `seeds` | Where the run is, the code that made it, whether that code had uncommitted changes, when it finished, how many seeds it trained |
+| `validation_rmse_mean`, `validation_rmse_std` | The error on the held-back engines, averaged over seeds |
+| `rmse_mean`, `rmse_std`, and the same for `score`, `r2`, `asue` | The four test measures, averaged over seeds |
+| `pre.*` | Every setting of `preprocessing_config.yaml` |
+| `model.*` | Every setting of `model_config.yaml` |
+| `train.*` | Every setting of the first seed's `training_config.yaml`, except the seed and the device |
+
+It sorts by the held-back error, lowest first. Sorting by test error is
+possible with `--sort rmse_mean`, but choosing settings that way is choosing
+them on the test engines. The two errors are never comparable with each other
+(assumption A-06): the held-back error covers every window of the held-back
+engines and also chose which pass was kept, the test error only each test
+engine's last window. A run whose commit ends in `-dirty` was made with
+uncommitted code and cannot be reproduced from any commit.
 
 #### The split part of a run folder's name, and its change of 2026-10-03
 

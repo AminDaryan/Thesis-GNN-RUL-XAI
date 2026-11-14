@@ -998,6 +998,8 @@ Thesis GNN RUL XAI/
 │   ├── train.py                  Train, score, and average over seeds
 │   ├── explain.py                Explain a stored run's trained network
 │   ├── measure_walks.py          Measure walk explanations over every seed of a stored run
+│   ├── list_runs.py              One table of every stored run, its settings and both errors
+│   │                             (explained in training/README.md)
 │   ├── baselines.py              Score ordinary models beside a stored run's networks,
 │   │                             on the same engines (explained in evaluation/README.md)
 │   ├── verify_claims.py          Recompute the figures the assumptions and findings quote

@@ -70,7 +70,12 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from thesis_gnn_rul_xai.config import SENSOR_GRAPHS, PreprocessingConfig, load_config
+from thesis_gnn_rul_xai.config import (
+    SENSOR_GRAPHS,
+    PreprocessingConfig,
+    load_config,
+    settings_without_notes,
+)
 from thesis_gnn_rul_xai.data.pipeline import PreparedData, run_preprocessing
 from thesis_gnn_rul_xai.evaluation import evaluate
 from thesis_gnn_rul_xai.evaluation.published import published_row
@@ -523,7 +528,11 @@ def main() -> int:
         f"{preprocessing.subset.lower()}"
         f"_{preprocessing.graph}"
         f"_{preprocessing.adjacency_normalization}"
-        f"_{'cap' if preprocessing.clip_test_labels else 'uncap'}"
+        # The sensor rescaling appears only when it is not the default z-score,
+        # so earlier runs' names still read the same (assumption A-03).
+        + ("" if preprocessing.normalization == "zscore"
+           else f"_{preprocessing.normalization}")
+        + f"_{'cap' if preprocessing.clip_test_labels else 'uncap'}"
         f"_{arguments.seeds}seed"
         f"_{split_name}"
         + ("" if arguments.temporal == "last_cycle"
@@ -596,6 +605,10 @@ def main() -> int:
                     if arguments.temporal in ("lstm", "gru")
                     else None
                 ),
+                # Every preprocessing setting, so a run can be read from this
+                # file alone; until 2026-11-14 the sensor rescaling, smoothing,
+                # window and label ceiling were only in preprocessing_config.yaml.
+                "preprocessing": settings_without_notes(preprocessing.to_dict()),
                 "model": model_config.to_dict(),
                 "training": {**training_settings, "lr_schedule": arguments.lr_schedule},
                 "seed_folders": [f"seed_{kept['seed']}" for kept in artefacts],
