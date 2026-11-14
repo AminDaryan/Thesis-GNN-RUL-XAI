@@ -1,0 +1,57 @@
+{
+  "commit": "f386291-dirty",
+  "config_digest": "f21547",
+  "finished_utc": "20260914T150527Z",
+  "subset": "FD001",
+  "graph": "complete",
+  "adjacency_normalization": "row",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "validation_fraction": 0.2,
+  "reported_weights": "best_validation_epoch",
+  "lr_schedule": "step",
+  "temporal_stage": "last_cycle",
+  "temporal_hidden": null,
+  "model": {
+    "temporal": "last_cycle",
+    "temporal_hidden": 32,
+    "temporal_out_features": 1,
+    "shared_across_sensors": false,
+    "gcn_hidden": [
+      32,
+      64,
+      32
+    ],
+    "fc_hidden": 128,
+    "gcn_bias": false
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "final_learning_rate": 0.0001,
+    "early_stopping_patience": 20,
+    "lr_schedule": "step"
+  },
+  "seed_folders": [
+    "seed_42",
+    "seed_43",
+    "seed_44",
+    "seed_45",
+    "seed_46"
+  ],
+  "mean": {
+    "rmse": 19.28083849653031,
+    "score": 796.0820976269808,
+    "r2": 0.7684115903528802,
+    "asue": 13.759131625202244
+  },
+  "std": {
+    "rmse": 0.4323877017663437,
+    "score": 78.80237923465914,
+    "r2": 0.01041031419919407,
+    "asue": 0.4887200742742045
+  }
+}

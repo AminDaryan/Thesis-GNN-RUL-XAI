@@ -1,0 +1,25 @@
+{
+  "commit": "bc20edd-dirty",
+  "config_digest": "d20b12",
+  "finished_utc": "20260901T140945Z",
+  "subset": "FD001",
+  "graph": "complete",
+  "adjacency_normalization": "row",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "lr_schedule": "step",
+  "mean": {
+    "rmse": 19.213677273629678,
+    "score": 781.6745649355205,
+    "r2": 0.7701130771196345,
+    "asue": 13.940893226023821
+  },
+  "std": {
+    "rmse": 0.05638875543880866,
+    "score": 8.969227209976294,
+    "r2": 0.0013505379762332637,
+    "asue": 0.1483584488650046
+  }
+}

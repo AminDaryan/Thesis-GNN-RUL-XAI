@@ -1,0 +1,16 @@
+ M scripts/check_prose.py
+ M src/thesis_gnn_rul_xai/docsite/README.md
+ M src/thesis_gnn_rul_xai/docsite/assets/playground.js
+ M src/thesis_gnn_rul_xai/docsite/catalog.py
+ M src/thesis_gnn_rul_xai/docsite/markup.py
+D  src/thesis_gnn_rul_xai/docsite/playground.py
+ M src/thesis_gnn_rul_xai/docsite/results.py
+ M src/thesis_gnn_rul_xai/docsite/server.py
+?? scripts/fetch_references.py
+?? src/thesis_gnn_rul_xai/docsite/playground/README.md
+?? src/thesis_gnn_rul_xai/docsite/playground/__init__.py
+?? src/thesis_gnn_rul_xai/docsite/playground/commands.py
+?? src/thesis_gnn_rul_xai/docsite/playground/design.py
+?? src/thesis_gnn_rul_xai/docsite/playground/jobs.py
+?? src/thesis_gnn_rul_xai/docsite/playground/runs.py
+?? src/thesis_gnn_rul_xai/docsite/playground/settings.py

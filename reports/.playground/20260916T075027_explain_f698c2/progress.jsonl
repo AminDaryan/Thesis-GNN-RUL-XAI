@@ -1,0 +1,14 @@
+{"event": "start", "windows": 12, "method": "shap", "scope": "engine"}
+{"event": "window", "done": 1, "total": 12, "seconds": 0.09855090000201017}
+{"event": "window", "done": 2, "total": 12, "seconds": 0.15988760004984215}
+{"event": "window", "done": 3, "total": 12, "seconds": 0.21578650001902133}
+{"event": "window", "done": 4, "total": 12, "seconds": 0.2713723000488244}
+{"event": "window", "done": 5, "total": 12, "seconds": 0.3289898000075482}
+{"event": "window", "done": 6, "total": 12, "seconds": 0.38992460002191365}
+{"event": "window", "done": 7, "total": 12, "seconds": 0.4405475000385195}
+{"event": "window", "done": 8, "total": 12, "seconds": 0.4889214000431821}
+{"event": "window", "done": 9, "total": 12, "seconds": 0.5399550000438467}
+{"event": "window", "done": 10, "total": 12, "seconds": 0.5928006000467576}
+{"event": "window", "done": 11, "total": 12, "seconds": 0.6431831000372767}
+{"event": "window", "done": 12, "total": 12, "seconds": 0.693432500003837}
+{"event": "done", "directory": "shap_engine_unit5_every20_seed42_c2bf7d4-dirty_20260916T075032Z", "run": "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z"}

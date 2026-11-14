@@ -1,0 +1,90 @@
+{
+  "commit": "19dceb5",
+  "config_digest": "ba82e3",
+  "finished_utc": "20261002T225228Z",
+  "command": [
+    "train.py",
+    "--seeds",
+    "5",
+    "--quiet",
+    "--config",
+    "config/fd001.yaml",
+    "--gcn-bias",
+    "--device",
+    "cpu"
+  ],
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scikit-learn": "1.9.0",
+      "scipy": "1.17.1",
+      "torch": "2.13.0+cpu",
+      "pyyaml": "6.0.3"
+    },
+    "torch_threads": 8,
+    "cuda_available": false
+  },
+  "data_files": {
+    "train_FD001.txt": "963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8",
+    "test_FD001.txt": "3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851",
+    "RUL_FD001.txt": "a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca"
+  },
+  "uncommitted_code": [],
+  "subset": "FD001",
+  "graph": "physics",
+  "adjacency_normalization": "row",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "validation_fraction": 0.2,
+  "reported_weights": "best_validation_epoch",
+  "lr_schedule": "step",
+  "temporal_stage": "last_cycle",
+  "temporal_hidden": null,
+  "model": {
+    "temporal": "last_cycle",
+    "temporal_hidden": 32,
+    "temporal_out_features": 1,
+    "shared_across_sensors": false,
+    "gcn_hidden": [
+      32,
+      64,
+      32
+    ],
+    "fc_hidden": 128,
+    "gcn_bias": true
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "final_learning_rate": 0.0001,
+    "early_stopping_patience": 20,
+    "lr_schedule": "step"
+  },
+  "seed_folders": [
+    "seed_42",
+    "seed_43",
+    "seed_44",
+    "seed_45",
+    "seed_46"
+  ],
+  "mean": {
+    "rmse": 16.735248640685757,
+    "score": 522.0481318352558,
+    "r2": 0.8255023709453468,
+    "asue": 12.471049810319428
+  },
+  "std": {
+    "rmse": 0.4352072212589833,
+    "score": 95.0055776480689,
+    "r2": 0.009145624251284476,
+    "asue": 0.8182313957614387
+  }
+}

@@ -1,0 +1,13 @@
+subset: FD001
+window_size: 30
+window_stride: 1
+rul_max: 125
+clip_test_labels: false
+normalization: zscore
+smoothing_alpha: 0.5
+graph: physics
+adjacency_normalization: row
+validation_fraction: 0.2
+seed: 42
+notes: FD001 with uncapped test labels, to measure the size of assumption A-02. See
+  docs/ASSUMPTIONS.md.

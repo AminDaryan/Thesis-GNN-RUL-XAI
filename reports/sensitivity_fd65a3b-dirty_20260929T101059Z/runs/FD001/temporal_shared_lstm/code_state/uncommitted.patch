@@ -1,0 +1,120 @@
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/playground.js b/src/thesis_gnn_rul_xai/docsite/assets/playground.js
+index 0b5d1cb..5e5b3b9 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/playground.js
++++ b/src/thesis_gnn_rul_xai/docsite/assets/playground.js
+@@ -1570,7 +1570,7 @@
+       { name: "Temporal stage", picture: "window", fields: ["temporal"] },
+       { name: function () { return "One " + networkWord() + (S.settings.shared_across_sensors ? " for all sensors" : " per sensor"); },
+         picture: "recurrent", fields: ["temporal_hidden", "shared_across_sensors"] },
+-      { name: function () { return "Turn into " + plural(Number(S.settings.temporal_out_features) || 1, "number") + " per sensor"; },
++      { name: "Turn into numbers per sensor",
+         picture: "project", fields: ["temporal_out_features"] }
+     ],
+     graph: [
+@@ -1913,7 +1913,7 @@
+     var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
+       '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
+     var section = sectionForStep(step), operation = section && sectionName(section);
+-    var words = section ? sectionHelp(section) : infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
++    var words = infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
+     var row = section && (section.toggle || section.fields[0]);
+     var destination = row ? ' data-goto="' + S.fields[row].group + '" data-goto-row="' + row + '"' : '';
+     var part = partControl(step);
+diff --git a/src/thesis_gnn_rul_xai/docsite/playground.py b/src/thesis_gnn_rul_xai/docsite/playground.py
+index ba0a129..675f50a 100644
+--- a/src/thesis_gnn_rul_xai/docsite/playground.py
++++ b/src/thesis_gnn_rul_xai/docsite/playground.py
+@@ -472,7 +472,7 @@ PROCEDURES = (
+ 
+ # Where the "Read more" at the foot of an i leads, opened in a new tab: the part
+ # of the documentation that explains a setting (by its key), an option
+-# ("key=value"), a step of a box's flowchart (by its picture) or an option of
++# ("key=value") or an option of
+ # the Explain tab ("explain=value"). A heading is written as the document has
+ # it; "entry" leads to an entry of the assumptions log instead.
+ _PIPELINE, _MODEL, _GRAPHS = "docs/learn/04_the_pipeline.md", "docs/learn/05_the_model.md", "docs/learn/02_graphs.md"
+@@ -523,35 +523,28 @@ _READ_MORE: dict[str, tuple[str, str]] = {
+     "explain=engine": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
+     "explain=test": ("docs/learn/03_explainability.md", "Why a number is not enough"),
+     "explain=every": ("docs/learn/10_dynamic_shap.md", "Dynamic: the same calculation at every cycle"),
+-    "file": ("docs/learn/01_the_problem.md", "NASA's benchmark data: C-MAPSS"),
+-    "life": ("docs/learn/01_the_problem.md", "What the model is asked to predict"),
+-    "select": ("docs/learn/01_the_problem.md", "Only 14 of the 21 sensors"),
+-    "cap": (_PIPELINE, "4 — Cap the labels"),
+-    "smooth": (_PIPELINE, "5 — Smooth *(leakage-critical)*"),
+-    "hold": (_PIPELINE, "6 — Split *(leakage-critical)*"),
+-    "conditions": ("src/thesis_gnn_rul_xai/data/normalization/README.md", "What an operating condition is"),
+-    "rescale": (_PIPELINE, "7 — Rescale *(leakage-critical)*"),
+-    "window": (_PIPELINE, "8 — Window"),
+-    "sets": (_PIPELINE, "8 — Window"),
+-    "split": (_TEMPORAL, "`lstm` — what the paper actually describes"),
+-    "recurrent": (_TEMPORAL, "`lstm` — what the paper actually describes"),
+-    "last": (_TEMPORAL, "The stages"),
+-    "project": (_TEMPORAL, "`lstm` — what the paper actually describes"),
+-    "average": (_TEMPORAL, "The stages"),
+-    "slope": (_TEMPORAL, "`window_summary` — three numbers a person could read off a plot"),
+-    "stack": (_TEMPORAL, "`window_summary` — three numbers a person could read off a plot"),
+-    "graph-step": (_GRAPHS, "The graph this project uses"),
+-    "table": ("src/thesis_gnn_rul_xai/graph/README.md", "Normalising the matrix before use"),
+-    "gcn": (_GRAPHS, "One graph layer, as a formula"),
+-    "flatten": (_MODEL, "The six layers, and how many numbers each learns"),
+-    "dense": (_MODEL, "The six layers, and how many numbers each learns"),
+-    "sigmoid": (_MODEL, "The last layer, and what it makes impossible"),
+-    "scale": (_MODEL, "The last layer, and what it makes impossible"),
++}
++
++# Diagram steps link by their displayed names; a shared picture does not imply
++# a shared operation (the last reading and the last hidden state differ).
++_STEP_DOCUMENTS = {
++    **dict.fromkeys(("Training engines", "Test engines", "Calculate training labels",
++                     "Select 14 sensor columns for model inputs"), "docs/learn/01_the_problem.md"),
++    **dict.fromkeys(("Cap the labels", "Smooth each sensor", "Hold engines back", "Find operating conditions",
++                     "Rescale each sensor", "Cut into windows", "Three sets of windows", "Two sets of windows"), _PIPELINE),
++    **dict.fromkeys(("Split by sensor", "One LSTM per sensor", "One LSTM for all sensors",
++                     "One GRU per sensor", "One GRU for all sensors", "Keep the last hidden state",
++                     "Turn into numbers per sensor", "Keep the last reading", "Average the window",
++                     "Last reading", "Average", "Change over the window", "Three numbers per sensor",
++                     "Pass every cycle"), "docs/learn/09_temporal.md"),
++    **dict.fromkeys(("Sensor graph", "Rescale the graph"), _GRAPHS),
++    **dict.fromkeys(("Graph layer 1", "Graph layer 2", "Graph layer 3", "Flatten", "Fully connected",
++                     "Output", "Scale to cycles"), _MODEL),
+ }
+ 
+ 
+ def read_more(key: str) -> str:
+-    """The site address of the documentation for a setting, an option, a step's picture or an Explain option."""
++    """The site address of the documentation for a setting or option."""
+     from .markup import slugify
+ 
+     path, heading = _READ_MORE[key]
+@@ -854,6 +847,8 @@ class _Undescribable(Exception):
+ 
+ def stage_detail(stage: str, settings: Mapping[str, Any]) -> dict[str, Any]:
+     """One box of the page's pipeline as its own flowchart: its steps, in the order the code runs them."""
++    from .markup import slugify
++
+     builders = {"data": _data_steps, "preprocessing": _preprocessing_steps,
+                 "temporal": _temporal_steps, "graph": _graph_steps}
+     if stage not in builders:
+@@ -874,9 +869,9 @@ def stage_detail(stage: str, settings: Mapping[str, Any]) -> dict[str, Any]:
+         step = pending.pop()
+         pending.extend(step.get("steps", []))
+         pending.extend(step.get("lanes", []))
+-        key = "graph-step" if step.get("picture") == "graph" else step.get("picture", "")
+-        if key in _READ_MORE:
+-            step["more"] = read_more(key)
++        if step.get("picture"):
++            name = step["name"]
++            step["more"] = f"#/doc/{_STEP_DOCUMENTS[name]}#{slugify(name)}"
+     return answer
+ 
+ 
+@@ -1480,7 +1475,7 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
+         projection = sum(p.numel() for p in stage.project.parameters())
+         _, out_note = _decided("temporal_out_features", k)
+         steps.append(_step(
+-            f"Turn into {_plural(k, 'number')} per sensor",
++            "Turn into numbers per sensor",
+             f"Multiply the summary's {_plural(hidden, 'number')} by learned weights, add them, and add a "
+             f"learned offset to produce each of {_plural(k, 'output number')}. All sensors use the same weights "
+             "and offsets. This conversion is our choice; the paper specifies one number entering the graph "

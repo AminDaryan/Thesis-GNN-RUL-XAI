@@ -1,0 +1,24 @@
+{
+  "commit": "cdcc827-dirty",
+  "finished_utc": "20260828T145616Z",
+  "subset": "FD001",
+  "graph": "physics",
+  "adjacency_normalization": "row",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "lr_schedule": "exponential",
+  "mean": {
+    "rmse": 19.992134288694956,
+    "score": 797.3166498242517,
+    "r2": 0.7510231838259708,
+    "asue": 15.519947407355573
+  },
+  "std": {
+    "rmse": 0.41584842511284764,
+    "score": 84.02372698627907,
+    "r2": 0.010370104755181134,
+    "asue": 1.8978671438763826
+  }
+}

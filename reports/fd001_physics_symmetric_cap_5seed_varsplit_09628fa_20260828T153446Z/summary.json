@@ -1,0 +1,24 @@
+{
+  "commit": "09628fa",
+  "finished_utc": "20260828T153446Z",
+  "subset": "FD001",
+  "graph": "physics",
+  "adjacency_normalization": "symmetric",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "lr_schedule": "exponential",
+  "mean": {
+    "rmse": 21.57188804717246,
+    "score": 891.7914318621055,
+    "r2": 0.7101717497025162,
+    "asue": 17.292129872090317
+  },
+  "std": {
+    "rmse": 0.31506708581712883,
+    "score": 131.6512953964834,
+    "r2": 0.00844583240371058,
+    "asue": 1.5076358684771374
+  }
+}

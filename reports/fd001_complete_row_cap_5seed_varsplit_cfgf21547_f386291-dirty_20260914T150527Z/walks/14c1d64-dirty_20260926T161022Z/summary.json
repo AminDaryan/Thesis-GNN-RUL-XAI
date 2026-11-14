@@ -1,0 +1,187 @@
+{
+  "commit": "14c1d64-dirty",
+  "finished_utc": "20260926T161022Z",
+  "run": "fd001_complete_row_cap_5seed_varsplit_cfgf21547_f386291-dirty_20260914T150527Z",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "windows": "the last window of every test engine",
+  "gammas": {
+    "0": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "0_0.5_0.25": [
+      0.0,
+      0.5,
+      0.25
+    ],
+    "0_1_1": [
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  "uncommitted_files": [
+    " M pyproject.toml",
+    " M scripts/verify_claims.py",
+    " M src/thesis_gnn_rul_xai/README.md",
+    " M src/thesis_gnn_rul_xai/explain/README.md",
+    " M src/thesis_gnn_rul_xai/explain/__init__.py",
+    " M src/thesis_gnn_rul_xai/utils/README.md",
+    " M src/thesis_gnn_rul_xai/utils/provenance.py",
+    "?? scripts/measure_walks.py",
+    "?? src/thesis_gnn_rul_xai/explain/connections.py",
+    "?? src/thesis_gnn_rul_xai/explain/walks.py"
+  ],
+  "measures": {
+    "trained": {
+      "stays_share_median": {
+        "mean": 0.9999999999999967,
+        "std": 5.5352718360770375e-15,
+        "min": 0.9999999999999912,
+        "max": 1.0000000000000044
+      },
+      "stays_share_mean": {
+        "mean": 0.9999999999999944,
+        "std": 3.803627971060908e-15,
+        "min": 0.999999999999988,
+        "max": 0.9999999999999971
+      },
+      "constant_share_median": {
+        "mean": 0.5389596441086537,
+        "std": 0.027483556125938287,
+        "min": 0.5012130610487837,
+        "max": 0.5784215863563293
+      },
+      "constant_share_mean": {
+        "mean": 0.5736359991512149,
+        "std": 0.014002356427329395,
+        "min": 0.5564526631329102,
+        "max": 0.59227310303484
+      },
+      "cancellation_median": {
+        "mean": 3.609896476884953,
+        "std": 0.04337133487512634,
+        "min": 3.5452845914131377,
+        "max": 3.6628625403025117
+      },
+      "cancellation_mean": {
+        "mean": 10.965687538623706,
+        "std": 4.211528023547831,
+        "min": 7.216089449475129,
+        "max": 17.975369497913217
+      },
+      "removal_agreement": {
+        "mean": 0.2541742315655359,
+        "std": 0.010091901544385004,
+        "min": 0.24116897595158465,
+        "max": 0.2669533365185539
+      },
+      "gamma_agreement_0_0.5_0.25": {
+        "mean": 1.0,
+        "std": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "gamma_agreement_0_1_1": {
+        "mean": 1.0,
+        "std": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "score_at_zero": {
+        "mean": 1.2133434761701956,
+        "std": 0.0664341976337537,
+        "min": 1.1311141211172129,
+        "max": 1.302058048627686
+      },
+      "same_rows_drift": {
+        "mean": 1.1887401342391969e-06,
+        "std": 3.3330003876986447e-07,
+        "min": 7.264316082000732e-07,
+        "max": 1.4603137969970703e-06
+      },
+      "same_rows_block_moved": {
+        "mean": 0.18720913901925088,
+        "std": 0.06457402979815366,
+        "min": 0.11461612209677696,
+        "max": 0.25684040039777756
+      }
+    },
+    "untrained": {
+      "stays_share_median": {
+        "mean": 1.000000000000004,
+        "std": 4.051933808678556e-15,
+        "min": 0.999999999999998,
+        "max": 1.0000000000000078
+      },
+      "stays_share_mean": {
+        "mean": 1.0000000000000022,
+        "std": 4.002966042486721e-15,
+        "min": 0.9999999999999969,
+        "max": 1.0000000000000058
+      },
+      "constant_share_median": {
+        "mean": 0.8968981133817782,
+        "std": 0.06795452534963901,
+        "min": 0.8250807177026726,
+        "max": 0.9772062861401366
+      },
+      "constant_share_mean": {
+        "mean": 0.8711979995510525,
+        "std": 0.09086741366788019,
+        "min": 0.7446597326665517,
+        "max": 0.9760979227364236
+      },
+      "cancellation_median": {
+        "mean": 19.398542410432917,
+        "std": 19.015012510032605,
+        "min": 5.846707087925792,
+        "max": 51.66489273651306
+      },
+      "cancellation_mean": {
+        "mean": 83.45465279204663,
+        "std": 118.69632227122705,
+        "min": 12.698012533774335,
+        "max": 292.9263991674383
+      },
+      "removal_agreement": {
+        "mean": 0.19777688223668163,
+        "std": 0.11909464685208804,
+        "min": 0.10549450549450551,
+        "max": 0.3971810797897755
+      },
+      "gamma_agreement_0_0.5_0.25": {
+        "mean": 1.0,
+        "std": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "gamma_agreement_0_1_1": {
+        "mean": 1.0,
+        "std": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "score_at_zero": {
+        "mean": -0.025986582522506862,
+        "std": 0.05912987510436342,
+        "min": -0.08269244001310595,
+        "max": 0.062461988037836466
+      }
+    }
+  },
+  "connection_ranking_agreement_between_seeds": {
+    "pairs": 10,
+    "connections_shared_min": 91,
+    "min": 0.9866698518872432,
+    "median": 0.9941710463449596,
+    "max": 0.996910336040771
+  }
+}

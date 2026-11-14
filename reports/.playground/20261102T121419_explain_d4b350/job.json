@@ -1,0 +1,12 @@
+{
+  "id": "20261102T121419_explain_d4b350",
+  "kind": "explain",
+  "label": "Walks through the sensor graph \u00b7 test engines \u00b7 seed 42",
+  "command": "python scripts/explain.py --run fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z --seed 42 --method walks --scope test",
+  "created": 1793621659.7586875,
+  "status": "done",
+  "started": 1793621659.760686,
+  "finished": 1793621684.5467987,
+  "returncode": 0,
+  "pid": null
+}

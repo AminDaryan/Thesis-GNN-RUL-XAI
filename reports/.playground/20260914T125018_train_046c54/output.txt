@@ -1,0 +1,78 @@
+commit f386291-dirty   graph physics   normalisation row   split varies with seed
+
+========================================================================
+seed 42  (1 of 2)
+========================================================================
+14:50:27 | INFO    | thesis_gnn_rul_xai.data.loading | Loading FD001 from D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\data\raw
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the published shape of the official release.
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.loading | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
+14:50:28 | WARNING | thesis_gnn_rul_xai.data.pipeline | The paper keeps sensor(s) ['P15'], but in this data they carry no usable variation. They are kept anyway, because the adjacency matrix is defined over the paper's fixed 14-sensor set. Report this observation rather than silently changing the selection.
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.windowing | Split 100 engines into 80 for training and 20 for validation (seed=42).
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.normalization | Detected 1 distinct operating condition(s) from the settings.
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.normalization | A single operating condition: clustering is not needed.
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.normalization | Fitted 'zscore' normalisation on 14 column(s) across 1 condition(s).
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 17731 window(s) of shape (14, 30) from 100 engine(s).
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 100 window(s) of shape (14, 30) from 100 engine(s).
+14:50:28 | INFO    | thesis_gnn_rul_xai.data.pipeline | Preprocessing complete: 14459 training, 3272 validation, 100 test example(s).
+14:50:28 | INFO    | thesis_gnn_rul_xai.models.temporal | Built LSTM temporal stage: 14 cell(s) of hidden size 32 over a 30-cycle window, projected to 1 number(s) per sensor. 62753 parameters.
+14:50:28 | INFO    | thesis_gnn_rul_xai.models.estgnn | Built ESTGNN: 14 node(s), 1 feature(s) per node, graph layers [32, 64, 32], flatten to 448, dense 128 -> 1. 124482 trainable parameters.
+14:50:28 | INFO    | thesis_gnn_rul_xai.training.run | No CUDA device available; training on the CPU.
+14:50:32 | INFO    | thesis_gnn_rul_xai.training.run | Training for up to 3 epoch(s) on 14459 window(s), batch size 32, learning rate 1.0e-03 -> 1.0e-04 (step schedule).
+14:50:57 | INFO    | thesis_gnn_rul_xai.training.run | epoch    1/3  train 0.03031  validation 18.734 cycles  lr 1.00e-03
+14:51:22 | INFO    | thesis_gnn_rul_xai.training.run | Trained for 3 epoch(s) in 49.5s, ending on the epoch limit. At its best, epoch 3, the model was out by 16.160 flight cycles on the engines held back from training. It holds the weights from that epoch.
+  test: RMSE 14.650  score 447.6  R2 0.866  ASUE 9.683
+
+========================================================================
+seed 43  (2 of 2)
+========================================================================
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.loading | Loading FD001 from D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\data\raw
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the published shape of the official release.
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.loading | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
+14:51:22 | WARNING | thesis_gnn_rul_xai.data.pipeline | The paper keeps sensor(s) ['P15'], but in this data they carry no usable variation. They are kept anyway, because the adjacency matrix is defined over the paper's fixed 14-sensor set. Report this observation rather than silently changing the selection.
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.windowing | Split 100 engines into 80 for training and 20 for validation (seed=43).
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.normalization | Detected 1 distinct operating condition(s) from the settings.
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.normalization | A single operating condition: clustering is not needed.
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.normalization | Fitted 'zscore' normalisation on 14 column(s) across 1 condition(s).
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 17731 window(s) of shape (14, 30) from 100 engine(s).
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 100 window(s) of shape (14, 30) from 100 engine(s).
+14:51:22 | INFO    | thesis_gnn_rul_xai.data.pipeline | Preprocessing complete: 13937 training, 3794 validation, 100 test example(s).
+14:51:22 | INFO    | thesis_gnn_rul_xai.models.temporal | Built LSTM temporal stage: 14 cell(s) of hidden size 32 over a 30-cycle window, projected to 1 number(s) per sensor. 62753 parameters.
+14:51:22 | INFO    | thesis_gnn_rul_xai.models.estgnn | Built ESTGNN: 14 node(s), 1 feature(s) per node, graph layers [32, 64, 32], flatten to 448, dense 128 -> 1. 124482 trainable parameters.
+14:51:22 | INFO    | thesis_gnn_rul_xai.training.run | No CUDA device available; training on the CPU.
+14:51:22 | INFO    | thesis_gnn_rul_xai.training.run | Training for up to 3 epoch(s) on 13937 window(s), batch size 32, learning rate 1.0e-03 -> 1.0e-04 (step schedule).
+14:51:31 | INFO    | thesis_gnn_rul_xai.training.run | epoch    1/3  train 0.03037  validation 17.335 cycles  lr 1.00e-03
+14:51:47 | INFO    | thesis_gnn_rul_xai.training.run | Trained for 3 epoch(s) in 24.8s, ending on the epoch limit. At its best, epoch 3, the model was out by 15.015 flight cycles on the engines held back from training. It holds the weights from that epoch.
+  test: RMSE 15.462  score 441.8  R2 0.851  ASUE 11.553
+
+========================================================================
+FD001, physics graph, row normalisation, 2 seed(s), commit f386291-dirty
+========================================================================
+ seed  best_epoch  validation_rmse   rmse   score    r2   asue
+   42           3           16.160 14.650 447.625 0.866  9.683
+   43           3           15.015 15.462 441.786 0.851 11.553
+
+mean +/- standard deviation across seeds:
+    rmse:    15.056 +/- 0.574
+   score:   444.705 +/- 4.129
+      r2:     0.859 +/- 0.011
+    asue:    10.618 +/- 1.322
+
+Published figures for FD001, for orientation only:
+  ESTGNN (Full) (Tables 7, 8, 9 and 10)                rmse 11.78  score 278.6  r2 0.921  asue 8.312
+  ESTGNN w/o LSTM (Table 11)                           rmse 14.93
+  ESTGNN w/o GCN (Table 11)                            rmse 16.42
+  ESTGNN w/o Physics prior (Table 11)                  rmse 12.34
+
+Which row above this run may be set beside depends on its temporal
+stage. Without one -- the default -- it is 'ESTGNN w/o LSTM'; with
+--temporal lstm it is the full ESTGNN, under the size A-26 chose.
+See docs/ASSUMPTIONS.md for every way this pipeline differs from the
+paper.
+14:51:47 | INFO    | thesis_gnn_rul_xai.training.run | Saved the training history to D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\reports\fd001_physics_row_cap_2seed_varsplit_lstm32_trainbcb301_cfg72f506_f386291-dirty_20260914T125147Z\seed_42
+14:51:47 | INFO    | thesis_gnn_rul_xai.training.run | Saved the training history to D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\reports\fd001_physics_row_cap_2seed_varsplit_lstm32_trainbcb301_cfg72f506_f386291-dirty_20260914T125147Z\seed_43
+
+Saved to D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\reports\fd001_physics_row_cap_2seed_varsplit_lstm32_trainbcb301_cfg72f506_f386291-dirty_20260914T125147Z

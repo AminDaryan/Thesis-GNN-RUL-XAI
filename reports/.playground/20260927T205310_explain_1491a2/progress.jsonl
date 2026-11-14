@@ -1,0 +1,3 @@
+{"event": "start", "windows": 240, "method": "walks", "scope": "engine"}
+{"event": "window", "done": 240, "total": 240, "seconds": 0.27236269996501505}
+{"event": "done", "directory": "walks_engine_unit5_seed42_70521f9-dirty_20260927T205316Z", "run": "fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z"}

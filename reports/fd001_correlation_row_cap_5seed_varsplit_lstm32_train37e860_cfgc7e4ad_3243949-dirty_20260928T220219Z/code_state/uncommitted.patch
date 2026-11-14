@@ -1,0 +1,830 @@
+diff --git a/src/thesis_gnn_rul_xai/data/windowing/README.md b/src/thesis_gnn_rul_xai/data/windowing/README.md
+index 5883fef..c946ca1 100644
+--- a/src/thesis_gnn_rul_xai/data/windowing/README.md
++++ b/src/thesis_gnn_rul_xai/data/windowing/README.md
+@@ -490,9 +490,26 @@ WindowedDataset(examples=100, shape=(100, 14, 30), engines=100, target_range=(7,
+ 
+ **Why exactly one window per test engine.** The official label file describes
+ **one moment** per engine: how much life remained at that engine's last recorded
+-flight. There is no ground truth for any earlier moment, so scoring anything
+-else would be scoring against a number nobody supplied. On FD001 that is 100
+-predictions, one per engine.
++flight. This project evaluates one prediction at that moment, using the window
++ending there. On FD001 that is 100 predictions, one per engine. Earlier targets
++can also be calculated by adding the number of cycles before that last flight;
++scoring every earlier window would measure a different set of predictions and
++give engines with longer histories more weight.
++
++**What the paper establishes.** Table 5 lists 100 testing samples and 100 test
++engines for FD001. Equation 22 defines its average over test engines. Equation
++7 takes the readings in a window ending at the prediction time, and Table 6
++sets the window length to 30. Together with Section 3.2.1's description of test
++histories stopping before failure, these support using the last available
++window for each test engine. The paper does not explicitly state the test
++window extraction procedure. Matching this code's final-window procedure to
++the authors' implementation is therefore an inference, not a verified detail.
++
++**Correction, 2026-09-28:** this paragraph previously claimed that earlier
++test targets were unavailable. The loading code already derives them from the
++final target and the cycles elapsed. The reason for evaluating only the last
++window is the chosen evaluation procedure, not an inability to calculate
++earlier targets.
+ 
+ ---
+ 
+diff --git a/src/thesis_gnn_rul_xai/docsite/README.md b/src/thesis_gnn_rul_xai/docsite/README.md
+index 8cab845..45a40c4 100644
+--- a/src/thesis_gnn_rul_xai/docsite/README.md
++++ b/src/thesis_gnn_rul_xai/docsite/README.md
+@@ -9,6 +9,18 @@ one page per folder of the code, the assumptions log, the audits and reviews.
+ It runs on your own machine, reads the files from disk as you ask for them,
+ and publishes nothing.
+ 
++On desktop, the header and any server-status notice occupy the top of one
++screen-sized frame. The navigation, article and contents list share the height
++left below them and scroll independently. Design a run keeps its existing
++two scrollable panels instead of adding another scroll around them. Long
++articles remain fully readable; the browser page itself does not grow taller
++than the screen. Below the desktop breakpoint, ordinary page scrolling remains.
++Changing documents resets the article's scroll, and section links scroll that
++article rather than moving the surrounding frame.
++Screen-reader table captions are positioned inside their table wrappers.
++Previously those visually hidden, absolutely positioned captions could still
++extend the page beyond a panel's visible bottom and create a stray scrollbar.
++
+ Start it with:
+ 
+ ```bash
+@@ -225,6 +237,19 @@ from the notebook it describes the way a hand-drawn diagram would.
+ shapes off it. Without PyTorch it says so, and nothing else on the site is
+ affected.
+ 
++`architecture-overview` uses the same default model for the Architecture and
++training page. Each raised grid has one row per sensor and one column per
++number that sensor carries; the shallow edge is a drawing convention. The
++grid widths, output sizes and counts of learned numbers come from the model.
++Flattening turns the final grid into one list: 14 rows of 32 numbers become
++448 entries. The circles after that list stand for computed numbers in the
++fully connected layers, where every output uses every input. Only some list
++entries, circles and lines are drawn, with the full sizes written beneath.
++The example in `tests/test_examples_torch.py` checks these labels against a
++real FD001 window passed through the default model. On narrow screens the
++drawing scrolls horizontally and can receive keyboard focus. The original
++`architecture` figure remains available to its other callers.
++
+ Two of the figures move. `message-passing` fills the nodes in waves, one wave
+ per layer, and `windowing` slides a box along an engine's history. Both are
+ animated with SVG's own timing tags rather than with JavaScript, so they work
+@@ -632,24 +657,21 @@ networks have the same parts and learned numbers of their own. The author
+ asked for the drill-down on 2026-09-26.
+ 
+ Every arrow carries what passes along it. **Preprocessing names the quantities
+-in words:** `20,631 rows · 27 columns`, then "Same rows · sensor readings
+-smoothed", for example. A row means one engine at one flight cycle. The table
+-at the entrance shows the first three actual records, with engine number,
+-cycle, one sensor and remaining life. "What are the 27 columns?" opens their
+-breakdown: engine number, cycle, three operating settings, 21 sensor readings
+-and one remaining-life label. The selected 14 sensors become model inputs
+-when windows are made; the other columns remain in the working table. Adding
+-the operating condition gives it one more column. The separate test file is
+-named at the entrance and stays separate for scoring.
++in words:** rows, columns, sensors and cycles. A row means one engine at one
++flight cycle. Boxes name the operation and its selected setting; the arrows
++carry the sizes. The selected sensors become model inputs when windows are
++made; the identifiers and answers remain in the working table. The separate
++test file is named at the entrance and stays separate for scoring.
+ 
+ **Correction, 2026-09-27:** the earlier arrows repeated `(20 631, 27)` with no
+ explanation of either number. The author could not tell what the first meant.
+ The counts were correct, but the diagram assumed the knowledge it needed to
+-teach. The replacement follows a real reading through the changes and draws
+-overlapping windows with labelled cycle ranges. The engine split and final
+-window groups each show their counts with their purpose; no unexplained
+-`B` is needed at the exit, which names the chosen batch size and says that a
+-batch is a group of inputs processed together.
++teach. An initial replacement put real-row calculations in every box. That
++made the flow hard to follow, so on 2026-09-28 the examples were moved out of
++the diagram. The calculation details belong on **Follow one real example**.
++The engine split and final window groups still show their counts with their
++purpose; no unexplained `B` is needed at the exit, which names the chosen batch
++size and says that a batch is a group of inputs processed together.
+ 
+ For FD001's default settings and seed 42, engine 1 at cycle 2 starts with
+ sensor T24 at 642.15 and 190 cycles left. Capping changes the answer to 125;
+@@ -657,9 +679,10 @@ smoothing changes the reading to `0.5 × 642.15 + 0.5 × 641.82 = 641.985`,
+ using the first cycle's reading, 641.82. Rescaling gives −1.6039, displayed
+ rounded to four decimal places. These are different changes to different
+ columns. Its first windows span cycles 1–30, 2–31 and 3–32, with the remaining
+-life at each final cycle as their answer. The diagrams use actual window
+-endpoints and targets returned by the pipeline; changing the length or spacing
+-changes the example. The worked example can be checked with:
++life at each final cycle as their answer. The actual window endpoints and
++targets returned by the pipeline remain available in its response
++for checks; changing the length or spacing changes those examples. The worked
++example can be checked with:
+ 
+ ```bash
+ python -m pytest tests/test_examples.py -k preprocessing -v
+@@ -667,10 +690,11 @@ python -m pytest tests/test_examples.py -k preprocessing -v
+ 
+ The file rows, split counts, changed readings and window ranges are read or
+ computed afresh for the selected settings, never supplied as invented sample
+-data. Missing files leave the examples absent. The window display and the
+-groups wrap within the pipeline column. Other flowcharts retain the array
+-notation described below. A row of steps side by side names what the row hands
+-on, the Data flowchart's three files "3 tables".
++data. Missing files leave the examples absent. The diagrams use concise labels;
++the full examples are kept for the dedicated explanation page and checks.
++The Data flowchart shows training and test readings. The test-answer file
++remains in the file details table, where its use in checking predictions is
++explained, rather than adding an evaluation branch to the preparation flow.
+ 
+ The shape of what a step hands on, the size of the table of numbers passed to
+ the next step, is written on the arrow under the step, and so reads as the next
+@@ -772,6 +796,14 @@ number field. When a new answer replaces a flowchart's steps, the focus stays
+ with the button it was on, or moves to the one that took its place: after the
+ sensor graph's cross, to the + that puts it back.
+ 
++The detail heading is centred across the whole panel, independently of the
++back button at its upper left. The opening Preprocessing table names its
++source file and says **uncapped life left**: it comes before the ceiling is
++applied. For FD001 training engine 1 at cycle 1, that is 192 − 1 = 191 cycles;
++the next step turns that label into 125 with the default ceiling. Sensor
++readings are not capped by this operation. The worked-example test checks
++both states against the file and also checks a changed ceiling.
++
+ The words were written from an account of each stage read out of the code and
+ then checked against it by a second reader, not from the paper: where the code
+ and the paper's figures differ, the flowchart follows the code. Tests hold the
+@@ -1223,13 +1255,15 @@ same cutaway and variable-location catalogue as Explain predictions. It shows
+ no invented explanation values. Selecting a marker identifies the component
+ and explains the measurement; Enter and Space provide the same action.
+ 
+-### Worked examples behind the help cards
++### Help cards and the separate worked example
+ 
+ Settings and matching diagram steps use the same `sectionHelp` function.
+ Clicking a section heading opens its diagram operation; clicking that operation
+-returns to the matching setting. Data and preprocessing cards carry real file
+-examples. Every help card also links to `docs/learn/08_worked_examples.md` for
+-the longer input, calculation and output sequence.
++returns to the matching setting. Help cards explain the operation once, cite
++its source and link to the relevant reading. They do not repeat the diagram
++as an input, operation and output table. The longer calculation sequence lives
++at `docs/learn/08_worked_examples.md`, reached through **Follow one real
++example** in the menu.
+ 
+ `worked_example.py` recomputes one training-engine window through one saved
+ network. Its displayed run name identifies the producing commit and timestamp;
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/app.css b/src/thesis_gnn_rul_xai/docsite/assets/app.css
+index a0128fc..bd09acd 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/app.css
++++ b/src/thesis_gnn_rul_xai/docsite/assets/app.css
+@@ -536,6 +536,10 @@ html.no-math .math-display { padding: 8px 12px; text-align: left; }
+   border-radius: var(--radius); padding: 12px 12px 4px;
+ }
+ .figure-svg { display: block; width: 100%; height: auto; font-family: var(--sans); }
++.architecture-overview-scroll { overflow-x: auto; padding: 4px 0 8px; }
++.architecture-overview-scroll:focus-visible { outline: 2px solid var(--fig-accent); outline-offset: 3px; }
++.prose .architecture-overview-scroll .figure-svg { min-width: 820px; }
++.prose .architecture-overview-caption { max-width: 90ch; margin: 8px 14px 6px; font: 13px/1.6 var(--sans); color: var(--ink-soft); }
+ /* A figure never shrinks below a width its words can be read at, 820
+    pixels: wherever its box is narrower, on a phone or a tablet, the box
+    scrolls sideways. Shrunk to a phone's screen its labels fell to 2 to 7
+@@ -839,6 +843,18 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
+    and their contents scrolling independently. */
+ .pg-panel { container: pg-panel / inline-size; }
+ .content:has(.pg-design) { height: calc(100dvh - var(--topbar-h)); min-height: 440px; padding-bottom: 16px; }
++/* Desktop uses one screen-sized frame. Long material scrolls inside its
++   content panel; a notice above the layout takes space away from that panel. */
++@media (min-width: 1200px) {
++  html { height: 100%; overflow: hidden; scrollbar-gutter: auto; }
++  body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
++  .topbar, .stale { flex-shrink: 0; }
++  .layout { flex: 1 1 0; min-height: 0; align-items: stretch; overflow: hidden; }
++  .sidebar, .toc { position: static; height: auto; min-height: 0; }
++  .content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
++  .content:has(.pg-design) { height: auto; min-height: 0; overflow: hidden; }
++  .prose :is(h1, h2, h3, h4), .notebook-frame :is(h1, h2, h3, h4) { scroll-margin-top: 16px; }
++}
+ .pg:has(.pg-design) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+ .pg:has(.pg-design) > .pg-steps, .pg:has(.pg-design) > .pg-current { flex-shrink: 0; }
+ .pg-panel:has(.pg-design) { flex: 1 1 0; min-height: 0; }
+@@ -872,7 +888,7 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
+   /* The overview's boxes stand in the middle of the column's height, and
+      the heading over them starts where they start. */
+   .pg-design > .pg-pipeline .pg-flow { min-height: 100%; justify-content: center; }
+-  .pg-design > .pg-pipeline > .pg-pipeline-head { width: min(100%, var(--flow-w)); margin-inline: auto; }
++  .pg-design > .pg-pipeline > .pg-pipeline-head:not(.pg-zoom-head) { width: min(100%, var(--flow-w)); margin-inline: auto; }
+ }
+ .pg-run .loading { padding: 0; font-size: 13px; }
+ .pg-run { display: grid; gap: 12px; padding: 12px 16px 16px; margin-top: 12px; border-radius: var(--radius); background: var(--panel); }
+@@ -998,10 +1014,10 @@ select.field { padding-right: 32px; appearance: none; -webkit-appearance: none;
+    learns; what it does and where it comes from are behind its i. What a
+    step hands on is written on the arrow under it, so it reads as the next
+    step's input: in, what is done, out, with every shape written once. */
+-.pg-zoom-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+-.pg-zoom-back { margin-left: -8px; }
++.pg-zoom-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; margin-bottom: 12px; }
++.pg-zoom-back { justify-self: start; max-width: 100%; margin-left: -8px; }
+ .pg-zoom-back svg { width: 12px; height: 12px; }
+-.pg-zoom-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 700; line-height: 20px; }
++.pg-zoom-title { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; min-width: 0; text-align: center; overflow-wrap: anywhere; font-size: 16px; font-weight: 700; line-height: 20px; }
+ .pg-zoom-icon { color: var(--ink-soft); }
+ .pg-vflow { list-style: none; margin: 0; padding: 0; }
+ .pg-vitem { display: flex; flex-direction: column; align-items: center; }
+@@ -1128,7 +1144,7 @@ button.pg-vstep-value:hover { text-decoration: underline; }
+   --accent: var(--ink-soft); --accent-soft: var(--panel-2); --warn: var(--ink-soft); --warn-soft: var(--panel-2);
+   --fig-lpc: var(--ink-soft); cursor: progress;
+ }
+-.pg-zoom-updating { font-size: 12px; color: var(--ink-soft); }
++.pg-zoom-updating { justify-self: end; font-size: 12px; color: var(--ink-soft); }
+ .pg-zoom-updating:empty { display: none; }
+ .pg-zoom-note { margin: 0 0 16px; padding: 8px 12px; border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+ 
+@@ -1329,7 +1345,8 @@ button.pg-vstep-value:hover { text-decoration: underline; }
+ .pg-data-sensors { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+ .pg-data-sensors-head { display: flex; justify-content: space-between; gap: 16px; }
+ .pg-data-rows { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+-.pg-data-table-wrap { margin-top: 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
++.pg-data-table-wrap { position: relative; margin-top: 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
++.pg-data-table caption.visually-hidden { top: 0; left: 0; }
+ .pg-data-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; line-height: 1.4; }
+ .pg-data-table th, .pg-data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+ .pg-data-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); color: var(--ink-soft); font-size: 11px; font-weight: 600; }
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/app.js b/src/thesis_gnn_rul_xai/docsite/assets/app.js
+index 4f97d88..91b013c 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/app.js
++++ b/src/thesis_gnn_rul_xai/docsite/assets/app.js
+@@ -420,6 +420,8 @@
+   }
+ 
+   var spyObserver = null;
++  var desktopFrame = window.matchMedia("(min-width: 1200px)");
++  desktopFrame.addEventListener("change", spyOnScroll);
+   function spyOnScroll() {
+     if (spyObserver) { spyObserver.disconnect(); }
+     var links = {};
+@@ -443,7 +445,8 @@
+           }
+         }
+       });
+-    }, { rootMargin: "-70px 0px -75% 0px", threshold: 0 });
++    }, { root: desktopFrame.matches ? content : null,
++      rootMargin: desktopFrame.matches ? "-16px 0px -75% 0px" : "-70px 0px -75% 0px", threshold: 0 });
+     Object.keys(links).forEach(function (anchor) {
+       var target = document.getElementById(anchor);
+       if (target) { spyObserver.observe(target); }
+@@ -599,6 +602,7 @@
+     // aimed where the heading stood when it began, and the figures and
+     // formulas that arrive meanwhile move it down by hundreds of pixels.
+     window.scrollTo({ top: 0, behavior: "instant" });
++    content.scrollTo({ top: 0, behavior: "instant" });
+     tocPanel.innerHTML = "";
+     closeDrawer();
+     setTitle(menuName(path));
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/playground.js b/src/thesis_gnn_rul_xai/docsite/assets/playground.js
+index 2672759..eefad51 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/playground.js
++++ b/src/thesis_gnn_rul_xai/docsite/assets/playground.js
+@@ -303,7 +303,7 @@
+       return '<span class="pg-info-line">' + (m ? "<strong>" + esc(m[1]) + ":</strong> " + esc(m[2]) : esc(line)) +
+         "</span>";
+     }).join("") : "";
+-    return lines + '<span class="pg-info-example"><strong>Input → operation → output</strong><a href="#/doc/docs/learn/08_worked_examples.md" target="_blank" rel="noopener">Follow a real dataset row and a saved model’s calculations</a></span>' +
++    return lines +
+       (source ? '<span class="pg-info-source">' + source + "</span>" : "") +
+       (more ? '<span class="pg-info-more"><a href="' + esc(more) + '" target="_blank" rel="noopener">Read more' +
+         NEXT + "</a></span>" : "");
+@@ -1593,25 +1593,10 @@
+   function sectionHelp(section) {
+     if (section.procedure) { return infoCard(S.options.procedure_about, "", S.options.procedure_more); }
+     var keys = section.toggle ? [section.toggle] : section.fields || [];
+-    var help = keys.length === 1 ? hintFor(S.fields[keys[0]]) : infoCard(
++    return keys.length === 1 ? hintFor(S.fields[keys[0]]) : infoCard(
+       keys.map(function (key) { return S.fields[key].about; }).filter(Boolean).join("\n"),
+       keys.map(function (key) { return sourceNote(S.fields[key].source); }).filter(Boolean).join(" "),
+       keys.length ? S.fields[keys[0]].more : "");
+-    var step = S.zoomed && S.zoomed.stage === S.zoom && (S.zoomed.steps || []).filter(function (item) {
+-      return sectionForStep(item) === section;
+-    })[0];
+-    return help + (step ? helpExample(step) : "");
+-  }
+-
+-  function helpExample(step) {
+-    var ex = step.example;
+-    if (!ex) { return ""; }
+-    var context = ex.context ? '<span>' + esc(ex.context) + '</span>' : '';
+-    if (ex.kind === "change") {
+-      return '<span class="pg-info-example">' + context + '<span><strong>Input:</strong> ' + esc(ex.before) +
+-        '</span><span><strong>Operation:</strong> ' + esc(ex.note || step.name) + '</span><span><strong>Output:</strong> ' + esc(ex.after) + '</span></span>';
+-    }
+-    return '<span class="pg-info-example">' + context + '<span>See the worked input and output directly below this step.</span></span>';
+   }
+ 
+   function sectionForStep(step) {
+@@ -1896,7 +1881,7 @@
+       if (item.lanes) {
+         return '<div class="pg-vlanes">' + item.lanes.map(function (lane) {
+           return '<section class="pg-vlane"><h4>' + esc(lane.name) + '</h4>' +
+-            vflowHtml(lane.steps) + '</section>';
++            vflowHtml(lane.steps) + (lane.shape ? arrowHtml(lane.shape) : "") + '</section>';
+         }).join("") + '</div>';
+       }
+       return '<div class="pg-vgroup">' + item.steps.map(function (s) { return vstepHtml(s, true); }).join("") + "</div>";
+@@ -1928,7 +1913,7 @@
+     var values = (step.parts || []).filter(function (part) { return part.text; }).map(valueHtml).join(
+       '<span class="pg-vstep-dot" aria-hidden="true"> · </span>');
+     var section = sectionForStep(step), operation = section && sectionName(section);
+-    var words = section ? sectionHelp(section) : infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more) + helpExample(step);
++    var words = section ? sectionHelp(section) : infoCard(step.does, step.source ? sourceTag(step.source) : "", step.more);
+     var row = section && (section.toggle || section.fields[0]);
+     var destination = row ? ' data-goto="' + S.fields[row].group + '" data-goto-row="' + row + '"' : '';
+     var part = partControl(step);
+@@ -1944,40 +1929,9 @@
+       (small && step.shape ? '<code class="pg-vshape">' + esc(step.shape) + "</code>" : "") + part + "</div>";
+   }
+ 
+-  // Real file rows and operations, with the quantities named at the point they are used.
++  // Keep the flow readable; full explanations belong in the step's help card.
+   function storyHtml(step) {
+-    var ex = step.example, content = "";
+-    if (ex && ex.kind === "rows") {
+-      content = '<table class="pg-example-table"><caption>First ' + ex.rows.length +
+-        ' rows · 4 columns shown</caption><thead><tr><th scope="col">Engine</th><th scope="col">Cycle</th>' +
+-        '<th scope="col">Sensor T24</th><th scope="col">Life left<br>(cycles)</th></tr></thead><tbody>' +
+-        ex.rows.map(function (r) { return '<tr><td>' + esc(r.engine) + '</td><td>' + esc(r.cycle) +
+-          '</td><td>' + esc(r.reading) + '</td><td>' + esc(r.life) + '</td></tr>'; }).join("") + "</tbody></table>";
+-    } else if (ex && ex.kind === "change") {
+-      content = '<div class="pg-example-change"><span>' + esc(ex.label) + '</span><span class="pg-example-values">' +
+-        esc(ex.before) + '<span aria-label="becomes"> → </span><strong>' + esc(ex.after) + "</strong></span>" +
+-        (ex.note ? '<span class="pg-example-note">' + esc(ex.note) + "</span>" : "") + "</div>";
+-    } else if (ex && ex.kind === "groups") {
+-      content = '<div class="pg-example-groups">' + ex.items.map(function (item) {
+-        return '<div><span>' + esc(item.name) + '</span><strong>' + esc(item.value) +
+-          '</strong><span>' + esc(item.detail) + "</span></div>";
+-      }).join("") + "</div>";
+-    } else if (ex && ex.kind === "windows") {
+-      var start = ex.windows[0].start, end = ex.windows[ex.windows.length - 1].end, length = end - start + 1;
+-      content = '<div class="pg-example-windows"><span>Engine ' + esc(ex.engine) +
+-        ' · first ' + ex.windows.length + (ex.windows.length === 1 ? ' window' : ' windows') +
+-        '</span><div class="pg-window-axis"><span>Cycle ' +
+-        esc(start) + '</span><span>Cycle ' + esc(end) + '</span></div>' + ex.windows.map(function (w) {
+-          return '<div class="pg-window-track" aria-hidden="true"><span style="margin-left:' + (100 * (w.start - start) / length) +
+-            '%;width:' + (100 * (w.end - w.start + 1) / length) + '%"></span></div>' +
+-            '<span class="pg-window-answer">Cycles ' + esc(w.start) + '–' + esc(w.end) +
+-            ' → ' + esc(w.life) + " cycles left</span>";
+-        }).join("") + "</div>";
+-    }
+-    return (step.summary ? '<p class="pg-story-summary">' + esc(step.summary) + "</p>" : "") + content +
+-      (step.columns ? '<details class="pg-column-key"><summary>What are the 27 columns?</summary><p>' +
+-        esc(step.columns) + "</p></details>" : "") +
+-      (step.aside ? '<p class="pg-story-aside">' + esc(step.aside) + "</p>" : "");
++    return step.summary ? '<p class="pg-story-summary">' + esc(step.summary) + "</p>" : "";
+   }
+ 
+   // The recurrent networks, one per sensor, each a button that opens it; or
+diff --git a/src/thesis_gnn_rul_xai/docsite/figures.py b/src/thesis_gnn_rul_xai/docsite/figures.py
+index 7f0bbaf..8813c90 100644
+--- a/src/thesis_gnn_rul_xai/docsite/figures.py
++++ b/src/thesis_gnn_rul_xai/docsite/figures.py
+@@ -637,6 +637,125 @@ def draw_architecture() -> str:
+     )
+ 
+ 
++def _architecture_block(x: float, y: float, columns: int, rows: int, colour: str) -> str:
++    """Draw a sensor-by-feature grid with a shallow raised edge."""
++    width, height, depth = max(26, columns * 1.65), rows * 15, 17
++    out = (
++        f'<path d="M{x} {y} l{depth} {-depth} h{width} l{-depth} {depth} Z" '
++        f'fill="{colour}" fill-opacity="0.45" stroke="{colour}" stroke-width="0.8"/>'
++        f'<path d="M{x + width} {y} l{depth} {-depth} v{height} l{-depth} {depth} Z" '
++        f'fill="{colour}" fill-opacity="0.85" stroke="{colour}" stroke-width="0.8"/>'
++        f'<rect x="{x}" y="{y}" width="{width}" height="{height}" '
++        f'fill="{colour}" fill-opacity="0.64" stroke="{colour}"/>'
++    )
++    for row in range(1, rows):
++        out += (f'<path d="M{x} {y + row * 15} h{width}" '
++                'stroke="var(--fig-bg)" stroke-opacity="0.5" stroke-width="0.8"/>')
++    for column in range(1, columns):
++        out += (f'<path d="M{x + width * column / columns} {y} v{height}" '
++                'stroke="var(--fig-bg)" stroke-opacity="0.3" stroke-width="0.55"/>')
++    return out
++
++
++def draw_architecture_overview() -> str:
++    """Illustrate the default model with sensor grids and connected output units."""
++    from ..config import PreprocessingConfig
++    from ..models.estgnn import ESTGNN
++
++    matrix, _ = build_physics_adjacency()
++    model = ESTGNN(normalize_adjacency(matrix, method="row"),
++                   window_size=PreprocessingConfig().window_size)
++    summary = model.layer_summary()
++    rows = [{**summary[1], "parameters": summary[0]["parameters"]}, *summary[2:]]
++    blue, rose, purple, gold, green = "#6f9fc7", "#d69ba8", "#b294d2", "#d6b74f", "#99b66a"
++    centres = [70, 220, 373, 526, 680, 842, 979]
++    defs = ('<title id="architecture-overview-title">From sensor readings to remaining life</title>'
++            '<desc id="architecture-overview-desc">The default network without LSTM. '
++            'Each grid has one row per sensor. Its columns show the numbers carried by each sensor. '
++            'After three graph layers, the grid becomes one list, then fully connected layers '
++            'produce one prediction. Only some list entries, units and connections are drawn.</desc>'
++            '<defs><marker id="architecture-overview-arrow" viewBox="0 0 10 10" refX="9" refY="5" '
++            'markerWidth="5" markerHeight="5" orient="auto">'
++            '<path d="M0 0 L10 5 L0 10 Z" fill="var(--fig-axis)"/></marker></defs>')
++    out = (_open(1120, 548, defs)
++           .replace('role="img"', 'role="img" aria-labelledby="architecture-overview-title architecture-overview-desc"'))
++    for left, right, label, colour in [(12, 140, "Input", blue),
++                                       (150, 935, "Hidden layers", gold),
++                                       (945, 1110, "Output", green)]:
++        points = f"{left},20 {right - 19},20 {right},42 {right - 19},64 {left},64 {left + 19},42"
++        out += (f'<polygon points="{points}" fill="{colour}" fill-opacity="0.24"/>'
++                + _text((left + right) / 2 + 5, 48, label, size=20, weight="600"))
++
++    titles = ["Sensor input", "Graph layer 1", "Graph layer 2", "Graph layer 3",
++              "Flatten", "Fully connected", "Final layer"]
++    subtitles = ["Last reading", "", "", "", "One list", "Combine inputs", "One score"]
++    widths = [model.in_features, *(layer.out_features for layer in model.graph_layers)]
++    for index, (row, centre, title, subtitle) in enumerate(zip(rows, centres, titles, subtitles, strict=True)):
++        count = int(row["parameters"])
++        shape = str(row["out"]).replace("B, ", "")
++        colour = [blue, rose, rose, rose, purple, gold, green][index]
++        out += (f'<g data-architecture-layer="{html.escape(str(row["layer"]))}" '
++                f'data-parameters="{count}" data-shape="{html.escape(shape)}">'
++                + _text(centre, 107, title, size=18, weight="600")
++                + _text(centre, 132, subtitle, size=14, opacity=0.75))
++        if index < 4:
++            width = max(26, widths[index] * 1.65)
++            out += _architecture_block(centre - width / 2 - 8.5, 190,
++                                       widths[index], model.n_nodes, colour)
++            if index < 3:
++                start = centre + width / 2 + 15
++                end = centres[index + 1] - max(26, widths[index + 1] * 1.65) / 2 - 25
++                out += (f'<path d="M{start} 295 H{end}" stroke="var(--fig-axis)" '
++                        'stroke-width="1.8" fill="none" marker-end="url(#architecture-overview-arrow)"/>')
++            dimensions = f"{model.n_nodes} \u00d7 {widths[index]}"
++            meaning = ""
++        elif index == 4:
++            for offset, y in enumerate([181, 209, 237, 265, 321, 349, 377]):
++                out += (f'<rect x="{centre - 13}" y="{y}" width="26" height="22" rx="3" '
++                        f'fill="{purple}" fill-opacity="{0.55 + (offset % 2) * 0.15}"/>')
++            out += _text(centre, 310, "⋮", size=24, fill=purple)
++            for start_y, end_y in [(206, 193), (295, 276), (384, 388)]:
++                out += (f'<path d="M{centres[3] + 46} {start_y} L{centre - 25} {end_y}" '
++                        f'stroke="{rose}" stroke-width="2" fill="none" '
++                        'marker-end="url(#architecture-overview-arrow)"/>')
++            dimensions, meaning = str(model.flattened_size), "numbers"
++        elif index == 5:
++            for source_y in [192, 248, 360, 388]:
++                for dest_y in [185, 229, 273, 329, 373, 417]:
++                    out += (f'<path d="M{centres[4] + 14} {source_y} L{centre - 16} {dest_y}" '
++                            f'stroke="{purple}" stroke-opacity="0.34" stroke-width="1"/>')
++            for y in [185, 229, 273, 329, 373, 417]:
++                out += (f'<path d="M{centre + 16} {y} L{centres[6] - 23} 300" '
++                        f'stroke="{gold}" stroke-width="1.4" stroke-opacity="0.8"/>'
++                        f'<circle cx="{centre}" cy="{y}" r="16" fill="{gold}" '
++                        'fill-opacity="0.6"/>')
++            out += _text(centre, 309, "⋮", size=24, fill=gold)
++            dimensions, meaning = str(model.fc1.out_features), "numbers"
++        else:
++            out += (f'<circle cx="{centre}" cy="300" r="24" fill="{green}" fill-opacity="0.7"/>'
++                    f'<path d="M{centre + 29} 300 H1042" stroke="var(--fig-axis)" '
++                    'stroke-width="1.8" marker-end="url(#architecture-overview-arrow)"/>'
++                    + _text(1067, 247, "Remaining", size=15, weight="600")
++                    + _text(1067, 268, "life", size=15, weight="600")
++                    + _text(1067, 306, "RUL", size=19, weight="600", fill="var(--fig-ink)")
++                    + _text(1067, 335, "in cycles", size=14)
++                    + _text(centre, 369, "Sigmoid → 0 to 1", size=14)
++                    + _text(centre, 392, f"then \u00d7 {model.rul_max}", size=14))
++            dimensions, meaning = str(model.fc2.out_features), "fraction"
++        out += (_text(centre, 456, dimensions, size=23, weight="600")
++                + _text(centre, 478, meaning, size=15, opacity=0.75)
++                + _text(centre, 507, f'{count:,}'.replace(',', ' ') + " learned", size=16, weight="600")
++                + '</g>')
++
++    out += (_text(20, 535, "Default model: last reading per sensor (w/o LSTM).",
++                  size=14, anchor="start", opacity=0.8) + '</svg>')
++    return ('<div class="architecture-overview-scroll" tabindex="0" role="region" '
++            'aria-label="Network architecture; scroll horizontally on a narrow screen">' + out + '</div>'
++            '<p class="architecture-overview-caption">Grid rows are sensors; columns are the numbers each sensor carries. '
++            'Only some entries and connections are shown after flattening. '
++            '“Learned” counts the weights and added constants adjusted during training.</p>')
++
++
+ def draw_shapley() -> str:
+     """What a Shapley value averages over, drawn for a three-player example."""
+     players = ("A", "B", "C")
+@@ -1385,6 +1504,7 @@ FIGURES: tuple[Figure, ...] = (
+     Figure("message-passing", draw_message_passing),
+     Figure("reach", draw_reach),
+     Figure("architecture", draw_architecture, needs_torch=True),
++    Figure("architecture-overview", draw_architecture_overview, needs_torch=True),
+     Figure("lstm-cell", draw_lstm_cell),
+     Figure("shapley", draw_shapley),
+ )
+diff --git a/src/thesis_gnn_rul_xai/docsite/playground.py b/src/thesis_gnn_rul_xai/docsite/playground.py
+index 22490e2..6a9eb7d 100644
+--- a/src/thesis_gnn_rul_xai/docsite/playground.py
++++ b/src/thesis_gnn_rul_xai/docsite/playground.py
+@@ -1119,81 +1119,51 @@ def _data_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
+     tag, _ = _decided("subset", subset)
+     training = _step(
+         "Training engines",
+-        "This text file contains one row per simulated engine per operating cycle: an engine number, "
+-        "cycle number, three operating settings and 21 sensor readings. An engine's history means all its "
+-        "rows in cycle order. The training file follows each engine to the dataset's failure endpoint, "
+-        "so its final cycle is known. The next step uses that endpoint to calculate the life left at "
+-        "each earlier row. Some whole engines may be reserved for checking training progress.",
++        "Each row contains one engine's readings at one cycle, together with its engine number and operating "
++        "settings. Each engine is followed to its final recorded cycle, so its remaining life can be calculated. "
++        "Whole engines may be set aside to check training progress.",
+         parts=[(f"train_{subset}.txt", None)], shape=raw[0]["shape"], picture="file", source=tag,
+-        outputs=[raw[0]])
++        outputs=[raw[0]], summary="Readings continue until each engine's final cycle.")
+     test = _step(
+         "Test engines",
+-        "This file has the same columns as the training file but contains different engines. For each "
+-        "engine, recording stops while it still has some life left; the last row is not its failure endpoint. "
+-        "After training, the model receives the final complete sequence of sensor readings (a window) "
+-        "from each engine and predicts its remaining cycles. Its engine numbers identify engines within "
+-        "this test file, not the engines with the same numbers in the training file.",
++        "These are different engines from those in the training file. Recording stops before failure. "
++        "The model predicts life left from each engine's last complete window, a sequence of consecutive "
++        "readings. A separate answer file checks those predictions after training; its values are never sensor inputs.",
+         parts=[(f"test_{subset}.txt", None)], shape=raw[1]["shape"], picture="file", source=tag,
+-        outputs=[raw[1]])
+-    answers = _step(
+-        "Test answers",
+-        "One remaining-life answer for each test engine at its last recorded cycle. The answer on line 1 "
+-        "belongs to test engine 1. These values are attached as labels during preparation and used for scoring "
+-        "after training; they never become sensor inputs.",
+-        parts=[(f"RUL_{subset}.txt", None)], picture="file",
+-        outputs=[{"label": "Answers", "shape": f"({_count(facts['labels']) if facts else 'engines'},)",
+-                  "axes": "test-engine answers"}])
++        outputs=[raw[1]], summary="Readings stop before the engine fails.")
+     train_labels = _step(
+         "Calculate training labels",
+-        "For each row, find the last cycle recorded for that same training engine and subtract the row's "
+-        "cycle. This counts how many cycles remain until the known endpoint. Store the result in a new "
+-        "column called the label: the answer used to teach or check a prediction. These labels are not "
+-        "sensor inputs. They are still uncapped here; preprocessing applies the selected ceiling.",
+-        picture="life", outputs=[labelled[0]])
+-    test_labels = _step(
+-        "Attach test labels",
+-        "For each test row, take the engine's last recorded cycle minus this row's cycle, then add that "
+-        "engine's remaining life from the answer file. The labels are carried separately from model inputs.",
+-        picture="life", outputs=[labelled[1]])
++        "For each row, subtract its cycle from the same engine's final recorded cycle. The result is its "
++        "label: the known remaining life used to teach the model. Preprocessing then limits these answers "
++        "to the selected ceiling. They never become sensor inputs.",
++        picture="life", outputs=[labelled[0]], summary="Subtract the current cycle from the engine's final cycle.")
+     selection = _step(
+         "Select 14 sensor columns for model inputs",
+-        "Only the selected sensor columns become inputs when the pipeline makes windows. Engine number, "
+-        "cycle, operating settings and remaining-life labels stay in the working table. Selection records "
+-        "which columns to use; it does not shrink this table.",
++        "Choose which sensor readings the model receives. Engine number, cycle, operating settings and "
++        "remaining-life answers stay available for preparing the data, but do not become sensor inputs.",
+         picture="select", source=_cite("Table 3"), outputs=labelled,
+-        summary="Both tables keep their 27 columns. Only the selected sensor readings enter the model.")
++        summary="The selected sensors supply the model's readings.")
+     if facts:
+         ex = facts["label_example"]
+         for step, kind, engine in ((training, "train", ex["train_unit"]), (test, "test", ex["test_unit"])):
+             step["example"] = {"kind": "change", "before": f"{kind}_{subset}.txt",
+                                "note": "Read whitespace-separated numbers into named columns; keep rows in engine/cycle order.",
+                                "after": f"Engine {engine}, cycle 1: engine + cycle + 3 settings + 21 sensor values (26 columns)."}
+-        answers["example"] = {"kind": "change", "before": f"Line 1 of RUL_{subset}.txt: {ex['test_answer']:g}",
+-                              "note": "Match line number 1 to test engine 1.",
+-                              "after": f"{ex['test_answer']:g} cycles left at recorded cycle {ex['test_last']}."}
+         train_labels["example"] = {"kind": "change", "before": f"Engine {ex['train_unit']}, cycle 1; final cycle {ex['train_last']}",
+                                    "note": f"{ex['train_last']} - 1", "after": f"{ex['train_last'] - 1} raw cycles left"}
+-        test_labels["example"] = {"kind": "change", "before": f"Test engine {ex['test_unit']}, cycle 1; stopping cycle {ex['test_last']}; answer {ex['test_answer']:g}",
+-                                  "note": f"{ex['test_last']} - 1 + {ex['test_answer']:g}",
+-                                  "after": f"{ex['test_last'] - 1 + ex['test_answer']:g} raw cycles left, kept out of the sensor input"}
+         selection["example"] = {"kind": "change", "before": "All 21 named sensor columns",
+                                 "note": "Choose the model's sensor-column list without changing the readings.",
+                                 "after": "T24, T30, T50, P15, P30, Nf, Nc, Ps30, phi, NRf, BPR, htBleed, W31, W32"}
+     return [
+-        _edge("Read all three files during preparation", icon="data") | {
+-            "summary": "Sensor readings become model inputs. Answers are prepared separately and never become sensor readings."},
++        _edge("Read the engine histories", icon="data"),
+         # Keep the steps flat for consumers that inspect a flowchart, while
+         # retaining the two paths for the browser renderer to show as lanes.
+         {"kind": "group", "steps": [training, train_labels, test],
+          "lanes": [
+-             {"name": "Training path", "steps": [training, train_labels]},
+-             {"name": "Test sensor-input path", "steps": [test, _edge("Recorded readings only", raw[1]["shape"])]}]},
++             {"name": "Training data", "steps": [training, train_labels]},
++             {"name": "Test data", "steps": [test], "shape": raw[1]["shape"]}]},
+         selection,
+-        _edge("Selected readings go to preprocessing and the model; labels stay separate", icon="preprocessing"),
+-        {"kind": "evaluation", "detached": True, "name": "Test answers: separate evaluation path",
+-         "steps": [answers, test_labels,
+-                   _edge("Compare predictions with these targets after training", icon="output")],
+-         "summary": "Prepared alongside the readings, but used to check predictions, not to make them."},
++        _edge("To preprocessing", icon="preprocessing"),
+     ]
+ 
+ 
+@@ -1338,10 +1308,10 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
+     """Restore both tables' labelled shapes and keep the single-row walkthrough separate from the flow."""
+     window = int(settings["window_size"])
+     opening = steps[0]
+-    opening["name"] = "Labelled tables from Data"
++    opening["name"] = "Engine histories and remaining-life answers"
+     opening["outputs"] = _table_outputs(facts, 27)
+-    opening["summary"] = "A shape lists the size of each axis in order. Here: (rows, columns). One row is one engine at one cycle."
+-    opening["columns"] = "1 engine number + 1 cycle + 3 operating settings + 21 sensor readings + 1 remaining-life label."
++    opening["summary"] = "One row per engine cycle; remaining life has not yet been capped."
++    opening["columns"] = "1 engine number + 1 cycle + 3 operating settings + 21 sensor readings + 1 uncapped remaining-life label."
+     opening["handoff"] = (
+         f"{facts['train_rows']:,} rows · 27 columns" if facts else "Rows · 27 columns"
+     )
+@@ -1349,22 +1319,23 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
+         picture = step["picture"]
+         step["outputs"] = _table_outputs(facts, 28 if picture in ("conditions", "rescale") else 27)
+         if picture == "cap":
+-            step["summary"] = "Change the remaining-life labels; keep the sensor readings and table sizes."
++            step["summary"] = "Limit remaining-life answers to the selected ceiling."
+         elif picture == "smooth":
+-            step["summary"] = "Change sensor values using earlier readings from the same engine. Table sizes stay the same."
++            step["summary"] = "Blend each reading with earlier readings from the same engine."
+         elif picture == "hold":
+-            step["summary"] = "Choose whole engines for learning or validation. Their rows stay in the working table until windows are separated below."
++            step["summary"] = ("Reserve whole engines to check progress during training."
++                               if settings["validation_fraction"] else "Use every training engine to learn the model.")
+         elif picture == "conditions":
+-            step["summary"] = "Add each row's operating-condition group as a new column."
++            step["summary"] = "Group rows with similar operating settings."
+         elif picture == "rescale":
+-            step["summary"] = "Learn the scale from training engines; apply that same scale to every group."
++            step["summary"] = "Use the training engines to set each sensor's scale."
+         elif picture == "window":
+-            step["summary"] = "Turn the selected sensor columns into windows. Keep remaining-life answers in a separate array, one answer per window."
++            step["summary"] = "Group consecutive readings from one engine."
+             step["outputs"] = _window_outputs(run, window, split=False)
+             step["aside"] = "Training-file engines supply overlapping windows. Each test engine supplies only its last complete window."
+         elif picture == "sets":
+-            step["parts"] = []
+-            step["summary"] = f"Apply the engine groups chosen with seed {settings['seed']}."
++            step["summary"] = ("Keep learning, progress checks and final testing separate."
++                               if settings["validation_fraction"] else "Keep learning and final testing separate.")
+             step["outputs"] = _window_outputs(run, window, split=True)
+             if run:
+                 step["example"] = {"kind": "groups", "items": [
+@@ -1375,10 +1346,9 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
+                     {"name": "Test", "value": f"{run['test']:,} windows",
+                      "detail": "Used for final evaluation"},
+                 ]}
+-    steps[-1]["name"] = "Send a batch of sensor windows to the temporal stage"
++    steps[-1]["name"] = "To the temporal stage"
+     steps[-1]["outputs"] = [{"label": "Model inputs", "shape": f"(B, 14, {window})", "axes": "windows, sensors, cycles"}]
+-    steps[-1]["summary"] = (f"B is the number of windows processed together, up to {int(settings['batch_size']):,}. "
+-                             "Remaining-life answers stay separate for training or scoring.")
++    steps[-1]["summary"] = f"B is the number of windows processed together, up to {int(settings['batch_size']):,}."
+     if run:
+         row = run["example_rows"][1]
+         capped = min(row["life"], int(settings["rul_max"]))
+@@ -1391,10 +1361,9 @@ def _preprocessing_story(steps: list[dict[str, Any]], settings: Mapping[str, Any
+                                   "cycle": row["cycle"], "records": records,
+                                   "windows": run["window_example"]}
+ 
+-        # `example` and `handoff` are the compact fields used by the browser's
+-        # worked-example renderer. Keep the longer `walkthrough` record as the
+-        # source of the displayed table and arithmetic.
+-        opening["example"] = {"kind": "rows", "rows": [
++        # Keep the real examples available separately from the compact diagram.
++        opening["example"] = {"kind": "rows", "source": f"train_{settings['subset']}.txt",
++                              "label_state": "uncapped", "rows": [
+             {"engine": item["engine"], "cycle": item["cycle"],
+              "reading": item["reading"], "life": item["life"]}
+             for item in run["example_rows"]
+diff --git a/src/thesis_gnn_rul_xai/docsite/worked_example.py b/src/thesis_gnn_rul_xai/docsite/worked_example.py
+index e5a1520..b002da3 100644
+--- a/src/thesis_gnn_rul_xai/docsite/worked_example.py
++++ b/src/thesis_gnn_rul_xai/docsite/worked_example.py
+@@ -18,6 +18,7 @@ def trace() -> dict:
+     from ..data.loading import load_subset
+     from ..data.pipeline import run_preprocessing
+     from ..data.sensors import PAPER_SENSOR_COLUMNS, PAPER_SENSOR_SYMBOLS
++    from ..data.smoothing import ewma_series
+     from ..training import load_seed, read_run
+     from ..utils.paths import raw_data_dir
+ 
+@@ -37,18 +38,30 @@ def trace() -> dict:
+     rows = engine[engine.cycle.between(start, end)]
+     scaled = frames.frames["train"]
+     scaled = scaled[(scaled.unit == 1) & scaled.cycle.between(start, end)]
++    statistics = frames.normalizer.statistics_.set_index("column")
++    sensor_examples = []
++    for symbol, column in zip(PAPER_SENSOR_SYMBOLS[:3], PAPER_SENSOR_COLUMNS[:3], strict=True):
++        readings = engine[column].to_numpy()
++        smoothed = ewma_series(readings, alpha=config.smoothing_alpha)
++        stats = statistics.loc[column]
++        sensor_examples.append({"sensor": symbol, "mean": float(stats["mean"]),
++                                "spread": float(stats["std"]), "alpha": config.smoothing_alpha,
++                                "raw": readings[:3].tolist(), "smoothed": smoothed[:3].tolist(),
++                                "scaled": scaled[column].iloc[:3].tolist()})
+     features = torch.as_tensor(data.features[index:index + 1], dtype=torch.float32)
+     steps = []
+ 
+-    def record(name, incoming, outgoing, operation, terms=None):
++    def record(name, incoming, outgoing, operation, terms=None, sums=None):
+         steps.append({"name": name, "input_shape": list(incoming.shape),
+                       "output_shape": list(outgoing.shape),
+                       "input": incoming.detach().flatten()[:3].tolist(),
+                       "output": outgoing.detach().flatten()[:3].tolist(),
+-                      "operation": operation, "terms": terms or []})
++                      "operation": operation, "terms": terms or [], "sums": sums or []})
+ 
+     with torch.no_grad():
+         hidden = model.temporal(features)
++        temporal_values = [{"sensor": sensor, "value": hidden[0, i, 0].item()}
++                           for i, sensor in enumerate(PAPER_SENSOR_SYMBOLS)]
+         record("Temporal algorithm", features, hidden,
+                f"Keep the final preprocessed reading at cycle {end} for each sensor. "
+                f"T24: {features[0, 0, -1].item():.6f} becomes {hidden[0, 0, 0].item():.6f}. "
+@@ -61,11 +74,20 @@ def trace() -> dict:
+             terms = [{"from": PAPER_SENSOR_SYMBOLS[int(j)], "input": hidden[0, j, 0].item(),
+                       "multiplier": model.adjacency[0, j].item(),
+                       "product": (hidden[0, j, 0] * model.adjacency[0, j]).item()} for j in neighbours]
++            learned_terms = [{"from": str(j + 1), "input": value.item(), "multiplier": weight.item(),
++                              "product": (value * weight).item()}
++                             for j, (value, weight) in enumerate(zip(mixed[0, 0], layer.weight[:, 0], strict=True))]
+             record(f"Graph layer {i}", hidden, after,
+                    f"For T24's first number, add the neighbour products below: {mixed[0, 0, 0].item():.6f}. "
+-                   f"Apply this layer's learned multipliers to all {hidden.shape[-1]} mixed numbers. "
++                   f"Apply this layer's learned multipliers to the mixed values ({hidden.shape[-1]} per sensor). "
+                    f"Its first result is {before[0, 0, 0].item():.6f}; replacing negative results by zero "
+-                   f"gives {after[0, 0, 0].item():.6f}.", terms)
++                   f"gives {after[0, 0, 0].item():.6f}.", terms, [
++                       {"name": "Combine T24's neighbours for its first number", "terms": terms,
++                        "offset": 0.0, "total": mixed[0, 0, 0].item()},
++                       {"name": "Apply learned multipliers to T24's mixed numbers", "terms": learned_terms,
++                        "offset": layer.bias[0].item() if layer.bias is not None else 0.0,
++                        "total": before[0, 0, 0].item()},
++                   ])
+             hidden = after
+         flat = hidden.flatten(start_dim=1)
+         record("Flatten", hidden, flat, "Lay each sensor's numbers end to end, keeping sensor order. No arithmetic changes them.")
+@@ -77,13 +99,20 @@ def trace() -> dict:
+         record("Fully connected", flat, dense,
+                f"For output 1, add all {flat.shape[1]} products below and the learned offset "
+                f"{model.fc1.bias[0].item():.6f}: {before_dense[0, 0].item():.6f}. "
+-               f"Keep the larger of that and zero: {dense[0, 0].item():.6f}. Repeat with different weights for each output.", terms)
++               f"Keep the larger of that and zero: {dense[0, 0].item():.6f}. Repeat with different weights for each output.",
++               terms, [{"name": "Fully connected output 1, before replacing negative values by zero",
++                        "terms": terms, "offset": model.fc1.bias[0].item(), "total": before_dense[0, 0].item()}])
+         score = model.fc2(dense)
+         fraction = torch.sigmoid(score)
++        output_terms = [{"from": str(i + 1), "input": value.item(), "multiplier": weight.item(),
++                         "product": (value * weight).item()}
++                        for i, (value, weight) in enumerate(zip(dense[0], model.fc2.weight[0], strict=True))]
+         record("Output", dense, fraction,
+                f"Multiply each input by its output-layer weight and add the offset: internal score "
+                f"{score.item():.6f}. The sigmoid converts this to 1 / (1 + exp(-score)) = {fraction.item():.6f}. "
+-               "Here exp means raising the mathematical constant e to the given power; this is not a probability.")
++               "Here exp means raising the mathematical constant e to the given power; this is not a probability.",
++               sums=[{"name": "The internal score before conversion to cycles", "terms": output_terms,
++                      "offset": model.fc2.bias[0].item(), "total": score.item()}])
+         prediction = fraction * model.rul_max
+         record("Scale to cycles", fraction, prediction,
+                f"{fraction.item():.6f} x {model.rul_max} = {prediction.item():.6f} cycles.")
+@@ -91,6 +120,7 @@ def trace() -> dict:
+     return {"run": RUN, "seed": seed, "group": group, "start": start, "end": end,
+             "ceiling": model.rul_max, "last_cycle": int(engine.cycle.max()),
+             "raw": rows.sensor_2.tolist(), "scaled": scaled.sensor_2.tolist(),
++            "sensor_examples": sensor_examples, "temporal_values": temporal_values,
+             "columns": list(PAPER_SENSOR_COLUMNS), "steps": steps,
+             "prediction": prediction.item(), "reference": reference, "target": float(data.targets[index])}
+ 
+@@ -104,12 +134,23 @@ def draw() -> str:
+     fmt = lambda values: ", ".join(f"{x:.6f}" for x in values)  # noqa: E731
+     out = '<div class="worked-trace"><p><strong>Live example, not an accuracy result.</strong> Training-file engine 1, cycles ' + str(example["start"]) + '-' + str(example["end"]) + '. This seed assigns it to ' + example["group"] + '.</p><p>Saved run: <code>' + RUN + '</code>; seed ' + str(example["seed"]) + '.</p>'
+     out += '<p>T24 first three raw readings: ' + fmt(example["raw"][:3]) + '. After the saved smoothing and rescaling: ' + fmt(example["scaled"][:3]) + '.</p>'
++    out += '<details><summary>Follow T24, T30 and T50 through smoothing and rescaling</summary><p>All three use cycles 1, 2 and 3 of this same engine. The averages and spreads are fitted on this saved seed\'s training engines only. For each row, subtract the training average from the smoothed reading, then divide by the training spread.</p>'
++    for sensor in example["sensor_examples"]:
++        out += '<h4>' + sensor["sensor"] + '</h4><p>Training average: ' + f'{sensor["mean"]:.9f}' + '; spread: ' + f'{sensor["spread"]:.9f}' + '.</p><ol>'
++        for i, (raw, smooth, scaled) in enumerate(zip(sensor["raw"], sensor["smoothed"], sensor["scaled"], strict=True)):
++            operation = f'First reading stays {raw:.6f}' if i == 0 else f'{sensor["alpha"]:g} &times; {raw:.6f} + {1 - sensor["alpha"]:g} &times; {sensor["smoothed"][i - 1]:.6f} = {smooth:.6f}'
++            out += '<li>Cycle ' + str(i + 1) + ': ' + operation + '. Rescale: (' + f'{smooth:.6f} &minus; {sensor["mean"]:.9f}) / {sensor["spread"]:.9f} = {scaled:.6f}' + '.</li>'
++        out += '</ol>'
++    out += '</details><details><summary>Every sensor value leaving the temporal algorithm</summary><p>One number per sensor, taken from the window\'s final preprocessed cycle.</p><dl class="worked-io">'
++    for sensor in example["temporal_values"]:
++        out += '<dt>' + sensor["sensor"] + '</dt><dd>' + f'{sensor["value"]:.6f}' + '</dd>'
++    out += '</dl></details>'
+     for step in example["steps"]:
+-        out += '<section><h4>' + escape(step["name"]) + '</h4><dl class="worked-io"><dt>Input</dt><dd>Shape ' + str(step["input_shape"]) + '; first three numbers: ' + fmt(step["input"]) + '</dd><dt>Operation</dt><dd>' + escape(step["operation"]) + '</dd><dt>Output</dt><dd>Shape ' + str(step["output_shape"]) + '; first three numbers: ' + fmt(step["output"]) + '</dd></dl>'
+-        if step["terms"]:
+-            out += '<details><summary>Show every product in the addition</summary><div class="pg-data-table-wrap"><table class="pg-data-table"><thead><tr><th>Input position</th><th>Input value</th><th>Multiplier</th><th>Product</th></tr></thead><tbody>'
+-            for term in step["terms"]:
++        out += '<section><h4>' + escape(step["name"]) + '</h4><dl class="worked-io"><dt>Input</dt><dd>Shape ' + str(step["input_shape"]) + '; sample: ' + fmt(step["input"]) + '</dd><dt>Operation</dt><dd>' + escape(step["operation"]) + '</dd><dt>Output</dt><dd>Shape ' + str(step["output_shape"]) + '; sample: ' + fmt(step["output"]) + '</dd></dl>'
++        for addition in step["sums"]:
++            out += '<details><summary>' + escape(addition["name"]) + '</summary><div class="pg-data-table-wrap"><table class="pg-data-table"><thead><tr><th>Input position</th><th>Input value</th><th>Multiplier</th><th>Product</th></tr></thead><tbody>'
++            for term in addition["terms"]:
+                 out += '<tr><th>' + escape(term["from"]) + '</th>' + ''.join('<td>' + f'{term[key]:.6f}' + '</td>' for key in ("input", "multiplier", "product")) + '</tr>'
+-            out += '</tbody></table></div></details>'
++            out += '</tbody></table></div><p>Sum of every product above + learned offset ' + f'{addition["offset"]:.6f} = {addition["total"]:.6f}' + '.</p></details>'
+         out += '</section>'
+     return out + '<p>Prediction: ' + f'{example["prediction"]:.6f}' + ' cycles. Separate capped answer: ' + str(example["target"]) + ' cycles. The answer did not enter any of the model calculations. Displayed numbers are rounded; calculations use full precision.</p></div>'

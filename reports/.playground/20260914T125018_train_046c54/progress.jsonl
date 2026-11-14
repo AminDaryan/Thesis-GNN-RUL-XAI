@@ -1,0 +1,12 @@
+{"event": "start", "seeds": 2, "epochs": 3, "subset": "FD001", "temporal": "lstm"}
+{"event": "seed", "index": 0, "seed": 42}
+{"event": "epoch", "seed": 42, "epoch": 1, "train_loss": 0.030306375318640527, "learning_rate": 0.001, "validation_loss": 0.02246182187587812, "validation_rmse_cycles": 18.734085694546067}
+{"event": "epoch", "seed": 42, "epoch": 2, "train_loss": 0.016580958246181998, "learning_rate": 0.0001, "validation_loss": 0.01756221909553439, "validation_rmse_cycles": 16.56531537181604}
+{"event": "epoch", "seed": 42, "epoch": 3, "train_loss": 0.014755033116404553, "learning_rate": 0.0001, "validation_loss": 0.01671384064071636, "validation_rmse_cycles": 16.1602524736216}
+{"event": "seed_done", "seed": 42, "rmse": 14.65027117248687, "score": 447.6251532366241, "r2": 0.8663461054991151, "asue": 9.68329027222424}
+{"event": "seed", "index": 1, "seed": 43}
+{"event": "epoch", "seed": 43, "epoch": 1, "train_loss": 0.030371064163571777, "learning_rate": 0.001, "validation_loss": 0.019232712434131886, "validation_rmse_cycles": 17.335256899835972}
+{"event": "epoch", "seed": 43, "epoch": 2, "train_loss": 0.01719796685842066, "learning_rate": 0.0001, "validation_loss": 0.014490037439115358, "validation_rmse_cycles": 15.04682142467895}
+{"event": "epoch", "seed": 43, "epoch": 3, "train_loss": 0.014437123391433269, "learning_rate": 0.0001, "validation_loss": 0.014428962940385882, "validation_rmse_cycles": 15.015077287297906}
+{"event": "seed_done", "seed": 43, "rmse": 15.461832392653896, "score": 441.7857281461086, "r2": 0.8511282774335234, "asue": 11.55257106471706}
+{"event": "done", "directory": "fd001_physics_row_cap_2seed_varsplit_lstm32_trainbcb301_cfg72f506_f386291-dirty_20260914T125147Z", "path": "D:\\Main\\University\\Thesis\\Code\\Thesis GNN RUL XAI\\reports\\fd001_physics_row_cap_2seed_varsplit_lstm32_trainbcb301_cfg72f506_f386291-dirty_20260914T125147Z"}

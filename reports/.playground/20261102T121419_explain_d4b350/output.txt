@@ -1,0 +1,23 @@
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.loading | Loading FD001 from D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\data\raw
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the expected counts, those of NASA's files (Wen et al.'s Table 5 prints the same engine counts).
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.loading | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
+13:14:37 | WARNING | thesis_gnn_rul_xai.data.pipeline | The paper keeps sensor(s) ['P15'], but in this data they carry no usable variation. They are kept anyway, because the adjacency matrix is defined over the paper's fixed 14-sensor set. Report this observation rather than silently changing the selection.
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.normalization | Detected 1 distinct operating condition(s) from the settings.
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.normalization | A single operating condition: clustering is not needed.
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.normalization | Fitted 'zscore' normalisation on 14 column(s) across 1 condition(s).
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 17731 window(s) of shape (14, 30) from 100 engine(s).
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 100 window(s) of shape (14, 30) from 100 engine(s).
+13:14:37 | INFO    | thesis_gnn_rul_xai.data.pipeline | Preprocessing complete: 17731 training, 0 validation, 100 test example(s).
+D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\src\thesis_gnn_rul_xai\training\stored.py:226: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  saved = torch.load(run.weights(seed), map_location="cpu")
+13:14:37 | INFO    | thesis_gnn_rul_xai.models.temporal | Built LSTM temporal stage: 14 cell(s) of hidden size 32 over a 30-cycle window, projected to 1 number(s) per sensor. 62753 parameters.
+13:14:37 | INFO    | thesis_gnn_rul_xai.models.estgnn | Built ESTGNN: 14 node(s), 1 feature(s) per node, graph layers [32, 64, 32], flatten to 448, dense 128 -> 1. 124482 trainable parameters.
+13:14:37 | INFO    | thesis_gnn_rul_xai.training.run | Training on GPU: NVIDIA GeForce RTX 4060 Laptop GPU
+13:14:38 | WARNING | thesis_gnn_rul_xai.explain.walks | LSTMStage learns its own numbers, so the walks start at its output and say nothing about which cycles of the window mattered; zero at its output is not any real window.
+13:14:38 | INFO    | thesis_gnn_rul_xai.explain.walks | Split 100 window(s) into 38416 walk(s) of 3 step(s) each.
+13:14:38 | WARNING | thesis_gnn_rul_xai.explain.walks | LSTMStage learns its own numbers, so the walks start at its output and say nothing about which cycles of the window mattered; zero at its output is not any real window.
+13:14:38 | INFO    | thesis_gnn_rul_xai.explain.walks | Split 100 window(s) into 38416 walk(s) of 3 step(s) each.
+walks over 100 window(s) in 5.2s; largest miss between walks plus constant and the score before the sigmoid: 2.66e-15.
+Saved to D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\reports\fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z\explanations\walks_test_seed42_a7c23d2_20261102T121443Z

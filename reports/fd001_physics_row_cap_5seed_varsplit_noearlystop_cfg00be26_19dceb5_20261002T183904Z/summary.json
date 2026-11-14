@@ -1,0 +1,90 @@
+{
+  "commit": "19dceb5",
+  "config_digest": "00be26",
+  "finished_utc": "20261002T183904Z",
+  "command": [
+    "train.py",
+    "--seeds",
+    "5",
+    "--quiet",
+    "--config",
+    "C:\\Users\\AminD\\AppData\\Local\\Temp\\claude\\D--Main-University-Thesis-Code-Thesis-GNN-RUL-XAI\\4ab535d3-129f-4dc8-a896-9a261010fa0d\\scratchpad\\configs\\fd001_nothing_held_back.yaml",
+    "--no-early-stopping",
+    "--device",
+    "cpu"
+  ],
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scikit-learn": "1.9.0",
+      "scipy": "1.17.1",
+      "torch": "2.13.0+cpu",
+      "pyyaml": "6.0.3"
+    },
+    "torch_threads": 8,
+    "cuda_available": false
+  },
+  "data_files": {
+    "train_FD001.txt": "963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8",
+    "test_FD001.txt": "3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851",
+    "RUL_FD001.txt": "a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca"
+  },
+  "uncommitted_code": [],
+  "subset": "FD001",
+  "graph": "physics",
+  "adjacency_normalization": "row",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": false,
+  "validation_fraction": 0.0,
+  "reported_weights": "final_epoch",
+  "lr_schedule": "step",
+  "temporal_stage": "last_cycle",
+  "temporal_hidden": null,
+  "model": {
+    "temporal": "last_cycle",
+    "temporal_hidden": 32,
+    "temporal_out_features": 1,
+    "shared_across_sensors": false,
+    "gcn_hidden": [
+      32,
+      64,
+      32
+    ],
+    "fc_hidden": 128,
+    "gcn_bias": false
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "final_learning_rate": 0.0001,
+    "early_stopping_patience": null,
+    "lr_schedule": "step"
+  },
+  "seed_folders": [
+    "seed_42",
+    "seed_43",
+    "seed_44",
+    "seed_45",
+    "seed_46"
+  ],
+  "mean": {
+    "rmse": 16.817852440846547,
+    "score": 609.845725878646,
+    "r2": 0.8238584436448703,
+    "asue": 12.33276897110935
+  },
+  "std": {
+    "rmse": 0.15748026873694268,
+    "score": 25.45914778649987,
+    "r2": 0.0032931242219970827,
+    "asue": 0.5980128262387375
+  }
+}

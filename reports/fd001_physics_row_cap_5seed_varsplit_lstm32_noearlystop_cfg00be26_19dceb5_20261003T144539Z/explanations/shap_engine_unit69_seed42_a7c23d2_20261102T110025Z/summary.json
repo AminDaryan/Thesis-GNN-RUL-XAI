@@ -1,0 +1,33 @@
+{
+  "commit": "a7c23d2",
+  "finished_utc": "20261102T110025Z",
+  "run": "fd001_physics_row_cap_5seed_varsplit_lstm32_noearlystop_cfg00be26_19dceb5_20261003T144539Z",
+  "seed": 42,
+  "method": "shap",
+  "scope": "engine",
+  "source": "training",
+  "unit": 69,
+  "every": 1,
+  "windows": 333,
+  "baseline": "average training window of each sensor (A-20)",
+  "baseline_prediction": 88.68824005126953,
+  "sum_gap_max": 1.52587890625e-05,
+  "sum_gap_mean": 1.270133815244333e-06,
+  "seconds": 8.2,
+  "mean_abs": {
+    "P30": 14.583197086060776,
+    "T50": 9.567253103857745,
+    "phi": 8.24757486844359,
+    "NRf": 7.331091828045806,
+    "Ps30": 7.179290874470734,
+    "BPR": 7.026088386941787,
+    "T24": 5.7383237076469396,
+    "Nc": 4.45115268879372,
+    "htBleed": 3.7424303494972713,
+    "W31": 3.385440161442403,
+    "Nf": 3.175958344682957,
+    "W32": 2.4398081382243713,
+    "T30": 2.0125131787418566,
+    "P15": 1.0875840238989525
+  }
+}

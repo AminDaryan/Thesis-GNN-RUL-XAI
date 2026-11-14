@@ -1,0 +1,54 @@
+{
+  "commit": "f386291-dirty",
+  "config_digest": "72f506",
+  "finished_utc": "20260914T125147Z",
+  "subset": "FD001",
+  "graph": "physics",
+  "adjacency_normalization": "row",
+  "seeds": 2,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "validation_fraction": 0.2,
+  "reported_weights": "best_validation_epoch",
+  "lr_schedule": "step",
+  "temporal_stage": "lstm",
+  "temporal_hidden": 32,
+  "model": {
+    "temporal": "lstm",
+    "temporal_hidden": 32,
+    "temporal_out_features": 1,
+    "shared_across_sensors": false,
+    "gcn_hidden": [
+      32,
+      64,
+      32
+    ],
+    "fc_hidden": 128,
+    "gcn_bias": false
+  },
+  "training": {
+    "epochs": 3,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "final_learning_rate": 0.0001,
+    "early_stopping_patience": 20,
+    "lr_schedule": "step"
+  },
+  "seed_folders": [
+    "seed_42",
+    "seed_43"
+  ],
+  "mean": {
+    "rmse": 15.056051782570382,
+    "score": 444.70544069136633,
+    "r2": 0.8587371914663192,
+    "asue": 10.61793066847065
+  },
+  "std": {
+    "rmse": 0.5738604421281335,
+    "score": 4.129097079734362,
+    "r2": 0.010760629420110843,
+    "asue": 1.3217811243134363
+  }
+}

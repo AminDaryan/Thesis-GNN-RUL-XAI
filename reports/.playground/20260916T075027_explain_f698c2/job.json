@@ -1,0 +1,11 @@
+{
+  "id": "20260916T075027_explain_f698c2",
+  "kind": "explain",
+  "label": "SHAP \u00b7 engine longest \u00b7 seed 42 \u00b7 FD001 removed",
+  "command": "python scripts/explain.py --run fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z --seed 42 --method shap --scope engine --every 20",
+  "created": 1789545027.0489967,
+  "status": "done",
+  "started": 1789545027.0489967,
+  "finished": 1789545033.0191548,
+  "returncode": 0
+}

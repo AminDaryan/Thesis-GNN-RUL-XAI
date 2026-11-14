@@ -1,0 +1,12 @@
+{
+  "id": "20260928T131617_train_f2ed94",
+  "kind": "train",
+  "label": "FD001 \u00b7 LSTM 32 \u00b7 physics graph \u00b7 best pass \u00b7 5 seeds",
+  "command": "python scripts/train.py --config reports/.playground/20260928T131617_train_f2ed94/preprocessing_config.yaml --seeds 5 --temporal lstm --temporal-hidden 32 --temporal-out-features 1 --gcn-hidden 32 64 32 --fc-hidden 128 --epochs 200 --batch-size 32 --learning-rate 0.001 --final-learning-rate 0.0001 --lr-schedule step --early-stopping-patience 50 --device auto",
+  "created": 1790601377.5415502,
+  "status": "done",
+  "started": 1790601377.5425518,
+  "finished": 1790604372.7757707,
+  "returncode": 0,
+  "pid": null
+}

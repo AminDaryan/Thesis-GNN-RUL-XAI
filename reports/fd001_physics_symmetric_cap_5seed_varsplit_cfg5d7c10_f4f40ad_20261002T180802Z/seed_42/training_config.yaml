@@ -1,0 +1,16 @@
+epochs: 200
+batch_size: 32
+learning_rate: 0.001
+final_learning_rate: 0.0001
+optimizer: adam
+loss: mse
+lr_schedule: step
+lr_step_epoch: null
+early_stopping_patience: 20
+min_improvement: 0.0001
+gradient_clip: null
+seed: 42
+device: cpu
+notes: Training settings. The values under 'from Table 6' come from Wen et al. (2026).
+  lr_schedule and early_stopping_patience are our own choices, written up as A-17
+  and A-18 in docs/ASSUMPTIONS.md.

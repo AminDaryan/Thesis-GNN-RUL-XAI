@@ -1,0 +1,129 @@
+{
+  "commit": "fd65a3b-dirty",
+  "config_digest": "fb856e",
+  "finished_utc": "20261001T134843Z",
+  "command": [
+    "train.py",
+    "--config",
+    "D:\\Main\\University\\Thesis\\Code\\Thesis GNN RUL XAI\\reports\\sensitivity_fd65a3b-dirty_20260930T160040Z\\configs\\FD002_adjacency_symmetric.yaml",
+    "--seeds",
+    "5",
+    "--epochs",
+    "200",
+    "--batch-size",
+    "32",
+    "--learning-rate",
+    "0.001",
+    "--final-learning-rate",
+    "0.0001",
+    "--lr-schedule",
+    "step",
+    "--temporal",
+    "lstm",
+    "--temporal-hidden",
+    "32",
+    "--temporal-out-features",
+    "1",
+    "--gcn-hidden",
+    "32",
+    "64",
+    "32",
+    "--fc-hidden",
+    "128",
+    "--early-stopping-patience",
+    "20",
+    "--device",
+    "cuda",
+    "--progress",
+    "D:\\Main\\University\\Thesis\\Code\\Thesis GNN RUL XAI\\reports\\sensitivity_fd65a3b-dirty_20260930T160040Z\\progress\\FD002_adjacency_symmetric.jsonl",
+    "--output",
+    "D:\\Main\\University\\Thesis\\Code\\Thesis GNN RUL XAI\\reports\\sensitivity_fd65a3b-dirty_20260930T160040Z\\runs\\FD002\\adjacency_symmetric",
+    "--quiet"
+  ],
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scikit-learn": "1.9.0",
+      "scipy": "1.17.1",
+      "torch": "2.5.1+cu121",
+      "pyyaml": "6.0.3"
+    },
+    "torch_threads": 8,
+    "cuda_available": true
+  },
+  "data_files": {
+    "train_FD002.txt": "dac6c4dbc4e7c1bdeb5747da3d313d05c395bb99801b44a002b26a2ba13d788f",
+    "test_FD002.txt": "de7b5bf7e998a985c378488480528b7c02cff1406a46740def362dda8d9b4e02",
+    "RUL_FD002.txt": "c851dd96a6ea6998d3c4a8f834d3c8013aa90e93a6ed950dc826ad0655b2906b"
+  },
+  "uncommitted_code": [
+    " M src/thesis_gnn_rul_xai/docsite/README.md",
+    " M src/thesis_gnn_rul_xai/docsite/assets/app.css",
+    " M src/thesis_gnn_rul_xai/docsite/assets/app.js",
+    " M src/thesis_gnn_rul_xai/docsite/assets/playground.js",
+    " M src/thesis_gnn_rul_xai/docsite/markup.py",
+    " M src/thesis_gnn_rul_xai/docsite/playground.py",
+    " M src/thesis_gnn_rul_xai/explain/README.md",
+    " M src/thesis_gnn_rul_xai/explain/connections.py",
+    " M src/thesis_gnn_rul_xai/graph/README.md",
+    " M src/thesis_gnn_rul_xai/graph/adjacency.py",
+    "?? scripts/run_sensitivity.py"
+  ],
+  "subset": "FD002",
+  "graph": "physics",
+  "adjacency_normalization": "symmetric",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "validation_fraction": 0.2,
+  "reported_weights": "best_validation_epoch",
+  "lr_schedule": "step",
+  "temporal_stage": "lstm",
+  "temporal_hidden": 32,
+  "model": {
+    "temporal": "lstm",
+    "temporal_hidden": 32,
+    "temporal_out_features": 1,
+    "shared_across_sensors": false,
+    "gcn_hidden": [
+      32,
+      64,
+      32
+    ],
+    "fc_hidden": 128,
+    "gcn_bias": false
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "final_learning_rate": 0.0001,
+    "early_stopping_patience": 20,
+    "lr_schedule": "step"
+  },
+  "seed_folders": [
+    "seed_42",
+    "seed_43",
+    "seed_44",
+    "seed_45",
+    "seed_46"
+  ],
+  "mean": {
+    "rmse": 20.15425518864401,
+    "score": 2573.8394756375783,
+    "r2": 0.7778446720932777,
+    "asue": 14.695457740853524
+  },
+  "std": {
+    "rmse": 0.23868625596989929,
+    "score": 507.621106861225,
+    "r2": 0.005220030867730591,
+    "asue": 1.6585661272927688
+  }
+}

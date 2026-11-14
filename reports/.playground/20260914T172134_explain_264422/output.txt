@@ -1,0 +1,18 @@
+19:21:42 | INFO    | thesis_gnn_rul_xai.data.loading | Loading FD001 from D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\data\raw
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the published shape of the official release.
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.loading | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
+19:21:43 | WARNING | thesis_gnn_rul_xai.data.pipeline | The paper keeps sensor(s) ['P15'], but in this data they carry no usable variation. They are kept anyway, because the adjacency matrix is defined over the paper's fixed 14-sensor set. Report this observation rather than silently changing the selection.
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.smoothing | Applied exponentially weighted moving average (alpha=0.500) to 14 columns across 100 engines.
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.windowing | Split 100 engines into 80 for training and 20 for validation (seed=42).
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.normalization | Detected 1 distinct operating condition(s) from the settings.
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.normalization | A single operating condition: clustering is not needed.
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.normalization | Fitted 'zscore' normalisation on 14 column(s) across 1 condition(s).
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 17731 window(s) of shape (14, 30) from 100 engine(s).
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.windowing | Built 100 window(s) of shape (14, 30) from 100 engine(s).
+19:21:43 | INFO    | thesis_gnn_rul_xai.data.pipeline | Preprocessing complete: 14459 training, 3272 validation, 100 test example(s).
+19:21:43 | INFO    | thesis_gnn_rul_xai.models.temporal | Built LSTM temporal stage: 14 cell(s) of hidden size 32 over a 30-cycle window, projected to 1 number(s) per sensor. 62753 parameters.
+19:21:43 | INFO    | thesis_gnn_rul_xai.models.estgnn | Built ESTGNN: 14 node(s), 1 feature(s) per node, graph layers [32, 64, 32], flatten to 448, dense 128 -> 1. 124482 trainable parameters.
+19:21:43 | INFO    | thesis_gnn_rul_xai.training.run | No CUDA device available; training on the CPU.
+shap over 240 window(s) in 155.8s; largest gap between the values' sum and the prediction's distance from the baseline: 1.42e-14 cycles.
+Saved to D:\Main\University\Thesis\Code\Thesis GNN RUL XAI\reports\fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z\explanations\shap_engine_unit5_seed42_8b487ab-dirty_20260914T172419Z

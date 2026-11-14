@@ -1,0 +1,129 @@
+{
+  "commit": "692d2d4-dirty",
+  "finished_utc": "20261001T193019Z",
+  "run": "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_5602773-dirty_20260914T233911Z",
+  "seed": 42,
+  "method": "walks",
+  "scope": "test",
+  "source": "test",
+  "unit": null,
+  "every": 1,
+  "windows": 100,
+  "value_unit": "score before the sigmoid",
+  "rul_max": 125.0,
+  "steps": 3,
+  "gamma": [
+    0.0,
+    1.5,
+    0.0
+  ],
+  "score_at_zero": 1.0723299628798222,
+  "conservation_error_max": 1.3322676295501878e-15,
+  "groups": [
+    [
+      "P15",
+      "Nf",
+      "NRf",
+      "BPR"
+    ],
+    [
+      "P30",
+      "Ps30"
+    ],
+    [
+      "Nc",
+      "W31"
+    ]
+  ],
+  "walks_start_after_learned_stage": false,
+  "cancellation_median": 10.079825123545342,
+  "seconds": 11.1,
+  "sensors": [
+    "T24",
+    "T30",
+    "T50",
+    "P15",
+    "P30",
+    "Nf",
+    "Nc",
+    "Ps30",
+    "phi",
+    "NRf",
+    "BPR",
+    "htBleed",
+    "W31",
+    "W32"
+  ],
+  "flipping_aufc": [
+    {
+      "task": "activation",
+      "ranking": "GNN-LRP, walks",
+      "mean": 1.3718588631212132,
+      "std": 0.4441551451725578,
+      "windows": 100
+    },
+    {
+      "task": "activation",
+      "ranking": "GNN-LRP, starting sensors",
+      "mean": 1.1469020344830765,
+      "std": 0.3466899944014782,
+      "windows": 100
+    },
+    {
+      "task": "activation",
+      "ranking": "GNN-GI, walks",
+      "mean": 1.3676450943171556,
+      "std": 0.4216552033937666,
+      "windows": 100
+    },
+    {
+      "task": "activation",
+      "ranking": "GNN-GI, starting sensors",
+      "mean": 1.1433777817778839,
+      "std": 0.3387105777568277,
+      "windows": 100
+    },
+    {
+      "task": "activation",
+      "ranking": "random",
+      "mean": 0.9791230848757696,
+      "std": 0.33836492571186033,
+      "windows": 100
+    },
+    {
+      "task": "pruning",
+      "ranking": "GNN-LRP, walks",
+      "mean": 0.577614400669141,
+      "std": 0.4491018902975206,
+      "windows": 100
+    },
+    {
+      "task": "pruning",
+      "ranking": "GNN-LRP, starting sensors",
+      "mean": 0.8184602504364799,
+      "std": 0.6287505220693698,
+      "windows": 100
+    },
+    {
+      "task": "pruning",
+      "ranking": "GNN-GI, walks",
+      "mean": 0.5858775655508157,
+      "std": 0.4743059734362984,
+      "windows": 100
+    },
+    {
+      "task": "pruning",
+      "ranking": "GNN-GI, starting sensors",
+      "mean": 0.8464094559494785,
+      "std": 0.6635889536075629,
+      "windows": 100
+    },
+    {
+      "task": "pruning",
+      "ranking": "random",
+      "mean": 0.9486174713368336,
+      "std": 0.724312393275331,
+      "windows": 100
+    }
+  ]
+}

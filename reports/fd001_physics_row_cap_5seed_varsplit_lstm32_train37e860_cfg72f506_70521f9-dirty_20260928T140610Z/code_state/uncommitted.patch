@@ -1,0 +1,1547 @@
+diff --git a/src/thesis_gnn_rul_xai/data/windowing/README.md b/src/thesis_gnn_rul_xai/data/windowing/README.md
+index 5883fef..c946ca1 100644
+--- a/src/thesis_gnn_rul_xai/data/windowing/README.md
++++ b/src/thesis_gnn_rul_xai/data/windowing/README.md
+@@ -490,9 +490,26 @@ WindowedDataset(examples=100, shape=(100, 14, 30), engines=100, target_range=(7,
+ 
+ **Why exactly one window per test engine.** The official label file describes
+ **one moment** per engine: how much life remained at that engine's last recorded
+-flight. There is no ground truth for any earlier moment, so scoring anything
+-else would be scoring against a number nobody supplied. On FD001 that is 100
+-predictions, one per engine.
++flight. This project evaluates one prediction at that moment, using the window
++ending there. On FD001 that is 100 predictions, one per engine. Earlier targets
++can also be calculated by adding the number of cycles before that last flight;
++scoring every earlier window would measure a different set of predictions and
++give engines with longer histories more weight.
++
++**What the paper establishes.** Table 5 lists 100 testing samples and 100 test
++engines for FD001. Equation 22 defines its average over test engines. Equation
++7 takes the readings in a window ending at the prediction time, and Table 6
++sets the window length to 30. Together with Section 3.2.1's description of test
++histories stopping before failure, these support using the last available
++window for each test engine. The paper does not explicitly state the test
++window extraction procedure. Matching this code's final-window procedure to
++the authors' implementation is therefore an inference, not a verified detail.
++
++**Correction, 2026-09-28:** this paragraph previously claimed that earlier
++test targets were unavailable. The loading code already derives them from the
++final target and the cycles elapsed. The reason for evaluating only the last
++window is the chosen evaluation procedure, not an inability to calculate
++earlier targets.
+ 
+ ---
+ 
+diff --git a/src/thesis_gnn_rul_xai/docsite/README.md b/src/thesis_gnn_rul_xai/docsite/README.md
+index a410ed3..af19b2a 100644
+--- a/src/thesis_gnn_rul_xai/docsite/README.md
++++ b/src/thesis_gnn_rul_xai/docsite/README.md
+@@ -354,6 +354,20 @@ They still open their own flowchart, and their tab carries their picture where
+ the others carry a number. The steps are then numbered from 1, Preprocessing.
+ The author asked for this on 2026-09-26.
+ 
++Below the four sub-dataset choices, the Data tab describes the selected data
++instead of leaving the rest of the tab empty. Its first row carries the four
++counts transcribed from the paper's Table 5: training engines, test engines,
++operating conditions and fault modes. The files beneath are measured from the
++three real files in `data/raw/`: their row and column counts, engine counts and
++the shortest, middle and longest history. The sensor catalogue then lists all
++21 sensors with their file column, measurement, unit, location and whether the
++paper uses them. Under it, the row section explains the 26-column structure and
++shows ten consecutive rows measured from the selected training file: engine,
++cycle, all three operating settings and the first three sensor inputs. Changing
++FD001–FD004 updates the facts and sample in place. When the files are not
++present, the page keeps the published counts and shared column description but
++says plainly which measurements it cannot make.
++
+ Each box of the pipeline shows its step's number in its top left corner, a
+ small picture of its step, and what the step is now, "LSTM" or "GCN", so a
+ step's name is said once, on its tab, and the number ties the two together.
+@@ -1120,10 +1134,141 @@ it is the only version of it the stored windows hold. An explanation stored
+ before the readings were kept is coloured by the window's place in the sequence
+ instead, and its legend says so.
+ 
+-Every caption of an explanation opens by naming the paper's figure the chart
+-follows, as in "As the paper's Fig. 9, left.", or with "Not in the paper.", so
+-a reader can tell the paper's pictures from this project's additions (working
+-rule 5).
++An explanation names the paper's figure when a chart follows one, as in "As
++the paper's Fig. 9, left." A method added by this project states that origin
++once in its introduction instead of repeating "Not in the paper" on every
++chart. The distinction remains visible without making each caption carry the
++same warning (working rule 5).
++
++The explanation charts share one row of tabs and one full-width viewing area.
++Only the chosen chart is visible, so the engine, remaining-life curve, sensor
++ranking and later views sit beside one another as choices instead of forming a
++long column down the page. The engine opens first. Left and right arrow keys
++move between the tabs; on a narrow screen the tab row scrolls sideways while
++the chart keeps the page's available width.
++
++One shared control sits above those tabs, outside the Engine card. For an
++engine's history it is named **Engine cycle**: the number is the last cycle
++of the readings used for that prediction, not a numbered block called a
++“window”. For comparisons across test engines it is named **Test engine**,
++and its menu shows the actual engine identifiers. Moving between test engines
++does not represent time passing. The arrow buttons move to the previous or
++next saved entry; the menu jumps directly to a cycle or engine. The slider
++shows the endpoints and position among the saved entries, alongside actual
++and predicted remaining life in cycles. Where the saved comparison limits the
++actual-life labels to a ceiling, the control names that limit.
++
++Dragging updates the visible engine or graph, the selected-cycle marker on
++the remaining-life chart, the history readouts, and the selected test engine's
++score breakdown without waiting for release. Only the changing content is
++replaced, at most once per browser drawing frame: the slider itself, selected
++sensor, graph layout and expanded calculation details remain in place. On
++switching chart tabs the newly visible chart uses the current selection.
++Overview charts still include all saved cycles or engines; the selector does
++not filter their data. These controls read stored results, so moving between
++them does not run the model again or interpolate unrecorded cycles.
++
++The guide above a walk explanation names the numbers beneath the sensor labels
++in the Engine tab, explains their signs and units, and tells the reader how to
++select a sensor. Its paragraphs use the full available width. The calculation
++and its checks sit under “How this explanation is calculated and checked”. That
++section includes the selected engine and cycle, the sum of its saved sensor
++contributions, the contribution from added constants, the internal score and
++the prediction in cycles. It updates with the slider. The distinction between
++explaining a calculation and diagnosing engine damage stays visible even when
++the detailed section is closed.
++
++**Wording correction, 2026-09-27.** The previous introduction began “Each value”
++without saying which values it meant, and mixed chart instructions with
++calculation checks. The revised text points to the visible sensor labels and
++introduces the internal score before describing how the explanation divides it.
++
++For a walk explanation over the test engines, engine number is not drawn as a
++horizontal sequence: it is an identifier, so a line or left-to-right pattern
++would have no meaning. Instead, one row per part of the score shows every
++engine, the middle half of their values and their median, the middle value after
++ordering them. Beneath it, one chosen engine is a waterfall: the contribution
++from the added constants starts at zero, the walks that stay within a sensor's
++group start from that subtotal, and the walks that move between groups start
++from the next subtotal. The final outlined bar is the saved score, so the
++adding-up claim is visible rather than left to the reader's arithmetic. These
++are signed totals. A small bar can mean little travelled through the graph, or
++that large positive and negative walks cancelled; the largest-walk table names
++that distinction separately.
++
++**Label correction, 2026-09-28.** The author could not interpret “constants”,
++“stays” and “moves”. These were internal column names presented as explanations.
++The chart now says **model-added part**, **routes within one group** and
++**routes between groups**. Its caption first tells the reader what comparison
++the chart supports: which part has the largest net effect, which parts reinforce
++one another and which cancel. The detailed definitions follow the chart, so
++they remain available without delaying the first view of the data.
++The model-added part comes from learned additions inside the network, also
++called biases. The additions are fixed after training, but their contribution
++can vary because different inputs make different calculations pass them on.
++It is not a reference-engine prediction or a constant sensor channel.
++The groups collect sensor positions with matching model connections, not
++physical engine components. A route between groups leaves its starting group
++at least once, even if it later returns. The saved numeric columns keep their
++original names; only their presentation changes. The selected-engine chart
++shows the saved addition and the resulting prediction, explicitly distinguishing
++score units from cycles.
++
++### Locating the explanations on an engine
++
++Explain predictions opens with an engine cutaway drawn by `engine-view.js`.
++Its layout follows the engine modules in Figures 1 and 2 of
++[NASA's dataset paper](https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf).
++The same paper's Table 2 gives the variables' meanings. The section anchors
++are documented; exact probe positions, blade counts, dimensions and detailed
++cooling routes are not. Our drawing choices are recorded as the engine-overlay
++assumption (A-31). NASA's
++[EngineSim interactive](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/enginesimu/)
++provided a precedent for selecting a component on a cutaway; its code and artwork
++are not embedded in this page.
++
++The engine panel answers two different questions. Dashed leaders answer
++"where does this variable belong?"; graph connections answer "which other
++variables can it exchange information with in this model?" The two types of
++line must never be read as the same relationship. Circles locate temperature
++and pressure measurement regions. Rounded boxes identify shaft quantities,
++calculated quantities such as corrected speed, and system quantities such as
++cooling flow. Selecting a marker explains that distinction and highlights its
++component and graph neighbours. Keyboard users can select markers with Enter
++or Space. The surrounding chart keeps the page's full width, but the drawing
++itself stops at 1,000 pixels and stays centred so the selected sensor's
++explanation remains close below it. A narrow screen scrolls the drawing
++horizontally while the controls and explanation wrap to the available width.
++
++The engine and graph views show the same stored values, with the same colour
++and width scales. Positive shares are blue and negative shares orange; the
++strongest absolute value across all explained windows sets the marker scale.
++The chosen cycle changes with the shared control above the chart tabs. For test
++scope, this picks one test engine's last window; the separate average-connection view remains
++under a disclosure. No model is retrained or sensor data generated to draw it.
++
++For graph walks, connection columns decide which edges exist, even when their
++shares are zero; both directions are added before setting a line's width.
++The total is over all graph layers, and opposing shares can cancel. For
++Shapley and occlusion, `_explanation_edges` reads the selected seed's saved
++matrix of connections, with `weights_only=True`; if the file or PyTorch is
++unavailable, the panel says why it shows no connections. It never substitutes
++the paper's graph for a correlation graph. Equal line widths for these methods
++describe connectivity only, not importance.
++
++The saved-walk selector shows one position per graph layer. A slash denotes
++a group whose members the model cannot distinguish. All compatible connections
++are highlighted; choosing one group member would invent a distinction missing
++from the saved result. The walk's displayed share is its saved average across
++all explained windows, explicitly separate from the chosen window's node and
++connection values. Repeated groups remain visible in the layer sequence even
++when the drawing would place them on top of themselves. A strong share is an
++explanation of this model's prediction, not a diagnosis of the component.
++
++The real stored examples in `tests/test_examples.py` exercise both layouts,
++signed values, fixed scales, zero-share connections and grouped walk paths.
++The saved-matrix example in `tests/test_examples_torch.py` checks that a
++correlation graph comes from the selected network rather than the paper.
+ 
+ **Beside the paper's Fig. 10.** For an engine explained with Shapley values,
+ the page redraws the paper's Fig. 10 from the numbers of its Table 12, above
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/app.css b/src/thesis_gnn_rul_xai/docsite/assets/app.css
+index 8b11c85..ddc0e23 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/app.css
++++ b/src/thesis_gnn_rul_xai/docsite/assets/app.css
+@@ -1247,6 +1247,89 @@ button.pg-vstep-value:hover { text-decoration: underline; }
+ .pg-section-name { margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; }
+ .pg-section > .pg-fields > .pg-field:last-child, .pg-section > .pg-fields > .pg-field { margin-bottom: 0; }
+ .pg-section > .pg-fields { row-gap: 16px; }
++
++/* The Data tab is a dossier rather than another setting: selecting FD001–FD004
++   changes the engine counts, file measurements and real ten-row sample, while
++   the shared 26-column schema and full sensor catalogue stay in view. */
++.pg-data-detail {
++  margin-top: 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent);
++  border-radius: var(--radius); background: var(--page); overflow: hidden;
++}
++.pg-data-detail-head {
++  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
++  padding: 16px 20px; border-bottom: 1px solid var(--line);
++}
++.pg-data-detail-head h3 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -.01em; }
++.pg-data-detail-head p, .pg-data-intro, .pg-data-sensors-head p {
++  margin: 4px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.5;
++}
++.pg-data-status {
++  flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; background: var(--panel);
++  color: var(--ink-soft); font-size: 12px; white-space: nowrap;
++}
++.pg-data-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; background: var(--panel); }
++.pg-data-metrics > div { padding: 12px 20px; border-right: 1px solid var(--line); }
++.pg-data-metrics > div:last-child { border-right: 0; }
++.pg-data-metrics dt { color: var(--ink-soft); font-size: 12px; line-height: 1.35; }
++.pg-data-metrics dd { margin: 2px 0 0; color: var(--ink); font-size: 20px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
++.pg-data-detail-body { padding: 20px; }
++.pg-data-detail-body h4 { margin: 0; font-size: 14px; line-height: 20px; }
++.pg-data-files { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px; border-block: 1px solid var(--line); }
++.pg-data-file { min-width: 0; padding: 10px 16px; border-right: 1px solid var(--line); }
++.pg-data-file:first-child { padding-left: 0; }
++.pg-data-file:last-child { padding-right: 0; border-right: 0; }
++.pg-data-file-main { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; font-size: 13px; }
++.pg-data-filename, .pg-data-code { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
++.pg-data-file p { margin: 3px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.45; }
++.pg-data-file-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12px; color: var(--ink); font-variant-numeric: tabular-nums; }
++.pg-data-file-facts span + span { position: relative; }
++.pg-data-file-facts span + span::before { content: ""; position: absolute; left: -8px; top: 50%; width: 2px; height: 2px; border-radius: 50%; background: var(--ink-faint); }
++.pg-data-columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 0; border-block: 1px solid var(--line); }
++.pg-data-columns > div { min-width: 0; padding: 9px 12px; border-right: 1px solid var(--line); }
++.pg-data-columns > div:first-child { padding-left: 0; }
++.pg-data-columns > div:last-child { padding-right: 0; border-right: 0; }
++.pg-data-columns dt { font-size: 12px; color: var(--ink-soft); }
++.pg-data-columns dd { display: flex; flex-direction: column; gap: 2px; margin: 3px 0 0; font-size: 12px; }
++.pg-data-columns dd strong { font-size: 14px; }
++.pg-data-note { margin: 10px 0 0; padding: 8px 10px; border-radius: 7px; background: var(--accent-soft); color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
++.pg-data-note--warn { background: var(--warn-soft); color: var(--warn); }
++.pg-data-sensors { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
++.pg-data-sensors-head { display: flex; justify-content: space-between; gap: 16px; }
++.pg-data-rows { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
++.pg-data-table-wrap { margin-top: 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
++.pg-data-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; line-height: 1.4; }
++.pg-data-table th, .pg-data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
++.pg-data-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); color: var(--ink-soft); font-size: 11px; font-weight: 600; }
++.pg-data-table tbody tr:last-child > * { border-bottom: 0; }
++.pg-data-table tbody th { font-size: 12px; }
++.pg-data-table .is-unused { color: var(--ink-soft); }
++.pg-data-use { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
++.pg-data-use::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
++.pg-data-table .is-used .pg-data-use::before { background: var(--good); }
++.pg-data-column-key { display: block; margin-top: 2px; color: var(--ink-faint); font-family: var(--mono); font-size: 10px; font-weight: 400; }
++.pg-data-sample { min-width: 700px; }
++.pg-data-sample th, .pg-data-sample td { text-align: right; font-variant-numeric: tabular-nums; }
++.pg-data-sample tbody th, .pg-data-sample tbody td { font-family: var(--mono); }
++.pg-data-sample th:first-child, .pg-data-sample td:first-child { text-align: left; }
++@container pg-settings (max-width: 680px) {
++  .pg-data-files { grid-template-columns: 1fr; }
++  .pg-data-file { padding-inline: 0; border-right: 0; border-bottom: 1px solid var(--line); }
++  .pg-data-file:last-child { border-bottom: 0; }
++  .pg-data-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++  .pg-data-columns > div:nth-child(2) { padding-right: 0; border-right: 0; }
++  .pg-data-columns > div:nth-child(n + 3) { border-top: 1px solid var(--line); }
++  .pg-data-columns > div:nth-child(3) { padding-left: 0; }
++}
++@container pg-settings (max-width: 540px) {
++  .pg-data-detail-head { padding: 14px 16px; }
++  .pg-data-detail-body { padding: 16px; }
++  .pg-data-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++  .pg-data-metrics > div:nth-child(2) { border-right: 0; }
++  .pg-data-metrics > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
++}
++@container pg-settings (max-width: 340px) {
++  .pg-data-detail-head { flex-direction: column; }
++}
+ /* The padding enlarges what can be clicked to 24 pixels and more; the equal
+    negative margin keeps the words exactly where they were. */
+ .pg-reset, .pg-link { display: inline-block; font-size: 12px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 4px 8px; margin: -4px -8px; border-radius: 6px; }
+@@ -1342,10 +1425,73 @@ button.pg-vstep-value:hover { text-decoration: underline; }
+ .pg-metric-name { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+ .pg-metric-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+ .pg-metric-value span { font-size: 13px; color: var(--ink-faint); font-weight: 400; }
+-/* One column of charts, no wider than --measure-wide. playground.js draws
+-   each chart at the width it is shown at and again when that changes, so
+-   one unit of a drawing is one pixel on screen and its words keep their size. */
+-.pg-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 16px; max-width: var(--measure-wide); }
++/* Run charts keep the document measure. Explanation charts share one
++   full-width deck whose tabs scroll as one row on a narrow screen. */
++.pg-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; max-width: var(--measure-wide); margin-top: 16px; }
++.pg-explanation-charts { display: block; width: 100%; min-width: 0; max-width: none; }
++.pg-selection {
++  display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; gap: 8px 28px;
++  padding: 14px 18px 12px; margin-bottom: 8px; min-width: 0;
++  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
++}
++.pg-selection-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
++.pg-selection-main > label { font-size: 14px; font-weight: 700; }
++.pg-selection-stepper { display: flex; gap: 4px; align-items: center; }
++.pg-selection-stepper .button { width: 40px; min-height: 40px; padding: 10px; }
++.pg-selection-stepper .button svg { width: 14px; height: 14px; }
++.pg-selection-stepper .button:disabled { opacity: .4; cursor: default; }
++.pg-selection-stepper select {
++  min-height: 40px; min-width: 132px; padding: 6px 10px; font: 600 15px var(--sans);
++  color: var(--accent); background: var(--page); border: 1px solid var(--line-strong); border-radius: 5px;
++  font-variant-numeric: tabular-nums;
++}
++.pg-selection-metric { display: flex; flex-direction: column; justify-content: center; }
++.pg-selection-metric > span { font-size: 12px; color: var(--ink-soft); }
++.pg-selection-metric strong { font-size: 21px; line-height: 1.4; font-variant-numeric: tabular-nums; }
++.pg-selection-metric small { color: var(--ink-faint); font-size: 12px; font-weight: 400; }
++.pg-selection-track { grid-column: 1 / -1; min-width: 0; }
++.pg-selection-track input {
++  display: block; appearance: none; -webkit-appearance: none; width: 100%; height: 28px; margin: 0;
++  cursor: pointer; background: transparent; accent-color: var(--accent);
++}
++.pg-selection-track input::-webkit-slider-runnable-track {
++  height: 6px; border-radius: 999px;
++  background: linear-gradient(to right, var(--accent) var(--selection-progress, 0%), var(--line-strong) var(--selection-progress, 0%));
++}
++.pg-selection-track input::-webkit-slider-thumb {
++  appearance: none; -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px;
++  background: var(--accent); border: 3px solid var(--page); border-radius: 50%; box-shadow: 0 0 0 1px var(--accent);
++}
++.pg-selection-track input::-moz-range-track { height: 6px; background: var(--line-strong); border-radius: 999px; }
++.pg-selection-track input::-moz-range-progress { height: 6px; background: var(--accent); border-radius: 999px; }
++.pg-selection-track input::-moz-range-thumb { width: 14px; height: 14px; background: var(--accent); border: 3px solid var(--page); border-radius: 50%; box-shadow: 0 0 0 1px var(--accent); }
++.pg-selection-track input:disabled { opacity: .45; cursor: default; }
++.pg-selection-ends { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
++.pg-selection-ends [data-selection-position] { color: var(--ink-faint); }
++.pg-selection > p { grid-column: 1 / -1; max-width: none; margin: 0; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
++@container pg-panel (max-width: 700px) {
++  .pg-selection { grid-template-columns: 1fr 1fr; gap: 8px 14px; padding: 12px; }
++  .pg-selection-main { grid-column: 1 / -1; justify-content: space-between; }
++  .pg-selection-metric strong { font-size: 18px; }
++}
++.pg-chart-tabs {
++  display: flex; width: 100%; overflow-x: auto; scrollbar-width: thin;
++  box-shadow: inset 0 -1px 0 var(--line);
++}
++.pg-chart-tab {
++  position: relative; flex: 0 0 auto; min-height: 44px; padding: 0 14px;
++  border: 0; background: none; color: var(--ink-soft); font: 600 13px var(--sans);
++  white-space: nowrap; cursor: pointer;
++}
++.pg-chart-tab:hover, .pg-chart-tab[aria-selected="true"] { color: var(--ink); }
++.pg-chart-tab[aria-selected="true"]::after {
++  content: ""; position: absolute; left: 14px; right: 14px; bottom: 0;
++  height: 2px; border-radius: 999px; background: var(--accent);
++}
++.pg-chart-tab:focus-visible { outline-offset: -4px; }
++.pg-chart-panels, .pg-chart-panel { min-width: 0; }
++.pg-chart-panel { padding-top: 12px; }
++.pg-chart-panel > .pg-figure, .pg-chart-panel > .pg-empty { width: 100%; box-sizing: border-box; }
+ .pg-figure { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 12px; background: var(--page); min-width: 0; }
+ .pg-figure--wide { grid-column: 1 / -1; }
+ .pg-figure figcaption { font-size: 13px; color: var(--ink-soft); margin-bottom: 8px; line-height: 1.5; }
+@@ -1367,6 +1513,11 @@ button.pg-vstep-value:hover { text-decoration: underline; }
+ .pg-explain .pg-block { margin-bottom: 0; }
+ .pg-explain .pg-field-control select.field { min-width: 0; max-width: 100%; }
+ .pg-explain .pg-fields { max-width: var(--measure-form); }
++.pg-explanation-guide { width: 100%; min-width: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
++.pg-explanation-guide p { max-width: none; margin: 0 0 8px; }
++.pg-explanation-guide strong { color: var(--ink); }
++.pg-explanation-guide summary { width: auto; font-size: 14px; }
++.pg-explanation-guide details[open] summary { margin-bottom: 8px; }
+ .pg-heat-wrap { overflow-x: auto; }
+ .pg-heat { display: block; font-family: var(--mono); }
+ /* The heat map is drawn at its own size, not scaled, so its labels keep the 11-pixel floor. */
+@@ -1392,8 +1543,62 @@ button.pg-vstep-value:hover { text-decoration: underline; }
+ .pg-ring-label { font-size: 5.4px; font-weight: 700; font-family: var(--mono); fill: var(--fig-ink); paint-order: stroke; stroke: var(--fig-bg); stroke-width: 1.2px; pointer-events: none; }
+ .pg-ring-missing { font-size: 8px; fill: var(--ink-faint); }
+ .pg-fig10-count { font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin: 4px 0; }
+-.pg-slider { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: 8px; }
+-.pg-slider input { width: min(240px, 100%); height: 24px; accent-color: var(--accent); }
++.ev-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 16px 0; }
++.ev-controls label { display: flex; align-items: center; gap: 8px; }
++.ev-layout { display: flex; gap: 4px; }
++.ev-layout [aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
++.ev-walk-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
++.ev-walk-picker select { min-width: 0; max-width: 100%; flex: 1 1 360px; padding: 6px; background: var(--page); border: 1px solid var(--line-strong); border-radius: 5px; }
++.ev-scroll { overflow-x: auto; margin: 8px 0; border-bottom: 1px solid var(--line); }
++/* Keep the drawing close to its designed size so the selected sensor's text
++   remains nearby; the surrounding explanation card still spans the page. */
++.ev-drawing { display: block; width: 100%; min-width: 860px; max-width: 1000px; height: auto; margin: 0 auto; }
++.ev-machine { fill: var(--panel-2); stroke: var(--fig-axis); stroke-width: 1.2; }
++.ev-casing { fill: var(--panel-2); }
++.ev-part { fill: var(--line-strong); fill-opacity: .4; }
++.ev-part.is-active { stroke: var(--ink); stroke-width: 2.5; fill-opacity: .85; }
++.ev-shaft { fill: none; stroke: var(--fig-axis); stroke-width: 5; }
++.ev-air { fill: none; stroke: var(--fig-cool); stroke-width: 2; opacity: .6; }
++.ev-splitter { fill: none; stroke: var(--fig-axis); stroke-width: 5; }
++.ev-flame { fill: none; stroke: var(--fig-axis); stroke-width: 2; }
++.ev-fuel, .ev-cooling { fill: none; stroke: var(--fig-axis); stroke-width: 2; }
++.ev-cooling { stroke-dasharray: 7 4; }
++.ev-component-label { text-anchor: middle; stroke: var(--fig-bg); stroke-width: 4; paint-order: stroke; fill: var(--ink-soft); font: 15px var(--sans); }
++.ev-leader { fill: none; stroke: var(--fig-axis); stroke-width: 1.2; stroke-dasharray: 3 4; }
++.ev-anchor { fill: var(--fig-axis); }
++.ev-node { cursor: pointer; }
++.ev-node-base { fill: var(--fig-bg); stroke: var(--fig-axis); stroke-width: 1.5; }
++.ev-node-value { stroke: none; }
++.ev-node.is-selected .ev-node-base, .ev-node:focus-visible .ev-node-base { stroke: var(--ink); stroke-width: 3.5; }
++.ev-node:hover .ev-node-base { stroke: var(--ink); }
++.ev-symbol { font: 600 16px var(--sans); fill: var(--ink); text-anchor: middle; stroke: var(--fig-bg); stroke-width: 2.5; paint-order: stroke; }
++.ev-value { font: 14px var(--sans); fill: var(--ink-soft); text-anchor: middle; stroke: var(--fig-bg); stroke-width: 4; paint-order: stroke; }
++.ev-details { border-top: 1px solid var(--line); padding-top: 12px; margin: 12px 0; max-width: 100%; }
++.ev-details p { max-width: var(--measure); margin: 8px 0; }
++.ev-walk-steps { display: flex; gap: 10px; align-items: center; overflow-x: auto; padding-bottom: 8px; }
++.ev-walk-steps div { min-width: 155px; padding: 8px 12px; background: var(--panel); border-left: 3px solid var(--accent); }
++.ev-walk-steps small, .ev-walk-steps strong { display: block; }
++.ev-walk-steps small { color: var(--ink-faint); }
++@media (max-width: 600px) {
++  .ev-controls { gap: 12px; }
++}
++
++.pg-score-guide { max-width: var(--measure); margin: 22px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); }
++.pg-score-guide p { margin: 12px 0; }
++.pg-score-guide dl { margin: 16px 0; }
++.pg-score-guide dt { font-weight: 600; margin-top: 14px; }
++.pg-score-guide dd { margin: 4px 0 0; }
++.pg-walk-pick {
++  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
++  border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px;
++  font-size: 12px; color: var(--ink-soft);
++}
++.pg-walk-pick p { margin: 0; max-width: var(--measure); }
++.pg-walk-equation {
++  display: flex; flex-wrap: wrap; justify-content: center; gap: 3px 7px;
++  margin: 2px 0 0; color: var(--ink-soft); font: 12px/1.5 var(--mono); font-variant-numeric: tabular-nums;
++}
++.pg-walk-equation b { color: var(--ink-faint); font-weight: 400; }
+ 
+ /* An inline reference is something the pointer has to hit, so its box is
+    taller than the text it sits inside; the negative margin keeps the line
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/playground.js b/src/thesis_gnn_rul_xai/docsite/assets/playground.js
+index fa43a20..d3b28da 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/playground.js
++++ b/src/thesis_gnn_rul_xai/docsite/assets/playground.js
+@@ -492,14 +492,20 @@
+   // How wide a chart is drawn: the width it is shown at, so one unit of the
+   // drawing is one pixel on the screen and its words keep their size at every
+   // width, rather than shrinking on a phone and swelling on a wide screen.
+-  // The charts stand in one column no wider than --measure-wide (1080), less
+-  // the figure's padding and border (26).
+   function chartWidth() {
+     var panel = $("#pg-panel");
+     var shown = panel ? Math.min(panel.clientWidth, 1080) : 666;
+     return Math.max(240, Math.round(shown - 26));
+   }
+ 
++  // Explanation charts occupy their whole tab panel rather than the narrower
++  // document measure used by the run-history charts.
++  function explanationChartWidth() {
++    var panel = $("#pg-panel");
++    var shown = panel ? panel.clientWidth : 666;
++    return Math.max(240, Math.round(shown - 26));
++  }
++
+   // A chart's height follows its width within limits: never so short that
+   // its lines crowd on a phone, never taller than a laptop screen can show.
+   function chartHeight(width) {
+@@ -521,7 +527,8 @@
+       clearTimeout(chartTimer);
+       if (!panel.isConnected) { watch.disconnect(); return; }
+       chartTimer = setTimeout(function () {
+-        if (!panel.isConnected || !onPage() || chartWidth() === S.chartsDrawnAt) { return; }
++        var width = S.tab === "explain" ? explanationChartWidth() : chartWidth();
++        if (!panel.isConnected || !onPage() || width === S.chartsDrawnAt) { return; }
+         var y = window.scrollY;
+         if (S.tab === "results" && S.selected && S.detail) { drawDetail(); }
+         else if (S.tab === "explain" && S.explain.shown && S.explain.values) { drawExplanation(); }
+@@ -770,7 +777,7 @@
+       filter: { subset: "all", temporal: "all", graph: "all", pass: "all", state: "any", results: false, files: false },
+       xfilter: { method: "all", scope: "all", subset: "all", state: "any" },
+       explain: { run: null, detail: null, seed: null, method: "shap", scope: "engine", engine: "",
+-        every: 1, shown: null, values: null, index: 0 } };
++        every: 1, shown: null, values: null, index: 0, chart: "engine" } };
+ 
+     // The browser tab is named by app.js, from the menu, as every page is.
+     return tools.get("/api/playground/options").then(function (options) {
+@@ -894,6 +901,7 @@
+     if (target.matches("tr[data-explanation]")) {
+       var e = S.explain;
+       e.shown = target.getAttribute("data-explanation"); e.values = null; e.index = 0;
++      e.engineView = {}; e.chart = "engine";
+       drawExplain();
+     }
+   }
+@@ -936,26 +944,26 @@
+     },
+     "open-explanation": function (button) {
+       S.explain.run = button.getAttribute("data-run"); S.explain.detail = null;
+-      S.explain.shown = button.getAttribute("data-name"); S.explain.values = null; showTab("explain");
++      S.explain.shown = button.getAttribute("data-name"); S.explain.values = null; S.explain.chart = "engine";
++      showTab("explain");
+     },
+     "back": function () { S.selected = null; drawResults(); },
+     "again": function () { S.settings = settingsFromRun(S.detail); S.restore = {}; saveSettings(); showTab("design"); },
+     "explain-this": function () {
+       S.explain.run = S.detail.name; S.explain.detail = null; S.explain.shown = null; showTab("explain");
+     },
+-    "explain": function () { submitExplanation(); }
++    "explain": function () { submitExplanation(); },
++    "chart-tab": function (button) { selectExplanationChart(button.getAttribute("data-chart")); },
++    "explain-previous": function () { selectExplanationIndex(S.explain.index - 1); },
++    "explain-next": function () { selectExplanationIndex(S.explain.index + 1); }
+   };
+ 
+   function onChange(event) {
+     var input = event.target;
+     if (input.hasAttribute("data-procedure")) { chooseProcedure(input.value); return; }
+     if (input.hasAttribute("data-field")) { fieldChanged(input); return; }
+-    // The slider redraws when it is let go, not while it is being dragged.
+-    if (input.hasAttribute("data-window-index")) {
+-      S.explain.index = Number(input.value);
+-      var y = window.scrollY;
+-      drawExplanation();
+-      window.scrollTo({ top: y, behavior: "instant" });
++    if (input.hasAttribute("data-explain-index")) {
++      selectExplanationIndex(Number(input.value));
+       return;
+     }
+     // A filter changed: the list goes back to its first page, and the
+@@ -1090,21 +1098,18 @@
+     }
+   }
+ 
+-  // While the slider is being dragged only its caption follows it. Redrawing
+-  // the figure here would replace the slider itself, and the browser ends the
+-  // drag when the element under the pointer disappears.
++  // Update the selected data while keeping the dragged control attached.
+   function onInput(event) {
+     var input = event.target;
+-    if (!input.hasAttribute("data-window-index")) { return; }
+-    S.explain.index = Number(input.value);
+-    var rows = S.explain.values && S.explain.values.values;
+-    var caption = $("[data-window-caption]");
+-    var row = rows && rows[S.explain.index];
+-    if (row && caption) { caption.textContent = windowCaption(row); }
+-    if (historyCursor) { historyCursor(S.explain.index); }
++    if (!input.hasAttribute("data-explain-index")) { return; }
++    selectExplanationIndex(Number(input.value));
+   }
+ 
+-  function windowCaption(row) {
++  function explanationCaption(row) {
++    if (S.explain.values && S.explain.values.summary.scope === "test") {
++      return "engine " + row.unit + ", true remaining life " + fixed(row.rul, 0) +
++        ", predicted " + fixed(row.predicted, 1);
++    }
+     return "cycle " + row.end_cycle + ", true remaining life " + fixed(row.rul, 0) +
+       ", predicted " + fixed(row.predicted, 1);
+   }
+@@ -1437,6 +1442,9 @@
+     var body = '<div class="pg-sections">' + SECTIONS[g.key].map(function (section, i) {
+       return sectionHtml(section, i, g.key);
+     }).join("") + "</div>";
++    if (g.key === "data") {
++      body += dataDetailsHtml(null);
++    }
+     if (g.key === "training") {
+       body += '<section class="pg-run" id="pg-run" aria-label="Run summary"></section>';
+     }
+@@ -1444,6 +1452,101 @@
+       '" data-group="' + g.key + '" aria-labelledby="pg-tab-' + g.key + '"' + (on ? "" : " inert") + ">" + body + "</div>";
+   }
+ 
++  function dataHistoryWords(history) {
++    if (!history) { return ""; }
++    var median = Number(history.median);
++    var middle = Number.isInteger(median) ? count(median) : number(median, 1);
++    return count(history.shortest) + "–" + count(history.longest) + " cycles; median " + middle;
++  }
++
++  function dataFileHtml(label, filename, role, rows, columns, engines, history) {
++    var facts = [];
++    if (typeof rows === "number") { facts.push(plural(rows, "row")); }
++    if (typeof columns === "number") { facts.push(plural(columns, "column")); }
++    if (typeof engines === "number") { facts.push(plural(engines, "engine")); }
++    if (history) { facts.push(dataHistoryWords(history)); }
++    return '<div class="pg-data-file"><div class="pg-data-file-main"><strong>' + esc(label) + '</strong>' +
++      '<span class="pg-data-filename">' + esc(filename) + '</span></div><p>' + esc(role) + "</p>" +
++      (facts.length ? '<div class="pg-data-file-facts">' + facts.map(function (fact) {
++        return "<span>" + esc(fact) + "</span>";
++      }).join("") + "</div>" : "") + "</div>";
++  }
++
++  function dataSampleValue(value, key) {
++    if (value === null || value === undefined) { return "—"; }
++    return key === "unit" || key === "cycle" ? count(value) : String(value);
++  }
++
++  function dataDetailsHtml(dataset) {
++    var subset = S.settings.subset;
++    var table5 = (dataset && dataset.table5) || (S.options.dataset || {})[subset] || {};
++    var files = dataset && dataset.files;
++    var schema = S.options.dataset_schema || {};
++    var sensors = schema.sensors || [];
++    var sample = files && files.sample;
++    var ready = !!dataset;
++    var status = !ready ? "Reading file details…" : dataset.error ? "Refresh failed" : files ? "3 files available" : "Files not found";
++    var fileRows = dataFileHtml("Training histories", "train_" + subset + ".txt",
++      "Complete histories ending at failure.", files && files.train_rows, schema.raw_column_count,
++      files && files.train_engines, files && files.train_history) +
++      dataFileHtml("Test histories", "test_" + subset + ".txt",
++        "Partial histories stopping before failure.", files && files.test_rows, schema.raw_column_count,
++        files && files.test_engines, files && files.test_history) +
++      dataFileHtml("Test answers", "RUL_" + subset + ".txt",
++        "One remaining-life answer for each test engine.", files && files.labels, 1, null, null);
++    var groups = (schema.column_groups || []).map(function (group) {
++      return '<div><dt>' + esc(group.name) + '</dt><dd><strong>' + count(group.count) + '</strong><span class="pg-data-code">' +
++        esc(group.columns) + "</span></dd></div>";
++    }).join("");
++    var sensorRows = sensors.map(function (sensor) {
++      return '<tr class="' + (sensor.used ? "is-used" : "is-unused") + '"><td><span class="pg-data-use">' +
++        (sensor.used ? "Used" : "Not used") + "</span>" +
++        '</td><th scope="row">' + esc(sensor.symbol) + '</th><td class="pg-data-code">' + esc(sensor.column) +
++        "</td><td>" + esc(sensor.description) + "</td><td>" + esc(sensor.unit === "-" ? "—" : sensor.unit) +
++        "</td><td>" + esc(sensor.station) + "</td></tr>";
++    }).join("");
++    var sampleHead = sample ? sample.columns.map(function (column) {
++      return '<th scope="col"><span>' + esc(column.label) + '</span><span class="pg-data-column-key">' +
++        esc(column.detail) + "</span></th>";
++    }).join("") : "";
++    var sampleRows = sample ? sample.rows.map(function (row) {
++      return "<tr>" + sample.columns.map(function (column, index) {
++        var tag = index === 0 ? 'th scope="row"' : "td";
++        return "<" + tag + ">" + esc(dataSampleValue(row[column.key], column.key)) + "</" + tag.split(" ")[0] + ">";
++      }).join("") + "</tr>";
++    }).join("") : "";
++    var sampleTable = sample ? '<div class="pg-data-table-wrap"><table class="pg-data-table pg-data-sample"><caption class="visually-hidden">Ten consecutive rows from ' +
++      esc(sample.source) + '</caption><thead><tr>' + sampleHead + "</tr></thead><tbody>" + sampleRows +
++      "</tbody></table></div>" : "";
++    var unavailable = ready && !dataset.error && !files ? '<p class="pg-data-note pg-data-note--warn">The three files are not in data/raw/, so row counts and history lengths cannot be measured here.</p>' : "";
++    var failed = dataset && dataset.error ? '<p class="pg-data-note pg-data-note--warn">File details could not be refreshed: ' +
++      esc(dataset.error) + "</p>" : "";
++    return '<section class="pg-data-detail" id="pg-data-detail" aria-labelledby="pg-data-detail-title" aria-live="polite" aria-busy="' +
++      (!ready) + '"><header class="pg-data-detail-head"><div><h3 id="pg-data-detail-title">' + esc(subset) +
++      '</h3><p>NASA C-MAPSS sub-dataset</p></div>' +
++      '<span class="pg-data-status">' + esc(status) + '</span></header><dl class="pg-data-metrics"><div><dt>Training engines</dt><dd>' +
++      count(table5.train_engines) + '</dd></div><div><dt>Test engines</dt><dd>' + count(table5.test_engines) +
++      '</dd></div><div><dt>Operating conditions</dt><dd>' + count(table5.conditions) +
++      '</dd></div><div><dt>Fault modes</dt><dd>' + count(table5.fault_modes) +
++      '</dd></div></dl><div class="pg-data-detail-body"><section aria-labelledby="pg-data-files-title"><h4 id="pg-data-files-title">Files</h4>' +
++      '<div class="pg-data-files">' + fileRows + "</div>" + unavailable + failed + "</section>" +
++      '<section class="pg-data-sensors" aria-labelledby="pg-data-sensors-title"><div class="pg-data-sensors-head"><div><h4 id="pg-data-sensors-title">Sensor columns</h4>' +
++      '<p>The paper uses 14 of the 21 sensor readings as model inputs. The other seven stay in the raw files.</p></div></div>' +
++      '<div class="pg-data-table-wrap"><table class="pg-data-table"><caption class="visually-hidden">Every sensor column in ' +
++      esc(subset) + ', its meaning, unit, location and whether the paper uses it</caption><thead><tr><th>Paper input</th><th>Sensor</th>' +
++      '<th>File column</th><th>Measurement</th><th>Unit</th><th>Location</th></tr></thead><tbody>' + sensorRows +
++      '</tbody></table></div></section><section class="pg-data-rows" aria-labelledby="pg-data-columns-title"><h4 id="pg-data-columns-title">Each history row</h4>' +
++      '<p class="pg-data-intro">Each row records one engine at one cycle. These ten consecutive rows from ' +
++      esc(sample ? sample.source : "the training file") + ' include all three operating settings and the first three sensor inputs. A complete row has ' +
++      count(schema.raw_column_count) + ' columns.</p><dl class="pg-data-columns">' + groups + "</dl>" + sampleTable +
++      "</section></div></section>";
++  }
++
++  function paintDatasetDetails(dataset) {
++    var box = $("#pg-data-detail");
++    if (box) { box.outerHTML = dataDetailsHtml(dataset); }
++  }
++
+   // The settings of a box of the pipeline stand in groups named after the
+   // steps of the box's own flowchart that they decide, in the order those
+   // steps run, each with the step's picture: "Cap the labels" with the label
+@@ -2337,6 +2440,9 @@
+   function settingsMoved(keys) {
+     saveSettings();
+     keys.forEach(paintRow);
++    if (keys.indexOf("subset") >= 0 || keys.indexOf("window_size") >= 0) {
++      paintDatasetDetails(null);
++    }
+     S.options.fields.forEach(function (other) {
+       var box = $('[data-row="' + other.key + '"]');
+       if (box) { box.hidden = !visible(other.key); }
+@@ -2393,9 +2499,11 @@
+       post("/api/playground/preview", S.settings).then(function (preview) {
+         if (asked !== JSON.stringify(S.settings)) { return; }  // a newer request is on its way
+         drawRunCard(box, preview, null);
++        paintDatasetDetails(preview.dataset);
+       }).catch(function (error) {
+         if (asked !== JSON.stringify(S.settings)) { return; }
+         drawRunCard(box, null, error.message);
++        paintDatasetDetails({ table5: (S.options.dataset || {})[S.settings.subset], error: error.message });
+       });
+     }, 220);
+   }
+@@ -2927,7 +3035,7 @@
+         '<div class="pg-metrics">' + cards + "</div>" + compared + caveatList(cautions) +
+         '<div class="pg-charts"><figure class="pg-figure pg-figure--wide">' + perSeedPlot + "</figure>" +
+         (curves ? '<figure class="pg-figure pg-figure--wide">' +
+-          (hasValidation ? "<figcaption><strong>Not in the paper.</strong> A ring marks the reported pass.</figcaption>" : "") +
++          (hasValidation ? "<figcaption>A ring marks the reported pass.</figcaption>" : "") +
+           curvePlot + "</figure>"
+           : '<div class="pg-empty pg-figure--wide">This run kept no per-seed files, so it has no curves, predictions or weights.</div>') +
+         (predPlot ? '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 8.</strong></figcaption>' +
+@@ -3087,7 +3195,7 @@
+     var e = S.explain, which = input.getAttribute("data-explain");
+     if (which === "run") {
+       e.run = input.value; e.detail = null; e.seed = null; e.engine = "";
+-      e.shown = null; e.values = null; e.index = 0;
++      e.shown = null; e.values = null; e.index = 0; e.chart = "engine";
+       drawExplain().then(function () {
+         var picker = $("#pg-e-run");
+         if (S.tab === "explain" && picker) { picker.focus({ preventScroll: true }); }
+@@ -3125,6 +3233,122 @@
+     }).catch(function (error) { T.toast(error.message, 8000); });
+   }
+ 
++  // Every view of an explanation lives in one full-width deck. The tab row
++  // keeps the views beside one another without making the reader scroll past
++  // every chart to reach the next one. Only the chosen panel is shown, while
++  // the ordinary tab-key and arrow-key handling above remains shared with the
++  // other tab rows on the page.
++  function explanationCharts(charts) {
++    charts = charts.filter(function (chart) { return !!chart.html; });
++    var keys = charts.map(function (chart) { return chart.key; });
++    if (keys.indexOf(S.explain.chart) < 0) { S.explain.chart = keys[0]; }
++    return '<div class="pg-charts pg-explanation-charts">' + explanationSelection(S.explain.values) +
++      '<div class="pg-chart-tabs" role="tablist" aria-label="Explanation charts">' +
++      charts.map(function (chart) {
++        var on = chart.key === S.explain.chart;
++        return '<button type="button" role="tab" class="pg-chart-tab" id="pg-chart-tab-' + chart.key +
++          '" data-action="chart-tab" data-chart="' + chart.key + '" aria-controls="pg-chart-panel-' + chart.key +
++          '" aria-selected="' + on + '" tabindex="' + (on ? 0 : -1) + '">' + esc(chart.label) + "</button>";
++      }).join("") + '</div><div class="pg-chart-panels">' + charts.map(function (chart) {
++        var on = chart.key === S.explain.chart;
++        return '<div class="pg-chart-panel" id="pg-chart-panel-' + chart.key + '" role="tabpanel" aria-labelledby="pg-chart-tab-' +
++          chart.key + '"' + (on ? "" : " hidden") + ">" + chart.html + "</div>";
++      }).join("") + "</div></div>";
++  }
++
++  function selectExplanationChart(key) {
++    var button = $('[data-chart="' + key + '"]');
++    if (!button) { return; }
++    S.explain.chart = key;
++    var deck = button.closest(".pg-charts");
++    Array.prototype.forEach.call(deck.querySelectorAll(".pg-chart-tab"), function (tab) {
++      var on = tab.getAttribute("data-chart") === key;
++      tab.setAttribute("aria-selected", String(on));
++      tab.tabIndex = on ? 0 : -1;
++    });
++    Array.prototype.forEach.call(deck.querySelectorAll(".pg-chart-panel"), function (panel) {
++      panel.hidden = panel.id !== "pg-chart-panel-" + key;
++    });
++    if (S.explain.updateCharts) { S.explain.updateCharts(); }
++  }
++
++  // One shared, persistent control selects a stored cycle or test engine.
++  function explanationSelection(data) {
++    var rows = data.values, forEngine = data.summary.scope === "engine";
++    var detail = S.explain.detail || {};
++    var ceiling = (forEngine || detail.clip_test_labels) ? (data.summary.rul_max || detail.rul_max) : null;
++    var label = forEngine ? "Engine cycle" : "Test engine";
++    var item = forEngine ? "cycle" : "test engine";
++    var name = function (row) { return (forEngine ? "Cycle " : "Engine ") + (forEngine ? row.end_cycle : row.unit); };
++    return '<section class="pg-selection" aria-label="Shared chart selection">' +
++      '<div class="pg-selection-main"><label for="pg-explain-pick">' + label + '</label>' +
++      '<div class="pg-selection-stepper"><button type="button" class="button" data-action="explain-previous" aria-label="Previous saved ' + item + '">' + BACK + '</button>' +
++      '<select id="pg-explain-pick" data-explain-index>' + rows.map(function (row, index) {
++        return '<option value="' + index + '"' + (index === S.explain.index ? ' selected' : '') + '>' + esc(name(row)) + '</option>';
++      }).join("") + '</select><button type="button" class="button" data-action="explain-next" aria-label="Next saved ' + item + '">' + NEXT + '</button></div></div>' +
++      '<div class="pg-selection-metric"><span>Actual remaining life</span><strong><span data-selection-actual></span> <small>cycles</small></strong></div>' +
++      '<div class="pg-selection-metric"><span>Predicted remaining life</span><strong><span data-selection-predicted></span> <small>cycles</small></strong></div>' +
++      '<div class="pg-selection-track"><input type="range" data-explain-index min="0" max="' + (rows.length - 1) +
++      '" step="1" value="' + S.explain.index + '" aria-label="' + label + '" aria-describedby="pg-selection-help">' +
++      '<div class="pg-selection-ends"><span>' + esc(name(rows[0])) + '</span><span data-selection-position></span><span>' + esc(name(rows[rows.length - 1])) + '</span></div></div>' +
++      '<p id="pg-selection-help">' + (forEngine
++        ? 'Engine ' + esc(rows[0].unit) + ': each position uses the readings ending at that cycle.'
++        : 'Each position is a different test engine, using its last available readings—not a step in time.') +
++      ' Drag to update the selected prediction live. Overview charts still show all saved ' + (forEngine ? 'cycles' : 'engines') + '.' +
++      (ceiling ? ' Actual life is limited to ' + esc(ceiling) + ' cycles for this comparison.' : '') + '</p></section>';
++  }
++
++  // Update labels without replacing the range while it is being dragged.
++  function updateExplanationSelection() {
++    var e = S.explain, rows = e.values.values, row = rows[e.index], box = $(".pg-selection");
++    if (!box) { return; }
++    Array.prototype.forEach.call(box.querySelectorAll("[data-explain-index]"), function (input) {
++      input.value = String(e.index);
++      input.disabled = rows.length < 2;
++      if (input.type === "range") {
++        input.setAttribute("aria-valuetext", explanationCaption(row) + " cycles");
++        input.style.setProperty("--selection-progress", (rows.length > 1 ? 100 * e.index / (rows.length - 1) : 0) + "%");
++      }
++    });
++    box.querySelector('[data-action="explain-previous"]').disabled = e.index === 0;
++    box.querySelector('[data-action="explain-next"]').disabled = e.index === rows.length - 1;
++    box.querySelector("[data-selection-actual]").textContent = fixed(row.rul, 0);
++    box.querySelector("[data-selection-predicted]").textContent = fixed(row.predicted, 1);
++    box.querySelector("[data-selection-position]").textContent = (e.index + 1) + " of " + rows.length + " saved";
++  }
++
++  // Coalesce rapid input events into one visual update per animation frame.
++  function selectExplanationIndex(index) {
++    var e = S.explain, data = e.values;
++    if (!data || !data.values.length || !Number.isFinite(index)) { return; }
++    e.index = Math.max(0, Math.min(Math.round(index), data.values.length - 1));
++    updateExplanationSelection();
++    if (e.selectionFrame) { window.cancelAnimationFrame(e.selectionFrame); }
++    e.selectionFrame = window.requestAnimationFrame(function () {
++      e.selectionFrame = null;
++      if (S.tab === "explain" && e.values === data && e.shown === data.name && e.updateCharts) { e.updateCharts(); }
++    });
++  }
++
++  // Refresh only selection-dependent content, preserving controls and open details.
++  function wireExplanationSelection(box, data, sensorOrder, W) {
++    var e = S.explain;
++    e.updateCharts = function () {
++      var row = data.values[e.index];
++      if (e.chart === "engine" && e.engineController) { e.engineController.update(e.index); }
++      var panel = box.querySelector("#pg-chart-panel-" + e.chart);
++      if (e.chart === "life" && panel) { panel.innerHTML = lifeFigure(data.values, row, W); }
++      var graph = box.querySelector("[data-selected-sensor-graph]");
++      if (e.chart === "graph" && graph) { graph.innerHTML = sensorGraph(row, sensorOrder); }
++      var waterfall = box.querySelector("[data-walk-waterfall]");
++      if (e.chart === "parts" && waterfall) { waterfall.innerHTML = walkWaterfall(row, W); }
++      var example = box.querySelector("[data-walk-example]");
++      if (example) { example.innerHTML = walkExample(data, e.index); }
++      if (historyCursor) { historyCursor(e.index); }
++    };
++    updateExplanationSelection();
++  }
++
+   function drawExplanation() {
+     var e = S.explain, box = $("#pg-e-view");
+     if (!box) { return; }
+@@ -3134,7 +3358,7 @@
+       : T.get("/api/playground/explanation?run=" + encodeURIComponent(e.run) + "&name=" + encodeURIComponent(e.shown))
+         .then(function (data) { data.name = shown; return data; });
+     if (!held) { box.innerHTML = '<div class="loading">Reading the explanation…</div>'; }
+-    load.then(function (data) {
++    return load.then(function (data) {
+       if (S.tab !== "explain" || e.run !== runName || e.shown !== shown) { return; }
+       e.values = data;
+       var sum = data.summary, rows = data.values;
+@@ -3171,13 +3395,14 @@
+         ? "Each value is a sensor's share of the prediction's difference from the baseline of " +
+           fixed(sum.baseline_prediction, 2) + " cycles, where every sensor is replaced by its average training window. "
+         : "Each value is the original prediction minus the prediction with just that sensor replaced by its average training window, in cycles. ";
+-      var head = '<section class="pg-detail"><p class="pg-lead">' + meaning +
++      var origin = exact ? "" : "Occlusion is a comparison added by this project; the paper does not use it. ";
++      var head = '<section class="pg-detail"><p class="pg-lead">' + origin + meaning +
+         "Positive values raise the predicted remaining life in this comparison; negative values lower it. Computed in " +
+         duration(sum.seconds) + ".</p>" + caveatList(cautions);
+ 
+       var mean = {};
+       sensorOrder.forEach(function (s) { mean[s] = sum.mean_abs[s]; });
+-      var W = S.chartsDrawnAt = chartWidth();
++      var W = S.chartsDrawnAt = explanationChartWidth();
+ 
+       // The paper's figures, in the order its Section 4.4 introduces them, each
+       // drawn from this explanation. Every caption opens by saying which of the
+@@ -3190,34 +3415,58 @@
+       var body;
+       if (forEngine) {
+         var current = rows[e.index];
+-        body = head + '<div class="pg-charts">' + lifeFigure(rows, current, W) +
+-          swarm + strip +
+-          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, right.</strong> One window on the sensor graph, ' +
+-          'coloured by the rank of this window\'s values. <label class="pg-slider">Window ' +
+-          '<input type="range" min="0" max="' + (rows.length - 1) + '" value="' + e.index + '" data-window-index> <span data-window-caption>' +
+-          esc(windowCaption(current)) + "</span></label></figcaption>" +
+-          sensorGraph(current, sensorOrder) +
+-          '<p class="pg-faint">The paper does not say whether influence is the size of a value or the value itself; here it is the size, ignoring the sign.</p></figure>' +
+-          '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> ' +
++        var graph = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 9, right.</strong> The sensor graph at the selected engine cycle, ' +
++          'coloured by the rank of its contributions.</figcaption><div data-selected-sensor-graph>' +
++          sensorGraph(current, sensorOrder) + '</div>' +
++          '<p class="pg-faint">The paper does not say whether influence is the size of a value or the value itself; here it is the size, ignoring the sign.</p></figure>';
++        var history = '<figure class="pg-figure pg-figure--wide"><figcaption>' +
+           "Every sensor, across the whole life. Point at any panel to read every sensor at that cycle.</figcaption>" +
+-          sensorHistory(rows, symbols, e.index) + "</figure>" +
+-          (exact ? paperComparison(rows, sensorOrder, sum) : "") + "</div></section>";
++          sensorHistory(rows, symbols, e.index) + "</figure>";
++        body = head + explanationCharts([
++          { key: "engine", label: "Engine", html: engineFigure() },
++          { key: "life", label: "Remaining life", html: lifeFigure(rows, current, W) },
++          { key: "values", label: "All values", html: swarm },
++          { key: "ranking", label: "Sensor ranking", html: strip },
++          { key: "graph", label: "Sensor graph", html: graph },
++          { key: "history", label: "Over time", html: history },
++          { key: "paper", label: "Paper comparison", html: exact ? paperComparison(rows, sensorOrder, sum) : "" }
++        ]) + "</section>";
+       } else {
+         // With no single window to show, Fig. 9 (right) would repeat Fig. 9
+         // (middle) on the graph; the heat map carries the colour key instead
+         // of the history chart, which needs one engine's life.
+-        var heat = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Every sensor at every ' +
++        var heat = '<figure class="pg-figure pg-figure--wide"><figcaption>Every sensor at every ' +
+           "test engine (columns, by engine number). Blue raised the predicted remaining life, orange lowered it; the stronger the colour, the more cycles.</figcaption>" +
+           heatmap(rows, sensorOrder) + "</figure>";
+-        body = head + '<div class="pg-charts">' + swarm + strip + heat + "</div></section>";
++        body = head + explanationCharts([
++          { key: "engine", label: "Engine", html: engineFigure() },
++          { key: "values", label: "All values", html: swarm },
++          { key: "ranking", label: "Sensor ranking", html: strip },
++          { key: "engines", label: "All engines", html: heat }
++        ]) + "</section>";
+       }
+       box.innerHTML = body;
++      mountEngine(box, data);
+       wireHistory(box, forEngine ? rows : []);
++      wireExplanationSelection(box, data, sensorOrder, W);
+     }).catch(function (error) {
+       box.innerHTML = errorBox(error.message);
+     });
+   }
+ 
++  function engineFigure() {
++    return '<figure class="pg-figure pg-figure--wide ev-figure" data-engine-view></figure>';
++  }
++
++  function mountEngine(box, data) {
++    var e = S.explain;
++    if (e.engineViewName !== e.shown) { e.engineView = {}; e.engineViewName = e.shown; }
++    e.engineController = window.ThesisEngineView.mount(box.querySelector("[data-engine-view]"), data, {
++      index: e.index, graph: S.options.graph,
++      edges: data.graph_edges === undefined ? null : data.graph_edges
++    }, e.engineView || (e.engineView = {}));
++  }
++
+   // The paper's Fig. 7 for one engine: the true and the predicted remaining
+   // life at every window, the error between them shaded, the chosen window marked.
+   function lifeFigure(rows, current, W) {
+@@ -3230,7 +3479,7 @@
+       series: [
+         { name: "true remaining life (capped)", colour: "var(--fig-accent)", dash: "7 4", width: 2, points: rows.map(function (r) { return [r.end_cycle, r.rul]; }) },
+         { name: "predicted", colour: "var(--fig-lpt)", width: 1.8, points: rows.map(function (r) { return [r.end_cycle, r.predicted]; }) },
+-        { name: "the chosen window", colour: "var(--fig-ink)", line: false, dots: true, radius: 5.5, points: [[current.end_cycle, current.predicted]] }
++        { name: "selected engine cycle", colour: "var(--fig-ink)", line: false, dots: true, radius: 5.5, points: [[current.end_cycle, current.predicted]] }
+       ]
+     });
+     return '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 7.</strong>' +
+@@ -3248,6 +3497,20 @@
+     return (v > 0 ? "+" : "") + fixed(v, 3);
+   }
+ 
++  // Show the saved arithmetic for the selected engine and cycle.
++  function walkExample(data, index) {
++    var selected = data.values[index];
++    var sensorTotal = Object.keys(data.summary.mean_abs_start).reduce(function (total, sensor) {
++      return total + Number(selected["start_" + sensor]);
++    }, 0);
++    return '<strong>Example from the selected ' + (data.summary.scope === "engine" ? 'engine cycle' : 'test engine') + '.</strong> Engine ' + esc(selected.unit) +
++      ', cycle ' + esc(selected.end_cycle) + ': the sensor contributions total <strong>' + scoreShare(sensorTotal) +
++      '</strong>, and the model-added part contributes <strong>' + scoreShare(Number(selected.constant)) +
++      '</strong>. Together they give the internal score <strong>' + scoreShare(Number(selected.score)) +
++      '</strong>, which the model converts to <strong>' + fixed(selected.predicted, 1) +
++      ' cycles</strong> of remaining life. These displayed numbers are rounded.';
++  }
++
+   // A walk explanation. Its numbers are shares of the score before the
+   // sigmoid, never cycles: the server adds each window's walks up by the
+   // sensor they start at (start_), by the connection they pass along
+@@ -3275,93 +3538,273 @@
+     if (e.index >= rows.length) { e.index = 0; }
+     var forEngine = sum.scope === "engine";
+     var groups = sum.groups || [];
+-    var middle = Math.round(Number(sum.rul_max) / 2 * 10) / 10;
+-
+-    // The head says once what a share is, its sign and what it is a share
+-    // of; the cautions say what the shares can and cannot be read as.
+-    var cautions = [{ level: "info", ref: "A-29", text: "The walks and the separate contribution from the layers' added " +
+-        "constants add up to the score; the largest miss here is " +
+-        Number(sum.conservation_error_max).toExponential(1) + "." },
+-      { level: "info", text: "These are not Shapley values. The order of the sensors may be set beside a Shapley ranking; " +
+-        "the sizes may not, since these are parts of the score and Shapley values are differences in predicted remaining life." }];
++    var detailsOpen = box.querySelector("[data-walk-guide][open]");
++
++    // Explain the visible numbers first, with the calculation available on request.
++    var methodNotes = '<p><strong>How a sensor gets its number.</strong> The model combines information from connected sensors ' +
++      'in several calculation steps. A sequence of sensors followed through those steps is called a <strong>walk</strong>. ' +
++      'This explanation adds the contributions from all walks starting at a sensor to get the number shown beneath its label.</p>' +
++      '<p><strong>How the total becomes a prediction.</strong> Inside its calculations, the model also adds numbers learned during training, called biases. ' +
++      'Their contribution is shown as the model-added part in the Score parts tab. Add that contribution to all the sensor contributions ' +
++      'to get the internal score. The model then converts that total into remaining life; a larger total gives a longer prediction.</p>' +
++      '<p data-walk-example>' + walkExample(data, e.index) + '</p>' +
++      '<p><strong>Check on the addition.</strong> Across this saved explanation, the largest difference between the sum ' +
++      'of those parts and the model\'s internal score is ' + Number(sum.conservation_error_max).toExponential(1) +
++      ' score units. This checks the explanation\'s arithmetic; it does not check whether the prediction is correct (' + refLink("A-29") + ').</p>' +
++      '<p><strong>Comparing explanation methods.</strong> Shapley values divide a difference in predicted remaining life ' +
++      'into sensor contributions measured in cycles. The walk numbers here divide the internal score, before conversion to cycles. ' +
++      'You can compare which sensors the methods rank highest, but their numerical contributions use different scales.</p>';
+     if (groups.length === 1 && groups[0].length === symbols.length) {
+-      cautions.push({ level: "info", ref: "F-18", text: "Every sensor is joined to every other, so the graph cannot tell any two " +
+-        "apart and counts them as one where a walk ends: here walks differ only by the sensor they start at." });
++      methodNotes += '<p><strong>Why sensor names are grouped.</strong> In this model every sensor is connected to every other sensor. ' +
++        'The steps that combine connected sensors therefore produce the same result at every sensor position. ' +
++        'The walk display combines these positions into one group; walks here are distinguished by their starting sensor (' + refLink("F-18") + ').</p>';
+     } else if (groups.length) {
+-      cautions.push({ level: "info", ref: "F-18", text: "The graph cannot tell apart the sensors within each of these groups: " +
+-        groups.map(andList).join("; ") + ". A group's members are joined to exactly the same sensors, so a group counts as " +
+-        "one where a walk ends." });
++      methodNotes += '<p><strong>Why some sensor names are grouped.</strong> These groups have matching connections in this model: ' +
++        esc(groups.map(andList).join("; ")) + '. When the model combines information from connected sensors, it produces the same result ' +
++        'at every position within a group. The walk display combines those positions and separates their names with slashes. ' +
++        'This describes the model\'s calculation; the sensors can still measure different things (' + refLink("F-18") + ').</p>';
+     }
+     if (sum.walks_start_after_learned_stage) {
+-      cautions.push({ level: "info", ref: "A-29", text: "The walks start where the temporal stage hands its numbers to the " +
+-        "graph layers, after that stage has read the whole window, so they say nothing about which part of the window mattered." });
++      methodNotes += '<p><strong>Which moments are explained?</strong> This model first processes each sensor\'s readings over time. ' +
++        'The walk calculation starts with the result of that processing, so it cannot say which individual cycle in the selected ' +
++        'window contributed most (' + refLink("A-29") + ').</p>';
+     }
+-    cautions.push({ level: "info", text: "A large value is not evidence that the sensor causes the engine's wear." });
+-    cautions.push({ level: "info", ref: "A-30", text: "What passed along a connection is not what removing that connection " +
+-      "would do; the two are separate measurements and need not agree." });
+-    var head = '<section class="pg-detail"><p class="pg-lead">Each value is a sensor\'s share of the score: the one number ' +
+-      "that the model's last step, the sigmoid, turns into a predicted remaining life." +
+-      (isFinite(middle) ? " A score of 0 predicts " + middle + " cycles, and a higher score a longer life." : "") +
+-      " A sensor's share adds up every walk that starts at it, a walk being the sensors a piece of its reading passes " +
+-      "through, one per graph layer. Positive shares raise the prediction; negative shares lower it. Computed in " +
+-      (sum.seconds < 1 ? "under a second" : duration(sum.seconds)) + ".</p>" + caveatList(cautions);
+-
+-    var W = S.chartsDrawnAt = chartWidth();
++    methodNotes += '<p><strong>What the connecting lines mean.</strong> Their widths show the size of the score contribution assigned ' +
++      'to each connection. They do not tell you how much the prediction would change if you removed that connection. ' +
++      'Answering that question requires changing the connections and running the model again (' + refLink("A-30") + ').</p>' +
++      '<p>Time taken to compute this saved explanation: ' + (sum.seconds < 1 ? 'under a second' : duration(sum.seconds)) + '.</p>';
++    var head = '<section class="pg-detail"><div class="pg-explanation-guide" aria-label="How to read the walk explanation">' +
++      '<p class="pg-method-origin">Walk explanations are added by this project; the paper does not use this method (' + refLink("A-29") + ').</p>' +
++      '<p><strong>What do the numbers beneath the sensors mean?</strong> In the Engine tab, the number beneath each sensor label ' +
++      'is that sensor\'s contribution to the model\'s calculation for the selected ' + (forEngine ? 'engine cycle' : 'test engine') +
++      '. It is not the sensor reading or a number of remaining cycles.</p>' +
++      '<p>Blue, positive numbers add to an internal score; orange, negative numbers subtract from it. ' +
++      'The model converts the total score into its prediction of remaining life. A number further above zero supports a longer ' +
++      'prediction; a number further below zero supports a shorter one.</p>' +
++      '<p>Use the ' + (forEngine ? 'Engine cycle' : 'Test engine') + ' control above the chart tabs to choose ' + (forEngine ? 'a moment in the engine\'s life' : 'a test engine') +
++      ', then click a sensor to read what it measures and its contribution. These charts explain the model\'s calculation; ' +
++      'they do not identify damaged parts or prove what caused the engine to wear.</p>' +
++      '<details class="pg-details" data-walk-guide' + (detailsOpen ? ' open' : '') +
++      '><summary>How this explanation is calculated and checked</summary>' + methodNotes + '</details></div>';
++
++    var W = S.chartsDrawnAt = explanationChartWidth();
+     var what = forEngine ? "window" : "engine";
+-    var parts = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Each ' +
+-      (forEngine ? "window's" : "test engine's") + " score, split. The three coloured parts add up to the score " +
+-      (forEngine ? "(dashed)" : "(rings)") + "; a sensor that shares no group is a group of its own.</figcaption>" +
+-      walkParts(rows, forEngine, W) + "</figure>";
+-    var swarm = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Every sensor\'s ' +
++    var partsGuide = '<div class="pg-score-guide" aria-label="Definitions for the score-parts chart"><p><strong>What is being added up?</strong> These are parts of the model\'s internal score, ' +
++      'not sensor readings or remaining cycles. The total score is converted to the remaining-life prediction.</p>' +
++      '<dl><dt>Model-added part</dt><dd>The contribution from numbers the model learned to add inside its calculations ' +
++      '(called biases). This part is kept separate from contributions traced back to sensor inputs. The learned numbers are fixed after training, ' +
++      'but their contribution can change because the input changes which calculations pass them on. This is not a reference engine or a constant sensor.</dd>' +
++      '<dt>Routes within one group</dt><dd>Contributions from routes that never leave their starting sensor\'s group. ' +
++      'A route, also called a walk, follows sensor positions through successive calculation layers; nothing physically moves on the engine.</dd>' +
++      '<dt>Routes between groups</dt><dd>Contributions from all other routes: they reach a sensor outside the starting group at least once, even if they later return.</dd></dl>' +
++      '<p><strong>What is a group?</strong> Sensors are grouped when they have matching connections in this model, so combining their neighbours gives them the same result. ' +
++      'These are calculation groups, not physical engine components. ' + (groups.length ? 'Here the shared groups are <strong>' +
++        esc(groups.map(function (group) { return group.join(" / "); }).join("; ")) + '</strong>. Every other sensor is its own group.' :
++        'In this saved explanation, every sensor is its own group.') + '</p>' +
++      '<p>Positive contributions add to the score; negative ones subtract. Green, purple and gold identify the three categories, not healthy or damaged parts. ' +
++      'Large positive and negative contributions can cancel inside a category.</p></div>';
++    var partsCaption = forEngine
++      ? "How to read this chart. The dashed line is the total score that becomes the remaining-life prediction; the three coloured lines add to it at every cycle. Compare each coloured line's distance from zero to see which part has the largest net effect. Lines on the same side of zero reinforce one another; lines on opposite sides cancel. When the dashed line changes, the coloured line that changes with it shows which part moved the prediction."
++      : "How to read these charts. The first compares each score part across test engines; the second builds the selected engine's score step by step. Use them to see which part usually has the largest net effect and where positive and negative parts cancel.";
++    var parts = '<figure class="pg-figure pg-figure--wide"><figcaption>' +
++      partsCaption + "</figcaption>" + walkParts(rows, forEngine, W, e.index) + partsGuide + "</figure>";
++    var swarm = '<figure class="pg-figure pg-figure--wide"><figcaption>Every sensor\'s ' +
+       "share, one dot per " + what + ", the sensors ranked by the average size of their shares.</figcaption>" +
+       beeswarm(shown, symbols, W, "") + "</figure>";
+-    var flow = '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> What passed along ' +
+-      "each connection of the sensor graph, over every graph layer and both ways together, " +
+-      (forEngine ? "at one window; the wider the line, the more. <label class=\"pg-slider\">Window " +
+-        '<input type="range" min="0" max="' + (rows.length - 1) + '" value="' + e.index + '" data-window-index> <span data-window-caption>' +
+-        esc(windowCaption(rows[e.index])) + "</span></label>"
+-        : "averaged over the test engines; the wider the line, the more.") + "</figcaption>" +
+-      flowGraph(rows, forEngine ? e.index : null, sensorOrder) + "</figure>";
+     var walks = topWalks(top, sum);
++    var fleetFlow = forEngine ? "" : '<details class="pg-figure pg-figure--wide"><summary>Average connection shares across all test engines</summary>' +
++      '<p>Both directions and all graph layers together, averaged over the test engines. This is separate from the chosen engine above.</p>' +
++      flowGraph(rows, null, sensorOrder) + '</details>';
+ 
+     var body;
+     if (forEngine) {
+-      body = head + '<div class="pg-charts">' + lifeFigure(rows, rows[e.index], W) + parts + swarm + flow + walks +
+-        '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> ' +
++      var history = '<figure class="pg-figure pg-figure--wide"><figcaption>' +
+         "Every sensor's share, across the whole life. Point at any panel to read every sensor at that cycle.</figcaption>" +
+-        sensorHistory(shown, symbols, e.index, "") + "</figure></div></section>";
++        sensorHistory(shown, symbols, e.index, "") + "</figure>";
++      body = head + explanationCharts([
++        { key: "engine", label: "Engine", html: engineFigure() },
++        { key: "life", label: "Remaining life", html: lifeFigure(rows, rows[e.index], W) },
++        { key: "parts", label: "Score parts", html: parts },
++        { key: "values", label: "Sensor shares", html: swarm },
++        { key: "walks", label: "Largest walks", html: walks },
++        { key: "history", label: "Over time", html: history }
++      ]) + "</section>";
+     } else {
+-      body = head + '<div class="pg-charts">' + parts + swarm + flow + walks +
+-        '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> Every sensor\'s share at every ' +
++      var heat = '<figure class="pg-figure pg-figure--wide"><figcaption>Every sensor\'s share at every ' +
+         "test engine (columns, by engine number). Blue raised the predicted remaining life, orange lowered it; the stronger " +
+-        "the colour, the larger the share.</figcaption>" + heatmap(shown, sensorOrder, "") + "</figure></div></section>";
++        "the colour, the larger the share.</figcaption>" + heatmap(shown, sensorOrder, "") + "</figure>";
++      body = head + explanationCharts([
++        { key: "engine", label: "Engine", html: engineFigure() },
++        { key: "parts", label: "Score parts", html: parts },
++        { key: "values", label: "Sensor shares", html: swarm },
++        { key: "connections", label: "Connections", html: fleetFlow },
++        { key: "walks", label: "Largest walks", html: walks },
++        { key: "engines", label: "All engines", html: heat }
++      ]) + "</section>";
+     }
+     box.innerHTML = body;
++    mountEngine(box, data);
+     wireHistory(box, forEngine ? shown : []);
++    wireExplanationSelection(box, data, sensorOrder, W);
+   }
+ 
+-  // Each window's score split three ways: the walks that never leave their
+-  // starting sensor's group, the walks that do, and the part no sensor owns.
+-  // One engine's windows are lines along its life; the test engines, which
+-  // are not a sequence, are dots, with the score as a ring.
+-  function walkParts(rows, forEngine, W) {
+-    var x = function (r) { return forEngine ? r.end_cycle : r.unit; };
+-    var series = [["stays", "walks that stay within their sensor's group", "var(--fig-lpt)"],
+-      ["moves", "walks that move between groups", "var(--fig-lpc)"],
+-      ["constant", "part that belongs to no sensor", "var(--fig-core)"],
+-      ["score", "score", "var(--fig-ink)"]].map(function (s) {
+-      var points = rows.map(function (r) { return [x(r), r[s[0]]]; });
+-      var line = { name: s[1], colour: s[2], points: points, line: forEngine, dots: !forEngine, radius: 2.5 };
++  // Each score split into walks that stay, walks that move, and the part no sensor owns.
++  function walkParts(rows, forEngine, W, index) {
++    if (!forEngine) {
++      var at = Math.max(0, Math.min(index || 0, rows.length - 1));
++      return walkPartDistribution(rows, W) +
++        '<div class="pg-walk-pick"><p><strong>One score, assembled.</strong> Use the Test engine control above the chart tabs to choose an engine. ' +
++        'These are net shares: positive and negative walks may already have cancelled inside the green and purple bars.</p></div>' +
++        '<div data-walk-waterfall>' + walkWaterfall(rows[at], W) + '</div>';
++    }
++    var series = [["stays", "routes within one group", "var(--fig-lpt)"],
++      ["moves", "routes between groups", "var(--fig-lpc)"],
++      ["constant", "model-added part", "var(--fig-core)"],
++      ["score", "total score", "var(--fig-ink)"]].map(function (s) {
++      var points = rows.map(function (r) { return [r.end_cycle, r[s[0]]]; });
++      var line = { name: s[1], colour: s[2], points: points, line: true, dots: false };
+       if (s[0] === "score") {
+-        if (forEngine) { line.dash = "5 4"; line.width = 1.5; } else {
+-          line.dots = false;
+-          line.marks = points.map(function (p) { return [p[0], p[1], "score: engine " + p[0] + ", " + tickLabel(p[1])]; });
+-        }
++        line.dash = "5 4";
++        line.width = 1.5;
+       }
+       return line;
+     });
+-    return plot({ width: W, height: chartHeight(W), xlabel: forEngine ? "cycle at the end of the window" : "test engine",
+-      ylabel: "share of the score before the sigmoid", label: "each score split into its parts", series: series });
++    return plot({ width: W, height: chartHeight(W), xlabel: "cycle at the end of the window",
++      ylabel: "internal score (not cycles)", label: "each score split into its parts", series: series });
++  }
++
++  // Four horizontal distributions. Engine number is deliberately absent: it
++  // is an identifier, not an ordered quantity from which a trend can be read.
++  function walkPartDistribution(rows, W) {
++    var parts = [
++      { key: "constant", label: "model-added part", lines: ["Model-added", "part"], colour: "var(--fig-core)" },
++      { key: "stays", label: "routes within one group", lines: ["Routes within", "one group"], colour: "var(--fig-lpt)" },
++      { key: "moves", label: "routes between groups", lines: ["Routes between", "groups"], colour: "var(--fig-lpc)" },
++      { key: "score", label: "total score", lines: ["Total score"], colour: "var(--fig-ink)" }
++    ];
++    var values = [];
++    parts.forEach(function (part) {
++      part.values = rows.map(function (row) { return Number(row[part.key]); });
++      values = values.concat(part.values);
++    });
++    var sortedAt = function (list, share) {
++      var sorted = list.slice().sort(function (a, b) { return a - b; });
++      var at = (sorted.length - 1) * share, below = Math.floor(at), above = Math.ceil(at);
++      return sorted[below] + (sorted[above] - sorted[below]) * (at - below);
++    };
++    var lo = Math.min(0, Math.min.apply(null, values)), hi = Math.max(0, Math.max.apply(null, values));
++    var pad = (hi - lo) * 0.06 || 1;
++    lo -= pad; hi += pad;
++    var left = W < 420 ? 104 : 142, right = 14, top = 16, rowH = 48, bottom = 40;
++    var H = top + parts.length * rowH + bottom;
++    var X = function (v) { return left + (v - lo) / (hi - lo) * (W - left - right); };
++    var out = '<svg class="pg-plot" viewBox="0 0 ' + W + " " + H +
++      '" role="img" aria-label="The distribution of each part of the score across the test engines">';
++    niceTicks(lo, hi, 7).forEach(function (tick) {
++      out += '<line x1="' + X(tick).toFixed(1) + '" x2="' + X(tick).toFixed(1) + '" y1="' + top +
++        '" y2="' + (H - bottom) + '" stroke="var(--line-soft)"/><text x="' + X(tick).toFixed(1) + '" y="' +
++        (H - bottom + 16) + '" text-anchor="middle" class="pg-tick">' + tickLabel(tick) + "</text>";
++    });
++    out += '<line x1="' + X(0).toFixed(1) + '" x2="' + X(0).toFixed(1) + '" y1="' + top + '" y2="' +
++      (H - bottom) + '" stroke="var(--fig-axis)" stroke-width="1.2"/>';
++    parts.forEach(function (part, partIndex) {
++      var cy = top + partIndex * rowH + rowH / 2;
++      var minimum = Math.min.apply(null, part.values), maximum = Math.max.apply(null, part.values);
++      var q1 = sortedAt(part.values, 0.25), median = sortedAt(part.values, 0.5), q3 = sortedAt(part.values, 0.75);
++      part.lines.forEach(function (line, i) {
++        out += '<text x="' + (left - 10) + '" y="' + (cy + 4 + (i - (part.lines.length - 1) / 2) * 14) +
++          '" text-anchor="end" class="pg-tick">' + esc(line) + "</text>";
++      });
++      out += '<line x1="' + X(minimum).toFixed(1) + '" x2="' + X(maximum).toFixed(1) + '" y1="' + cy +
++        '" y2="' + cy + '" stroke="' + part.colour + '" stroke-opacity="0.55"/>';
++      part.values.forEach(function (value, engineIndex) {
++        var jitter = ((engineIndex * 5) % 9 - 4) * 1.4;
++        out += '<circle cx="' + X(value).toFixed(1) + '" cy="' + (cy + jitter).toFixed(1) +
++          '" r="2" fill="' + part.colour + '" fill-opacity="0.34"><title>' +
++          esc(part.label + " · engine " + rows[engineIndex].unit + ": " + scoreShare(value)) + "</title></circle>";
++      });
++      out += '<rect x="' + X(q1).toFixed(1) + '" y="' + (cy - 7) + '" width="' +
++        Math.max(1, X(q3) - X(q1)).toFixed(1) + '" height="14" rx="3" fill="' + part.colour +
++        '" fill-opacity="0.20" stroke="' + part.colour + '"/><line x1="' + X(median).toFixed(1) + '" x2="' +
++        X(median).toFixed(1) + '" y1="' + (cy - 10) + '" y2="' + (cy + 10) + '" stroke="' + part.colour +
++        '" stroke-width="2"><title>' + esc(part.label + " median: " + scoreShare(median)) + "</title></line>";
++    });
++    out += '<text x="' + ((left + W - right) / 2) + '" y="' + (H - 5) +
++      '" text-anchor="middle" class="pg-axis">internal score (not cycles)</text></svg>';
++    var medians = parts.map(function (part) { return part.label + " " + scoreShare(sortedAt(part.values, 0.5)); });
++    var positiveConstants = parts[0].values.filter(function (value) { return value > 0; }).length;
++    return out + '<div class="pg-legend"><span><i style="background:var(--fig-axis);opacity:.45"></i>one test engine</span>' +
++      '<span><i style="background:var(--fig-accent);opacity:.20;border-radius:2px"></i>middle half of the engines</span>' +
++      '<span><i style="background:var(--fig-ink);width:2px;border-radius:0"></i>median, the middle engine after ordering</span></div>' +
++      '<p class="pg-faint">The model-added part is positive for ' + positiveConstants + " of " + rows.length +
++      " engines. Medians: " + esc(medians.join("; ")) + ". A value near zero can still hide large positive and negative walks that cancel.</p>";
++  }
++
++  // A waterfall makes the addition visible for one engine: each coloured bar
++  // starts at the subtotal left by the previous one, and the outline checks it.
++  function walkWaterfall(row, W) {
++    var narrow = W < 500, tiny = W < 300;
++    var steps = [
++      { label: "model-added part", lines: tiny ? ["Model-", "added", "part"] : narrow ? ["Model-", "added part"] : ["Model-added", "part"], value: Number(row.constant), colour: "var(--fig-core)" },
++      { label: "routes within one group", lines: tiny ? ["Routes", "within", "one", "group"] : narrow ? ["Routes", "within one", "group"] : ["Routes within", "one group"], value: Number(row.stays), colour: "var(--fig-lpt)" },
++      { label: "routes between groups", lines: narrow ? ["Routes", "between", "groups"] : ["Routes between", "groups"], value: Number(row.moves), colour: "var(--fig-lpc)" }
++    ];
++    var totals = [0];
++    steps.forEach(function (step) { totals.push(totals[totals.length - 1] + step.value); });
++    var score = Number(row.score), scaleValues = totals.concat([score]);
++    var lo = Math.min(0, Math.min.apply(null, scaleValues)), hi = Math.max(0, Math.max.apply(null, scaleValues));
++    var pad = (hi - lo) * 0.12 || 1;
++    lo -= pad; hi += pad;
++    var left = 48, right = 14, top = 28, bottom = tiny ? 78 : narrow ? 64 : 48, H = Math.max(250, Math.min(280, W * 0.38));
++    var plotW = W - left - right, gap = plotW / 4, barW = Math.max(24, Math.min(66, gap * 0.58));
++    var X = function (index) { return left + gap * (index + 0.5); };
++    var Y = function (value) { return top + (1 - (value - lo) / (hi - lo)) * (H - top - bottom); };
++    var out = '<svg class="pg-plot" viewBox="0 0 ' + W + " " + H +
++      '" role="img" aria-label="The three parts assembled into test engine ' + esc(row.unit) + '\'s score">';
++    niceTicks(lo, hi, 5).forEach(function (tick) {
++      out += '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + Y(tick).toFixed(1) + '" y2="' +
++        Y(tick).toFixed(1) + '" stroke="var(--line-soft)"/><text x="' + (left - 6) + '" y="' +
++        (Y(tick) + 4).toFixed(1) + '" text-anchor="end" class="pg-tick">' + tickLabel(tick) + "</text>";
++    });
++    out += '<line x1="' + left + '" x2="' + (W - right) + '" y1="' + Y(0).toFixed(1) + '" y2="' +
++      Y(0).toFixed(1) + '" stroke="var(--fig-axis)" stroke-width="1.2"/>';
++    steps.forEach(function (step, index) {
++      var from = totals[index], to = totals[index + 1], x = X(index);
++      var y = Math.min(Y(from), Y(to)), height = Math.max(1.5, Math.abs(Y(from) - Y(to)));
++      out += '<rect x="' + (x - barW / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) +
++        '" height="' + height.toFixed(1) + '" rx="3" fill="' + step.colour + '" fill-opacity="0.78"><title>' +
++        esc(step.label + ": " + scoreShare(step.value) + "; subtotal " + scoreShare(to)) + "</title></rect>";
++      var numberY = step.value >= 0 ? y - 6 : y + height + 14;
++      out += '<text x="' + x.toFixed(1) + '" y="' + numberY.toFixed(1) +
++        '" text-anchor="middle" class="pg-tick">' + scoreShare(step.value) + "</text>";
++      step.lines.forEach(function (line, i) {
++        out += '<text x="' + x.toFixed(1) + '" y="' + (H - bottom + 18 + i * 14) +
++          '" text-anchor="middle" class="pg-tick">' + esc(line) + "</text>";
++      });
++      if (index < steps.length - 1) {
++        out += '<line x1="' + (x + barW / 2).toFixed(1) + '" x2="' + (X(index + 1) - barW / 2).toFixed(1) +
++          '" y1="' + Y(to).toFixed(1) + '" y2="' + Y(to).toFixed(1) +
++          '" stroke="var(--fig-axis)" stroke-dasharray="3 3"/>';
++      }
++    });
++    var finalX = X(3), finalY = Math.min(Y(0), Y(score)), finalHeight = Math.max(1.5, Math.abs(Y(0) - Y(score)));
++    out += '<rect x="' + (finalX - barW / 2).toFixed(1) + '" y="' + finalY.toFixed(1) + '" width="' +
++      barW.toFixed(1) + '" height="' + finalHeight.toFixed(1) +
++      '" rx="3" fill="var(--fig-ink)" fill-opacity="0.08" stroke="var(--fig-ink)" stroke-width="2"><title>' +
++      esc("total score: " + scoreShare(score)) + "</title></rect>";
++    out += '<text x="' + finalX.toFixed(1) + '" y="' + (finalY - 6).toFixed(1) +
++      '" text-anchor="middle" class="pg-tick">' + scoreShare(score) + '</text>';
++    (narrow ? ["Total", "score"] : ["Total score"]).forEach(function (line, i) {
++      out += '<text x="' + finalX.toFixed(1) + '" y="' + (H - bottom + 18 + i * 14) +
++        '" text-anchor="middle" class="pg-tick">' + line + '</text>';
++    });
++    out += '<text transform="translate(13,' + ((top + H - bottom) / 2) +
++      ') rotate(-90)" text-anchor="middle" class="pg-axis">internal score (not cycles)</text></svg>';
++    return out + '<p class="pg-walk-equation"><span>Model-added part (' + scoreShare(steps[0].value) + ")</span><b> + </b><span>Routes within one group (" +
++      scoreShare(steps[1].value) + ")</span><b> + </b><span>Routes between groups (" + scoreShare(steps[2].value) +
++      ")</span><b> = </b><span>Total score " + scoreShare(score) + "</span></p>" +
++      '<p class="pg-faint">For test engine ' + esc(row.unit) + ', the model converts this total score to ' + fixed(row.predicted, 1) +
++      ' cycles of predicted remaining life. The parts are not cycle counts. Displayed numbers are rounded.</p>';
+   }
+ 
+   // The sensor graph with what passed along each connection: one line per
+@@ -3435,9 +3878,9 @@
+   function topWalks(top, sum) {
+     if (!top.length) { return ""; }
+     var groups = sum.groups || [];
+-    return '<figure class="pg-figure pg-figure--wide"><figcaption><strong>Not in the paper.</strong> The ' + count(top.length) +
++    return '<figure class="pg-figure pg-figure--wide"><figcaption>The ' + count(top.length) +
+       " walks with the largest average size, the size being a share with its sign ignored." +
+-      (groups.length ? " Sensors joined by a slash are one of the groups named above." : "") + "</figcaption>" +
++      (groups.length ? " Names separated by a slash are sensor positions with matching connections, which the model combines in the same way." : "") + "</figcaption>" +
+       '<table class="pg-mini"><thead><tr><th>Walk</th><th class="num">Average share</th><th class="num">Average size</th></tr></thead><tbody>' +
+       top.map(function (w) {
+         return "<tr><td>" + esc(String(w.walk).split(" -> ").join(" → ")) + '</td><td class="num">' + scoreShare(Number(w.mean)) +
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/shell.html b/src/thesis_gnn_rul_xai/docsite/assets/shell.html
+index 33c3675..e28dc73 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/shell.html
++++ b/src/thesis_gnn_rul_xai/docsite/assets/shell.html
+@@ -65,6 +65,7 @@
+ 
+ <div id="toast" class="toast" role="status" hidden></div>
+ 
++<script src="/assets/engine-view.js"></script>
+ <script src="/assets/playground.js"></script>
+ <script src="/assets/app.js"></script>
+ </body>
+diff --git a/src/thesis_gnn_rul_xai/docsite/playground.py b/src/thesis_gnn_rul_xai/docsite/playground.py
+index 432b8f8..f353fcf 100644
+--- a/src/thesis_gnn_rul_xai/docsite/playground.py
++++ b/src/thesis_gnn_rul_xai/docsite/playground.py
+@@ -748,7 +748,11 @@ def _read_test_lengths(subset: str) -> tuple[int, ...]:
+ 
+ def dataset_facts(subset: str, window_size: int) -> dict[str, Any]:
+     """What Table 5 says about a sub-dataset, and how many test engines this window leaves out."""
+-    facts: dict[str, Any] = {"table5": DATASET_DESCRIPTION[subset], "counted": None}
++    facts: dict[str, Any] = {
++        "table5": DATASET_DESCRIPTION[subset],
++        "counted": None,
++        "files": _file_facts(subset),
++    }
+     lengths = _test_lengths(subset)
+     if lengths:
+         # An engine shorter than the window yields no window at all (A-23).
+@@ -985,18 +989,45 @@ def _file_counts(subset: str) -> dict[str, Any]:
+     """Rows and engines in one sub-dataset's three files, and the kept sensors that barely vary, counted from them."""
+     from ..data.loading import read_cmapss_frame, read_rul_file
+     from ..data.sensors import (
++        CYCLE_COL,
++        OP_SETTING_COLS,
+         PAPER_SENSOR_SYMBOLS,
+         UNIT_COL,
+         detect_uninformative_sensors,
++        symbol_to_column,
+     )
+     from ..utils.paths import raw_data_dir
+ 
+     folder = raw_data_dir()
+     train, test = read_cmapss_frame(folder / f"train_{subset}.txt"), read_cmapss_frame(folder / f"test_{subset}.txt")
+     check = detect_uninformative_sensors(train)
++    train_lengths = train.groupby(UNIT_COL).size()
++    test_lengths = test.groupby(UNIT_COL).size()
++    sensor_sample = PAPER_SENSOR_SYMBOLS[:3]
++    sample_columns = [
++        {"key": UNIT_COL, "label": "Engine", "detail": UNIT_COL},
++        {"key": CYCLE_COL, "label": "Cycle", "detail": CYCLE_COL},
++        *[{"key": key, "label": f"Setting {i}", "detail": key}
++          for i, key in enumerate(OP_SETTING_COLS, start=1)],
++        *[{"key": symbol_to_column(symbol), "label": symbol,
++          "detail": symbol_to_column(symbol)} for symbol in sensor_sample],
++    ]
++    sample_keys = [column["key"] for column in sample_columns]
++    first_unit = int(train[UNIT_COL].iloc[0])
++    sample = train.loc[train[UNIT_COL] == first_unit, sample_keys].head(10)
+     return {"train_rows": len(train), "train_engines": int(train[UNIT_COL].nunique()),
+             "test_rows": len(test), "test_engines": int(test[UNIT_COL].nunique()),
+             "labels": len(read_rul_file(folder / f"RUL_{subset}.txt")),
++            "train_history": {"shortest": int(train_lengths.min()),
++                              "median": float(train_lengths.median()),
++                              "longest": int(train_lengths.max())},
++            "test_history": {"shortest": int(test_lengths.min()),
++                             "median": float(test_lengths.median()),
++                             "longest": int(test_lengths.max())},
++            "sample": {"source": f"train_{subset}.txt", "columns": sample_columns,
++                       "rows": [{key: (int(row[key]) if key in (UNIT_COL, CYCLE_COL)
++                                       else float(row[key])) for key in sample_keys}
++                                for _, row in sample.iterrows()]},
+             "flat": [s for s in PAPER_SENSOR_SYMBOLS if s in check["constant"] + check["low_resolution"]]}
+ 
+ 
+@@ -1393,10 +1424,17 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
+         cells = sum(p.numel() for p in stage.cells.parameters())
+         name = "LSTM" if kind == "lstm" else "GRU"
+         rows = f"B x {nodes}" if shared else "B"
+-        inside = ("learned gates, values between 0 and 1, control what its memory keeps, adds and passes on"
+-                  if kind == "lstm" else
+-                  "learned gates, values between 0 and 1, control how old information and a new candidate "
+-                  "are combined")
++        inside = (
++            f"For each window, this LSTM starts with two lists of {_plural(hidden, 'number')}, all zero. "
++            "The cell state is the list it updates by keeping part of the previous values and adding new "
++            "values. The hidden state is an output calculated from that updated list. The current reading "
++            "and previous hidden state determine the new values and the multipliers called gates. "
++            "Each gate is between 0 and 1: 0 keeps none of a value, 1 keeps all of it. Both lists pass to "
++            "the next cycle. " if kind == "lstm" else
++            f"For each window, this GRU starts with a list of {_plural(hidden, 'number')}, all zero. "
++            "This list is called its hidden state. It combines each new reading with that list to calculate "
++            "an updated list. Multipliers between 0 and 1, called gates, control how much of the old and "
++            "new information is kept. The updated list passes to the next cycle. ")
+         steps.append(_step(
+             "Split by sensor",
+             (f"Each window becomes {nodes} separate sensor histories, one reading per cycle. The same learned "
+@@ -1410,22 +1448,25 @@ def _temporal_steps(settings: Mapping[str, Any]) -> list[dict[str, Any]]:
+             picture="split"))
+         steps.append(_step(
+             f"One {name} for all sensors" if shared else f"One {name} per sensor",
+-            f"Reads each sensor's history oldest first. At each cycle, {inside}. "
+-            + f"Its hidden state is a summary of {_plural(hidden, 'number')} passed to the next cycle. "
+-            + ("LSTM also carries a separate memory called the cell state. " if kind == "lstm" else
+-               "GRU carries no separate cell state. ")
+-            + "Every window starts with zero memory. "
++            f"Reads the {_plural(window, 'cycle')} in order, from oldest to newest. " + inside
++            + "The same weights calculate these updates at every cycle. Training adjusts those weights "
++            "using the final RUL prediction error, through the graph layers that follow. The lists reset "
++            "for each new window; the learned weights remain. "
+             + (hidden_note or "The memory width is our choice (assumption A-26)."),
+             parts=[(f"hidden {hidden}", "temporal_hidden"),
+                    ("shared" if shared else f"{len(stage.cells)} networks", "shared_across_sensors")],
+-            shape=f"({rows}, {window}, {hidden})" + ("" if shared else " each"), learned=cells,
++            shape=f"({rows}, {window}, {hidden})" if shared else f"{nodes} x (B, {window}, {hidden})", learned=cells,
+             source=_decided("shared_across_sensors", True)[0] if shared else chosen, picture="recurrent"))
+         steps[-1]["networks"] = _networks(stage, kind, window, shared)
+         steps.append(_step(
+             "Keep the last hidden state",
+-            "Pass on only the summary after the most recent cycle. Earlier readings can influence it through "
+-            "the repeated memory updates; their earlier summaries are not sent separately. "
+-            + ("The separate cell-state memory is also not sent on." if kind == "lstm" else
++            f"Each sensor's network produces {_plural(hidden, 'number')} after each reading. "
++            f"After reading all {_plural(window, 'cycle')}, keep the last set of {_plural(hidden, 'number')} "
++            "and send it to the conversion below. This last set was calculated using the earlier sets, "
++            "so it can still contain information from earlier readings. During training, the prediction "
++            "error is traced back through those earlier calculations too. "
++            + ("The cell state has already helped calculate this last hidden state; it is not an additional "
++               "input to the conversion below." if kind == "lstm" else
+                "This GRU option is an extension of the paper's architecture."),
+             parts=[(f"{_plural(hidden, 'number')} per sensor", None)],
+             shape=f"(B x {nodes}, {hidden})" if shared else f"(B, {nodes}, {hidden})",
+@@ -1745,6 +1786,34 @@ def explain_arguments(request: Mapping[str, Any], progress_path: Path | None,
+     return arguments
+ 
+ 
++def _dataset_schema() -> dict[str, Any]:
++    """The columns shared by all four raw sub-datasets, including every sensor's meaning."""
++    from ..data.sensors import (
++        OP_SETTING_COLS,
++        PAPER_SENSOR_SYMBOLS,
++        RAW_COLUMNS,
++        SENSORS,
++    )
++
++    used = set(PAPER_SENSOR_SYMBOLS)
++    return {
++        "raw_column_count": len(RAW_COLUMNS),
++        "column_groups": [
++            {"name": "Engine number", "count": 1, "columns": "unit"},
++            {"name": "Cycle number", "count": 1, "columns": "cycle"},
++            {"name": "Operating settings", "count": len(OP_SETTING_COLS),
++             "columns": ", ".join(OP_SETTING_COLS)},
++            {"name": "Sensor readings", "count": len(SENSORS),
++             "columns": f"sensor_1 to sensor_{len(SENSORS)}"},
++        ],
++        "sensors": [
++            {"used": sensor.symbol in used, "symbol": sensor.symbol, "column": sensor.column,
++             "description": sensor.description, "unit": sensor.unit, "station": sensor.station}
++            for sensor in SENSORS
++        ],
++    }
++
++
+ def options() -> dict[str, Any]:
+     """Everything the page needs to draw its form, before anything is chosen."""
+     from .figures import _graph_layout
+@@ -1762,6 +1831,7 @@ def options() -> dict[str, Any]:
+         "defaults": {spec["key"]: spec["default"] for spec in FIELDS},
+         "result_seeds": RESULT_SEEDS,
+         "dataset": DATASET_DESCRIPTION,
++        "dataset_schema": _dataset_schema(),
+         "graph": {
+             "positions": {node: [round(x, 1), round(y, 1)] for node, (x, y) in positions.items()},
+             "edges": [list(edge) for edge in graph.edges()],
+@@ -1947,6 +2017,30 @@ def list_explanations(root: Path) -> list[dict[str, Any]]:
+     return _clean(found)
+ 
+ 
++def _explanation_edges(run: Path, summary: Mapping[str, Any]) -> list[list[str]] | None:
++    """Read the chosen seed's actual graph, or report that it is unavailable."""
++    import pickle
++
++    import numpy as np
++
++    from ..data.sensors import PAPER_SENSOR_SYMBOLS
++
++    try:
++        import torch
++
++        seed = int(summary["seed"])
++        saved = torch.load(run / f"seed_{seed}" / "model.pt", map_location="cpu", weights_only=True)
++        matrix = saved["adjacency"].detach().cpu().numpy()
++        symbols = PAPER_SENSOR_SYMBOLS
++        if matrix.shape != (len(symbols), len(symbols)) or not np.isfinite(matrix).all():
++            return None
++        return [[a, b] for i, a in enumerate(symbols) for j, b in enumerate(symbols)
++                if i < j and (matrix[i, j] != 0 or matrix[j, i] != 0)]
++    except (ImportError, OSError, ValueError, TypeError, KeyError, RuntimeError, EOFError,
++            pickle.UnpicklingError):
++        return None
++
++
+ def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
+     """One stored explanation: its summary and every value it computed."""
+     path = (_run_directory(root, run) / "explanations").resolve()
+@@ -1956,11 +2050,14 @@ def explanation_detail(root: Path, run: str, name: str) -> dict[str, Any]:
+         raise SettingsError(f"{name!r} is not the name of an explanation.")
+     if not (folder / "summary.json").is_file():
+         raise SettingsError(f"Run {run!r} has no explanation called {name!r}.")
++    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+     return _clean({
+-        "summary": json.loads((folder / "summary.json").read_text(encoding="utf-8")),
++        "summary": summary,
+         "values": _read_csv(folder / "values.csv"),
+         # Only a walk explanation writes this file; the others get an empty list.
+         "top_walks": _read_csv(folder / "top_walks.csv"),
++        "graph_edges": (None if summary.get("method") == "walks"
++                        else _explanation_edges(path.parent, summary)),
+     })
+ 
+ 

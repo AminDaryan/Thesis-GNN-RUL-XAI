@@ -1,0 +1,13 @@
+subset: FD001
+window_size: 30
+window_stride: 1
+rul_max: 125
+clip_test_labels: true
+normalization: zscore
+smoothing_alpha: 0.5
+graph: physics
+adjacency_normalization: row
+validation_fraction: 0.2
+seed: 42
+notes: 'Sensitivity study: schedule_plateau on FD001. Only the factor named by the
+  variant differs from the reference configuration.'

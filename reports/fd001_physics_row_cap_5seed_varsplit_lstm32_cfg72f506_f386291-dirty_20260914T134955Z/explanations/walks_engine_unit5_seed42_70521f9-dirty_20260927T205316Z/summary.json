@@ -1,0 +1,57 @@
+{
+  "commit": "70521f9-dirty",
+  "finished_utc": "20260927T205316Z",
+  "run": "fd001_physics_row_cap_5seed_varsplit_lstm32_cfg72f506_f386291-dirty_20260914T134955Z",
+  "seed": 42,
+  "method": "walks",
+  "scope": "engine",
+  "source": "validation",
+  "unit": 5,
+  "every": 1,
+  "windows": 240,
+  "value_unit": "score before the sigmoid",
+  "rul_max": 125.0,
+  "steps": 3,
+  "gamma": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "score_at_zero": 0.2738999642348202,
+  "conservation_error_max": 1.7763568394002505e-15,
+  "groups": [
+    [
+      "P15",
+      "Nf",
+      "NRf",
+      "BPR"
+    ],
+    [
+      "P30",
+      "Ps30"
+    ],
+    [
+      "Nc",
+      "W31"
+    ]
+  ],
+  "walks_start_after_learned_stage": true,
+  "cancellation_median": 1.8175068091704394,
+  "seconds": 0.5,
+  "mean_abs_start": {
+    "Ps30": 0.6239466974122938,
+    "T50": 0.5822892225518125,
+    "phi": 0.5096168277999347,
+    "Nc": 0.43401701414871163,
+    "htBleed": 0.43310487954676263,
+    "BPR": 0.301610994008219,
+    "Nf": 0.24318441382001277,
+    "T30": 0.22970966765922837,
+    "P30": 0.2086916695275112,
+    "W32": 0.16472852537462387,
+    "W31": 0.1643045418307493,
+    "T24": 0.14554365275310494,
+    "NRf": 0.09438967075524841,
+    "P15": 0.055095886462865055
+  }
+}

@@ -1,0 +1,239 @@
+diff --git a/scripts/check_prose.py b/scripts/check_prose.py
+index f8509c5..7dcbbfb 100644
+--- a/scripts/check_prose.py
++++ b/scripts/check_prose.py
+@@ -143,6 +143,7 @@ def documents(root: Path) -> list[Path]:
+     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/README.md"))
+     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/*.py"))
+     found += sorted(root.glob("docs/learn/*.md"))
++    found += sorted(root.glob("docs/resources/*.md"))
+     found += sorted(root.glob("notebooks/**/README.md"))
+     found += sorted(root.glob("scripts/*.py"))
+     return [p for p in found if "__pycache__" not in p.parts]
+@@ -153,6 +154,7 @@ def reader_documents(root: Path) -> list[Path]:
+     found: list[Path] = [root / "README.md"]
+     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/README.md"))
+     found += sorted(root.glob("docs/learn/*.md"))
++    found += sorted(root.glob("docs/resources/*.md"))
+     found += sorted(root.glob("notebooks/**/README.md"))
+     found += sorted(root.glob("notebooks/**/*.ipynb"))
+     return [
+diff --git a/src/thesis_gnn_rul_xai/docsite/README.md b/src/thesis_gnn_rul_xai/docsite/README.md
+index a8ba73e..0b8653b 100644
+--- a/src/thesis_gnn_rul_xai/docsite/README.md
++++ b/src/thesis_gnn_rul_xai/docsite/README.md
+@@ -5,7 +5,9 @@ playground, where a run of the network is designed, trained, set beside the
+ paper and explained. Its menu holds everything written here that a reader
+ needs: taught pages ordered as Data, Preprocessing, Temporal algorithm, GNN and
+ XAI (with Dynamic SHAP and GNN-LRP beneath it), the notebooks,
+-one page per folder of the code, the assumptions log, the audits and reviews.
++one page per folder of the code, the assumptions log, the audits and reviews,
++and, under Resources, the dataset, the LSTM, the GCN, SHAP and GNN-LRP each
++explained from its original paper, ending with the reading list.
+ It runs on your own machine, reads the files from disk as you ask for them,
+ and publishes nothing.
+ 
+@@ -171,6 +173,14 @@ becomes `#/doc/src/thesis_gnn_rul_xai/README.md`. Links to `.ipynb` files go to
+ the notebook viewer, links to `.py` files to the source viewer, and links
+ starting `http` are left exactly as they are.
+ 
++A link to a `.pdf` — a cited paper in `docs/references/` — becomes
++`/api/paper?path=docs/references/...` and opens in a new tab, in the browser's
++own PDF viewer, beside the page that cites it. A fragment such as `#page=7` is
++kept, and PDF viewers open the file at that page, so a sentence can link to the
++exact page it cites:
++`[Saxena et al.](../references/saxena_2008_damage_propagation_modeling.pdf#page=7)`
++opens the dataset paper at its scoring function.
++
+ ### The anchors have to match the ones already written down
+ 
+ The top-level README links to its own sections with anchors like
+@@ -460,7 +470,7 @@ is a reader for your own files, not a way to publish them, and it is worth
+ being clear about the difference because the project directory contains a
+ paper's worth of unpublished work.
+ 
+-Five rules keep it that way:
++Six rules keep it that way:
+ 
+ - **Every path is resolved and checked to be inside the project directory.**
+   `../../../etc/passwd` is refused, and so is anything else that climbs out.
+@@ -471,6 +481,11 @@ Five rules keep it that way:
+ - **Files above 400 kB are refused** by the source viewer. Every source file in
+   the project is far below that; the raw NASA files are far above it, and a
+   3.5 MB table of numbers is not something to read in a browser.
++- **The paper address, `/api/paper`, sends PDFs from `docs/references/` and
++  nothing else**, whatever their size. A cited paper that is not on this
++  computer — the copies are not committed — gets a short page saying that
++  `scripts/fetch_references.py` downloads the free ones and
++  `docs/REFERENCES.md` says where to obtain the rest. Both are tested.
+ - **Only the addresses that start work accept a POST**, the kind of request a
+   browser sends to ask for something to be done rather than read: the one that
+   starts JupyterLab, and the playground's five, which preview a network, start
+diff --git a/src/thesis_gnn_rul_xai/docsite/assets/engine-view.js b/src/thesis_gnn_rul_xai/docsite/assets/engine-view.js
+index ce46a55..290263a 100644
+--- a/src/thesis_gnn_rul_xai/docsite/assets/engine-view.js
++++ b/src/thesis_gnn_rul_xai/docsite/assets/engine-view.js
+@@ -20,7 +20,8 @@
+     W32: { at: [915, 170], anchor: [898, 311], part: "lpt", kind: "system", name: "Low-pressure turbine coolant bleed", note: "The cooling-air flow associated with the low-pressure turbine, following the dataset paper's Table 2. Its exact extraction and measuring points are not specified." }
+   };
+   var kinds = { station: "Measurement region", shaft: "Shaft quantity", derived: "Calculated quantity", system: "System quantity" };
+-  var source = "https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf";
++  // NASA's copy of the dataset paper as cited; its Technical Reports Server file is an earlier draft.
++  var source = "https://c3.ndc.nasa.gov/dashlink/static/media/publication/2008_IEEEPHM_CMAPPSDamagePropagation.pdf";
+ 
+   function esc(value) { return String(value).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+   function number(value) { return typeof value === "number" && isFinite(value); }
+diff --git a/src/thesis_gnn_rul_xai/docsite/catalog.py b/src/thesis_gnn_rul_xai/docsite/catalog.py
+index b14ea32..f7a8b6f 100644
+--- a/src/thesis_gnn_rul_xai/docsite/catalog.py
++++ b/src/thesis_gnn_rul_xai/docsite/catalog.py
+@@ -100,10 +100,21 @@ _CHECKS_BEFORE: tuple[_Entry, ...] = (
+     ("docs/DESIGN_swappable_stages.md", "Design of the swappable stages", "reference", 0),
+ )
+ _CHECKS_AFTER: tuple[_Entry, ...] = (
+-    ("docs/REFERENCES.md", "References", "reference", 0),
+     ("CLAUDE.md", "Working rules", "reference", 0),
+ )
+ 
++# One page per method or dataset the project builds on, each explained from its
++# original paper, then the list of every work cited with a link to its PDF. The
++# year names the paper, and keeps "GNN-LRP" apart from the taught page of that name.
++_RESOURCES: tuple[_Entry, ...] = (
++    ("docs/resources/cmapss.md", "C-MAPSS dataset (2008)", "reference", 0),
++    ("docs/resources/lstm.md", "LSTM (1997)", "reference", 0),
++    ("docs/resources/gcn.md", "GCN (2017)", "reference", 0),
++    ("docs/resources/shap.md", "SHAP (2017)", "reference", 0),
++    ("docs/resources/gnn_lrp.md", "GNN-LRP (2022)", "reference", 0),
++    ("docs/REFERENCES.md", "References", "reference", 0),
++)
++
+ # A REVIEW_ file is an outside review *of this repository*; an AUDIT_ file is a
+ # check *of the paper* against the code, which runs in the other direction.
+ _DATED_NAMES = {
+@@ -228,6 +239,7 @@ def build_catalog(root: Path | None = None) -> Catalog:
+             "Choices and checks",
+             collect([*_CHECKS_BEFORE, *_dated(root), *_CHECKS_AFTER]),
+         ),
++        Section("resources", "Resources", collect(_RESOURCES)),
+     )
+ 
+     catalog = Catalog(sections=sections, primary=_describe(root, _PRIMARY))
+diff --git a/src/thesis_gnn_rul_xai/docsite/markup.py b/src/thesis_gnn_rul_xai/docsite/markup.py
+index 0dc6e3b..e2ea8c4 100644
+--- a/src/thesis_gnn_rul_xai/docsite/markup.py
++++ b/src/thesis_gnn_rul_xai/docsite/markup.py
+@@ -9,6 +9,7 @@ from __future__ import annotations
+ import html
+ import re
+ from dataclasses import dataclass, field
++from urllib.parse import quote
+ 
+ import mistune
+ from mistune.renderers.html import HTMLRenderer
+@@ -201,6 +202,9 @@ def rewrite_link(url: str, source_path: str) -> str:
+ 
+     suffix = f"#{fragment}" if fragment else ""
+     lowered = resolved.lower()
++    if lowered.endswith(".pdf"):
++        # A fragment such as "#page=6" is kept: the browser's PDF viewer opens there.
++        return f"/api/paper?path={quote(resolved)}{suffix}"
+     if lowered.endswith(".ipynb"):
+         return f"#/notebook/{resolved}{suffix}"
+     if lowered.endswith(".md"):
+@@ -249,7 +253,11 @@ class _SiteRenderer(HTMLRenderer):
+         return code_block(code, language) + "\n"
+ 
+     def link(self, text: str, url: str, title: str | None = None) -> str:
+-        return super().link(text, rewrite_link(url, self.source_path), title)
++        target = rewrite_link(url, self.source_path)
++        if target.startswith("/api/paper?"):
++            # A paper opens in the browser's own PDF viewer, beside the page that cites it.
++            return f'<a href="{html.escape(target)}" target="_blank" rel="noopener">{text}</a>'
++        return super().link(text, target, title)
+ 
+     def image(self, text: str, url: str, title: str | None = None) -> str:
+         return super().image(text, rewrite_link(url, self.source_path), title)
+diff --git a/src/thesis_gnn_rul_xai/docsite/playground/README.md b/src/thesis_gnn_rul_xai/docsite/playground/README.md
+index 6651085..17d54f5 100644
+--- a/src/thesis_gnn_rul_xai/docsite/playground/README.md
++++ b/src/thesis_gnn_rul_xai/docsite/playground/README.md
+@@ -1144,7 +1144,7 @@ incorrectly started at the ceiling and was not an uncapped curve.
+ 
+ Explain predictions opens with an engine cutaway drawn by `engine-view.js`.
+ Its layout follows the engine modules in Figures 1 and 2 of
+-[NASA's dataset paper](https://ntrs.nasa.gov/api/citations/20090029214/downloads/20090029214.pdf).
++[NASA's dataset paper](../../../../docs/references/saxena_2008_damage_propagation_modeling.pdf).
+ The same paper's Table 2 gives the variables' meanings. The section anchors
+ are documented; exact probe positions, blade counts, dimensions and detailed
+ cooling routes are not. Our drawing choices are recorded as the engine-overlay
+diff --git a/src/thesis_gnn_rul_xai/docsite/server.py b/src/thesis_gnn_rul_xai/docsite/server.py
+index 74efcc1..2ca996a 100644
+--- a/src/thesis_gnn_rul_xai/docsite/server.py
++++ b/src/thesis_gnn_rul_xai/docsite/server.py
+@@ -8,6 +8,7 @@ project directory.
+ from __future__ import annotations
+ 
+ import contextlib
++import html
+ import ipaddress
+ import json
+ import socket
+@@ -84,6 +85,10 @@ _SOURCE_LANGUAGE = {
+ 
+ _ASSETS = Path(__file__).parent / "assets"
+ 
++# The folder holding a copy of every paper the project cites. The paper route
++# serves PDFs from here and nowhere else.
++_PAPERS = "docs/references"
++
+ _CONTENT_TYPES = {
+     ".css": "text/css; charset=utf-8",
+     ".js": "text/javascript; charset=utf-8",
+@@ -239,6 +244,8 @@ class DocsHandler(BaseHTTPRequestHandler):
+                 self._serve_source(one("path"))
+             elif route == "/api/notebook":
+                 self._serve_notebook(one("path"))
++            elif route == "/api/paper":
++                self._serve_paper(one("path"))
+             elif route == "/api/figure":
+                 self._send(
+                     render_figure(one("name")).encode("utf-8"),
+@@ -435,6 +442,22 @@ class DocsHandler(BaseHTTPRequestHandler):
+             }
+         )
+ 
++    def _serve_paper(self, path: str) -> None:
++        """Send one cited paper's PDF from docs/references/, or say how to fetch it."""
++        target = self._safe_path(path)
++        if target.suffix.lower() != ".pdf" or not target.is_relative_to((self.root / _PAPERS).resolve()):
++            raise ValueError(f"{path!r} is not a paper in {_PAPERS}/.")
++        if not target.is_file():
++            message = (
++                f"<p>{html.escape(path)} is not on this computer. The cited papers are not "
++                "stored in the repository; <code>python scripts/fetch_references.py</code> "
++                "downloads the ones that are free to download, and "
++                "<code>docs/REFERENCES.md</code> says where to obtain the rest.</p>"
++            )
++            self._send(message.encode("utf-8"), "text/html; charset=utf-8", HTTPStatus.NOT_FOUND)
++            return
++        self._send(target.read_bytes(), "application/pdf")
++
+     def _serve_notebook(self, path: str) -> None:
+         """Convert one notebook to HTML, with the outputs it was saved with."""
+         if not path.lower().endswith(".ipynb"):
+diff --git a/src/thesis_gnn_rul_xai/evaluation/README.md b/src/thesis_gnn_rul_xai/evaluation/README.md
+index dd3c5a0..a2a224f 100644
+--- a/src/thesis_gnn_rul_xai/evaluation/README.md
++++ b/src/thesis_gnn_rul_xai/evaluation/README.md
+@@ -46,8 +46,9 @@ paper's own definition into the paper's own formula hands the gentler divisor
+ (13) to over-prediction and the harsher divisor (10) to under-prediction — the
+ reverse of what the text beside the equations says in words ("the penalty for
+ over-prediction is relatively large ... over-prediction introduces security
+-risks"), and the reverse of the scoring function published for the 2008 NASA PHM
+-Data Challenge that the paper cites.
++risks"). The dataset paper that published the 2008 NASA PHM Data Challenge's
++scoring function prints the same swap in its Eq. (11), while its own text and
++its Figure 9 give the harsher divisor, 10, to late predictions (finding F-20).
+ 
+ The two printed equations are inconsistent with each other. We implement the
+ intent the paper states in words, which is also the standard function every

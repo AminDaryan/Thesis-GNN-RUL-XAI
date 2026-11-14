@@ -1,0 +1,145 @@
+diff --git a/scripts/check_prose.py b/scripts/check_prose.py
+index f8509c5..7dcbbfb 100644
+--- a/scripts/check_prose.py
++++ b/scripts/check_prose.py
+@@ -143,6 +143,7 @@ def documents(root: Path) -> list[Path]:
+     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/README.md"))
+     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/*.py"))
+     found += sorted(root.glob("docs/learn/*.md"))
++    found += sorted(root.glob("docs/resources/*.md"))
+     found += sorted(root.glob("notebooks/**/README.md"))
+     found += sorted(root.glob("scripts/*.py"))
+     return [p for p in found if "__pycache__" not in p.parts]
+@@ -153,6 +154,7 @@ def reader_documents(root: Path) -> list[Path]:
+     found: list[Path] = [root / "README.md"]
+     found += sorted(root.glob("src/thesis_gnn_rul_xai/**/README.md"))
+     found += sorted(root.glob("docs/learn/*.md"))
++    found += sorted(root.glob("docs/resources/*.md"))
+     found += sorted(root.glob("notebooks/**/README.md"))
+     found += sorted(root.glob("notebooks/**/*.ipynb"))
+     return [
+diff --git a/src/thesis_gnn_rul_xai/docsite/catalog.py b/src/thesis_gnn_rul_xai/docsite/catalog.py
+index b14ea32..f7a8b6f 100644
+--- a/src/thesis_gnn_rul_xai/docsite/catalog.py
++++ b/src/thesis_gnn_rul_xai/docsite/catalog.py
+@@ -100,10 +100,21 @@ _CHECKS_BEFORE: tuple[_Entry, ...] = (
+     ("docs/DESIGN_swappable_stages.md", "Design of the swappable stages", "reference", 0),
+ )
+ _CHECKS_AFTER: tuple[_Entry, ...] = (
+-    ("docs/REFERENCES.md", "References", "reference", 0),
+     ("CLAUDE.md", "Working rules", "reference", 0),
+ )
+ 
++# One page per method or dataset the project builds on, each explained from its
++# original paper, then the list of every work cited with a link to its PDF. The
++# year names the paper, and keeps "GNN-LRP" apart from the taught page of that name.
++_RESOURCES: tuple[_Entry, ...] = (
++    ("docs/resources/cmapss.md", "C-MAPSS dataset (2008)", "reference", 0),
++    ("docs/resources/lstm.md", "LSTM (1997)", "reference", 0),
++    ("docs/resources/gcn.md", "GCN (2017)", "reference", 0),
++    ("docs/resources/shap.md", "SHAP (2017)", "reference", 0),
++    ("docs/resources/gnn_lrp.md", "GNN-LRP (2022)", "reference", 0),
++    ("docs/REFERENCES.md", "References", "reference", 0),
++)
++
+ # A REVIEW_ file is an outside review *of this repository*; an AUDIT_ file is a
+ # check *of the paper* against the code, which runs in the other direction.
+ _DATED_NAMES = {
+@@ -228,6 +239,7 @@ def build_catalog(root: Path | None = None) -> Catalog:
+             "Choices and checks",
+             collect([*_CHECKS_BEFORE, *_dated(root), *_CHECKS_AFTER]),
+         ),
++        Section("resources", "Resources", collect(_RESOURCES)),
+     )
+ 
+     catalog = Catalog(sections=sections, primary=_describe(root, _PRIMARY))
+diff --git a/src/thesis_gnn_rul_xai/docsite/markup.py b/src/thesis_gnn_rul_xai/docsite/markup.py
+index 0dc6e3b..e2ea8c4 100644
+--- a/src/thesis_gnn_rul_xai/docsite/markup.py
++++ b/src/thesis_gnn_rul_xai/docsite/markup.py
+@@ -9,6 +9,7 @@ from __future__ import annotations
+ import html
+ import re
+ from dataclasses import dataclass, field
++from urllib.parse import quote
+ 
+ import mistune
+ from mistune.renderers.html import HTMLRenderer
+@@ -201,6 +202,9 @@ def rewrite_link(url: str, source_path: str) -> str:
+ 
+     suffix = f"#{fragment}" if fragment else ""
+     lowered = resolved.lower()
++    if lowered.endswith(".pdf"):
++        # A fragment such as "#page=6" is kept: the browser's PDF viewer opens there.
++        return f"/api/paper?path={quote(resolved)}{suffix}"
+     if lowered.endswith(".ipynb"):
+         return f"#/notebook/{resolved}{suffix}"
+     if lowered.endswith(".md"):
+@@ -249,7 +253,11 @@ class _SiteRenderer(HTMLRenderer):
+         return code_block(code, language) + "\n"
+ 
+     def link(self, text: str, url: str, title: str | None = None) -> str:
+-        return super().link(text, rewrite_link(url, self.source_path), title)
++        target = rewrite_link(url, self.source_path)
++        if target.startswith("/api/paper?"):
++            # A paper opens in the browser's own PDF viewer, beside the page that cites it.
++            return f'<a href="{html.escape(target)}" target="_blank" rel="noopener">{text}</a>'
++        return super().link(text, target, title)
+ 
+     def image(self, text: str, url: str, title: str | None = None) -> str:
+         return super().image(text, rewrite_link(url, self.source_path), title)
+diff --git a/src/thesis_gnn_rul_xai/docsite/server.py b/src/thesis_gnn_rul_xai/docsite/server.py
+index 74efcc1..2ca996a 100644
+--- a/src/thesis_gnn_rul_xai/docsite/server.py
++++ b/src/thesis_gnn_rul_xai/docsite/server.py
+@@ -8,6 +8,7 @@ project directory.
+ from __future__ import annotations
+ 
+ import contextlib
++import html
+ import ipaddress
+ import json
+ import socket
+@@ -84,6 +85,10 @@ _SOURCE_LANGUAGE = {
+ 
+ _ASSETS = Path(__file__).parent / "assets"
+ 
++# The folder holding a copy of every paper the project cites. The paper route
++# serves PDFs from here and nowhere else.
++_PAPERS = "docs/references"
++
+ _CONTENT_TYPES = {
+     ".css": "text/css; charset=utf-8",
+     ".js": "text/javascript; charset=utf-8",
+@@ -239,6 +244,8 @@ class DocsHandler(BaseHTTPRequestHandler):
+                 self._serve_source(one("path"))
+             elif route == "/api/notebook":
+                 self._serve_notebook(one("path"))
++            elif route == "/api/paper":
++                self._serve_paper(one("path"))
+             elif route == "/api/figure":
+                 self._send(
+                     render_figure(one("name")).encode("utf-8"),
+@@ -435,6 +442,22 @@ class DocsHandler(BaseHTTPRequestHandler):
+             }
+         )
+ 
++    def _serve_paper(self, path: str) -> None:
++        """Send one cited paper's PDF from docs/references/, or say how to fetch it."""
++        target = self._safe_path(path)
++        if target.suffix.lower() != ".pdf" or not target.is_relative_to((self.root / _PAPERS).resolve()):
++            raise ValueError(f"{path!r} is not a paper in {_PAPERS}/.")
++        if not target.is_file():
++            message = (
++                f"<p>{html.escape(path)} is not on this computer. The cited papers are not "
++                "stored in the repository; <code>python scripts/fetch_references.py</code> "
++                "downloads the ones that are free to download, and "
++                "<code>docs/REFERENCES.md</code> says where to obtain the rest.</p>"
++            )
++            self._send(message.encode("utf-8"), "text/html; charset=utf-8", HTTPStatus.NOT_FOUND)
++            return
++        self._send(target.read_bytes(), "application/pdf")
++
+     def _serve_notebook(self, path: str) -> None:
+         """Convert one notebook to HTML, with the outputs it was saved with."""
+         if not path.lower().endswith(".ipynb"):

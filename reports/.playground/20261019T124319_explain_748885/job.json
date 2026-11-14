@@ -1,0 +1,12 @@
+{
+  "id": "20261019T124319_explain_748885",
+  "kind": "explain",
+  "label": "Exact Shapley values \u00b7 longest engine \u00b7 seed 42",
+  "command": "python scripts/explain.py --run fd001_physics_row_cap_5seed_varsplit_window_summary_cfgba82e3_5602773-dirty_20260914T233435Z --seed 42 --method shap --scope engine",
+  "created": 1792413799.9296231,
+  "status": "done",
+  "started": 1792413799.931632,
+  "finished": 1792413833.604424,
+  "returncode": 0,
+  "pid": null
+}

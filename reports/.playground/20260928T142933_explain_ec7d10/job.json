@@ -1,0 +1,12 @@
+{
+  "id": "20260928T142933_explain_ec7d10",
+  "kind": "explain",
+  "label": "Exact Shapley values \u00b7 test engines \u00b7 seed 42",
+  "command": "python scripts/explain.py --run fd001_physics_row_cap_5seed_varsplit_lstm32_train37e860_cfg72f506_70521f9-dirty_20260928T140610Z --seed 42 --method shap --scope test",
+  "created": 1790605773.593463,
+  "status": "done",
+  "started": 1790605915.020506,
+  "finished": 1790605972.2400718,
+  "returncode": 0,
+  "pid": null
+}

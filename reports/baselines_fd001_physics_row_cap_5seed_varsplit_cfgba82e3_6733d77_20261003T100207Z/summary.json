@@ -1,0 +1,188 @@
+{
+  "commit": "6733d77",
+  "finished_utc": "20261003T100207Z",
+  "command": [
+    "baselines.py",
+    "--run",
+    "D:/Main/University/Thesis/Code/Thesis GNN RUL XAI/reports/fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z",
+    "--also",
+    "D:/Main/University/Thesis/Code/Thesis GNN RUL XAI/reports/fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_19dceb5_20261002T210700Z",
+    "--data-dir",
+    "D:/Main/University/Thesis/Code/Thesis GNN RUL XAI/data/raw",
+    "--output-root",
+    "D:/Main/University/Thesis/Code/Thesis GNN RUL XAI/reports"
+  ],
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scikit-learn": "1.9.0",
+      "scipy": "1.17.1",
+      "torch": "2.13.0+cpu",
+      "pyyaml": "6.0.3"
+    },
+    "torch_threads": 8,
+    "cuda_available": false
+  },
+  "data_files": {
+    "train_FD001.txt": "963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8",
+    "test_FD001.txt": "3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851",
+    "RUL_FD001.txt": "a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca"
+  },
+  "uncommitted_code": [],
+  "source_run": {
+    "name": "fd001_physics_row_cap_5seed_varsplit_cfgba82e3_f4f40ad_20261002T152416Z",
+    "commit": "f4f40ad",
+    "finished_utc": "20261002T152416Z",
+    "temporal_stage": "last_cycle",
+    "reported_weights": "best_validation_epoch"
+  },
+  "also_runs": [
+    {
+      "key": "network_1",
+      "name": "fd001_physics_row_cap_5seed_varsplit_lstm32_cfgba82e3_19dceb5_20261002T210700Z",
+      "commit": "19dceb5",
+      "temporal_stage": "lstm",
+      "reported_weights": "best_validation_epoch"
+    }
+  ],
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "subset": "FD001",
+  "fitted_on": "each seed's training engines; the held-back engines unused",
+  "scored_on": "the 100 test engines, last window of each",
+  "predictions_clipped_to": [
+    0.0,
+    125.0
+  ],
+  "models": {
+    "constant": {
+      "label": "constant: mean training label",
+      "inputs": "none",
+      "estimator": "DummyRegressor()",
+      "shuffled_labels": false
+    },
+    "boosting_shuffled": {
+      "label": "gradient boosting trained on shuffled labels, same 14 numbers",
+      "inputs": "last",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": true
+    },
+    "boosting_age": {
+      "label": "gradient boosting on engine age alone",
+      "inputs": "age",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "linear_last": {
+      "label": "linear regression, same 14 numbers",
+      "inputs": "last",
+      "estimator": "LinearRegression()",
+      "shuffled_labels": false
+    },
+    "network64_last": {
+      "label": "one-hidden-layer network of 64, same 14 numbers",
+      "inputs": "last",
+      "estimator": "MLPRegressor(hidden_layer_sizes=(64,), random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "forest_last": {
+      "label": "random forest, same 14 numbers",
+      "inputs": "last",
+      "estimator": "RandomForestRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "boosting_last": {
+      "label": "gradient boosting, same 14 numbers",
+      "inputs": "last",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "boosting_summary": {
+      "label": "gradient boosting, 42 window summaries",
+      "inputs": "last+mean+slope",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "boosting_mean": {
+      "label": "gradient boosting, window mean alone",
+      "inputs": "mean",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "boosting_slope": {
+      "label": "gradient boosting, window slope alone",
+      "inputs": "slope",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "boosting_last_mean": {
+      "label": "gradient boosting, last value and mean",
+      "inputs": "last+mean",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "boosting_last_slope": {
+      "label": "gradient boosting, last value and slope",
+      "inputs": "last+slope",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "boosting_mean_slope": {
+      "label": "gradient boosting, mean and slope",
+      "inputs": "mean+slope",
+      "estimator": "GradientBoostingRegressor(random_state=<seed>)",
+      "shuffled_labels": false
+    },
+    "linear_summary": {
+      "label": "linear regression, 42 window summaries",
+      "inputs": "last+mean+slope",
+      "estimator": "LinearRegression()",
+      "shuffled_labels": false
+    }
+  },
+  "resampling": {
+    "draws": 20000,
+    "generator_seed": 0,
+    "method": "the test engines drawn with replacement, the same draw for every seed and model; each seed's RMSE on the draw, averaged over seeds; 2.5th and 97.5th percentiles"
+  },
+  "verification": {
+    "max_reload_gap_cycles": {
+      "network": {
+        "42": 3.7622070294673904e-06,
+        "43": 3.747558594113798e-06,
+        "44": 3.681640620811777e-06,
+        "45": 3.7402343764370016e-06,
+        "46": 3.776855464820983e-06
+      },
+      "network_1": {
+        "42": 2.2360839849966396e-05,
+        "43": 2.0576171877451088e-05,
+        "44": 1.8115234368565325e-05,
+        "45": 2.5495605470382543e-05,
+        "46": 1.849609374460215e-05
+      }
+    },
+    "prediction_tolerance": 0.001,
+    "rescore_tolerance": 1e-06
+  },
+  "convergence_warnings": {
+    "network64_last": [
+      "seed 42: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.",
+      "seed 43: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.",
+      "seed 44: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.",
+      "seed 45: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.",
+      "seed 46: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet."
+    ]
+  },
+  "seconds": 440.2
+}

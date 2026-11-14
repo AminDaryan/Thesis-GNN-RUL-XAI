@@ -1,0 +1,301 @@
+diff --git a/scripts/train.py b/scripts/train.py
+index 27f5661..e869807 100644
+--- a/scripts/train.py
++++ b/scripts/train.py
+@@ -58,8 +58,15 @@ from thesis_gnn_rul_xai.evaluation.published import published_row
+ from thesis_gnn_rul_xai.models import ModelConfig, build_model
+ from thesis_gnn_rul_xai.training import TrainingConfig, predict, train
+ from thesis_gnn_rul_xai.utils.logging_setup import configure_logging
+-from thesis_gnn_rul_xai.utils.paths import reports_dir
+-from thesis_gnn_rul_xai.utils.provenance import current_commit, utc_stamp
++from thesis_gnn_rul_xai.utils.paths import raw_data_dir, reports_dir
++from thesis_gnn_rul_xai.utils.provenance import (
++    capture_code_state,
++    current_commit,
++    environment,
++    file_fingerprints,
++    utc_stamp,
++    write_code_state,
++)
+ 
+ # The rows of the paper's results a run can be set beside, for orientation
+ # while it is in progress. These are not targets to tune towards; they are
+@@ -114,12 +121,14 @@ def main() -> int:
+                                  "constant"),
+                         default="step", help="See assumption A-17")
+     parser.add_argument("--temporal", default="last_cycle",
+-                        choices=["last_cycle", "mean_window", "raw_window",
+-                                 "lstm", "gru"],
++                        choices=["last_cycle", "mean_window", "window_summary",
++                                 "raw_window", "lstm", "gru"],
+                         help="Which temporal stage sits in front of the graph "
+                              "layers. 'last_cycle' is the stand-in of A-07; "
+                              "'lstm' is the paper's own Section 2.2 stage, one "
+-                             "network per sensor")
++                             "network per sensor; 'window_summary' gives each "
++                             "sensor its last reading, average and change over "
++                             "the window, which the paper does not (A-28)")
+     parser.add_argument("--temporal-hidden", type=int, default=32,
+                         help="Hidden size of the recurrent stage (A-26; the "
+                              "paper states none)")
+@@ -201,6 +210,8 @@ def main() -> int:
+              subset=preprocessing.subset, temporal=arguments.temporal)
+ 
+     commit = current_commit()
++    # Read now, while the code on disk is the code this process imported.
++    code_state = capture_code_state()
+     print(f"commit {commit}   graph {preprocessing.graph}   "
+           f"normalisation {preprocessing.adjacency_normalization}   "
+           f"split {'fixed' if arguments.fixed_split else 'varies with seed'}")
+@@ -259,6 +270,16 @@ def main() -> int:
+         artefacts.append({
+             "seed": seed,
+             "history": history,
++            # Which engines this seed trained on, held back and was scored on,
++            # and what the scaling measured on its training engines: both follow
++            # from the seed, and are kept so a reload can check it rebuilt them.
++            "split": {
++                name: sorted(int(unit) for unit in set(dataset.units.tolist()))
++                for name, dataset in (("train", prepared.train),
++                                      ("validation", prepared.validation),
++                                      ("test", prepared.test))
++            },
++            "scaling": prepared.normalizer.statistics_,
+             "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+             "predictions": pd.DataFrame({
+                 "unit": prepared.test.units,
+@@ -322,6 +343,7 @@ def main() -> int:
+         "\nWhich row above this run may be set beside depends on its temporal\n"
+         "stage. Without one -- the default -- it is 'ESTGNN w/o LSTM'; with\n"
+         "--temporal lstm it is the full ESTGNN, under the size A-26 chose.\n"
++        "Any other stage is not in the paper, and no row above applies to it.\n"
+         "See docs/ASSUMPTIONS.md for every way this pipeline differs from the\n"
+         "paper."
+     )
+@@ -401,12 +423,25 @@ def main() -> int:
+         kept["history"].save(folder)
+         torch.save(kept["state"], folder / "model.pt")
+         kept["predictions"].to_csv(folder / "test_predictions.csv", index=False)
++        (folder / "split.json").write_text(json.dumps(kept["split"]), encoding="utf-8")
++        if kept["scaling"] is not None:
++            kept["scaling"].to_csv(folder / "scaling.csv", index=False)
++    # A "-dirty" commit says the code differed from the commit, not how. The
++    # difference itself is kept, so the run can be rebuilt from the commit.
++    changed_code = write_code_state(output, code_state)
++    data_dir = Path(arguments.data_dir) if arguments.data_dir else raw_data_dir()
++    data_files = [data_dir / f"{kind}_{preprocessing.subset}.txt"
++                  for kind in ("train", "test", "RUL")]
+     (output / "summary.json").write_text(
+         json.dumps(
+             {
+                 "commit": commit,
+                 "config_digest": config_digest,
+                 "finished_utc": stamp,
++                "command": [Path(sys.argv[0]).name, *sys.argv[1:]],
++                "environment": environment(),
++                "data_files": file_fingerprints(data_files),
++                "uncommitted_code": changed_code,
+                 "subset": preprocessing.subset,
+                 "graph": preprocessing.graph,
+                 "adjacency_normalization": preprocessing.adjacency_normalization,
+diff --git a/src/thesis_gnn_rul_xai/models/config.py b/src/thesis_gnn_rul_xai/models/config.py
+index 26c92d9..46401ea 100644
+--- a/src/thesis_gnn_rul_xai/models/config.py
++++ b/src/thesis_gnn_rul_xai/models/config.py
+@@ -114,6 +114,8 @@ def build_model(
+         gcn_hidden=config.gcn_hidden,
+         fc_hidden=config.fc_hidden,
+         gcn_bias=config.gcn_bias,
+-        # Asked for by name, so this is the one stage the guard lets through.
+-        allow_time_in_the_graph_layer=config.temporal == "raw_window",
++        # Asked for by name, so these are the stages the guard lets through.
++        # ASSUMPTION A-28: the window summary hands the first graph layer three
++        # numbers made from the cycles, so its weights mix time; named, not hidden.
++        allow_time_in_the_graph_layer=config.temporal in ("raw_window", "window_summary"),
+     )
+diff --git a/src/thesis_gnn_rul_xai/models/temporal/__init__.py b/src/thesis_gnn_rul_xai/models/temporal/__init__.py
+index a6475d4..6974c3f 100644
+--- a/src/thesis_gnn_rul_xai/models/temporal/__init__.py
++++ b/src/thesis_gnn_rul_xai/models/temporal/__init__.py
+@@ -21,13 +21,16 @@ __all__ = [
+     "RawWindow",
+     "TemporalStage",
+     "TemporalStageName",
++    "WindowSummary",
+     "build_temporal_stage",
+ ]
+ 
+ logger = get_logger(__name__)
+ 
+ # Every stage the configuration may name. README.md describes each one.
+-TemporalStageName = Literal["last_cycle", "mean_window", "raw_window", "lstm", "gru"]
++TemporalStageName = Literal[
++    "last_cycle", "mean_window", "window_summary", "raw_window", "lstm", "gru"
++]
+ 
+ 
+ class TemporalStage(nn.Module):
+@@ -97,6 +100,33 @@ class MeanWindow(TemporalStage):
+         return windows.mean(dim=2, keepdim=True)
+ 
+ 
++class WindowSummary(TemporalStage):
++    """Give each sensor three numbers: its last reading, its average, and its change."""
++
++    def __init__(self, window_size: int) -> None:
++        super().__init__()
++        if window_size < 2:
++            raise ValueError(
++                f"window_size must be at least 2 to have a change, got {window_size}."
++            )
++        self.window_size = int(window_size)
++        self.out_features = 3
++
++    # ASSUMPTION A-28: not in the paper. Each sensor node carries its last
++    # reading, the average of its window, and how far the best straight line
++    # through the window rises from the first cycle to the last, in the same
++    # units as the readings rather than per cycle, so all three start on one
++    # scale. The paper's nodes carry one number, from a per-sensor LSTM; this
++    # is a hand-made stand-in used to measure what the trend is worth.
++    def forward(self, windows: Tensor) -> Tensor:
++        self._check(windows)
++        steps = torch.arange(self.window_size, dtype=windows.dtype, device=windows.device)
++        steps = steps - steps.mean()
++        slope = (windows * steps).sum(dim=2) / (steps * steps).sum()
++        change = slope * (self.window_size - 1)
++        return torch.stack([windows[:, :, -1], windows.mean(dim=2), change], dim=2)
++
++
+ class RawWindow(TemporalStage):
+     """Hand the graph layer every cycle. This is NOT a temporal encoder.
+ 
+@@ -217,6 +247,8 @@ def build_temporal_stage(
+         return LastCycle(window_size)
+     if name == "mean_window":
+         return MeanWindow(window_size)
++    if name == "window_summary":
++        return WindowSummary(window_size)
+     if name == "raw_window":
+         return RawWindow(window_size)
+     if name in ("lstm", "gru"):
+diff --git a/src/thesis_gnn_rul_xai/utils/provenance.py b/src/thesis_gnn_rul_xai/utils/provenance.py
+index 1b1ed1c..4fa51df 100644
+--- a/src/thesis_gnn_rul_xai/utils/provenance.py
++++ b/src/thesis_gnn_rul_xai/utils/provenance.py
+@@ -2,11 +2,26 @@
+ 
+ from __future__ import annotations
+ 
++import hashlib
++import platform
+ import subprocess
++import sys
+ from datetime import datetime, timezone
++from importlib import metadata
+ from pathlib import Path
+ 
+-__all__ = ["current_commit", "utc_stamp"]
++__all__ = [
++    "CODE_PATHS",
++    "capture_code_state",
++    "current_commit",
++    "environment",
++    "file_fingerprints",
++    "utc_stamp",
++    "write_code_state",
++]
++
++# The parts of the repository on the path from the data files to a number.
++CODE_PATHS = ("src", "scripts", "config", "pyproject.toml")
+ 
+ 
+ def current_commit(cwd: Path | None = None) -> str:
+@@ -31,3 +46,88 @@ def current_commit(cwd: Path | None = None) -> str:
+ def utc_stamp() -> str:
+     """The current time in UTC, in the compact form run directory names use."""
+     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
++
++
++def environment() -> dict[str, object]:
++    """The Python, the machine and the version of every library a number depends on."""
++    versions: dict[str, str | None] = {}
++    for package in ("numpy", "pandas", "scikit-learn", "scipy", "torch", "pyyaml"):
++        try:
++            versions[package] = metadata.version(package)
++        except metadata.PackageNotFoundError:
++            versions[package] = None
++    details: dict[str, object] = {
++        "python": sys.version.split()[0],
++        "platform": platform.platform(),
++        "machine": platform.machine(),
++        "processor": platform.processor(),
++        "packages": versions,
++    }
++    try:
++        import torch
++
++        details["torch_threads"] = torch.get_num_threads()
++        details["cuda_available"] = bool(torch.cuda.is_available())
++    except ImportError:  # pragma: no cover - PyTorch is optional
++        pass
++    return details
++
++
++def file_fingerprints(paths: list[Path]) -> dict[str, str]:
++    """The SHA-256 of each file's bytes, keyed by file name."""
++    fingerprints: dict[str, str] = {}
++    for path in paths:
++        digest = hashlib.sha256()
++        with open(path, "rb") as handle:
++            for block in iter(lambda: handle.read(1 << 20), b""):
++                digest.update(block)
++        fingerprints[Path(path).name] = digest.hexdigest()
++    return fingerprints
++
++
++def capture_code_state(cwd: Path | None = None) -> dict[str, object]:
++    """Read the uncommitted changes to the code now, before anything runs."""
++    where = cwd or Path(__file__).resolve().parent
++    empty: dict[str, object] = {"status": [], "patch": "", "untracked": {}}
++    try:
++        top = subprocess.run(
++            ["git", "rev-parse", "--show-toplevel"],
++            capture_output=True, text=True, timeout=10, cwd=where,
++        )
++        if top.returncode != 0:
++            return empty
++        root = Path(top.stdout.strip())
++        status = subprocess.run(
++            ["git", "status", "--porcelain", "--untracked-files=all", "--", *CODE_PATHS],
++            capture_output=True, text=True, timeout=10, cwd=root,
++        ).stdout.splitlines()
++        patch = subprocess.run(
++            ["git", "diff", "HEAD", "--", *CODE_PATHS],
++            capture_output=True, text=True, timeout=60, cwd=root,
++        ).stdout
++    except Exception:  # pragma: no cover - git absent, or not a clone
++        return empty
++    # A patch cannot hold a file git has never seen, so those are read whole.
++    untracked = {
++        line[3:].strip().strip('"'): (root / line[3:].strip().strip('"')).read_bytes()
++        for line in status
++        if line.startswith("??") and "__pycache__" not in line
++        and (root / line[3:].strip().strip('"')).is_file()
++    }
++    return {"status": status, "patch": patch, "untracked": untracked}
++
++
++def write_code_state(directory: Path, state: dict[str, object]) -> list[str]:
++    """Write what capture_code_state() read into the run's folder; return the changed files."""
++    status = list(state["status"])  # type: ignore[call-overload]
++    if not status:
++        return []
++    folder = Path(directory) / "code_state"
++    folder.mkdir(parents=True, exist_ok=True)
++    (folder / "status.txt").write_text("\n".join(status) + "\n", encoding="utf-8")
++    (folder / "uncommitted.patch").write_text(str(state["patch"]), encoding="utf-8")
++    for relative, content in dict(state["untracked"]).items():  # type: ignore[call-overload]
++        target = folder / "untracked" / relative
++        target.parent.mkdir(parents=True, exist_ok=True)
++        target.write_bytes(content)
++    return status

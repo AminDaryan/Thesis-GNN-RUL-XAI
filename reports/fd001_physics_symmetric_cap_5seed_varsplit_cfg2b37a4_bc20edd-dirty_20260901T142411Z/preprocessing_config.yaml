@@ -1,0 +1,13 @@
+subset: FD001
+window_size: 30
+window_stride: 1
+rul_max: 125
+clip_test_labels: true
+normalization: zscore
+smoothing_alpha: 0.5
+graph: physics
+adjacency_normalization: symmetric
+validation_fraction: 0.0
+seed: 42
+notes: Settings for preparing the FD001 subset. The lines marked ASSUMPTION in config.py
+  are choices we made because Wen et al. (2026) does not state them; see docs/ASSUMPTIONS.md.

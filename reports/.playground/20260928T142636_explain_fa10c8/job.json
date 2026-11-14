@@ -1,0 +1,12 @@
+{
+  "id": "20260928T142636_explain_fa10c8",
+  "kind": "explain",
+  "label": "Walks through the sensor graph \u00b7 longest engine \u00b7 seed 42",
+  "command": "python scripts/explain.py --run fd001_physics_row_cap_5seed_varsplit_lstm32_train37e860_cfg72f506_70521f9-dirty_20260928T140610Z --seed 42 --method walks --scope engine",
+  "created": 1790605596.2184803,
+  "status": "done",
+  "started": 1790605596.2184803,
+  "finished": 1790605603.126355,
+  "returncode": 0,
+  "pid": null
+}

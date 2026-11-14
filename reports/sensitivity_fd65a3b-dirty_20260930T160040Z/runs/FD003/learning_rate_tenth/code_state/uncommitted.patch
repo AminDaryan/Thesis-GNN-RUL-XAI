@@ -1,0 +1,1203 @@
+diff --git a/config/fd001.yaml b/config/fd001.yaml
+index 1f0bfcc..a83d205 100644
+--- a/config/fd001.yaml
++++ b/config/fd001.yaml
+@@ -23,9 +23,15 @@ smoothing_alpha: 0.5                 # ASSUMPTION A-04: the paper is ambiguous.
+ # --- The sensor graph -----------------------------------------------------
+ # ASSUMPTION A-21: the paper never prints the normalisation formula. With
+ # nothing held back -- which was the default until 2026-09-02, but is not
+-# what this file now sets -- row is 0.35 cycles closer than symmetric over
+-# five seeds (paired p = 0.047, two-sided). That advantage does NOT survive
+-# holding engines out -- see A-21's table before quoting it more widely.
++# what this file now sets -- row is 0.25 cycles closer than symmetric over
++# five seeds under the current learning-rate schedule, one drop at the
++# halfway pass (paired p = 0.068, two-sided, not significant), and was 0.35
++# closer (p = 0.047) under the schedule used until 2026-09-01, which shrank
++# the rate after every pass. That advantage does NOT survive holding engines
++# out -- see A-21's table before quoting it more widely. Corrected
++# 2026-10-02: this comment gave 0.35 and p = 0.047 as the current figure,
++# which belongs to the superseded schedule; found by setting it beside
++# A-21's table, which holds both figures with their schedules.
+ adjacency_normalization: row
+ 
+ # --- Data splitting -------------------------------------------------------
+diff --git a/config/fd001_uncapped.yaml b/config/fd001_uncapped.yaml
+index b645227..0a68e90 100644
+--- a/config/fd001_uncapped.yaml
++++ b/config/fd001_uncapped.yaml
+@@ -4,8 +4,9 @@
+ # output cannot exceed it, so an uncapped label would charge the model for an
+ # error its own architecture forbids. Eleven of the 100 FD001 test labels
+ # exceed 125 (finding F-02), and capping them can only lower the reported
+-# error -- so this is the single largest uncontrolled difference between a
+-# number from this code and a published one.
++# RMSE and NASA score (not necessarily R-squared or ASUE; see A-02's
++# correction of 2026-10-02) -- so this is the single largest uncontrolled
++# difference between a number from this code and a published one.
+ #
+ # This configuration exists so that difference can be measured rather than
+ # asserted. Everything else is identical to fd001.yaml.
+diff --git a/scripts/explain.py b/scripts/explain.py
+index 2719b14..4a748d9 100644
+--- a/scripts/explain.py
++++ b/scripts/explain.py
+@@ -18,8 +18,14 @@ Three methods are available, and only the first is the paper's:
+     Not in the paper. Each sensor in turn is replaced by the same baseline
+     while the other 13 stay, and the change in the prediction is recorded:
+     15 evaluations per window instead of 16,384. It is the one term of the
+-    Shapley average in which the sensor arrives last, so the two agree only
+-    when the sensors do not interact.
++    Shapley average in which the sensor arrives last; the Shapley value
++    averages what the sensor adds over every point at which it could arrive.
++    The two agree whenever that last amount equals the average: always for a
++    sensor that adds the same amount wherever it arrives, and also for one
++    whose amounts differ but happen to average to the last one. Agreement
++    therefore does not show that a sensor acts independently of the others.
++    (Until 2026-10-02 this said the two agree only when the sensors do not
++    interact. That guarantees agreement, but is not the only way to get it.)
+ ``walks``
+     Not in the paper. GNN-LRP (Schnake et al., 2022; A-29): the network's
+     weights are read and each window's score before the sigmoid -- the number
+diff --git a/scripts/prepare_data.py b/scripts/prepare_data.py
+index 0dd1a05..246335a 100644
+--- a/scripts/prepare_data.py
++++ b/scripts/prepare_data.py
+@@ -7,8 +7,9 @@ A small command-line tool with two jobs:
+ 
+ ``--check``
+     Report which raw C-MAPSS files are present, which are missing, and whether
+-    the ones present have the number of rows and engines published for the
+-    official release.
++    the ones present have the number of rows and engines of the files NASA
++    distributes (the engine counts are also in Wen et al.'s Table 5; NASA's
++    readme swaps FD004's two).
+ 
+ ``--run``
+     Execute the full preprocessing pipeline and save the result.
+@@ -78,7 +79,7 @@ def check_raw_data(subset: str, directory: Path | None = None) -> int:
+         )
+         return 1
+ 
+-    print("\nAll files present. Checking their size against the published release:")
++    print("\nAll files present. Checking their size against the counts of NASA's files:")
+     train = read_cmapss_frame(directory / f"train_{subset}.txt")
+     test = read_cmapss_frame(directory / f"test_{subset}.txt")
+     expected = EXPECTED_SHAPES.get(subset, {})
+@@ -96,11 +97,11 @@ def check_raw_data(subset: str, directory: Path | None = None) -> int:
+         print(f"  {status:8s} {key:14s} expected {expected_value:>6}, found {actual[key]:>6}")
+ 
+     if all_match:
+-        print("\nThe files match the official release.")
++        print("\nThe files match the expected counts.")
+         return 0
+ 
+     print(
+-        "\nThe files do not match the published counts. They may be a different "
++        "\nThe files do not match the expected counts. They may be a different "
+         "version or may have been modified. Investigate before using them for "
+         "any reported result."
+     )
+diff --git a/src/thesis_gnn_rul_xai/README.md b/src/thesis_gnn_rul_xai/README.md
+index 14afd14..3f2ce37 100644
+--- a/src/thesis_gnn_rul_xai/README.md
++++ b/src/thesis_gnn_rul_xai/README.md
+@@ -123,8 +123,12 @@ training data into validation. `data/windowing/README.md` explains this.
+ sigmoid, so the model can never predict a value above the label ceiling
+ `rul_max`. Leaving the test labels uncapped would charge the model for an error
+ it is structurally unable to avoid. This is a real effect on the reported
+-numbers and can only move them in the model's favour, so it must be stated
+-whenever those numbers are compared with published ones.
++numbers: it can never raise the root mean squared error (RMSE) or the NASA
++score, while R-squared and ASUE can move either way, as
++`data/labeling/README.md` shows with the real test labels. So it must be
++stated whenever those numbers are compared with published ones. (Corrected
++2026-10-02: this said capping can only move all the reported numbers in the
++model's favour.)
+ 
+ **`graph` and `adjacency_normalization` describe the model, not the data**, and
+ still live in the preprocessing configuration. That is on purpose: this is the
+@@ -195,11 +199,22 @@ independent of the figure they are compared with.
+ 
+ - **The adjacency matrix is row-normalised.** The paper describes normalising
+   the matrix with self-loops added but never prints the formula, and two forms
+-  fit its description. Row normalisation measured 0.35 cycles closer than the
+-  symmetric form (p = 0.047) with no engines held back, and was selected by the
+-  nearest-to-the-paper rule; with engines held back the two cannot be told
++  fit its description. With no engines held back, row normalisation measured
++  0.25 cycles closer than the symmetric form under the learning-rate schedule
++  the project uses now, a single drop at the halfway point (p = 0.068: if the
++  two forms were equally good, five paired seeds would show a gap at least this
++  large against its seed-to-seed spread, in one direction or the other, 6.8
++  times in 100, more often than the usual 1-in-20 threshold), and 0.35
++  closer (p = 0.047) under the schedule used until 2026-09-01, which shrank the
++  rate a little after every pass over the training data. It was selected by
++  the nearest-to-the-paper rule; with engines held back the two cannot be told
+   apart (assumption A-21).
+ 
++  **Correction, 2026-10-02.** This paragraph gave 0.35 cycles at p = 0.047 as
++  the current figure; that figure was measured under the superseded schedule.
++  Found by setting it beside the table in the record of this choice, which
++  holds both figures with their schedules (assumption A-21).
++
+ - **Twenty percent of the training engines are held back, and training stops
+   early on them.** As above: the paper's Table 6 states 200 passes over the
+   data and describes no held-back engines (assumptions A-06 and A-18).
+diff --git a/src/thesis_gnn_rul_xai/config.py b/src/thesis_gnn_rul_xai/config.py
+index 685d9cb..a928e15 100644
+--- a/src/thesis_gnn_rul_xai/config.py
++++ b/src/thesis_gnn_rul_xai/config.py
+@@ -66,9 +66,10 @@ class PreprocessingConfig:
+     # ASSUMPTION A-02: put the same ceiling on the test labels. The paper does
+     # not say whether it does. The network's last layer cannot produce a number
+     # above the ceiling, so leaving the test labels uncapped would charge it for
+-    # an error it is built to be unable to avoid. This can only move our
+-    # reported numbers in our favour, so it must be stated whenever they are
+-    # set beside published ones. Written up in docs/ASSUMPTIONS.md.
++    # an error it is built to be unable to avoid. It can never raise the
++    # reported RMSE or NASA score (R-squared and ASUE have no such guarantee),
++    # so it must be stated whenever they are set beside published ones.
++    # Written up in docs/ASSUMPTIONS.md.
+     clip_test_labels: bool = True
+ 
+     # --- Preparing the sensor readings --------------------------------------
+@@ -95,10 +96,16 @@ class PreprocessingConfig:
+     # ASSUMPTION A-21: rescale the graph by rows. The paper never prints the
+     # formula and two forms fit what it says. With nothing held back --
+     # the default until 2026-09-02, and no longer what this file sets --
+-    # rows measured 0.35 cycles closer than the alternative over five seeds
+-    # (paired p = 0.047). That advantage does not survive holding engines out,
+-    # so it is a fact about this configuration only. Written up as A-21 in
+-    # docs/ASSUMPTIONS.md, with the table of all four comparisons.
++    # rows measured 0.25 cycles closer than the alternative over five seeds
++    # under the learning-rate schedule in use now, one drop at the halfway
++    # pass (paired p = 0.068, not significant), and 0.35 closer (p = 0.047)
++    # under the schedule used until 2026-09-01, which shrank the rate after
++    # every pass. That advantage does not survive holding engines out, so it
++    # is a fact about this configuration only. Corrected 2026-10-02: this
++    # comment gave 0.35 and p = 0.047 as the current figure, which belongs to
++    # the superseded schedule; found by setting it beside A-21's table, which
++    # holds both figures with their schedules. Written up as A-21 in
++    # docs/ASSUMPTIONS.md, with the table of every comparison.
+     adjacency_normalization: AdjacencyNormalization = "row"
+ 
+     # --- Holding engines back ------------------------------------------------
+diff --git a/src/thesis_gnn_rul_xai/data/README.md b/src/thesis_gnn_rul_xai/data/README.md
+index 333bc42..a8b586b 100644
+--- a/src/thesis_gnn_rul_xai/data/README.md
++++ b/src/thesis_gnn_rul_xai/data/README.md
+@@ -164,7 +164,7 @@ and each is explained in plain terms on the page of the file it lives in.
+ | ID | The choice | Where it lives |
+ |---|---|---|
+ | **A-01** | The label ceiling is 125 cycles. Equation 19 gives the formula; the number is never printed. | [labeling](labeling/README.md) |
+-| **A-02** | The ceiling is applied to the test labels too. This can only move reported error favourably, and must be stated whenever a number from here is compared with a published one. | [labeling](labeling/README.md) |
++| **A-02** | The ceiling is applied to the test labels too. This can never raise the reported RMSE or NASA score, though R-squared and ASUE carry no such guarantee (corrected 2026-10-02 from "can only move reported error favourably"), and it must be stated whenever a number from here is compared with a published one. | [labeling](labeling/README.md) |
+ | **A-03** | How the sensors are rescaled. The paper describes no scaling at all. **The largest measured effect in the project.** | [normalization](normalization/README.md) |
+ | **A-04** | The smoothing strength is 0.5. Section 3.2.3 contradicts itself. | [smoothing](smoothing/README.md) |
+ | **A-05** | Windows are taken one cycle apart. Table 6 gives the size, never a stride. | [windowing](windowing/README.md) |
+@@ -193,7 +193,10 @@ into `data/raw/`. When a file is missing, the error quotes the download link, so
+ the fix arrives with the problem — see
+ [`loading`](loading/README.md).
+ 
+-`load_subset` also compares the row and engine counts against the published
+-figures for the official release and **warns** on a mismatch rather than
+-stopping, because a legitimate variant should not halt the work while a silent
+-mismatch would be far worse.
++`load_subset` also compares the row and engine counts against those of the
++files NASA distributes and **warns** on a mismatch rather than stopping,
++because a legitimate variant should not halt the work while a silent mismatch
++would be far worse. The paper's Table 5 prints the same engine counts, while
++NASA's own readme swaps FD004's two (corrected 2026-10-02: this paragraph
++called them "the published figures"; [`loading`](loading/README.md) has the
++details).
+diff --git a/src/thesis_gnn_rul_xai/data/labeling/README.md b/src/thesis_gnn_rul_xai/data/labeling/README.md
+index 752bc16..cd4fb6e 100644
+--- a/src/thesis_gnn_rul_xai/data/labeling/README.md
++++ b/src/thesis_gnn_rul_xai/data/labeling/README.md
+@@ -355,12 +355,38 @@ range — scaled to the ceiling, so it **cannot** predict a value above 125 in
+ the first place. Leaving a test label at 180 would score the model against a
+ number it is structurally incapable of producing.
+ 
+-**How much it matters, and why it must always be stated.** Capping the test
+-labels can only move the reported error **favourably**: it removes exactly the
+-cases the model was going to be furthest from. So any number from this project
+-compared against a published one must carry that caveat. This is settled and
+-not up for re-litigation (assumption A-02 in
+-[the assumptions log](../../../../docs/ASSUMPTIONS.md)).
++**How much it matters, and why it must always be stated.** Capping changes the
++score only for engines whose true remaining life is above 125, and for each of
++them it shrinks the error without changing its direction. Engine 25 of the
++FD001 test set has 145 cycles left. Whatever the model predicts for it, call
++it `p`, is at most 125, so the prediction is early: by `145 − p` cycles against
++the uncapped label and by `125 − p` against the capped one, exactly 20 cycles
++less.
++
++Because every engine's error keeps its direction and only shrinks, two of the
++four measures can never get worse: the root mean squared error (RMSE), which is
++built from squared errors, and the NASA score, which charges an early error
++more the larger it is. The other two have no such guarantee:
++
++- **R-squared** divides the squared errors by how spread out the labels are
++  around their average, and capping shrinks that spread too: on the 100 FD001
++  test labels, the sum of squared distances from the average falls from
++  172,686.96 to 160,586.75. So it can move either way. Predicting 75.52, the
++  average uncapped label, for every engine scores exactly 0 against the
++  uncapped labels and −0.000713 against the capped ones.
++- **ASUE**, the average shortfall over the engines predicted too low, cannot
++  rise while every prediction is below 125. An engine predicted at exactly
++  125, which the network's arithmetic can produce, has no shortfall once its
++  label is capped and leaves that average, and that can raise it.
++
++So any number from this project compared against a published one must carry
++that caveat, naming which measure it is. This is settled and not up for
++re-litigation (assumption A-02 in
++[the assumptions log](../../../../docs/ASSUMPTIONS.md), which holds the
++measured effect and the full argument). (Corrected 2026-10-02: this said
++capping can only move the reported error favourably because it removes the
++cases the model was going to be furthest from. It removes no engine, and the
++guarantee covers RMSE and the NASA score only.)
+ 
+ **Do not confuse** these two. The first is *where* the ceiling sits (assumption
+ A-01). The second is *who it is applied to* (assumption A-02). They are
+diff --git a/src/thesis_gnn_rul_xai/data/loading/README.md b/src/thesis_gnn_rul_xai/data/loading/README.md
+index 147d398..a3a9900 100644
+--- a/src/thesis_gnn_rul_xai/data/loading/README.md
++++ b/src/thesis_gnn_rul_xai/data/loading/README.md
+@@ -78,7 +78,7 @@ The names come from [`sensors`](../sensors/README.md), which holds the list
+ | `read_rul_file(path)` | Reads one `RUL_FD00X.txt` label file. | A Series of one number per engine, labelled by engine number |
+ | `attach_rul(frame, rul_at_last_cycle=None)` | Adds the `rul` column. | A **new** DataFrame; the one passed in is not changed |
+ | `CMAPSSData` | Holds one loaded sub-dataset. | An object with `.subset`, `.train`, `.test`, `.test_rul` and a `.summary()` |
+-| `EXPECTED_SHAPES` | How many rows and engines each sub-dataset should have, from the published descriptions. | A dictionary, used for a warning |
++| `EXPECTED_SHAPES` | How many rows and engines each sub-dataset should have: the counts of NASA's files, whose engine counts the re-implemented paper's Table 5 repeats (where they come from is under `load_subset` below). | A dictionary, used for a warning |
+ | `DOWNLOAD_URL` | Where the NASA files come from. | A string, quoted inside the missing-file error |
+ 
+ ---
+@@ -498,7 +498,7 @@ test  = attach_rul(test, rul_at_last_cycle=test_rul)   # label file needed
+ ```
+ 
+ Then a check that the files are the ones they claim to be. `EXPECTED_SHAPES`
+-holds the published row and engine counts:
++holds the row and engine counts of the files NASA distributes:
+ 
+ ```python
+ EXPECTED_SHAPES = {
+@@ -508,6 +508,18 @@ EXPECTED_SHAPES = {
+ }
+ ```
+ 
++Where those numbers come from matters, because the sources disagree. The
++engine counts match Table 5 of the paper (Wen et al., 2026, page 7). NASA's
++own readme, which comes with the files, prints FD004's two engine counts the
++other way round: 248 training engines and 249 test engines, where the files
++hold 249 and 248 (and `RUL_FD004.txt` has 248 lines, one per test engine). The
++row counts were counted from the files, because neither source prints them.
++
++**Correction, 2026-10-02.** This section and the code's comment called all of
++these counts "published", which hid both points. Found when the cited papers
++were collected into `docs/references/` and checked against the places that
++cite them.
++
+ The measured counts are compared against those, and any difference is
+ **warned** about rather than raised. Warning rather than stopping is a
+ deliberate choice: a legitimate variant of the data should not halt the work,
+@@ -518,7 +530,7 @@ files would look perfectly normal.
+ 
+ ```
+ INFO    | thesis_gnn_rul_xai.data.loading | Loading FD001 from data\raw
+-INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the published shape of the official release.
++INFO    | thesis_gnn_rul_xai.data.loading | FD001 matches the expected counts, those of NASA's files (Wen et al.'s Table 5 prints the same engine counts).
+ INFO    | thesis_gnn_rul_xai.data.loading | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
+ 
+ repr: CMAPSSData(subset='FD001', train_rows=20631, train_units=100, test_rows=13096, test_units=100)
+@@ -528,10 +540,11 @@ And with 100 rows cut off the end of the training file, the check fires:
+ 
+ ```
+ WARNING | thesis_gnn_rul_xai.data.loading | Loaded FD001 does not match the
+-published shape of the official release. Differences (expected, actual):
+-{'train_rows': (20631, 20531)}. The files may be a different version,
+-truncated, or modified. Investigate this before reporting any result computed
+-from them.
++expected counts, which are those of NASA's files (Wen et al.'s Table 5 prints
++the same engine counts; NASA's readme swaps FD004's two). Differences
++(expected, actual): {'train_rows': (20631, 20531)}. The files may be a
++different version, truncated, or modified. Investigate this before reporting
++any result computed from them.
+ ```
+ 
+ ---
+@@ -630,7 +643,7 @@ numbers are assigned **by line position**, a label file with one line missing
+ would otherwise shift every label by one engine and produce a table that looks
+ entirely reasonable and is entirely wrong.
+ 
+-**The files do not match the published shape** — a warning, not an error, shown
++**The files do not match the expected counts** — a warning, not an error, shown
+ above.
+ 
+ ---
+diff --git a/src/thesis_gnn_rul_xai/data/loading/__init__.py b/src/thesis_gnn_rul_xai/data/loading/__init__.py
+index 7e732d3..cb1b8fb 100644
+--- a/src/thesis_gnn_rul_xai/data/loading/__init__.py
++++ b/src/thesis_gnn_rul_xai/data/loading/__init__.py
+@@ -32,10 +32,15 @@ DOWNLOAD_URL = (
+     "discovery-and-systems-health/pcoe/pcoe-data-set-repository/"
+ )
+ 
+-# How many rows and engines each subset should have, according to the
+-# published descriptions. Checked when files are loaded; a mismatch means the
+-# files are cut short, changed, or not the official ones. It warns rather than
+-# stopping, because a legitimate variant should not halt the work.
++# How many rows and engines each subset should have: the counts of the NASA
++# files held in data/raw/. Wen et al.'s Table 5 prints the same engine counts;
++# NASA's own readme swaps FD004's two (248 training, 249 test) where the files
++# hold 249 and 248. No source held in docs/references/ prints the row counts.
++# (Corrected 2026-10-02: this called every count "published"; found when the
++# cited papers were collected into docs/references/ and checked against the
++# places that cite them.) Checked when files are loaded; a mismatch means the
++# files are cut short, changed, or not the ones NASA distributes. It warns
++# rather than stopping, because a legitimate variant should not halt the work.
+ EXPECTED_SHAPES: dict[str, dict[str, int]] = {
+     "FD001": {"train_rows": 20631, "train_units": 100, "test_units": 100},
+     "FD002": {"train_rows": 53759, "train_units": 260, "test_units": 259},
+@@ -204,15 +209,21 @@ def load_subset(
+         }
+         if differences:
+             logger.warning(
+-                "Loaded %s does not match the published shape of the official "
+-                "release. Differences (expected, actual): %s. The files may be "
+-                "a different version, truncated, or modified. Investigate this "
+-                "before reporting any result computed from them.",
++                "Loaded %s does not match the expected counts, which are those "
++                "of NASA's files (Wen et al.'s Table 5 prints the same engine "
++                "counts; NASA's readme swaps FD004's two). Differences "
++                "(expected, actual): %s. The files may be a different version, "
++                "truncated, or modified. Investigate this before reporting any "
++                "result computed from them.",
+                 subset,
+                 differences,
+             )
+         else:
+-            logger.info("%s matches the published shape of the official release.", subset)
++            logger.info(
++                "%s matches the expected counts, those of NASA's files "
++                "(Wen et al.'s Table 5 prints the same engine counts).",
++                subset,
++            )
+ 
+     logger.info(
+         "Loaded %s: %d training rows over %d engines, %d test rows over %d engines.",
+diff --git a/src/thesis_gnn_rul_xai/data/normalization/README.md b/src/thesis_gnn_rul_xai/data/normalization/README.md
+index 93cd1f2..d0d4f2f 100644
+--- a/src/thesis_gnn_rul_xai/data/normalization/README.md
++++ b/src/thesis_gnn_rul_xai/data/normalization/README.md
+@@ -182,6 +182,31 @@ place, so without it every row would look like its own condition. The
+ number the dataset documentation describes — so measurement noise cannot invent
+ a seventh.
+ 
++**Whole numbers are coarser than the settings.** The three settings are the
++altitude in thousands of feet, the Mach number (speed as a fraction of the
++speed of sound) and the throttle angle in degrees; the
++[C-MAPSS resources page](../../../../docs/resources/cmapss.md) shows how that
++reading was established. Rounding the Mach number to a whole number merges
++conditions that differ in it. On FD002 and FD004, the two sub-datasets with six
++conditions, all four files (training and test of each) give the same six
++combinations, measured on 2026-10-02:
++
++| Altitude, rounded | Mach number, to two decimals | Throttle angle | Mach number, rounded |
++|---|---|---|---|
++| 0 | 0.00 | 100 | 0 |
++| 10 | 0.25 | 100 | 0 |
++| 20 | 0.70 | 100 | 1 |
++| 25 | 0.62 | 60 | 1 |
++| 35 | 0.84 | 100 | 1 |
++| 42 | 0.84 | 100 | 1 |
++
++Rounded, the Mach number keeps only 0 and 1, and the throttle angle has only
++two values, so neither tells the six conditions apart. The count still comes
++out at six because altitude alone does: its six rounded values all differ. A
++dataset with two conditions at the same altitude, differing only in Mach
++number, would be counted as one. The merge touches only the count: k-means
++then places its centres using the unrounded settings.
++
+ ```python
+ if detected <= 1:
+     self._model = None
+@@ -410,8 +435,14 @@ This is the most important idea on the page.
+ included in that computation, those numbers would carry information about the
+ test engines — and every training example would then be rescaled using a
+ quantity that depended on data the model is supposed never to have seen. The
+-reported error would be optimistic, and there would be no way to tell by how
+-much.
++reported error would no longer measure how the model does on unseen engines,
++and there would be no way to tell from it by how much, or even in which
++direction, it had moved. Studies of leakage find that it usually makes results
++look better than they are, but the arithmetic does not guarantee that here:
++the network trained on differently rescaled inputs is a different network, and
++it could do better or worse. (Corrected 2026-10-02: this said the reported
++error would be optimistic, which is the usual direction but not a certain one;
++assumption A-25.)
+ 
+ This is called **leakage**: information crossing from the held-back data into
+ the training process by a route nobody intended.
+diff --git a/src/thesis_gnn_rul_xai/data/normalization/__init__.py b/src/thesis_gnn_rul_xai/data/normalization/__init__.py
+index 7992be1..c3d2633 100644
+--- a/src/thesis_gnn_rul_xai/data/normalization/__init__.py
++++ b/src/thesis_gnn_rul_xai/data/normalization/__init__.py
+@@ -42,6 +42,12 @@ class OperatingConditionEncoder:
+ 
+     n_conditions: int | None = None
+     setting_columns: Sequence[str] = tuple(OP_SETTING_COLS)
++    # Rounding to whole numbers only counts the conditions; k-means then sorts
++    # the unrounded settings. It merges the Mach numbers (0 and 0.25 become 0;
++    # 0.62, 0.70 and 0.84 become 1), so the count of six on FD002 and FD004 is
++    # right only because altitude alone, rounded to 0, 10, 20, 25, 35 and 42,
++    # separates the six conditions. Measured 2026-10-02 on all four FD002 and
++    # FD004 files; the README in this folder shows it.
+     round_decimals: int = 0
+     seed: int = 42
+ 
+diff --git a/src/thesis_gnn_rul_xai/data/pipeline/README.md b/src/thesis_gnn_rul_xai/data/pipeline/README.md
+index c1b8d9c..78f8755 100644
+--- a/src/thesis_gnn_rul_xai/data/pipeline/README.md
++++ b/src/thesis_gnn_rul_xai/data/pipeline/README.md
+@@ -100,7 +100,7 @@ settings:
+ 
+ ```
+ INFO    | ...data.loading       | Loading FD001 from D:\...\data\raw
+-INFO    | ...data.loading       | FD001 matches the published shape of the official release.
++INFO    | ...data.loading       | FD001 matches the expected counts, those of NASA's files (Wen et al.'s Table 5 prints the same engine counts).
+ INFO    | ...data.loading       | Loaded FD001: 20631 training rows over 100 engines, 13096 test rows over 100 engines.
+ WARNING | ...data.pipeline      | The paper keeps sensor(s) ['P15'], but in this data they carry no
+                                   usable variation. They are kept anyway, because the adjacency matrix
+@@ -175,8 +175,10 @@ That is a real argument, not a hand-wave: `apply_piecewise_rul` writes only
+ Two operations that touch disjoint columns commute.
+ 
+ Note also that the test labels are capped only `if config.clip_test_labels` —
+-capping them at all is this project's choice (assumption A-02), and it can only
+-move reported error favourably.
++capping them at all is this project's choice (assumption A-02), and it can
++never raise the reported RMSE or NASA score. R-squared and ASUE can move either
++way; [`labeling`](../labeling/README.md) shows both. (Corrected 2026-10-02:
++this said capping can only move reported error favourably.)
+ 
+ ### Step 6 — the split happens *before* anything is measured
+ 
+@@ -197,7 +199,12 @@ Deciding the split first is this project's choice (assumption A-25), and the
+ reason is the one from
+ [`normalization`](../normalization/README.md): if the split happened after
+ fitting, the held-back engines would have helped decide the mean and the spread,
+-and their error would then look better than it really is.
++and their error would no longer measure how the model does on engines the
++preparation never saw. Nothing guarantees which way it would move; the usual
++finding is that it looks better than it really is. (Corrected 2026-10-02: this
++said it would look better, which is the usual direction but not a certain one;
++assumption A-25 in [the assumptions log](../../../../docs/ASSUMPTIONS.md) has
++the argument.)
+ 
+ ### Step 7 — fit on training engines only, apply to everything
+ 
+@@ -268,7 +275,8 @@ run could store one graph and train on another, and nothing would say so."*
+ could leak.** It is measured only on the rows of the training engines, after
+ smoothing and rescaling, for the reason step 6 fits the rescaling on them: had
+ the held-back engines helped decide which sensors are joined, their error would
+-look better than it is. Because each seed holds back different engines, each
++no longer be a fair measure of engines the model never saw, usually looking
++better than it is. Because each seed holds back different engines, each
+ seed can get a slightly different graph. `graph/README.md` explains why it
+ keeps exactly as many edges as the paper's graph (assumption A-27), and
+ `tests/test_pipeline.py` checks it is built from the training rows alone.
+diff --git a/src/thesis_gnn_rul_xai/data/pipeline/__init__.py b/src/thesis_gnn_rul_xai/data/pipeline/__init__.py
+index 1dac664..2ec881e 100644
+--- a/src/thesis_gnn_rul_xai/data/pipeline/__init__.py
++++ b/src/thesis_gnn_rul_xai/data/pipeline/__init__.py
+@@ -184,8 +184,9 @@ def run_preprocessing(
+     # engines the statistics are fitted on. This happens BEFORE anything is
+     # measured from the data: if it happened later, the held-back engines
+     # would help decide the mean, the standard deviation and so on, and their
+-    # error would then look better than it really is -- the same problem that
+-    # keeping the test engines separate exists to avoid. Written up in
++    # error would no longer be a fair measure of unseen engines (usually it
++    # looks better, but nothing guarantees the direction) -- the same problem
++    # that keeping the test engines separate exists to avoid. Written up in
+     # docs/ASSUMPTIONS.md.
+     train_units, validation_units = split_units_by_id(
+         np.unique(train[UNIT_COL].to_numpy()),
+diff --git a/src/thesis_gnn_rul_xai/docsite/README.md b/src/thesis_gnn_rul_xai/docsite/README.md
+index 0b8653b..86596b5 100644
+--- a/src/thesis_gnn_rul_xai/docsite/README.md
++++ b/src/thesis_gnn_rul_xai/docsite/README.md
+@@ -694,8 +694,13 @@ repeats; pass nothing to get the plain form.
+ ### `render_figure(name)`
+ 
+ One diagram as a piece of SVG, or — if the NASA files or PyTorch are missing —
+-a block of HTML explaining what is absent and how to get it. It never raises,
+-because a missing figure should not take the page down with it.
++a block of HTML explaining what is absent and how to get it. Only a failure to
++import PyTorch itself, or one of its parts such as `torch.nn`, is reported as
++PyTorch missing. Any other module that fails to import — one of this
++repository's, say, renamed without the figure that uses it being told — is
++shown as the error it is, naming that module, so a fault in the code is never
++passed off as a library to install. It never raises, because a missing figure
++should not take the page down with it.
+ 
+ ### `load_entries(root)` and `latest_verification(root)`
+ 
+diff --git a/src/thesis_gnn_rul_xai/docsite/figures.py b/src/thesis_gnn_rul_xai/docsite/figures.py
+index 33f3d7e..87c2f5d 100644
+--- a/src/thesis_gnn_rul_xai/docsite/figures.py
++++ b/src/thesis_gnn_rul_xai/docsite/figures.py
+@@ -25,7 +25,7 @@ from ..graph.adjacency import (
+     pairs_beyond_reach,
+     to_networkx,
+ )
+-from ..utils.paths import project_root, raw_data_dir
++from ..utils.paths import raw_data_dir
+ from .worked_example import draw as draw_worked_example
+ 
+ __all__ = [
+@@ -52,14 +52,20 @@ class Figure:
+ 
+ 
+ # The drawing area every figure is laid out in, before the browser scales it.
++# _graph_layout scales the sensor positions to it, so the playground, which
++# draws its own sensor graph from those positions, imports these two as well.
+ _WIDTH = 860.0
+ _HEIGHT = 520.0
+ 
+-# The colour of each part of the engine, used by the engine drawing and the
+-# sensor graph, with the words the graph's key prints for it. Which part a
+-# sensor belongs to is read from the station field of the sensor table in
+-# data/sensors/, never invented here; stations that share a colour share a
+-# group, so the key has one entry per colour.
++# The colour of each part of the engine, used only by the engine drawing.
++# Stations in one group share a colour: HPT cooling and LPT cooling are both
++# "turbine cooling". draw_engine reads which sensors sit at a station from the
++# station field of the sensor table in data/sensors/. It chooses by hand only
++# where each station is drawn, and types the footnote naming the kept sensors
++# it leaves out, which a test in tests/test_docsite.py holds to the table.
++# Corrected 2026-10-02: this comment said the sensor graph used these colours,
++# untrue since that figure was removed on 2026-09-18, and that no station was
++# typed here, while draw_engine typed all seven stations and their sensors.
+ _GROUP_HUE: dict[str, str] = {
+     "fan and bypass": "var(--fig-fan, #2f7fd1)",
+     "LPC outlet": "var(--fig-lpc, #6b4fbb)",
+@@ -323,6 +329,59 @@ def draw_adjacency_matrix() -> str:
+     return _open(880, top + 14 * cell + 20) + "".join(panels) + "</svg>"
+ 
+ 
++def draw_reach() -> str:
++    """How far apart every pair of sensors is, measured against what three graph layers reach."""
++    matrix, symbols = build_physics_adjacency()
++    report = adjacency_report(matrix, symbols)
++    histogram: dict[int, int] = dict(report["distance_histogram"])  # type: ignore[arg-type]
++    layers = 3
++    beyond = pairs_beyond_reach(matrix, symbols, layers)
++
++    total = sum(histogram.values())
++    left, base, height = 180.0, 280.0, 200.0
++    bar_w, gap = 92.0, 40.0
++
++    bars = []
++    for index, (distance, count) in enumerate(sorted(histogram.items())):
++        x = left + index * (bar_w + gap)
++        bar_h = height * count / max(histogram.values())
++        reachable = distance <= layers
++        colour = (
++            "var(--fig-accent, #2f7fd1)" if reachable
++            else "var(--fig-warn, #c2521f)"
++        )
++        bars.append(
++            f'<rect x="{x:.1f}" y="{base - bar_h:.1f}" width="{bar_w:g}" '
++            f'height="{bar_h:.1f}" rx="5" fill="{colour}" fill-opacity="0.82" />'
++            + _mono(x + bar_w / 2, base - bar_h - 10, str(count), size=14,
++                    weight="600")
++            + _text(x + bar_w / 2, base + 22,
++                    f"{distance} edge" + ("s" if distance != 1 else ""), size=12)
++            + _text(x + bar_w / 2, base + 40,
++                    f"{100 * count / total:.0f} % of pairs", size=10, opacity=0.55)
++            + _text(x + bar_w / 2, base + 60,
++                    f"{'within' if reachable else 'beyond'} {_word(layers)} layers",
++                    size=10, weight="600", fill=colour)
++        )
++
++    names = ", ".join(f"{a} and {b}" for a, b, _ in beyond)
++    return (
++        _open(_WIDTH, base + 116)
++        + _text(_WIDTH / 2, 40, f"How far apart the {total} sensor pairs are", size=16,
++                weight="600")
++        + "".join(bars)
++        + (
++            _text(_WIDTH / 2, base + 96,
++                  f"The {_word(len(beyond))} pair{'s' if len(beyond) != 1 else ''} "
++                  f"beyond {_word(layers)} layers: {names}.",
++                  size=12, opacity=0.72)
++            if beyond
++            else ""
++        )
++        + "</svg>"
++    )
++
++
+ # --------------------------------------------------------------------------
+ # The label, the filter and the window — these read the real NASA files
+ # --------------------------------------------------------------------------
+@@ -826,17 +885,31 @@ def draw_shapley() -> str:
+     )
+ 
+ 
++# --------------------------------------------------------------------------
++# The engine and its sensors: where each sits, and which columns are kept
++# --------------------------------------------------------------------------
++
++
+ def draw_engine() -> str:
+     """A turbofan drawn to place the sensors, with each station named."""
+-    stations: tuple[tuple[float, str, tuple[str, ...]], ...] = (
+-        (120, "Fan inlet", ("T2", "P2")),
+-        (232, "LPC outlet", ("T24",)),
+-        (348, "HPC outlet", ("T30", "P30", "Ps30")),
+-        (452, "Combustor", ("phi", "farB")),
+-        (556, "HPT cooling", ("W31",)),
+-        (664, "LPT outlet", ("T50",)),
+-        (760, "LPT cooling", ("W32",)),
++    # Where each station sits along the flow path is chosen here; which
++    # sensors sit at it is read from the station field of the sensor table.
++    along_the_flow: tuple[tuple[float, str], ...] = (
++        (120, "Fan inlet"),
++        (232, "LPC outlet"),
++        (348, "HPC outlet"),
++        (452, "Combustor"),
++        (556, "HPT cooling"),
++        (664, "LPT outlet"),
++        (760, "LPT cooling"),
+     )
++    stations = [
++        (x, name, tuple(sensor.symbol for sensor in SENSORS if sensor.station == name))
++        for x, name in along_the_flow
++    ]
++    empty = [name for _, name, symbols in stations if not symbols]
++    if empty:
++        raise ValueError(f"No sensor in the sensor table sits at the station(s) {empty}.")
+     axis_y = 232.0
+     body = (
+         f'<path d="M100 {axis_y - 86} L200 {axis_y - 62} L720 {axis_y - 40} '
+@@ -911,6 +984,41 @@ def draw_engine() -> str:
+     )
+ 
+ 
++def draw_sensor_selection() -> str:
++    """Move the real selected column names into a second schematic table."""
++    width, step, left = 940, 42, 26
++    column_height = 124
++    out = (_open(width, 400).replace('class="figure-svg"', 'class="figure-svg sensor-selection"', 1)
++           + '<title>Selecting sensor columns</title><desc>Twenty-one raw sensor columns above; '
++           'the fourteen model input columns move below, retaining their height, every five seconds. '
++           'Cells are empty schematic rows, not generated readings.</desc>'
++           + _text(left, 25, "Raw sensor table: all 21 sensor columns", anchor="start", size=15)
++           + _text(left, 237, "Model input table: selected columns, same row order", anchor="start", size=15))
++    kept = set(PAPER_SENSOR_SYMBOLS)
++    for index, sensor in enumerate(SENSORS):
++        x = left + index * step
++        colour = 'var(--fig-accent)' if sensor.symbol in kept else 'var(--fig-axis)'
++        out += f'<g class="select-source {"is-kept" if sensor.symbol in kept else "is-excluded"}">'
++        out += f'<rect x="{x}" y="44" width="{step - 2}" height="{column_height}" rx="3" fill="{colour}" fill-opacity=".08" stroke="{colour}"/>'
++        out += f'<text transform="translate({x + 24},106) rotate(-90)" fill="{colour}" font-size="11">{sensor.symbol}</text>'
++        for y in (116, 133, 150):
++            out += f'<path d="M{x} {y}h{step - 2}" stroke="{colour}" stroke-opacity=".3"/>'
++        out += '</g>'
++        if sensor.symbol not in kept:
++            continue
++        target = left + PAPER_SENSOR_SYMBOLS.index(sensor.symbol) * 63
++        out += f'<g class="select-picked" style="--from-x:{x}px;--to-x:{target}px">'
++        out += f'<rect width="{step - 2}" height="{column_height}" rx="3" fill="var(--fig-bg)" stroke="var(--fig-accent)"/>'
++        out += f'<text transform="translate(24,62) rotate(-90)" fill="var(--fig-accent)" font-size="11">{sensor.symbol}</text>'
++        out += '<path d="M0 72h40M0 89h40M0 106h40" stroke="var(--fig-accent)" stroke-opacity=".3"/></g>'
++    return out + '</svg>'
++
++
++# --------------------------------------------------------------------------
++# The preprocessing steps, and notebook 01 that runs them end to end
++# --------------------------------------------------------------------------
++
++
+ def draw_pipeline() -> str:
+     """The eight preprocessing steps and the shape the data has after each."""
+     # Each note is two short lines: on one line, neighbouring notes ran into
+@@ -977,64 +1085,6 @@ def draw_pipeline() -> str:
+     )
+ 
+ 
+-def draw_reach() -> str:
+-    """How far apart every pair of sensors is, measured against what three graph layers reach."""
+-    matrix, symbols = build_physics_adjacency()
+-    report = adjacency_report(matrix, symbols)
+-    histogram: dict[int, int] = dict(report["distance_histogram"])  # type: ignore[arg-type]
+-    layers = 3
+-    beyond = pairs_beyond_reach(matrix, symbols, layers)
+-
+-    total = sum(histogram.values())
+-    left, base, height = 180.0, 280.0, 200.0
+-    bar_w, gap = 92.0, 40.0
+-
+-    bars = []
+-    for index, (distance, count) in enumerate(sorted(histogram.items())):
+-        x = left + index * (bar_w + gap)
+-        bar_h = height * count / max(histogram.values())
+-        reachable = distance <= layers
+-        colour = (
+-            "var(--fig-accent, #2f7fd1)" if reachable
+-            else "var(--fig-warn, #c2521f)"
+-        )
+-        bars.append(
+-            f'<rect x="{x:.1f}" y="{base - bar_h:.1f}" width="{bar_w:g}" '
+-            f'height="{bar_h:.1f}" rx="5" fill="{colour}" fill-opacity="0.82" />'
+-            + _mono(x + bar_w / 2, base - bar_h - 10, str(count), size=14,
+-                    weight="600")
+-            + _text(x + bar_w / 2, base + 22,
+-                    f"{distance} edge" + ("s" if distance != 1 else ""), size=12)
+-            + _text(x + bar_w / 2, base + 40,
+-                    f"{100 * count / total:.0f} % of pairs", size=10, opacity=0.55)
+-            + _text(x + bar_w / 2, base + 60,
+-                    f"{'within' if reachable else 'beyond'} {_word(layers)} layers",
+-                    size=10, weight="600", fill=colour)
+-        )
+-
+-    names = ", ".join(f"{a} and {b}" for a, b, _ in beyond)
+-    return (
+-        _open(_WIDTH, base + 116)
+-        + _text(_WIDTH / 2, 40, f"How far apart the {total} sensor pairs are", size=16,
+-                weight="600")
+-        + "".join(bars)
+-        + (
+-            _text(_WIDTH / 2, base + 96,
+-                  f"The {_word(len(beyond))} pair{'s' if len(beyond) != 1 else ''} "
+-                  f"beyond {_word(layers)} layers: {names}.",
+-                  size=12, opacity=0.72)
+-            if beyond
+-            else ""
+-        )
+-        + "</svg>"
+-    )
+-
+-
+-# --------------------------------------------------------------------------
+-# The preprocessing notebook, end to end
+-# --------------------------------------------------------------------------
+-
+-
+ def _spaced(value: int) -> str:
+     """A count with a space every three digits, as the figures and the Learn pages print it."""
+     return f"{value:,}".replace(",", " ")
+@@ -1309,6 +1359,12 @@ def draw_notebook_map() -> str:
+     return _open(_WIDTH, height, defs) + header + "".join(body) + "</svg>"
+ 
+ 
++# --------------------------------------------------------------------------
++# Two of the paper's own figures, drawn again: Fig. 5 recomputed from the
++# FD001 training file, and Fig. 2's LSTM cell redrawn
++# --------------------------------------------------------------------------
++
++
+ def correlation_table() -> tuple[list[str], np.ndarray]:
+     """The correlation between every pair of columns of FD001's training file, laid out as the paper's Fig. 5."""
+     from ..data.loading import load_subset
+@@ -1477,36 +1533,6 @@ def draw_lstm_cell() -> str:
+     return out + "</svg>"
+ 
+ 
+-def draw_sensor_selection() -> str:
+-    """Move the real selected column names into a second schematic table."""
+-    width, step, left = 940, 42, 26
+-    column_height = 124
+-    out = (_open(width, 400).replace('class="figure-svg"', 'class="figure-svg sensor-selection"', 1)
+-           + '<title>Selecting sensor columns</title><desc>Twenty-one raw sensor columns above; '
+-           'the fourteen model input columns move below, retaining their height, every five seconds. '
+-           'Cells are empty schematic rows, not generated readings.</desc>'
+-           + _text(left, 25, "Raw sensor table: all 21 sensor columns", anchor="start", size=15)
+-           + _text(left, 237, "Model input table: selected columns, same row order", anchor="start", size=15))
+-    kept = set(PAPER_SENSOR_SYMBOLS)
+-    for index, sensor in enumerate(SENSORS):
+-        x = left + index * step
+-        colour = 'var(--fig-accent)' if sensor.symbol in kept else 'var(--fig-axis)'
+-        out += f'<g class="select-source {"is-kept" if sensor.symbol in kept else "is-excluded"}">'
+-        out += f'<rect x="{x}" y="44" width="{step - 2}" height="{column_height}" rx="3" fill="{colour}" fill-opacity=".08" stroke="{colour}"/>'
+-        out += f'<text transform="translate({x + 24},106) rotate(-90)" fill="{colour}" font-size="11">{sensor.symbol}</text>'
+-        for y in (116, 133, 150):
+-            out += f'<path d="M{x} {y}h{step - 2}" stroke="{colour}" stroke-opacity=".3"/>'
+-        out += '</g>'
+-        if sensor.symbol not in kept:
+-            continue
+-        target = left + PAPER_SENSOR_SYMBOLS.index(sensor.symbol) * 63
+-        out += f'<g class="select-picked" style="--from-x:{x}px;--to-x:{target}px">'
+-        out += f'<rect width="{step - 2}" height="{column_height}" rx="3" fill="var(--fig-bg)" stroke="var(--fig-accent)"/>'
+-        out += f'<text transform="translate(24,62) rotate(-90)" fill="var(--fig-accent)" font-size="11">{sensor.symbol}</text>'
+-        out += '<path d="M0 72h40M0 89h40M0 106h40" stroke="var(--fig-accent)" stroke-opacity=".3"/></g>'
+-    return out + '</svg>'
+-
+-
+ FIGURES: tuple[Figure, ...] = (
+     Figure("engine", draw_engine),
+     Figure("rul-curve", draw_rul_curve, needs_data=True),
+@@ -1542,6 +1568,21 @@ def _notice(kind: str, title: str, body: str) -> str:
+     )
+ 
+ 
++def _torch_is_missing(error: ImportError) -> bool:
++    """Whether a failed import was PyTorch, or one of its parts, not being installed."""
++    name = error.name or ""
++    return name == "torch" or name.startswith("torch.")
++
++
++def _failed(error: Exception) -> str:
++    """The notice for a figure that broke, naming the error rather than guessing a cause."""
++    return _notice(
++        "error",
++        "This figure could not be drawn",
++        f"{error.__class__.__name__}: {error}",
++    )
++
++
+ def render_figure(name: str) -> str:
+     """Draw one figure by name, or explain why it cannot be drawn."""
+     figure = _BY_NAME.get(name)
+@@ -1555,7 +1596,12 @@ def render_figure(name: str) -> str:
+         return figure.draw()
+     except DataMissing as missing:
+         return _notice("data", "The NASA files are needed for this figure", str(missing))
+-    except ImportError:
++    except ImportError as error:
++        # PyTorch is the one optional library. Any other module failing to
++        # import is a fault in this repository, such as a module renamed
++        # without its importers, and is shown as the error it is.
++        if not _torch_is_missing(error):
++            return _failed(error)
+         return _notice(
+             "torch",
+             "PyTorch is needed for this figure",
+@@ -1565,13 +1611,4 @@ def render_figure(name: str) -> str:
+             "site needs it.",
+         )
+     except Exception as error:  # pragma: no cover - defensive
+-        return _notice(
+-            "error",
+-            "This figure could not be drawn",
+-            f"{error.__class__.__name__}: {error}",
+-        )
+-
+-
+-def figure_root() -> Path:
+-    """The project directory these figures read their data from."""
+-    return project_root()
++        return _failed(error)
+diff --git a/src/thesis_gnn_rul_xai/docsite/playground/commands.py b/src/thesis_gnn_rul_xai/docsite/playground/commands.py
+index fa7da7c..f790eb7 100644
+--- a/src/thesis_gnn_rul_xai/docsite/playground/commands.py
++++ b/src/thesis_gnn_rul_xai/docsite/playground/commands.py
+@@ -134,7 +134,9 @@ def _dataset_schema() -> dict[str, Any]:
+ 
+ def options() -> dict[str, Any]:
+     """Everything the page needs to draw its form, before anything is chosen."""
+-    from ..figures import _graph_layout
++    # The positions are scaled to the figures' drawing area, so the page is
++    # handed that area too rather than a copy of its two numbers.
++    from ..figures import _HEIGHT, _WIDTH, _graph_layout
+ 
+     graph, positions = _graph_layout()[:2]
+     return {
+@@ -154,8 +156,8 @@ def options() -> dict[str, Any]:
+         "graph": {
+             "positions": {node: [round(x, 1), round(y, 1)] for node, (x, y) in positions.items()},
+             "edges": [list(edge) for edge in graph.edges()],
+-            "width": 860,
+-            "height": 520,
++            "width": _WIDTH,
++            "height": _HEIGHT,
+         },
+         "table12": {
+             "graphs": list(SHAP_TABLE_12_GRAPHS),
+diff --git a/src/thesis_gnn_rul_xai/explain/README.md b/src/thesis_gnn_rul_xai/explain/README.md
+index 224bc4d..83c3705 100644
+--- a/src/thesis_gnn_rul_xai/explain/README.md
++++ b/src/thesis_gnn_rul_xai/explain/README.md
+@@ -56,8 +56,15 @@ Cooperative game theory gives an answer. Imagine building the group of sensors
+ one at a time, in some order. Each time a sensor joins, the prediction changes
+ by some amount, and that change is what the sensor contributed *in that order*.
+ Do that for every possible order and average. That average is the sensor's
+-**Shapley value** (Shapley, 1953). It is the only way of splitting the credit
+-that satisfies a short list of fairness conditions at once.
++**Shapley value** (Shapley, 1953). Lundberg and Lee (2017, page 4) state that
++it is the only way of splitting the credit that meets three conditions at once,
++two of them close to these: the shares add up exactly, and a sensor whose
++contribution grows never receives a smaller share. They credit that proof to
++Young (1985), not to Shapley. Neither original is held in `docs/references/`.
++
++**Correction, 2026-10-02.** This paragraph attributed that uniqueness to
++Shapley (1953). Found when the cited papers were collected into
++`docs/references/` and checked against the places that cite them.
+ 
+ Written out, for sensor `i`:
+ 
+@@ -202,8 +209,23 @@ where the Shapley values need 16,384. It is not in the paper.
+ **It is one term of the Shapley sum.** In Equation 15 the group `S` holding all
+ thirteen other sensors gives `f(S + {i}) − f(S)`, which is exactly the
+ occlusion value, and the sum weights that term by `13! 0! / 14! = 1/14`.
+-Occlusion keeps that one term at full weight and drops the rest. The two agree
+-only for a sensor that adds the same amount whichever others are present.
++Occlusion keeps that one term at full weight and drops the rest. So the two
++agree exactly when that one term equals the weighted average of all of them.
++A sensor that adds the same amount whichever others are present always
++satisfies this, but it is not the only way. With three inputs,
++`h(a, b, c) = a + b + c + 2ab + 2ac + 2bc − 3abc`, input `(1, 1, 1)` and
++baseline `(0, 0, 0)`, input `a` adds 1 when it arrives first, 3 when it
++arrives after `b` alone or after `c` alone, and 2 when it arrives last. Those
++amounts differ, so `a` does interact with the others. Equation 15 weights the
++four groups `a` can find on arrival — nobody, `b` alone, `c` alone, both — by
++1/3, 1/6, 1/6 and 1/3, so its Shapley value is
++`1/3 × 1 + 1/6 × 3 + 1/6 × 3 + 1/3 × 2 = 2`, and its occlusion value, the
++last amount alone, is also 2. By symmetry the same holds for `b` and `c`.
++Agreement between the two methods therefore does not show that the sensors
++act independently. (Corrected 2026-10-02: this said the two agree only for a
++sensor that adds the same amount whichever others are present. The review of
++the playground's information cards on 2026-09-26 found the overstatement;
++`tests/test_examples.py` checks the example.)
+ 
+ Two consequences follow, and neither is about this project's network in
+ particular:
+@@ -682,12 +704,36 @@ The mask it returns is also a different kind of answer: a number between 0 and
+ 1 per connection, with no unit, that does not add up to anything.
+ 
+ The evidence on which method explains graph networks best is thin and does not
+-cover this task. Of the independent comparisons, only a survey by Yuan et al.
+-(2022) ran GNN-LRP, where walk-based methods scored higher on its main measure
+-of faithfulness than GNNExplainer and PGExplainer; others that left GNN-LRP out
+-found GNNExplainer the strongest on classifying single nodes and PGExplainer
+-weak. All of them test classification. None tests a regression on a sensor
+-graph.
++cover this task. The only comparison this project found that includes GNN-LRP
++and was not run by a method's own authors is a survey by Yuan et al. (2023),
++and it tests classification only: of whole graphs (sentences, molecules,
++synthetic shapes) and of single nodes. Its main comparison (Section 8.1)
++removes the connections an explanation marks as most important and records how
++far the network's probability for the category it predicted falls; a larger
++fall is better. Its text says the walk-based methods — it calls them
++flow-based: GNN-LRP and its simpler form GNN-GI — "generally" did better on
++that measure than GNNExplainer and PGExplainer, and did better too on the
++reverse measure, which keeps only the marked connections and where a smaller
++fall is better. Its Tables 3 and 4, which fix the share of each graph marked
++important (30 %, or 40 % on BA-Shapes), are more mixed. On the first measure
++GNN-LRP is behind PGExplainer on three of the six datasets — the sentence sets
++Graph-SST2 (0.1363 against 0.1889) and Graph-SST5 (0.1813 against 0.1854), and
++the molecule set BBBP (0.0860 against 0.1464) — and behind GNNExplainer on
++BBBP (0.1057).
++On the reverse measure it is behind PGExplainer on five of the six, by 0.0563
++to 0.4087, and behind GNNExplainer on two; it is ahead of both only on
++BA-Shapes, the one task of classifying single nodes. The survey's own advice
++is GNNExplainer and PGExplainer only for classifying single nodes, and GNN-LRP
++only for its real-world datasets. All of this is on pages 14 and 15 of the
++copy in `docs/references/`, a preprint whose page numbers are not the
++journal's. None of it tests a regression on a sensor graph.
++
++Until 2026-10-02 this paragraph dropped the survey's "generally", dated the
++survey 2022, and added that other comparisons, which it did not name, found
++GNNExplainer the strongest on classifying single nodes and PGExplainer weak.
++None of those comparisons is held here to check, so that sentence is
++withdrawn. The three errors were found when the cited papers were collected
++into `docs/references/` and checked against the places that cite them.
+ 
+ What GNN-LRP gives up in exchange: it is specific to networks it has rules for,
+ its cost grows as the number of sensors raised to the number of layers plus
+@@ -873,11 +919,13 @@ F-08, also in `docs/ASSUMPTIONS.md`).
+   GNNExplainer: Generating explanations for graph neural networks. *Advances in
+   Neural Information Processing Systems 32 (NeurIPS)*.
+   https://arxiv.org/abs/1903.03894
+-- Yuan, H., Yu, H., Gui, S., & Ji, S. (2022). Explainability in graph neural
++- Yuan, H., Yu, H., Gui, S., & Ji, S. (2023). Explainability in graph neural
+   networks: A taxonomic survey. *IEEE Transactions on Pattern Analysis and
+-  Machine Intelligence*. https://doi.org/10.1109/TPAMI.2022.3204236 — the
+-  benchmark described above was read in the arXiv version,
+-  https://arxiv.org/abs/2012.15445 (version 3).
++  Machine Intelligence*, 45(5), 5782-5799.
++  https://doi.org/10.1109/TPAMI.2022.3204236 — the benchmark described above
++  was read in the arXiv version, https://arxiv.org/abs/2012.15445 (version 3),
++  the copy held in `docs/references/`. This entry gave the year as 2022, with
++  no volume or pages, until 2026-10-02: that was the early-access record.
+ 
+ ## What each name means
+ 
+diff --git a/src/thesis_gnn_rul_xai/models/README.md b/src/thesis_gnn_rul_xai/models/README.md
+index ac78b40..2f780f9 100644
+--- a/src/thesis_gnn_rul_xai/models/README.md
++++ b/src/thesis_gnn_rul_xai/models/README.md
+@@ -364,11 +364,23 @@ code given in parentheses.
+   and leave each layer. Its point is to keep the numbers flowing through the
+   network at a steady size: start them too large and they grow layer after
+   layer until they overflow, too small and they shrink towards nothing and the
+-  network learns nothing. The paper never says how it starts. Glorot is what
+-  Kipf and Welling (2017) use for this exact layer, so it is what is used here.
+-  PyTorch calls the same rule `xavier_uniform_`, after Xavier Glorot who
+-  proposed it — the two names refer to one method, not two. The dense layers
+-  keep PyTorch's own default instead (assumption A-14).
++  network learns nothing. That is the rule's aim; for these layers it is not a
++  guarantee. Glorot and Bengio (2010, printed page 253, the fifth page of the
++  copy in `docs/references/`) work out the range by assuming each layer, at the
++  start, passes its numbers on almost unchanged, as a straight line through zero
++  would. These graph layers instead apply ReLU, which keeps a positive number
++  and replaces a negative one with zero, and He et al. (2015, printed page 1029,
++  the copy's fourth page) state that this assumption does not hold for ReLU.
++  The paper never says how it starts. Glorot is what Kipf and Welling (2017)
++  use for this exact layer, so it is what is used here. PyTorch calls the same
++  rule `xavier_uniform_`, after Xavier Glorot who proposed it — the two names
++  refer to one method, not two. The dense layers keep PyTorch's own default
++  instead (assumption A-14).
++
++  **Correction, 2026-10-02.** Until this date the paragraph presented the
++  steady size as something the rule delivers here, without the caveat about
++  ReLU. Found when the cited papers were collected into `docs/references/` and
++  checked against the places that cite them.
+ - **The LSTM stage is off by default** (assumption A-11), and when it is off
+   **each node carries the last cycle of its window** (assumption A-07) — both
+   explained above. Its size, when it is on, is a choice too (assumption A-26).
+@@ -380,6 +392,16 @@ code given in parentheses.
+ 
+ ## References
+ 
++Glorot, X., & Bengio, Y. (2010). Understanding the difficulty of training deep
++feedforward neural networks. In *Proceedings of the Thirteenth International
++Conference on Artificial Intelligence and Statistics* (Vol. 9, pp. 249–256).
++PMLR. https://proceedings.mlr.press/v9/glorot10a.html
++
++He, K., Zhang, X., Ren, S., & Sun, J. (2015). Delving deep into rectifiers:
++Surpassing human-level performance on ImageNet classification. In
++*Proceedings of the IEEE International Conference on Computer Vision (ICCV)*
++(pp. 1026–1034). https://doi.org/10.1109/ICCV.2015.123
++
+ Kipf, T. N., & Welling, M. (2017). Semi-supervised classification with graph
+ convolutional networks. *International Conference on Learning Representations
+ (ICLR)*. https://arxiv.org/abs/1609.02907
+diff --git a/src/thesis_gnn_rul_xai/models/temporal/README.md b/src/thesis_gnn_rul_xai/models/temporal/README.md
+index 19b5964..9382a67 100644
+--- a/src/thesis_gnn_rul_xai/models/temporal/README.md
++++ b/src/thesis_gnn_rul_xai/models/temporal/README.md
+@@ -185,29 +185,102 @@ goes from roughly 0.8 s to roughly 10.4 s.
+ 
+ ## Worked example
+ 
++Real readings, few enough to check by hand: FD001 training engine 1, its first
++four cycles, and two of its fourteen sensors, T24 (the temperature at the outlet
++of the low-pressure compressor) and T50 (the temperature at the outlet of the
++low-pressure turbine). Four cycles rather than thirty so that every reading can
++be written out. The pipeline builds a four-cycle window when asked for one, and
++its four readings are exactly the first four of engine 1's usual thirty-cycle
++window.
++
++The readings have been smoothed (assumption A-04) and rescaled: each sensor's
++average over the training engines is subtracted, and the result is divided by
++that sensor's standard deviation there, the typical size of its departures from
++that average (assumption A-03). So −1.0 means one standard deviation below the
++training average, not a temperature.
++
+ ```python
++import numpy as np
+ import torch
++from thesis_gnn_rul_xai.config import PreprocessingConfig
++from thesis_gnn_rul_xai.data.pipeline import run_preprocessing
+ from thesis_gnn_rul_xai.models.temporal import LastCycle, MeanWindow, LSTMStage
+ 
+-windows = torch.tensor([[[1.0, 2.0, 3.0, 4.0],      # sensor 0, four cycles
+-                         [10.0, 20.0, 30.0, 40.0]]])  # sensor 1
++prepared = run_preprocessing(PreprocessingConfig(seed=42, window_size=4))
++row = int(np.flatnonzero(prepared.train.units == 1)[0])   # engine 1's first window: cycles 1 to 4
++names = list(prepared.sensor_symbols)
++pair = [names.index("T24"), names.index("T50")]           # [0, 2]
++windows = torch.from_numpy(prepared.train.features[row:row + 1, pair])
++windows.shape
++# torch.Size([1, 2, 4])          one window, two sensors, four cycles
++```
++
++`windows` is a PyTorch tensor, an array like a NumPy array that the network's
++code works on, of shape `(1, 2, 4)`. Its eight numbers:
++
++| Sensor | Cycle 1 | Cycle 2 | Cycle 3 | Cycle 4 |
++|---|---|---|---|---|
++| T24 | −1.987346 | −1.603900 | −1.179785 | −0.967728 |
++| T50 | −0.995210 | −0.841500 | −0.700499 | −0.770999 |
++
++**`LastCycle` keeps the last column and drops the rest.**
+ 
++```python
+ LastCycle(4)(windows)
+-# tensor([[[ 4.], [40.]]])       the last cycle of each sensor
++# tensor([[[-0.9677],
++#          [-0.7710]]])          shape (1, 2, 1): cycle 4 of each sensor
++```
++
++PyTorch prints four decimal places; the values are T24's −0.967728 and T50's
++−0.770999, the last column of the table.
+ 
++**`MeanWindow` adds up each row and divides by four.**
++
++```python
+ MeanWindow(4)(windows)
+-# tensor([[[ 2.5], [25.0]]])     (1+2+3+4)/4 and (10+20+30+40)/4
++# tensor([[[-1.4347],
++#          [-0.8271]]])          shape (1, 2, 1): the average of each sensor
++```
++
++```
++T24:  (−1.987346 − 1.603900 − 1.179785 − 0.967728) / 4  =  −5.738759 / 4  =  −1.434690
++T50:  (−0.995210 − 0.841500 − 0.700499 − 0.770999) / 4  =  −3.308208 / 4  =  −0.827052
++```
++
++The two stages hand the graph different numbers from the same window. T24 rises
++through all four cycles, so its last reading, −0.967728, sits well above its
++average, −1.434690. T50 peaks at cycle 3 and falls back, so its last reading,
++−0.770999, is closer to its average, −0.827052. Which of the two a sensor node
++carries is therefore a real choice, and this project's (assumption A-07).
+ 
++**`LSTMStage` learns its own reduction.**
++
++```python
+ stage = LSTMStage(window_size=4, n_nodes=2, hidden_size=8)
+ stage(windows).shape
+ # torch.Size([1, 2, 1])          one number per sensor, from its own network
+ ```
+ 
++Two recurrent networks, one per sensor, each read their sensor's four readings
++in order. `hidden_size=8` keeps the example small (the stage's default is 32,
++assumption A-26). The numbers they hand on depend on their random starting
++values (assumption A-34) and mean nothing until the stage has been trained, so
++only the shape is shown.
++
+ The shape is the same in all three cases, and that is the point: whatever the
+ stage does, the graph layers behind it see one number per sensor unless the
+ stage says otherwise, and they are told how many by the stage.
+ 
+-`tests/test_examples_torch.py` runs this against the real FD001 windows.
++`tests/test_examples_torch.py` runs this example and checks every number above
++(`test_example_temporal_readme_on_two_real_sensors`).
++
++**Correction, 2026-10-02.** Until this date this example ran on invented
++readings, `[[1, 2, 3, 4], [10, 20, 30, 40]]`, which this project does not allow
++in a worked example, and the sentence under it said the test file ran it
++against the real FD001 windows. No test ran this example: the file's tests use
++these stages on real windows elsewhere, but none checked the numbers printed
++here. Found while the Resources pages were written and the cited papers checked
++against the places that cite them.
+ 
+ ---
+ 
+diff --git a/src/thesis_gnn_rul_xai/models/temporal/__init__.py b/src/thesis_gnn_rul_xai/models/temporal/__init__.py
+index 6974c3f..a9453e6 100644
+--- a/src/thesis_gnn_rul_xai/models/temporal/__init__.py
++++ b/src/thesis_gnn_rul_xai/models/temporal/__init__.py
+@@ -182,6 +182,12 @@ class LSTMStage(TemporalStage):
+         # what the paper describes, so it is a citation and not a choice.
+         # shared_across_sensors=True is a cheaper departure from it, and a
+         # number produced with it must say so.
++        # ASSUMPTION A-34: set no starting values here, so PyTorch's own apply:
++        # every multiplier and offset of the cells and of the projection below
++        # is drawn evenly from -1/sqrt(hidden_size) to +1/sqrt(hidden_size), and
++        # each forget gate starts near one half rather than near one, where Gers
++        # et al. (2000) start it. The paper gives no starting values. Written up
++        # in docs/ASSUMPTIONS.md.
+         maker = nn.LSTM if cell == "lstm" else nn.GRU
+         count = 1 if self.shared_across_sensors else self.n_nodes
+         self.cells = nn.ModuleList(

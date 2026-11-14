@@ -1,0 +1,119 @@
+{
+  "commit": "fd65a3b-dirty",
+  "config_digest": "5e39f6",
+  "finished_utc": "20260929T103159Z",
+  "command": [
+    "train.py",
+    "--config",
+    "D:\\Main\\University\\Thesis\\Code\\Thesis GNN RUL XAI\\reports\\sensitivity_fd65a3b-dirty_20260929T101059Z\\configs\\FD001_reference.yaml",
+    "--seeds",
+    "5",
+    "--epochs",
+    "200",
+    "--batch-size",
+    "32",
+    "--learning-rate",
+    "0.001",
+    "--final-learning-rate",
+    "0.0001",
+    "--lr-schedule",
+    "step",
+    "--temporal",
+    "lstm",
+    "--temporal-hidden",
+    "32",
+    "--temporal-out-features",
+    "1",
+    "--gcn-hidden",
+    "32",
+    "64",
+    "32",
+    "--fc-hidden",
+    "128",
+    "--early-stopping-patience",
+    "20",
+    "--device",
+    "cuda",
+    "--progress",
+    "D:\\Main\\University\\Thesis\\Code\\Thesis GNN RUL XAI\\reports\\sensitivity_fd65a3b-dirty_20260929T101059Z\\progress\\FD001_reference.jsonl",
+    "--output",
+    "D:\\Main\\University\\Thesis\\Code\\Thesis GNN RUL XAI\\reports\\sensitivity_fd65a3b-dirty_20260929T101059Z\\runs\\FD001\\reference",
+    "--quiet"
+  ],
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scikit-learn": "1.9.0",
+      "scipy": "1.17.1",
+      "torch": "2.5.1+cu121",
+      "pyyaml": "6.0.3"
+    },
+    "torch_threads": 8,
+    "cuda_available": true
+  },
+  "data_files": {
+    "train_FD001.txt": "963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8",
+    "test_FD001.txt": "3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851",
+    "RUL_FD001.txt": "a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca"
+  },
+  "uncommitted_code": [
+    "?? scripts/run_sensitivity.py"
+  ],
+  "subset": "FD001",
+  "graph": "physics",
+  "adjacency_normalization": "row",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "validation_fraction": 0.2,
+  "reported_weights": "best_validation_epoch",
+  "lr_schedule": "step",
+  "temporal_stage": "lstm",
+  "temporal_hidden": 32,
+  "model": {
+    "temporal": "lstm",
+    "temporal_hidden": 32,
+    "temporal_out_features": 1,
+    "shared_across_sensors": false,
+    "gcn_hidden": [
+      32,
+      64,
+      32
+    ],
+    "fc_hidden": 128,
+    "gcn_bias": false
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "final_learning_rate": 0.0001,
+    "early_stopping_patience": 20,
+    "lr_schedule": "step"
+  },
+  "seed_folders": [
+    "seed_42",
+    "seed_43",
+    "seed_44",
+    "seed_45",
+    "seed_46"
+  ],
+  "mean": {
+    "rmse": 13.234487309556709,
+    "score": 316.3137292686727,
+    "r2": 0.8906699523925198,
+    "asue": 8.145655239213715
+  },
+  "std": {
+    "rmse": 0.722768876861222,
+    "score": 57.20032740755336,
+    "r2": 0.011655319171947488,
+    "asue": 0.4782085479780494
+  }
+}

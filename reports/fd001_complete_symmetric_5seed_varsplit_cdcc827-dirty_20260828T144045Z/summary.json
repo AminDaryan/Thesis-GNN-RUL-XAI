@@ -1,0 +1,24 @@
+{
+  "commit": "cdcc827-dirty",
+  "finished_utc": "20260828T144045Z",
+  "subset": "FD001",
+  "graph": "complete",
+  "adjacency_normalization": "symmetric",
+  "seeds": 5,
+  "split": "varies_with_seed",
+  "clip_test_labels": true,
+  "early_stopping": true,
+  "lr_schedule": "exponential",
+  "mean": {
+    "rmse": 20.397042457809203,
+    "score": 896.1375116921896,
+    "r2": 0.7408477934711031,
+    "asue": 14.955417473667705
+  },
+  "std": {
+    "rmse": 0.3949129530227014,
+    "score": 112.49989489071457,
+    "r2": 0.010088451428576105,
+    "asue": 1.6507678322703638
+  }
+}

@@ -1,0 +1,5 @@
+check,entry,claim,recorded,measured,ok,note
+same_rows,F-18,"identical rows, row rescaling","P15, Nf, NRf, BPR; P30, Ps30; Nc, W31","P15, Nf, NRf, BPR; P30, Ps30; Nc, W31",True,
+same_rows,F-18,"independent rows, row rescaling",8,8,True,
+same_rows,F-18,"identical rows, symmetric rescaling","P15, Nf, NRf, BPR; P30, Ps30; Nc, W31","P15, Nf, NRf, BPR; P30, Ps30; Nc, W31",True,
+same_rows,F-18,"independent rows, symmetric rescaling",8,8,True,
