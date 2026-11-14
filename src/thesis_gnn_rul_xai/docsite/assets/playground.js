@@ -80,6 +80,10 @@
     'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var NEXT = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 L8 6 L4.5 9.5" fill="none" ' +
     'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // Two links of a chain, for the button that copies a run's address.
+  var LINK_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.8 9.2 L9.2 6.8 M7.4 4.6 L8.6 3.4 a2.4 2.4 0 0 1 3.4 3.4 ' +
+    'L10.8 8 M8.6 11.4 L7.4 12.6 a2.4 2.4 0 0 1 -3.4 -3.4 L5.2 8" fill="none" stroke="currentColor" stroke-width="1.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var PLUS = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 V9.5 M2.5 6 H9.5" ' +
     'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   var INFO = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" ' +
@@ -223,6 +227,75 @@
   function $(selector) { return root.querySelector(selector); }
   function $all(selector) { return Array.prototype.slice.call(root.querySelectorAll(selector)); }
   function onPage() { return window.location.hash.indexOf(ROUTE) === 0; }
+
+  // ------------------------------------------------------------- addresses
+  // Each run has its own address, #/explore/playground/runs/<folder>, so it
+  // can be bookmarked, reloaded and reached with Back and Forward. The list
+  // is #/explore/playground/runs, explaining is .../explain, and the bare
+  // address is the design tab. Opening or leaving a run adds a step to the
+  // browser's history; moving between tabs only corrects the address.
+
+  function runAddress(name) { return ROUTE + "/runs/" + encodeURIComponent(name).replace(/%2F/g, "/"); }
+
+  function address() {
+    if (S.tab === "results") { return S.selected ? runAddress(S.selected) : ROUTE + "/runs"; }
+    return S.tab === "explain" ? ROUTE + "/explain" : ROUTE;
+  }
+
+  // The address on show, without a section a link may have added after it.
+  function shownAddress() { return window.location.hash.replace(/^(#\/[^#]*).*$/, "$1"); }
+
+  function setAddress() {
+    if (!onPage()) { return; }
+    var next = address(), now = shownAddress();
+    if (next !== now) {
+      var runPage = /\/runs\/./;
+      history[runPage.test(next) || runPage.test(now) ? "pushState" : "replaceState"](null, "", next);
+    }
+    pageTitle();
+  }
+
+  // The browser tab names the run on show, so a bookmark or a list of tabs does too.
+  function pageTitle() {
+    if (!S.baseTitle) { return; }
+    document.title = S.tab === "results" && S.selected ? "Run " + runTime(S.selected) + " · " + S.baseTitle : S.baseTitle;
+  }
+
+  // What the part of an address after the playground's own asks for.
+  function readAddress(sub) {
+    var run = /^runs(?:\/(.+))?$/.exec(sub || "");
+    var name = null;
+    if (run && run[1]) {
+      try { name = decodeURIComponent(run[1]); } catch (e) { name = run[1]; }
+    }
+    return run ? { tab: "results", selected: name } : { tab: sub === "explain" ? "explain" : "design", selected: null };
+  }
+
+  // The page's scroll position, which is the content column's on a wide
+  // screen and the window's on a narrow one.
+  function scroller() { return root.closest(".content") || document.scrollingElement; }
+  function scrolledTo() { var box = scroller(); return Math.max(box.scrollTop || 0, window.scrollY || 0); }
+  function scrollToTop(y) {
+    var box = scroller();
+    box.scrollTo({ top: y || 0, behavior: "instant" });
+    if (box !== document.scrollingElement) { window.scrollTo({ top: 0, behavior: "instant" }); }
+  }
+
+  // Back, Forward, a typed address or a link: app.js hands the new address
+  // here instead of building the whole page again.
+  function follow(sub) {
+    if (!S.options || !$("#pg-panel")) { return false; }
+    var want = readAddress(sub), before = S.selected, beforeTab = S.tab;
+    if (want.tab === beforeTab && want.selected === before) { pageTitle(); return true; }
+    if (want.selected && !before) { S.listScroll = beforeTab === "results" ? scrolledTo() : 0; }
+    S.fromList = !!want.selected && !before && beforeTab === "results";
+    if (want.selected !== before) { S.selected = want.selected; S.detail = null; }
+    // Back on the list, its place is found again once its rows are drawn.
+    if (!want.selected && before) { S.pendingScroll = S.listScroll || 0; }
+    showTab(want.tab);
+    if (want.selected && want.selected !== before) { scrollToTop(0); }
+    return true;
+  }
   function copy(value) { return JSON.parse(JSON.stringify(value)); }
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function plural(n, word) { return count(n) + " " + word + (n === 1 ? "" : "s"); }
@@ -774,14 +847,14 @@
 
   // ------------------------------------------------------------------ page
 
-  function start(target, tools) {
+  function start(target, tools, sub) {
     T = tools;
     root = target;
     if (window.__thesisPlaygroundTimer) { clearTimeout(window.__thesisPlaygroundTimer); }
     // seen: the last state each job was polled in. mine: the jobs this page
     // started, whose end is announced even when the first poll finds them ended.
     // restore: what each part taken out of the pipeline was, so + puts that back.
-    S = { tab: S.tab || "design", jobs: [], seen: {}, mine: {}, runs: null, selected: null, detail: null,
+    S = { tab: S.tab || "design", baseTitle: document.title, jobs: [], seen: {}, mine: {}, runs: null, selected: null, detail: null,
       restore: S.restore || {}, infos: 0, step: S.step || recall(STEP) || "data", zoom: S.zoom || null, zoomed: null,
       inside: null,
       compare: [], resultsTab: S.resultsTab || "runs", page: { runs: 0, explanations: 0 }, explanations: null,
@@ -800,6 +873,10 @@
       // A step remembered from an older page that no longer has it opens the first.
       if (!groupLabel(S.step)) { S.step = options.groups[0].key; }
       frame();
+      if (sub) {
+        var want = readAddress(sub);
+        S.tab = want.tab; S.selected = want.selected;
+      }
       showTab(S.tab);
       pollJobs();
       T.buildToc([]);
@@ -854,6 +931,7 @@
   function showTab(tab) {
     if (tab === "jobs") { tab = "results"; }  // the old Jobs tab's jobs are rows of Results
     S.tab = tab;
+    setAddress();
     $all(".pg-step-tab").forEach(function (button) {
       var on = button.getAttribute("data-tab") === tab;
       button.setAttribute("aria-selected", String(on));
@@ -886,6 +964,12 @@
     var target = event.target.closest("[data-tab], [data-action], [data-goto], [data-zoom], [data-inside], " +
       "[data-step-tab], [data-reset], [data-page], [data-results-tab], tr[data-run], tr[data-explanation]");
     if (!target || !root.contains(target)) { return; }
+    // A link that also names an action, such as the way back to the list,
+    // still opens in a new tab with a modifier key held.
+    if (target.tagName === "A" && target.hasAttribute("data-action")) {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) { return; }
+      event.preventDefault();
+    }
     if (target.hasAttribute("data-tab")) { showTab(target.getAttribute("data-tab")); return; }
     if (target.hasAttribute("data-goto")) {
       goTo(target.getAttribute("data-goto"), target.getAttribute("data-goto-row"), target.getAttribute("data-goto-index"));
@@ -956,14 +1040,27 @@
         .catch(function (e) { T.toast(e.message); });
     },
     "open-run": function (button) {
-      S.selected = button.getAttribute("data-run"); S.detail = null; S.runs = null; showTab("results");
+      S.fromList = false;
+      S.selected = button.getAttribute("data-run"); S.detail = null; S.runs = null; showTab("results"); scrollToTop(0);
     },
     "open-explanation": function (button) {
       S.explain.run = button.getAttribute("data-run"); S.explain.detail = null;
       S.explain.shown = button.getAttribute("data-name"); S.explain.values = null; S.explain.chart = "engine";
       showTab("explain");
     },
-    "back": function () { S.selected = null; drawResults(); },
+    // Back to the list: the browser's own Back when the run was opened from
+    // it, so the list returns where it was left; otherwise a new step.
+    "back": function () {
+      if (S.fromList) { history.back(); return; }
+      S.selected = null; S.detail = null; setAddress(); drawResults(); scrollToTop(0);
+    },
+    "copy-link": function () {
+      var link = window.location.href.split("#")[0] + address();
+      var done = function () { T.toast("Link to this run copied."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(done, function () { T.toast(link, 9000); });
+      } else { T.toast(link, 9000); }
+    },
     "again": function () { S.settings = settingsFromRun(S.detail); S.restore = {}; saveSettings(); showTab("design"); },
     "explain-this": function () {
       S.explain.run = S.detail.name; S.explain.detail = null; S.explain.shown = null; showTab("explain");
@@ -2755,7 +2852,10 @@
       '<div class="pg-tabpanel-results" role="tabpanel" aria-labelledby="pg-results-tab-' + S.resultsTab + '" ' +
       'id="pg-results-body"><div class="loading">Reading reports/…</div></div></div>';
     (S.resultsTab === "explanations" ? loadExplanations() : loadRuns()).then(function () {
-      if (S.tab === "results" && !S.selected) { drawResultsBody(); }
+      if (S.tab === "results" && !S.selected) {
+        drawResultsBody();
+        if (S.pendingScroll !== undefined && S.pendingScroll !== null) { scrollToTop(S.pendingScroll); S.pendingScroll = null; }
+      }
     }).catch(function (error) {
       var body = $("#pg-results-body");
       if (body) { body.innerHTML = errorBox(error.message); }
@@ -2925,7 +3025,10 @@
   }
 
   function openRun(name) {
+    S.listScroll = scrolledTo(); S.fromList = true;
     S.selected = name; S.detail = null;
+    setAddress();
+    scrollToTop(0);
     drawDetail();
   }
 
@@ -3095,8 +3198,8 @@
   function savedSettingsGroup(title, source, labels, values, renderValue) {
     var keys = Object.keys(labels);
     Object.keys(values).forEach(function (key) { if (keys.indexOf(key) < 0) { keys.push(key); } });
-    return '<section class="pg-settings-group"><h3>' + esc(title) + '</h3><p class="pg-setting-source">' +
-      esc(source) + '</p><dl>' + keys.map(function (key) {
+    return '<section class="pg-settings-group"><div class="pg-settings-group-head"><h4>' + esc(title) + '</h4><p class="pg-setting-source">' +
+      esc(source) + '</p></div><dl>' + keys.map(function (key) {
         return '<div class="pg-setting-row" data-setting="' + esc(key) + '"><dt>' +
           esc(labels[key] || key.replace(/_/g, " ")) + '</dt><dd>' +
           (renderValue ? renderValue(key) : savedSettingValue(key, values[key])) + '</dd></div>';
@@ -3157,10 +3260,10 @@
     var raw = { "summary.json": summary, "preprocessing_config.yaml": d.preprocessing || {},
       "model_config.yaml": d.recorded_model || {} };
     seeds.forEach(function (seed) { raw['seed_' + seed + '/training_config.yaml'] = recordedSeeds[seed]; });
-    return '<section class="pg-run-settings" aria-labelledby="pg-run-settings-title">' +
-      '<h2 id="pg-run-settings-title">Settings used for this run</h2>' +
+    return '<section class="pg-run-section pg-run-settings" id="pg-run-settings" aria-labelledby="pg-run-settings-title">' +
+      '<div class="pg-run-section-head"><h3 id="pg-run-settings-title">Settings used for this run</h3>' +
       '<p class="pg-settings-intro">Values saved with this run. Missing values are marked “Not recorded”. ' +
-      'Training settings are shown for every seed when they differ.</p><div class="pg-settings-grid">' +
+      'Training settings are shown for every seed when they differ.</p></div><div class="pg-settings-grid">' +
       savedSettingsGroup("Data and preprocessing", "Saved preprocessing configuration; summary values identified when used", {
         subset: "Data subset", window_size: "Cycles per window", window_stride: "Cycles between windows",
         rul_max: "Remaining-life ceiling (cycles)", clip_test_labels: "Cap test answers at that ceiling",
@@ -3209,11 +3312,13 @@
       "D-6": "Last-reading temporal route", "Section 2.2": "Shared sensor network", "Table 4": "Different layer widths",
       "A-17": "Learning-rate schedule", "D-2": "Complete sensor graph", "A-27": "Graph varies with the training engines",
       "A-23": "Test engines left out", "A-42": "No graph layers" };
-    return '<section class="pg-run-interpretation" aria-labelledby="pg-run-interpretation-title">' +
-      '<h2 id="pg-run-interpretation-title">How to interpret this run</h2>' + compared +
+    return '<section class="pg-run-section pg-run-interpretation" id="pg-run-interpretation" aria-labelledby="pg-run-interpretation-title">' +
+      '<div class="pg-run-section-head"><h3 id="pg-run-interpretation-title">How to interpret this run</h3>' + compared + "</div>" +
       '<div class="pg-run-notes">' + cautions.map(function (c) {
-        return '<article class="pg-run-note' + (c.level === "warn" ? ' pg-run-note--warn' : '') + '"><h3>' +
-          esc(titles[c.ref] || "Comparison limits") + '</h3><p>' + esc(c.text) + '</p>' +
+        var warn = c.level === "warn";
+        return '<article class="pg-run-note' + (warn ? ' pg-run-note--warn' : '') + '"><p class="pg-run-note-kind">' +
+          '<span class="pg-run-note-mark" aria-hidden="true">' + (warn ? "!" : "i") + "</span>" + (warn ? "Caution" : "Note") +
+          "</p><h4>" + esc(titles[c.ref] || "Comparison limits") + '</h4><p>' + esc(c.text) + '</p>' +
           (c.ref ? '<span class="pg-run-note-ref">Background: ' + refLink(c.ref) + '</span>' : '') + '</article>';
       }).join("") + '</div></section>';
   }
@@ -3222,7 +3327,7 @@
     var panel = $("#pg-panel");
     if (!panel || !S.selected) { return Promise.resolve(); }
     var held = S.detail && S.detail.name === S.selected;
-    if (!held) { panel.innerHTML = '<div class="loading">Reading the run…</div>'; }
+    if (!held) { panel.innerHTML = '<div class="pg-run-page">' + runCrumbs() + '<div class="loading">Reading the run…</div></div>'; }
     var load = held ? Promise.resolve(S.detail)
       : T.get("/api/playground/run?name=" + encodeURIComponent(S.selected));
     return load.then(function (d) {
@@ -3238,10 +3343,12 @@
         var published = paper !== null && paper !== undefined;
         var shown = published ? paperNumber(m[0], paper) : null;
         var gap = published && mean !== null && mean !== undefined ? mean - paper : null;
-        return '<div class="pg-metric"><div class="pg-metric-name">' + m[1] + '</div><div class="pg-metric-value">' + number(mean, m[2]) +
-          (sd !== null && sd !== undefined ? "<span> ± " + number(sd, m[2]) + "</span>" : "") + "</div>" +
-          (published ? '<div class="pg-faint">paper ' + shown.text +
-            (gap !== null ? " · gap " + (gap > 0 ? "+" : "") + number(gap, shown.places) : "") + "</div>" : "") +
+        return '<div class="pg-metric"><div class="pg-metric-name"><span>' + m[1] + '</span><span class="pg-metric-better">' +
+          (m[0] === "r2" ? "higher is better" : "lower is better") + '</span></div><div class="pg-metric-value">' + number(mean, m[2]) +
+          (sd !== null && sd !== undefined ? '<span class="pg-metric-sd"> ± ' + number(sd, m[2]) + "</span>" : "") + "</div>" +
+          (published ? '<dl class="pg-metric-paper"><div><dt>paper</dt><dd>' + shown.text + "</dd></div>" +
+            (gap !== null ? "<div><dt>gap</dt><dd>" + (gap > 0 ? "+" : "") + number(gap, shown.places) + "</dd></div>" : "") + "</dl>"
+            : paperRow ? '<div class="pg-metric-paper pg-metric-paper--none">The paper prints none</div>' : "") +
           // ASUE averages over the engines predicted early; runs since 2026-10-03
           // record how many, and with none it is not a number (assumption A-39).
           (m[0] === "asue" && (d.mean || {}).n_early !== undefined && (d.mean || {}).n_early !== null ?
@@ -3294,31 +3401,84 @@
         ]
       }) : "";
 
-      panel.innerHTML = '<button type="button" class="button button--small pg-back" data-action="back">← All runs</button>' +
-        '<section class="pg-detail"><div class="pg-detail-head"><div><div class="chips">' +
+      var hasSeeds = !!seeds.length;
+      panel.innerHTML = '<div class="pg-run-page">' + runCrumbs(d) +
+        '<section class="pg-detail"><header class="pg-run-head"><div class="pg-run-id">' +
+        '<p class="pg-run-kicker">Training run</p><h2 class="pg-run-title" id="pg-run-title">' + keepDate(runTime(d.name)) + "</h2>" +
+        '<div class="chips">' +
         chip(d.dirty ? "warn" : "", "commit " + d.commit) + chip("", plural(d.seeds, "seed")) + chip("", d.subset) +
         (d.temporal ? chip("", stageName(d.temporal, d.temporal_hidden)) : "") +
         (d.graph ? chip("", graphName(d.graph, d.adjacency_normalization) + " graph") : "") +
         chip("", d.reported_weights === "final_epoch" ? "final pass reported" :
           d.reported_weights === "best_validation_epoch" ? "best pass restored" : "reported weights not recorded") + "</div>" +
-        '<details class="pg-details"><summary>Folder</summary><code class="pg-code">' + esc(d.name) + "</code></details></div>" +
-        '<div class="pg-actions"><button type="button" class="button" data-action="again">Set these settings up again</button>' +
-        (d.has_weights ? '<button type="button" class="button button--primary" data-action="explain-this">Explain this run</button>' : "") + "</div></div>" +
-        '<div class="pg-metrics">' + cards + "</div>" + runInterpretation(cautions, compared) + runConfiguration(d) +
-        '<div class="pg-charts"><figure class="pg-figure pg-figure--wide">' + perSeedPlot + "</figure>" +
-        (curves ? '<figure class="pg-figure pg-figure--wide">' +
+        '<p class="pg-run-folder"><span>Folder</span><code>reports/' + esc(d.name) + "</code></p></div>" +
+        '<div class="pg-actions pg-run-actions">' +
+        '<button type="button" class="button button--quiet pg-run-copy" data-action="copy-link" title="Copy a link to this run">' +
+        LINK_ICON + "Copy link</button>" +
+        '<button type="button" class="button" data-action="again">Set these settings up again</button>' +
+        (d.has_weights ? '<button type="button" class="button button--primary" data-action="explain-this">Explain this run</button>' : "") + "</div></header>" +
+        '<nav class="pg-run-jump" aria-label="Parts of this run">' +
+        [["pg-run-results", "Results"], ["pg-run-interpretation", "How to interpret"], ["pg-run-charts", "Charts"],
+          ["pg-run-settings", "Settings"]].map(function (part) {
+          return '<a href="#' + part[0] + '" data-jump="' + part[0] + '">' + part[1] + "</a>";
+        }).join("") + "</nav>" +
+        '<section class="pg-run-section" id="pg-run-results" aria-labelledby="pg-run-results-title">' +
+        '<div class="pg-run-section-head"><h3 id="pg-run-results-title">Results on the test engines</h3>' +
+        '<p class="pg-run-section-note">Mean ± standard deviation over ' + plural(seeds.length || d.seeds, "seed") + ".</p>" +
+        compared + (cautions.length ? '<p>Read the ' + (cautions.length === 1 ? "note" : plural(cautions.length, "note")) +
+          ' under <a href="#pg-run-interpretation">How to interpret this run</a> before comparing these numbers.</p>' : "") + "</div>" +
+        '<div class="pg-metrics">' + cards + "</div></section>" + runInterpretation(cautions, "") +
+        '<section class="pg-run-section" id="pg-run-charts" aria-labelledby="pg-run-charts-title">' +
+        '<div class="pg-run-section-head"><h3 id="pg-run-charts-title">Charts</h3></div>' +
+        '<div class="pg-charts"><figure class="pg-figure pg-figure--wide"><h4 class="pg-figure-title">Test RMSE per seed</h4>' + perSeedPlot + "</figure>" +
+        (curves ? '<figure class="pg-figure pg-figure--wide"><h4 class="pg-figure-title">Training curves</h4>' +
           (hasValidation ? "<figcaption>A ring marks the reported pass.</figcaption>" : "") +
           curvePlot + "</figure>"
           : '<div class="pg-empty pg-figure--wide">This run kept no per-seed files, so it has no curves, predictions or weights.</div>') +
-        (predPlot ? '<figure class="pg-figure pg-figure--wide"><figcaption><strong>As the paper\'s Fig. 8.</strong></figcaption>' +
+        (predPlot ? '<figure class="pg-figure pg-figure--wide"><h4 class="pg-figure-title">' +
+          esc(sentenceCase(predictionsChartName(d.clip_test_labels, d.rul_max))) + "</h4>" +
+          '<figcaption><strong>As the paper\'s Fig. 8.</strong></figcaption>' +
           '<div class="pg-toolbar pg-figure-toolbar"><label for="pg-pred-seed">Seed</label>' +
           selectField("pg-pred-seed", seeds.map(function (s) { return { value: s, label: s }; }), seedChoice, "data-pred-seed") +
           segmented("pg-pred-order", [{ value: "unit", label: "by unit number" }, { value: "rul", label: "by " + lifeLabel(d.clip_test_labels) }],
             byUnit ? "unit" : "rul", 'data-pred-order') + "</div>" + predPlot + "</figure>" : "") +
-        "</div></section>";
+        "</div></section>" + runConfiguration(d) + "</section></div>";
+      watchRunParts();
+      pageTitle();
+      // An address that names a part of the run, "…/runs/<folder>#pg-run-settings",
+      // reaches it once the run has been drawn; app.js looked before it was.
+      var part = window.location.hash.split("#")[2];
+      if (part && !held && document.getElementById(part)) { document.getElementById(part).scrollIntoView({ behavior: "instant" }); }
     }).catch(function (error) {
-      panel.innerHTML = '<button type="button" class="button button--small pg-back" data-action="back">← All runs</button>' +
-        errorBox(error.message);
+      panel.innerHTML = '<div class="pg-run-page">' + runCrumbs() + errorBox(error.message) + "</div>";
+    });
+  }
+
+  function sentenceCase(text) { return text ? text.charAt(0).toUpperCase() + text.slice(1) : text; }
+
+  // The way back to the list, and where this run sits under it.
+  function runCrumbs(d) {
+    return '<nav class="pg-crumbs" aria-label="Breadcrumb"><a href="' + ROUTE + '/runs" data-action="back" class="pg-crumb-back">' +
+      BACK + "All runs</a>" + '<span class="pg-crumb-sep" aria-hidden="true">/</span><span aria-current="page">' +
+      keepDate(runTime(d ? d.name : S.selected)) + "</span></nav>";
+  }
+
+  // The part of the run on show is marked in the row of links above it.
+  function watchRunParts() {
+    if (S.partWatch) { S.partWatch.disconnect(); S.partWatch = null; }
+    if (!window.IntersectionObserver) { return; }
+    var links = $all(".pg-run-jump a");
+    var shown = {};
+    S.partWatch = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) { shown[entry.target.id] = entry.isIntersecting; });
+      var first = links.filter(function (link) { return shown[link.getAttribute("data-jump")]; })[0];
+      links.forEach(function (link) {
+        if (link === first) { link.setAttribute("aria-current", "true"); } else { link.removeAttribute("aria-current"); }
+      });
+    }, { rootMargin: "-96px 0px -55% 0px" });
+    links.forEach(function (link) {
+      var part = document.getElementById(link.getAttribute("data-jump"));
+      if (part) { S.partWatch.observe(part); }
     });
   }
 
@@ -4632,5 +4792,6 @@
       "Table 12 describes one engine the paper does not name, so the engine below it is a different one.</p></figure>";
   }
 
+  start.follow = follow;
   window.thesisPlayground = start;
 })();

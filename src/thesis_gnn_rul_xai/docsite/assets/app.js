@@ -675,8 +675,22 @@
     }
 
     // A menu link is keyed by its catalog path, which for the playground
-    // keeps the "explore/" the address splits off.
+    // keeps the "explore/" the address splits off. What follows the
+    // playground's own address names a tab or a run inside it, and with the
+    // playground already on show it is handed over rather than built again.
+    var inside = "";
+    if (route.view === "explore" && argument.indexOf("playground/") === 0) {
+      inside = argument.slice("playground/".length);
+      argument = "playground";
+    }
     var path = route.view === "explore" ? "explore/" + argument : argument;
+    var playground = window.thesisPlayground;
+    if (path === "explore/playground" && playground && playground.follow && content.querySelector(".pg") &&
+        playground.follow(inside)) {
+      markActive(path);
+      closeDrawer();
+      return;
+    }
 
     // A new page starts at its top, and a section it is opened at is reached
     // at once rather than by the page's smooth scroll: a smooth scroll is
@@ -693,7 +707,7 @@
     if (route.view === "doc") { done = viewDocument(argument); }
     else if (route.view === "notebook") { done = viewNotebook(argument); }
     else if (route.view === "source") { done = viewSource(argument); }
-    else if (route.view === "explore") { done = viewExplore(argument); }
+    else if (route.view === "explore") { done = viewExplore(argument, inside); }
     else if (route.view === "entry") { done = viewEntry(argument); }
     else { done = Promise.resolve(showError("No page at " + route.view, "")); }
 
@@ -900,12 +914,12 @@
 
   // -------------------------------------------------------- view: explore
 
-  function viewExplore(name) {
+  function viewExplore(name, inside) {
     if (name === "playground" && window.thesisPlayground) {
       return window.thesisPlayground(content, {
         get: get, toast: toast, fixed: fixed, escapeHtml: escapeHtml, chip: chip,
         buildToc: buildToc
-      });
+      }, inside);
     }
     showError("No page called " + name, "");
     return Promise.resolve();

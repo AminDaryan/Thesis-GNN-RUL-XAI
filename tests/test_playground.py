@@ -1889,3 +1889,36 @@ def test_one_random_graph_for_every_seed_with_nothing_held_back_is_refused_befor
         playground.validate_settings({**conflict, "graph": graph, "fixed_split": False})
     for graph in ("physics", "complete", "correlation"):
         playground.validate_settings({**conflict, "graph": graph})
+
+
+def test_every_stored_run_has_an_address_that_leads_back_to_it():
+    """A run's address names its folder, a nested folder keeps its slashes, and reading it back gives the same run."""
+    import shutil
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is needed to check the playground's addresses.")
+    script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('node:assert/strict');
+const context = {window: {}};
+vm.createContext(context);
+const source = fs.readFileSync('src/thesis_gnn_rul_xai/docsite/assets/playground.js', 'utf8');
+vm.runInContext(source.replace('window.thesisPlayground = start;', `
+  window.test = {runAddress, readAddress};`), context);
+const P = context.window.test;
+const flat = 'fd001_physics_row_cap_5seed_varsplit_net9f3068_cfgba82e3_19dceb5_20261002T225228Z';
+assert.equal(P.runAddress(flat), '#/explore/playground/runs/' + flat);
+const nested = 'sensitivity_study/runs/FD002/reference';
+assert.equal(P.runAddress(nested), '#/explore/playground/runs/sensitivity_study/runs/FD002/reference');
+for (const name of [flat, nested, 'a run#with?odd chars']) {
+  const sub = P.runAddress(name).slice('#/explore/playground/'.length);
+  const read = P.readAddress(sub);
+  assert.equal(read.tab, 'results');
+  assert.equal(read.selected, name);
+}
+assert.deepEqual(JSON.parse(JSON.stringify(P.readAddress('runs'))), {tab: 'results', selected: null});
+assert.deepEqual(JSON.parse(JSON.stringify(P.readAddress('explain'))), {tab: 'explain', selected: null});
+assert.deepEqual(JSON.parse(JSON.stringify(P.readAddress(''))), {tab: 'design', selected: null});
+"""
+    rendered = subprocess.run([node, "-e", script], cwd=ROOT, text=True, encoding="utf-8", capture_output=True)
+    assert rendered.returncode == 0, rendered.stderr

@@ -527,6 +527,22 @@ the playground is the one link above the menu's sections. There is no separate
 home page and no trail of links above a page's title: every page sits one level
 below the menu, so a trail would only repeat the page's name.
 
+**Every stored run has an address of its own.** Opening a run in Run history
+changes the address to `#/explore/playground/runs/` followed by the run's
+folder under `reports/`, for example
+`#/explore/playground/runs/fd001_physics_row_cap_5seed_varsplit_net9f3068_cfgba82e3_19dceb5_20261002T225228Z`,
+so a run can be bookmarked, sent as a link, reloaded, and reached again with
+the browser's Back and Forward buttons. The list itself is
+`#/explore/playground/runs` and the explaining tab `#/explore/playground/explain`.
+Opening or leaving a run adds a step to the browser's history; moving between
+the three tabs only corrects the address, so Back does not walk through every
+tab clicked. When the address changes while the playground is on show,
+`app.js` hands the part after `playground/` to `playground.js` (its `follow`
+function) instead of building the page again, which would lose the form and
+the list's place. A run's page is the one place with a trail of links above
+its title, "All runs / 2026-10-02 22:52 UTC", because it is the one page that
+sits below another page rather than directly below the menu.
+
 **Removed pages still have addresses.** The site once had separate pages for
 the sensor graph, the network's layers, every figure, the stored runs and the
 assumptions as cards. Each repeated something another page already said, and
