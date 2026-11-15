@@ -538,6 +538,28 @@ https://doi.org/10.1111/j.2517-6161.1995.tb02031.x
 > description above has not been checked against the article; the citation was
 > checked against its publisher's record on 2026-10-03.
 
+**Spearman, C. (1904).** The proof and measurement of association between two
+things. *The American Journal of Psychology*, *15*(1), 72–101.
+https://doi.org/10.2307/1412159
+
+> The paper that named the weakening of a correlation by errors of measurement
+> "attenuation": when each of two series carries "accidental" errors, the
+> correlation measured between them is smaller than the one between the true
+> values, and the shortfall "cannot be in the least eliminated by any
+> prolongation of the series" (pp. 89–90). The C-MAPSS resource page cites it
+> for that name and that observation, where it explains why the paper's
+> sensor correlations are as large as each sensor's scatter allows (finding
+> F-23). The formula used there, a correlation equal to the slow parts'
+> correlation times the square root of the two shares of slow drift, is
+> derived on that page, not taken from this paper.
+>
+> Not held: free, as a scan of the journal, from the Internet Archive,
+> https://archive.org/details/jstor-1412159, which refused this network. The
+> passages on pp. 89–90 were checked on 2026-11-14 against the text the
+> Internet Archive made from that scan by character recognition; its formulas
+> are unreadable in that text, which is why the page derives its own. The page
+> range is the scan's own, since Crossref's record gives only the first page.
+
 ---
 
 ## Comparable work on the same dataset

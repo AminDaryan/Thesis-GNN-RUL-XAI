@@ -357,6 +357,143 @@ def check_correlation() -> list[Claim]:
     return claims
 
 
+# Fig. 5 of Wen et al. (2026), page 8, as read off the page drawn at eight times its
+# size on 2026-11-14: its 18 labels in order, and the values it prints below the
+# diagonal, row by row. Five of them are printed as -0.00, which keeps a sign.
+FIG5_LABELS = ["unit", "cycle", "op_setting_1", "op_setting_2",
+               "T24", "T30", "T50", "P15", "P30", "Nf", "Nc", "Ps30", "phi", "NRf", "BPR", "htBleed",
+               "W31", "W32"]
+FIG5_PRINTED = [
+    [0.08],
+    [-0.02, -0.00],
+    [-0.01, 0.02, 0.01],
+    [0.01, 0.55, 0.01, 0.01],
+    [0.01, 0.54, -0.01, 0.01, 0.60],
+    [0.03, 0.62, 0.01, 0.01, 0.71, 0.68],
+    [0.03, 0.11, -0.00, 0.01, 0.13, 0.12, 0.15],
+    [-0.03, -0.60, -0.01, -0.02, -0.70, -0.66, -0.79, -0.16],
+    [0.04, 0.48, -0.00, 0.01, 0.66, 0.60, 0.75, 0.15, -0.77],
+    [-0.05, 0.44, -0.00, -0.01, 0.27, 0.32, 0.30, 0.02, -0.22, -0.03],
+    [0.02, 0.63, 0.01, 0.01, 0.74, 0.70, 0.83, 0.16, -0.82, 0.78, 0.27],
+    [-0.03, -0.61, -0.00, -0.01, -0.72, -0.68, -0.82, -0.16, 0.81, -0.79, -0.21, -0.85],
+    [0.04, 0.48, 0.00, 0.02, 0.66, 0.60, 0.75, 0.16, -0.76, 0.83, -0.03, 0.78, -0.79],
+    [0.02, 0.59, 0.01, 0.01, 0.68, 0.64, 0.76, 0.15, -0.75, 0.70, 0.29, 0.78, -0.77, 0.70],
+    [0.01, 0.57, 0.00, 0.01, 0.63, 0.60, 0.70, 0.13, -0.69, 0.63, 0.34, 0.72, -0.70, 0.63, 0.67],
+    [-0.02, -0.58, -0.01, -0.01, -0.66, -0.63, -0.75, -0.14, 0.74, -0.69, -0.29, -0.77, 0.75, -0.69,
+     -0.71, -0.65],
+    [-0.02, -0.59, -0.01, -0.01, -0.67, -0.63, -0.75, -0.14, 0.74, -0.69, -0.29, -0.77, 0.76, -0.69,
+     -0.70, -0.66, 0.69],
+]
+FIG5_NEGATIVE_ZERO = {(2, 1), (7, 2), (9, 2), (10, 2), (12, 2)}
+
+
+def _fig5_agreement(matrix: np.ndarray) -> tuple[int, int]:
+    """How many of Fig. 5's printed values, and of its 91 sensor pairs, a correlation table reproduces."""
+    agree = sensors = 0
+    for row, printed_row in enumerate(FIG5_PRINTED, start=1):
+        for column, printed in enumerate(printed_row):
+            value = float(matrix[row, column])
+            same = round(value, 2) == printed or (printed == 0.0 and abs(round(value, 2)) == 0.0)
+            if (row, column) in FIG5_NEGATIVE_ZERO:
+                same = same and value < 0
+            agree += same
+            sensors += same and column >= 4
+    return agree, sensors
+
+
+def check_noise() -> list[Claim]:
+    """F-23: Fig. 5 is the raw rows' correlation table, and its sizes follow each sensor's scatter."""
+    train = load_subset("FD001", data_dir=raw_data_dir()).train
+    symbols = FIG5_LABELS[4:]
+    columns = [symbol_to_column(symbol) for symbol in symbols]
+    readings = train[columns].set_axis(symbols, axis=1)
+    smoothed = apply_ewma(train, columns, alpha=0.5)[columns].set_axis(symbols, axis=1)
+    kept = [UNIT_COL, CYCLE_COL, "op_setting_1", "op_setting_2"]
+    raw_table = pd.concat([train[kept], readings], axis=1).corr().to_numpy()
+    smooth_table = pd.concat([train[kept], smoothed], axis=1).corr().to_numpy()
+
+    changes = readings.groupby(train[UNIT_COL]).diff().dropna()
+    following = changes.groupby(train[UNIT_COL].loc[changes.index]).shift(1)
+    step = changes.corrwith(following)
+    share = 1 - changes.var() / 2 / readings.var()
+    upper = np.triu_indices(len(symbols), 1)
+    sizes = np.abs(readings.corr().to_numpy()[upper])
+    change_sizes = np.abs(changes.corr().to_numpy()[upper])
+    smooth_sizes = np.abs(smoothed.corr().to_numpy()[upper])
+
+    pairs = list(combinations(symbols, 2))
+    ratio = pd.Series({
+        pair: abs(readings[pair[0]].corr(readings[pair[1]])) / np.sqrt(share[pair[0]] * share[pair[1]])
+        for pair in pairs
+    })
+    plain = [pair for pair in pairs if "Nc" not in pair and "P15" not in pair]
+    with_nc = [pair for pair in pairs if "Nc" in pair]
+    lowest_20 = set(ratio[plain].nsmallest(20).index)
+    fan_pairs = {pair for pair in plain if ("Nf" in pair) != ("NRf" in pair)}
+
+    by_engine = readings.assign(unit=train[UNIT_COL]).groupby("unit")
+    drift = by_engine.tail(20).groupby("unit").mean() - by_engine.head(20).groupby("unit").mean()
+    nc_with_t50 = readings.assign(unit=train[UNIT_COL]).groupby("unit").apply(
+        lambda engine: engine.Nc.corr(engine.T50))
+
+    def r(first: str, second: str, table: pd.DataFrame = readings) -> float:
+        return float(table[first].corr(table[second]))
+
+    physics, physics_symbols = build_physics_adjacency()
+    position = {symbol: index for index, symbol in enumerate(physics_symbols)}
+    strongest = [pair for _, pair in sorted(zip(sizes, pairs, strict=True), reverse=True)[:41]]
+    shared = sum(int(physics[position[a], position[b]] == 1) for a, b in strongest)
+    joined = {symbol for pair in strongest for symbol in pair}
+    alone = ", ".join(symbol for symbol in physics_symbols if symbol not in joined)
+
+    raw_agree, raw_sensor_agree = _fig5_agreement(raw_table)
+    _, smooth_sensor_agree = _fig5_agreement(smooth_table)
+    tol = 5e-7
+    return [
+        Claim("F-23", "Fig. 5 values reproduced by the raw training rows", 153, raw_agree),
+        Claim("F-23", "of them, pairs of sensors", 91, raw_sensor_agree),
+        Claim("F-23", "pairs of sensors reproduced by the smoothed rows", 0, smooth_sensor_agree),
+        Claim("F-23", "average size over 91 pairs, readings", 0.569119, float(sizes.mean()), tol),
+        Claim("F-23", "average size over 91 pairs, flight-to-flight changes", 0.011354,
+              float(change_sizes.mean()), tol),
+        Claim("F-23", "largest size, flight-to-flight changes", 0.047887, float(change_sizes.max()), tol),
+        Claim("F-23", "lowest correlation of one change with the next", -0.509910, float(step.min()), tol),
+        Claim("F-23", "highest correlation of one change with the next", -0.486944, float(step.max()), tol),
+        Claim("F-23", "smallest share of slow drift apart from P15 (T30)", 0.574262,
+              float(share.drop("P15").min()), tol),
+        Claim("F-23", "largest share of slow drift (Nc)", 0.964263, float(share.max()), tol),
+        Claim("F-23", "share of slow drift, P15", 0.077210, float(share["P15"]), tol),
+        Claim("F-23", "pairs with neither Nc nor P15", 66, len(plain)),
+        Claim("F-23", "their smallest size / noise limit", 0.874844, float(ratio[plain].min()), tol),
+        Claim("F-23", "their largest size / noise limit", 1.012246, float(ratio[plain].max()), tol),
+        Claim("F-23", "the 20 lowest are the pairs joining Nf or NRf to the other ten", True,
+              lowest_20 == fan_pairs),
+        Claim("F-23", "those 20 all below 0.97", True, bool(ratio[sorted(fan_pairs)].max() < 0.97)),
+        Claim("F-23", "pairs with Nc, smallest size / noise limit", 0.036129, float(ratio[with_nc].min()), tol),
+        Claim("F-23", "pairs with Nc, largest size / noise limit", 0.434012, float(ratio[with_nc].max()), tol),
+        Claim("F-23", "engines where Nc rises, first 20 against last 20", 71, int((drift.Nc > 0).sum())),
+        Claim("F-23", "engines where Nc falls", 29, int((drift.Nc < 0).sum())),
+        Claim("F-23", "Nc with T50 within an engine positive on exactly those", True,
+              set(nc_with_t50.index[nc_with_t50 > 0]) == set(drift.index[drift.Nc > 0])),
+        Claim("F-23", "T24 with T30", 0.602610, r("T24", "T30"), tol),
+        Claim("F-23", "T24 with T50", 0.714949, r("T24", "T50"), tol),
+        Claim("F-23", "T30 with T50", 0.678413, r("T30", "T50"), tol),
+        Claim("F-23", "T50 with Ps30", 0.830136, r("T50", "Ps30"), tol),
+        Claim("F-23", "T50 with phi", -0.815591, r("T50", "phi"), tol),
+        Claim("F-23", "P15 with P30", -0.155720, r("P15", "P30"), tol),
+        Claim("F-23", "P15 with Ps30", 0.160014, r("P15", "Ps30"), tol),
+        Claim("F-23", "P30 with Ps30", -0.822805, r("P30", "Ps30"), tol),
+        Claim("F-23", "Nf with Nc", -0.032091, r("Nf", "Nc"), tol),
+        Claim("F-23", "Nc with NRf", -0.034763, r("Nc", "NRf"), tol),
+        Claim("F-23", "Nf with NRf", 0.826084, r("Nf", "NRf"), tol),
+        Claim("F-23", "T24 with T30, smoothed", 0.812857, r("T24", "T30", smoothed), tol),
+        Claim("F-23", "average size over 91 pairs, smoothed", 0.693730, float(smooth_sizes.mean()), tol),
+        Claim("F-23", "weakest of the 41 strongest pairs", 0.692893, float(np.sort(sizes)[::-1][40]), tol),
+        Claim("F-23", "of the 41 strongest pairs, joined in Table 3 too", 18, shared),
+        Claim("F-23", "of the 41 strongest pairs, sensors joined to nothing", "P15, Nc", alone),
+    ]
+
+
 def check_labels() -> list[Claim]:
     """F-02 on how many test labels the ceiling touches, and F-03 on the shortest."""
     data = load_subset("FD001", data_dir=raw_data_dir())
@@ -577,6 +714,7 @@ CHECKS = [
     Check("same_rows", "F-18", False, False, check_same_rows),
     Check("starts", "A-34", False, False, check_starts),
     Check("sensors", "F-01, A-10", True, False, check_sensors),
+    Check("noise", "F-23", True, False, check_noise),
     Check("labels", "F-02, F-03", True, False, check_labels),
     Check("windows", "A-23", True, False, check_windows),
     Check("correlation", "A-27", True, False, check_correlation),

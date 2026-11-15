@@ -232,8 +232,10 @@ failing. That was measured on nbconvert 7.17.1 against its `basic`, `lab` and
 `tests/test_docsite.py` renders notebook 01 as the site does and requires the
 map to be in the page.
 
-Six of them read the **real NASA files**: `rul-curve`, `worked-example`,
-`correlation`, `smoothing`, `windowing` and `notebook-map`. If those files are
+Ten of them read the **real NASA files**: `rul-curve`, `worked-example`,
+`correlation`, `smoothing`, `windowing`, `notebook-map`, and the four the
+C-MAPSS resource page draws, `lifetimes`, `sensor-trends`,
+`sensor-correlations` and `noise-limit`. If those files are
 not in `data/raw/`, the figure is replaced by a note saying so and pointing at
 the download. `worked-example` also needs the saved training run it follows,
 and its note names that run. A figure does **not** draw an invented signal that
@@ -244,6 +246,33 @@ follows, applied to pictures: show the thing, or say you cannot.
 actually do?" in a single picture. It runs the pipeline while the page loads
 and prints the count the data really has at every step, so it cannot drift away
 from the notebook it describes the way a hand-drawn diagram would.
+
+The C-MAPSS resource page's four figures are drawn from small tables that the
+page's own Python examples print as well, so a chart and the numbers beside it
+cannot disagree; `tests/test_examples.py` compares the two. Each table comes
+from one function in `figures.py`, all reading the 100 engines of
+`train_FD001.txt` and nothing else:
+
+- `training_engines()` reads the file; `engine_lives()` gives each engine's
+  last recorded cycle, the one at which it failed; `sensor_readings()` keeps
+  the paper's 14 sensors, named by their symbols.
+- `flight_to_flight_changes()` gives each reading minus the same engine's
+  reading one flight earlier, and `drift_directions()` counts the engines on
+  which each sensor's last 20 readings average above, below or level with its
+  first 20.
+- `sensor_noise_table()` gives, for each sensor, the spread of its readings,
+  the spread of its scatter from one flight to the next, and the share of its
+  variance (the square of the spread) left to the slow drift. The scatter's
+  variance is taken as half the variance of the flight-to-flight change, which
+  holds when the scatter of one flight is unrelated to the next; the page
+  checks that it is.
+- `sensor_correlations()` gives the two tables of correlations, of the
+  readings and of their changes, and `noise_limit_table()` sets each pair's
+  correlation beside its noise limit, the square root of the two sensors'
+  shares multiplied: the largest size their scatter allows.
+
+Why those quantities, and what they show about the paper's correlation
+heatmap, is taught on the page itself (finding F-23).
 
 Three figures need PyTorch, the library the network is written in.
 `architecture` and `architecture-overview` build the default network to read

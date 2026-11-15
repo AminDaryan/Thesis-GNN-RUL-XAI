@@ -31,6 +31,7 @@ practice; each entry's opening says which. They belong in the thesis. Each is in
 | [F-20](F-20.md) | The dataset paper's scoring equation prints its two constants the other way round from its own text and figure | [A-33](../assumptions/A-33.md) |
 | [F-21](F-21.md) | As printed, the paper's graph layers can only scale with their input, and after the first one each sensor's 32 numbers come from one | [A-34](../assumptions/A-34.md) |
 | [F-22](F-22.md) | Flexible ordinary models given the default network's fourteen numbers trail it on four or five seeds of five, by less than the test engines can resolve; given each window's latest reading and slope, an untuned gradient booster beats the default clearly, and the recurrent-stage network on every seed, by enough to clear the bar for the whole entry only when that network is trained the paper's way, and then only just, on a row chosen after the first results were seen | [A-40](../assumptions/A-40.md) |
+| [F-23](F-23.md) | The paper reads its correlation heatmap as physical coupling, but the sizes in it are set by how much scatter each sensor carries | — |
 
 **Logged after** names the assumption in whose section each finding sat until
 2026-10-03, when the assumptions and the findings were one file,

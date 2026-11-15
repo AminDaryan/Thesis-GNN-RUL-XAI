@@ -468,6 +468,9 @@ file. A positive correlation means they tend to move in the same direction;
 a negative one means opposite directions. Correlation describes co-variation,
 not a causal connection. The chart helps inspect the selection; it does not
 change the fixed list when preprocessing runs.
+Why most pairs of sensors correlate as strongly as they do, and why that is
+not evidence that they are linked inside the engine, is taught on
+[C-MAPSS, How far the sensors move together](../resources/cmapss.md#how-far-the-sensors-move-together).
 
 ### Process
 

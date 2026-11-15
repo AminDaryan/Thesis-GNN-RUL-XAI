@@ -1528,6 +1528,450 @@ def draw_lstm_cell() -> str:
 
 
 # --------------------------------------------------------------------------
+# The FD001 training engines, drawn for the C-MAPSS page: how long they
+# lived, how each sensor drifts towards failure, and what the correlations
+# between the sensors measure
+# --------------------------------------------------------------------------
+
+# How the sensor table writes a unit, and how a figure prints it.
+_UNIT_LABEL = {"degR": "°R", "psia": "psia", "rpm": "rpm", "pps/psi": "pps/psi", "lbm/s": "lbm/s", "-": ""}
+
+
+def training_engines() -> pd.DataFrame:
+    """Every row of FD001's training file, read the way the C-MAPSS page reads it."""
+    from ..data.loading import read_cmapss_frame
+
+    return read_cmapss_frame(_require_data() / "train_FD001.txt")
+
+
+def engine_lives(frame: pd.DataFrame | None = None) -> pd.Series:
+    """How many cycles each FD001 training engine ran, from its first record to its failure."""
+    frame = training_engines() if frame is None else frame
+    return frame.groupby("unit")["cycle"].max()
+
+
+def sensor_readings(frame: pd.DataFrame | None = None) -> pd.DataFrame:
+    """The 14 sensors of the paper's Table 3, one row per flight, named by their symbols."""
+    frame = training_engines() if frame is None else frame
+    columns = [symbol_to_column(symbol) for symbol in PAPER_SENSOR_SYMBOLS]
+    return frame[columns].set_axis(list(PAPER_SENSOR_SYMBOLS), axis=1)
+
+
+def flight_to_flight_changes(frame: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Each reading minus the same engine's reading one flight earlier; an engine's first flight has none."""
+    frame = training_engines() if frame is None else frame
+    readings = sensor_readings(frame)
+    return readings.groupby(frame["unit"].to_numpy()).diff().dropna()
+
+
+def drift_directions(frame: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Per sensor: on how many engines the last 20 readings average above, below or level with the first 20."""
+    frame = training_engines() if frame is None else frame
+    readings = sensor_readings(frame)
+    by_engine = readings.assign(unit=frame["unit"].to_numpy()).groupby("unit")
+    change = by_engine.tail(20).groupby("unit").mean() - by_engine.head(20).groupby("unit").mean()
+    return pd.DataFrame({
+        "sensor": list(PAPER_SENSOR_SYMBOLS),
+        "engines where it rises": (change > 0).sum().to_numpy(),
+        "engines where it falls": (change < 0).sum().to_numpy(),
+        "engines where it stays level": (change == 0).sum().to_numpy(),
+        "distinct values": readings.nunique().to_numpy(),
+    })
+
+
+def sensor_noise_table(frame: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Per sensor: the spread of its readings, the spread of its flight-to-flight scatter, and the share left to the slow drift."""
+    frame = training_engines() if frame is None else frame
+    variance = sensor_readings(frame).var()
+    # The slow drift barely moves between two neighbouring flights, so a
+    # change from one flight to the next is the difference of two unrelated
+    # scatter draws, whose variance is twice the scatter's own.
+    scatter = flight_to_flight_changes(frame).var() / 2
+    return pd.DataFrame({
+        "sensor": list(PAPER_SENSOR_SYMBOLS),
+        "spread of the readings": np.sqrt(variance).to_numpy(),
+        "spread of the scatter": np.sqrt(scatter).to_numpy(),
+        "share of the slow drift": (1 - scatter / variance).to_numpy(),
+    })
+
+
+def sensor_correlations(frame: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The 14 sensors' Pearson correlations over FD001's training file: of the readings, and of their flight-to-flight changes."""
+    frame = training_engines() if frame is None else frame
+    return sensor_readings(frame).corr(), flight_to_flight_changes(frame).corr()
+
+
+def noise_limit_table(frame: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Every pair of the 14 sensors: the size of its correlation, and the largest size the two sensors' scatter allows."""
+    frame = training_engines() if frame is None else frame
+    readings, _ = sensor_correlations(frame)
+    share = sensor_noise_table(frame).set_index("sensor")["share of the slow drift"]
+    rows = []
+    for first, second in itertools.combinations(PAPER_SENSOR_SYMBOLS, 2):
+        rows.append({
+            "pair": f"{first} and {second}",
+            "correlation": float(readings.loc[first, second]),
+            "noise limit": float(np.sqrt(share[first] * share[second])),
+        })
+    table = pd.DataFrame(rows)
+    table["size ÷ limit"] = table["correlation"].abs() / table["noise limit"]
+    return table
+
+
+def _pair_group(pair: str) -> str:
+    """Which of the noise-limit figure's three groups a pair such as "Nc and T50" belongs to."""
+    first, _, second = pair.partition(" and ")
+    if "Nc" in (first, second):
+        return "Nc"
+    if "P15" in (first, second):
+        return "P15"
+    return "other"
+
+
+def draw_lifetimes() -> str:
+    """The 100 FD001 training engines, one dot each, placed at the cycle where each failed."""
+    lives = engine_lives().sort_values(kind="stable")
+    left, width = 70.0, 740.0
+    low, high = 120.0, 370.0
+    to_x = lambda c: left + width * (c - low) / (high - low)  # noqa: E731
+    radius, pitch = 4.5, 10.0
+    ink_soft = "var(--ink-soft, #4a525e)"
+
+    # Each dot goes at its engine's exact life, on the lowest level where it
+    # overlaps no dot already placed, so dots pile up where lives crowd.
+    placed: list[list[float]] = []
+    levels: dict[int, int] = {}
+    for unit, life in lives.items():
+        x = to_x(float(life))
+        level = 0
+        while level < len(placed) and any(abs(x - other) < pitch for other in placed[level]):
+            level += 1
+        if level == len(placed):
+            placed.append([])
+        placed[level].append(x)
+        levels[unit] = level
+    labels_y = 24.0
+    base = labels_y + 22 + len(placed) * pitch
+    dot_y = lambda unit: base - radius - 1 - levels[unit] * pitch  # noqa: E731
+    dots = "".join(
+        f'<circle cx="{to_x(float(life)):.1f}" cy="{dot_y(unit):.1f}" r="{radius}" '
+        f'fill="var(--fig-accent, #1f5fa8)" stroke="var(--panel, #f6f7f9)" stroke-width="1">'
+        f"<title>Engine {unit}: failed after {life} cycles</title></circle>"
+        for unit, life in lives.items()
+    )
+
+    median = float(lives.median())
+    shortest, longest = lives.idxmin(), lives.idxmax()
+
+    def leader(x: float, bottom: float) -> str:
+        return (f'<line x1="{x:.1f}" y1="{labels_y + 6}" x2="{x:.1f}" y2="{bottom:.1f}" '
+                f'stroke="var(--fig-axis, #8a93a0)" stroke-width="1" />')
+
+    ticks = "".join(
+        f'<line x1="{to_x(c):.1f}" y1="{base}" x2="{to_x(c):.1f}" y2="{base + 5}" '
+        f'stroke="var(--fig-axis, #8a93a0)" stroke-width="1" />'
+        + _mono(to_x(c), base + 19, str(c), size=11, fill=ink_soft)
+        for c in range(150, 351, 50)
+    )
+    return (
+        _open(_WIDTH, base + 54)
+        + f'<line x1="{left}" y1="{base}" x2="{left + width}" y2="{base}" '
+        f'stroke="var(--fig-axis, #8a93a0)" stroke-width="1" />'
+        + ticks
+        + f'<line x1="{to_x(median):.1f}" y1="{labels_y + 6}" x2="{to_x(median):.1f}" y2="{base}" '
+        f'stroke="var(--fig-ink, #16191d)" stroke-width="1" stroke-dasharray="4 3" />'
+        + leader(to_x(float(lives[shortest])), dot_y(shortest) - radius - 2)
+        + leader(to_x(float(lives[longest])), dot_y(longest) - radius - 2)
+        + dots
+        + _text(to_x(median) + 6, labels_y, f"half had failed by cycle {median:.0f}", size=12,
+                anchor="start")
+        + _text(to_x(float(lives[shortest])) - 4, labels_y,
+                f"shortest: engine {shortest}, {lives[shortest]} cycles", size=12, anchor="start",
+                fill=ink_soft)
+        + _text(to_x(float(lives[longest])) + 4, labels_y,
+                f"longest: engine {longest}, {lives[longest]} cycles", size=12, anchor="end",
+                fill=ink_soft)
+        + _text(left + width / 2, base + 42,
+                "cycles from the engine's first record to its failure (train_FD001.txt, 100 engines)",
+                size=12, fill=ink_soft)
+        + "</svg>"
+    )
+
+
+def _points(xs: np.ndarray, ys: np.ndarray) -> str:
+    """Coordinates as an SVG points list, one decimal each."""
+    return " ".join(f"{x:.1f},{y:.1f}" for x, y in zip(xs, ys, strict=True))
+
+
+def _panel_y(values: np.ndarray, top: float, height: float, low: float, high: float) -> np.ndarray:
+    """Where values land on a panel whose bottom edge is low and whose top edge is high."""
+    return top + height * (1 - (np.asarray(values, dtype=float) - low) / (high - low))
+
+
+def draw_sensor_trends() -> str:
+    """The 14 sensors over the last 128 cycles of every training engine, lined up at failure."""
+    frame = training_engines()
+    readings = sensor_readings(frame)
+    lives = engine_lives(frame)
+    shortest = int(lives.min())
+    # Cycles before failure: 0 on an engine's last row, counting up backwards.
+    before = (frame["unit"].map(lives) - frame["cycle"]).to_numpy()
+    kept = before < shortest
+    steps = np.arange(shortest - 1, -1, -1)
+    engine_one = (frame["unit"] == 1).to_numpy() & kept
+
+    columns, rows_of_panels = 5, 3
+    label_w, plot_w, gap = 40.0, 116.0, 12.0
+    title_h, plot_h, tick_h, row_gap = 20.0, 84.0, 18.0, 14.0
+    margin = (_WIDTH - columns * (label_w + plot_w) - (columns - 1) * gap) / 2
+    row_h = title_h + plot_h + tick_h + row_gap
+    height = 10 + rows_of_panels * row_h + 22
+    ink_soft = "var(--ink-soft, #4a525e)"
+    out = _open(_WIDTH, height)
+    units = {sensor.symbol: _UNIT_LABEL.get(sensor.unit, sensor.unit) for sensor in SENSORS}
+    way = {}
+    for row in drift_directions(frame).itertuples(index=False):
+        rises, falls = row[1], row[2]
+        way[row[0]] = (
+            "two values" if row[4] == 2 else "rises" if rises == len(lives)
+            else "falls" if falls == len(lives) else f"{rises} rise, {falls} fall"
+        )
+
+    for index, symbol in enumerate(PAPER_SENSOR_SYMBOLS):
+        values = readings[symbol].to_numpy(dtype=float)
+        by_step = pd.Series(values[kept]).groupby(before[kept])
+        middle = by_step.median().reindex(steps).to_numpy()
+        lower = by_step.quantile(0.1).reindex(steps).to_numpy()
+        upper = by_step.quantile(0.9).reindex(steps).to_numpy()
+        own = pd.Series(values[engine_one], index=before[engine_one]).reindex(steps).to_numpy()
+
+        # A sensor recorded at two values only is drawn between those two.
+        low = float(min(lower.min(), own.min(), values.min() if way[symbol] == "two values" else np.inf))
+        high = float(max(upper.max(), own.max(), values.max() if way[symbol] == "two values" else -np.inf))
+        pad = (high - low) * 0.06 or 0.01
+        low, high = low - pad, high + pad
+        column, row = index % columns, index // columns
+        x0 = margin + column * (label_w + plot_w + gap) + label_w
+        y0 = 10 + row * row_h + title_h
+        xs = x0 + plot_w * (shortest - 1 - steps) / (shortest - 1)
+        scale = (y0, plot_h, low, high)
+        band = _points(np.concatenate([xs, xs[::-1]]),
+                       _panel_y(np.concatenate([upper, lower[::-1]]), *scale))
+        decimals = 0 if high - low > 20 else 2 if high - low > 0.2 else 3
+        # The band's own numbers are in the hover text, since its pale fill is not
+        # meant to be read against the plot behind it.
+        unit, places = f" {units[symbol]}".rstrip(), decimals + 1
+        hover = (
+            f"{symbol}: the median of the 100 engines goes from {middle[0]:.{places}f}{unit}, "
+            f"{shortest - 1} cycles before failure, to {middle[-1]:.{places}f}{unit} at the last "
+            f"recorded cycle. The middle 80 of them lie between {lower[0]:.{places}f} and "
+            f"{upper[0]:.{places}f} at the start and between {lower[-1]:.{places}f} and "
+            f"{upper[-1]:.{places}f} at the end."
+        )
+        out += (
+            _text(x0 - label_w + 4, y0 - 7, symbol, size=12, anchor="start", weight="600")
+            + _text(x0 + plot_w, y0 - 7, f"{units[symbol]}  {way[symbol]}".strip(), size=11,
+                    anchor="end", fill=ink_soft)
+            + f'<g><title>{html.escape(hover)}</title>'
+            f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{plot_w}" height="{plot_h}" '
+            f'fill="var(--fig-bg, #ffffff)" stroke="var(--line, #dfe3e9)" stroke-width="1" />'
+            f'<polygon points="{band}" fill="var(--fig-accent, #1f5fa8)" fill-opacity="0.18" />'
+            f'<polyline points="{_points(xs, _panel_y(own, *scale))}" fill="none" '
+            f'stroke="var(--ink-faint, #646d7a)" '
+            f'stroke-width="1" stroke-linejoin="round" />'
+            f'<polyline points="{_points(xs, _panel_y(middle, *scale))}" fill="none" '
+            f'stroke="var(--fig-accent, #1f5fa8)" '
+            f'stroke-width="2" stroke-linejoin="round" /></g>'
+            + _mono(x0 - 4, y0 + 9, f"{high - pad:.{decimals}f}", size=10, anchor="end", fill=ink_soft)
+            + _mono(x0 - 4, y0 + plot_h, f"{low + pad:.{decimals}f}", size=10, anchor="end", fill=ink_soft)
+            + "".join(
+                _mono(x0 + plot_w * (shortest - 1 - s) / (shortest - 1), y0 + plot_h + 13, str(s),
+                      size=10, fill=ink_soft)
+                for s in (120, 60, 0)
+            )
+        )
+
+    # The fifteenth place holds the key.
+    x0 = margin + 4 * (label_w + plot_w + gap) + 4
+    y0 = 10 + 2 * row_h + title_h
+    out += (
+        _text(x0, y0 - 7, "How to read a panel", size=12, anchor="start", weight="600")
+        + f'<rect x="{x0}" y="{y0 + 6}" width="22" height="12" fill="var(--fig-accent, #1f5fa8)" '
+        f'fill-opacity="0.18" />'
+        + _text(x0 + 30, y0 + 16, "middle 80 of the engines", size=11, anchor="start")
+        + f'<line x1="{x0}" y1="{y0 + 36}" x2="{x0 + 22}" y2="{y0 + 36}" '
+        f'stroke="var(--fig-accent, #1f5fa8)" stroke-width="2" />'
+        + _text(x0 + 30, y0 + 40, "median of the engines", size=11, anchor="start")
+        + f'<line x1="{x0}" y1="{y0 + 60}" x2="{x0 + 22}" y2="{y0 + 60}" '
+        f'stroke="var(--ink-faint, #646d7a)" stroke-width="1" />'
+        + _text(x0 + 30, y0 + 64, "engine 1, flight by flight", size=11, anchor="start")
+        + _text(_WIDTH / 2, height - 8,
+                f"cycles before failure, over the last {shortest} of every engine "
+                f"(the shortest life); 0 is the last recorded cycle",
+                size=12, fill=ink_soft)
+    )
+    return out + "</svg>"
+
+
+def _heatmap(matrix: pd.DataFrame, x0: float, y0: float, pitch: float, what: str) -> str:
+    """One 14 by 14 correlation table as squares tinted towards red above zero and blue below."""
+    out = ""
+    labels = list(matrix.columns)
+    for row, row_label in enumerate(labels):
+        for column, column_label in enumerate(labels):
+            value = float(matrix.iloc[row, column])
+            x, y = x0 + column * pitch, y0 + row * pitch
+            hue = "var(--fig-burn, #b3261e)" if value >= 0 else "var(--fig-accent, #1f5fa8)"
+            # A tint laid over a neutral square: at zero only the neutral
+            # square shows, at one only the tint, the same rule the scale uses.
+            out += (
+                f"<g><title>{html.escape(row_label)} and {html.escape(column_label)}, {what}: "
+                f"{value:.3f}</title>"
+                f'<rect x="{x:.1f}" y="{y:.1f}" width="{pitch - 2}" height="{pitch - 2}" '
+                f'fill="var(--panel-2, #eceff3)" />'
+                f'<rect x="{x:.1f}" y="{y:.1f}" width="{pitch - 2}" height="{pitch - 2}" '
+                f'fill="{hue}" fill-opacity="{min(1.0, abs(value)):.3f}" /></g>'
+            )
+    return out
+
+
+def draw_sensor_correlations() -> str:
+    """Two correlation tables of the 14 sensors side by side: of the readings, and of their flight-to-flight changes."""
+    readings, changes = sensor_correlations()
+    labels = list(PAPER_SENSOR_SYMBOLS)
+    count = len(labels)
+    upper = np.triu_indices(count, 1)
+    pitch, top, left, gap = 23.0, 58.0, 62.0, 26.0
+    size = pitch * count
+    second = left + size + gap
+    bar_x = second + size + 20
+    ink_soft = "var(--ink-soft, #4a525e)"
+
+    def mean_size(matrix: pd.DataFrame) -> float:
+        return float(np.abs(matrix.to_numpy()[upper]).mean())
+
+    out = _open(_WIDTH, top + size + 62) + (
+        '<defs><linearGradient id="cmapss-correlation-scale" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" style="stop-color:var(--fig-burn, #b3261e)" />'
+        '<stop offset="0.5" style="stop-color:var(--panel-2, #eceff3)" />'
+        '<stop offset="1" style="stop-color:var(--fig-accent, #1f5fa8)" />'
+        "</linearGradient></defs>"
+    )
+    for x0, title, matrix, what in (
+        (left, "The readings", readings, "readings"),
+        (second, "Their change from one flight to the next", changes, "changes"),
+    ):
+        out += (
+            _text(x0, 20, title, size=13, anchor="start", weight="600")
+            + _text(x0, 38, f"average size over the 91 pairs: {mean_size(matrix):.2f}", size=11,
+                    anchor="start", fill=ink_soft)
+            + _heatmap(matrix, x0, top, pitch, what)
+        )
+        for column, label in enumerate(labels):
+            x = x0 + column * pitch + (pitch - 2) / 2
+            out += (
+                f'<g transform="translate({x + 3:.1f},{top + size + 6:.1f}) rotate(-55)">'
+                + _text(0, 0, label, size=11, anchor="end")
+                + "</g>"
+            )
+    for row, label in enumerate(labels):
+        out += _text(left - 8, top + row * pitch + pitch / 2 + 3, label, size=11, anchor="end")
+    out += (
+        _text(bar_x, 20, "correlation", size=11, anchor="start", fill=ink_soft)
+        + f'<rect x="{bar_x}" y="{top}" width="14" height="{size - 2}" '
+        f'fill="url(#cmapss-correlation-scale)" />'
+    )
+    for tick, words in ((1.0, "+1 together"), (0.5, "+0.5"), (0.0, "0 unrelated"), (-0.5, "\u22120.5"),
+                        (-1.0, "\u22121 opposite")):
+        y = top + (size - 2) * (1 - tick) / 2
+        out += (
+            f'<line x1="{bar_x + 14}" y1="{y:.1f}" x2="{bar_x + 18}" y2="{y:.1f}" '
+            f'stroke="var(--fig-axis, #8a93a0)" stroke-width="1" />'
+            + _text(bar_x + 22, y + 4, words, size=11, anchor="start", fill=ink_soft)
+        )
+    return out + "</svg>"
+
+
+def draw_noise_limit() -> str:
+    """Every pair of the 14 sensors: the size of its correlation against the largest size their scatter allows."""
+    table = noise_limit_table()
+    table["group"] = table["pair"].map(_pair_group)
+    left, top, side = 96.0, 24.0, 360.0
+    to_x = lambda v: left + side * v  # noqa: E731
+    to_y = lambda v: top + side * (1 - v)  # noqa: E731
+    ink_soft = "var(--ink-soft, #4a525e)"
+    styles = {
+        "other": ("var(--fig-accent, #1f5fa8)", "circle"),
+        "Nc": ("var(--fig-warn, #c2521f)", "triangle"),
+        "P15": ("var(--ink-faint, #646d7a)", "square"),
+    }
+
+    def mark(x: float, y: float, colour: str, shape: str, title: str = "") -> str:
+        hover = f"<title>{html.escape(title)}</title>" if title else ""
+        if shape == "circle":
+            return (f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="{colour}" '
+                    f'stroke="var(--panel, #f6f7f9)" stroke-width="1">{hover}</circle>')
+        if shape == "square":
+            return (f'<rect x="{x - 4:.1f}" y="{y - 4:.1f}" width="8" height="8" fill="{colour}" '
+                    f'stroke="var(--panel, #f6f7f9)" stroke-width="1">{hover}</rect>')
+        return (f'<polygon points="{x:.1f},{y - 5.5:.1f} {x + 5:.1f},{y + 3.5:.1f} {x - 5:.1f},{y + 3.5:.1f}" '
+                f'fill="{colour}" stroke="var(--panel, #f6f7f9)" stroke-width="1">{hover}</polygon>')
+
+    out = _open(_WIDTH, top + side + 64)
+    out += (
+        f'<rect x="{left}" y="{top}" width="{side}" height="{side}" fill="var(--fig-bg, #ffffff)" '
+        f'stroke="var(--line, #dfe3e9)" stroke-width="1" />'
+    )
+    for value in (0.25, 0.5, 0.75):
+        out += (
+            f'<line x1="{to_x(value):.1f}" y1="{top}" x2="{to_x(value):.1f}" y2="{top + side}" '
+            f'stroke="var(--line, #dfe3e9)" stroke-width="1" />'
+            f'<line x1="{left}" y1="{to_y(value):.1f}" x2="{left + side}" y2="{to_y(value):.1f}" '
+            f'stroke="var(--line, #dfe3e9)" stroke-width="1" />'
+        )
+    for value in (0.0, 0.25, 0.5, 0.75, 1.0):
+        out += (
+            _mono(to_x(value), top + side + 16, f"{value:g}", size=10, fill=ink_soft)
+            + _mono(left - 8, to_y(value) + 4, f"{value:g}", size=10, anchor="end", fill=ink_soft)
+        )
+    out += (
+        f'<line x1="{to_x(0):.1f}" y1="{to_y(0):.1f}" x2="{to_x(1):.1f}" y2="{to_y(1):.1f}" '
+        f'stroke="var(--fig-ink, #16191d)" stroke-width="1" stroke-dasharray="5 4" />'
+        + _text(to_x(0.5), top + side + 38,
+                "noise limit of the pair, from the two sensors' shares of slow drift",
+                size=12, fill=ink_soft)
+        + f'<g transform="translate({left - 52},{top + side / 2}) rotate(-90)">'
+        + _text(0, 0, "size of the correlation of the readings", size=12, fill=ink_soft)
+        + "</g>"
+    )
+    for group in ("P15", "Nc", "other"):
+        colour, shape = styles[group]
+        chosen = table[table["group"] == group]
+        for pair, value, limit in zip(chosen["pair"], chosen["correlation"], chosen["noise limit"],
+                                      strict=True):
+            title = f"{pair}: correlation {value:.3f}, noise limit {limit:.3f}"
+            out += mark(to_x(limit), to_y(abs(value)), colour, shape, title)
+
+    counts = table["group"].value_counts()
+    key_x, key_y = left + side + 48, top + 18
+    entries = (
+        ("other", f"the other {counts['other']} pairs"),
+        ("Nc", f"pairs with Nc ({counts['Nc']})"),
+        ("P15", f"pairs with P15 ({counts['P15']})"),
+    )
+    for offset, (group, words) in enumerate(entries):
+        colour, shape = styles[group]
+        y = key_y + offset * 24
+        out += mark(key_x, y, colour, shape) + _text(key_x + 14, y + 4, words, size=12, anchor="start")
+    out += (
+        f'<line x1="{key_x - 8}" y1="{key_y + 72}" x2="{key_x + 8}" y2="{key_y + 72}" '
+        f'stroke="var(--fig-ink, #16191d)" stroke-width="1" stroke-dasharray="5 4" />'
+        + _text(key_x + 14, key_y + 76, "size equal to the limit", size=12, anchor="start")
+    )
+    return out + "</svg>"
+
+
+# --------------------------------------------------------------------------
 # Every figure by name, and drawing one for a page or a notebook
 # --------------------------------------------------------------------------
 
@@ -1549,6 +1993,10 @@ FIGURES: tuple[Figure, ...] = (
     Figure("architecture-overview", draw_architecture_overview, needs_torch=True),
     Figure("lstm-cell", draw_lstm_cell),
     Figure("shapley", draw_shapley),
+    Figure("lifetimes", draw_lifetimes, needs_data=True),
+    Figure("sensor-trends", draw_sensor_trends, needs_data=True),
+    Figure("sensor-correlations", draw_sensor_correlations, needs_data=True),
+    Figure("noise-limit", draw_noise_limit, needs_data=True),
 )
 
 _BY_NAME = {figure.name: figure for figure in FIGURES}

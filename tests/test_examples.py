@@ -607,7 +607,7 @@ def test_example_resources_cmapss(raw_dir, monkeypatch):
     missing = [name for name in names if not (raw_dir / name).is_file()]
     if missing:
         pytest.skip(f"The C-MAPSS page reads all four subsets; missing from {raw_dir}: {missing}")
-    namespace = _check_design_tutorial("cmapss.md", monkeypatch, minimum_tables=12, folder="resources")
+    namespace = _check_design_tutorial("cmapss.md", monkeypatch, minimum_tables=22, folder="resources")
     counts = namespace["subset_counts"].set_index("subset")
     for subset, expected in EXPECTED_SHAPES.items():
         assert counts.loc[subset, "training engines (files)"] == expected["train_units"]
@@ -623,6 +623,25 @@ def test_example_resources_cmapss(raw_dir, monkeypatch):
     at_fifty = namespace["at_fifty"].set_index("error d")
     assert at_fifty.loc[50, "late ÷ 10, early ÷ 13"] == pytest.approx(np.expm1(5.0))
     assert at_fifty.loc[-50, "late ÷ 10, early ÷ 13"] == pytest.approx(np.expm1(50 / 13))
+    # The page's four charts of the training engines draw from these same numbers.
+    from thesis_gnn_rul_xai.docsite import figures
+
+    pd.testing.assert_series_equal(figures.engine_lives(), namespace["lives"], check_names=False)
+    pd.testing.assert_frame_equal(
+        figures.drift_directions().drop(columns="distinct values"), namespace["directions"],
+    )
+    noise = figures.sensor_noise_table().set_index("sensor")
+    printed = namespace["noise_shares"].set_index("sensor")
+    for column in ("spread of the readings", "spread of the scatter", "share of the slow drift"):
+        np.testing.assert_allclose(noise[column], printed[column], atol=5.1e-7, rtol=0)
+    readings, changes = figures.sensor_correlations()
+    np.testing.assert_allclose(readings.to_numpy(), namespace["readings"].corr().to_numpy())
+    np.testing.assert_allclose(changes.to_numpy(), namespace["changes"].corr().to_numpy())
+    # The page's ratios use shares rounded to six decimals, the chart's the unrounded ones.
+    pairs = namespace["pair_limits"]
+    ratio = namespace["ratio"].set_axis(pairs["first"] + " and " + pairs["second"])
+    np.testing.assert_allclose(figures.noise_limit_table().set_index("pair")["size ÷ limit"], ratio,
+                               atol=1e-5, rtol=0)
 
 
 def test_example_gcn_resource(loaded, monkeypatch):

@@ -152,6 +152,10 @@ et al. (2021) is free on Zenodo, which refused this network. Until they are
 obtained, the claims attributed to Heimes (the 120–130 ceiling, assumption
 A-01), Holdijk et al. (PGExplainer's sensitivity, assumption A-29), and Shapley
 and Young (the uniqueness conditions) are unchecked against their sources.
+Spearman (1904), cited since 2026-11-14 on the C-MAPSS page for the name
+"attenuation" (finding F-23), is free from the Internet Archive, which refused
+this network; its two passages were checked against the Internet Archive's
+text of the scan, made by character recognition, not against the scan itself.
 
 - `README.md`'s glossary entry on data leakage credits Kapoor and Narayanan
   with more than the preprint's sentence says; check it against the 2023
@@ -177,6 +181,11 @@ lists every one, in four groups, with what is missing:
 - **Plain-word explanations of standard terms** (39): a spool, the Rankine
   scale, a paired *t*-test, a softmax and the like. Textbook definitions that
   no held copy gives.
+  The section "What the FD001 training engines look like", added to the
+  C-MAPSS page on 2026-11-14, adds four more: a median, a percentile, a
+  standard deviation, and that the variance of a sum or a difference of two
+  unrelated draws is the sum of their variances. Its own reasoning is marked
+  as the page's.
 - **Why information must not leak from the test engines** (6): the reading
   list's source, Kapoor and Narayanan (2023), is held only as its 2022
   preprint (see the entry above).
@@ -253,3 +262,37 @@ smoke runs of one seed and three passes exist, which are not results.
 **What finishing looks like:** the runs stored and written up in A-42, the
 control built, trained and written up (or the author deciding against it), and
 this entry deleted.
+
+---
+
+## P-34 — Figures keep the text's line, not the 1080 pixels the site's README describes
+
+The website's README says, under "How every page fits the screen", that on a
+wide screen "tables, code and figures may grow beside it to 1080" and that "At
+1920 a figure is 1080 pixels wide beside 848 of text"; the comment above
+`.prose` in `assets/app.css` says the same. The rule under that comment,
+`.prose > .figure { width: 100%; max-width: min(var(--text-w), 100%); }`, holds
+every figure to the text's line instead, and `.prose .figure-svg { min-width:
+820px; }` never lets a drawing shrink below 820 pixels. A figure therefore fits
+only where the serif font's 74 characters come to 846 pixels or more (820 for
+the drawing and 26 for the box's padding and border), as the README's 848 for
+Sitka Text on Windows does. Where they come to less, every figure on the
+documentation pages scrolls sideways at every screen width. Measured on
+2026-11-15 in Chromium on Linux, where the page's font list falls through to
+Caladea: inside its border a figure's box is 687 pixels wide at 1024, 1280,
+1366, 1440, 1536 and 1920 pixels, while its drawing and padding take 844, so
+157 pixels of each figure are out of sight until it is scrolled, although the
+article's column beside it is 864 to 1080 pixels wide at those widths. Which
+font a Mac takes from the list, whose first entry is Charter, and how wide its
+74 characters are, has not been measured.
+
+**How to check:** on any page with a figure, `docs/resources/cmapss.md` for
+one, compare each `figure.figure` element's `clientWidth` with its
+`scrollWidth`.
+
+**What finishing looks like:** the author decides which of the two is meant.
+Either figures go back to `min(var(--measure-wide), 100%)`, which in the
+measurement above fits every figure at every one of those widths, or the
+README and the comment are corrected to say figures keep the text's line. Then
+the README's 16 widths are measured again, with pictures before and after, and
+this entry is deleted.

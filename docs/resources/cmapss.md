@@ -23,7 +23,11 @@ the files come from, as their three sources tell it:
 How this project reads the files, works out a label for every row and chooses
 its 14 sensors is taught step by step on the Learn page
 [Data: from engine histories to known answers](../learn/01_the_problem.md).
-This page is the sources' account; that one is the project's.
+This page is the sources' account; that one is the project's. One section here is
+the project's own as well:
+[What the FD001 training engines look like](#what-the-fd001-training-engines-look-like)
+draws the training engines' lives, their sensors' paths and the sensors'
+correlations from the files themselves.
 
 The worked examples below run on the real files in `data/raw/`. Every table
 computed from the files is reproduced by the code in the example above it.
@@ -429,7 +433,9 @@ eq5_values = pd.DataFrame([
 | 0.001 | 1.4 | 0 | 0 | -0.879409 |
 | 0.003 | 1.6 | 0.01 | -0.01 | -115.136438 |
 
-For the gentlest setting, $h(100) = 1 - 0 - e^{0.001 \times 100^{1.4}} = 1 - e^{0.630957} = 1 - 1.879409 = -0.879409$.
+For the gentlest setting, $h(100) = 1 - 0 - e^{0.001 \times 100^{1.4}}$. The
+exponent is $0.001 \times 100^{1.4} = 0.630957$, so $h(100) = 1 - e^{0.630957}$,
+which is $1 - 1.879409 = -0.879409$.
 A health index meant to run from 1 down to 0 is negative from the first cycle.
 The paper does not give a form that satisfies both its renamings and its stated
 starting range, so the exact curve used to generate the data cannot be
@@ -640,6 +646,10 @@ The key idea is that each engine's HPC efficiency and flow fall along their
 own randomly drawn exponential path from a randomly worn start, disturbed by
 noise; the simulator turns them into sensor readings and four margins, and the
 record stops at the flight where the smallest margin reaches zero.
+
+How those readings look across FD001's 100 training engines, and how far the
+sensors move together, is drawn under
+[What the FD001 training engines look like](#what-the-fd001-training-engines-look-like).
 
 ---
 
@@ -1118,6 +1128,711 @@ lives drawn from the same fleet:
 
 ---
 
+## What the FD001 training engines look like
+
+The tables above count the engines and give their shortest, longest and
+average lives. They do not show three things that matter for any model built
+on these files: how long each engine lived, how each sensor moves on the way
+to failure, and how far the sensors move together. The third matters most for
+this project. The paper it re-implements joins its 14 sensors in a graph whose
+entries are set to 1 "for strong physical relationships between sensor pairs
+and 0 otherwise" (Wen et al., 2026, Section 2.3.1,
+[p. 5](../references/wen_2026_estgnn_dynamic_shap.pdf#page=5)), and it reads
+its heatmap of the sensors' correlations as showing such relationships (Wen et
+al., 2026, Section 3.2.2,
+[p. 8](../references/wen_2026_estgnn_dynamic_shap.pdf#page=8)).
+
+This section draws all three from the 100 engines of `train_FD001.txt`; it
+reads no test file and no answer file. Unlike the rest of this page, it is not
+the sources' account: the charts, the measurements and how they are read are
+this project's, and each source is cited where it is used.
+
+### How long the engines lived
+
+{{figure:lifetimes}}
+
+Each dot is one training engine, placed at its life: the number of cycles from
+its first record to its last, the cycle at which it failed (NASA PCoE, 2008).
+Dots that would overlap are stacked. Point at a dot to see which engine it is.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+`lives` holds each engine's life, from
+[One training engine's record](#one-training-engines-record) above.
+
+```python
+life_bands = (
+    lives.groupby(pd.cut(lives, bins=range(100, 401, 50), right=False), observed=False)
+    .size()
+    .rename_axis("life in cycles")
+    .reset_index(name="engines")
+)
+life_bands["life in cycles"] = [f"{band.left} to {band.right - 1}" for band in life_bands["life in cycles"]]
+assert life_bands.engines.sum() == 100 and lives.median() == 199
+assert (lives.min(), lives.max(), (lives <= 199).sum()) == (128, 362, 52)
+```
+
+</details>
+
+<!-- sample: life_bands -->
+| life in cycles | engines |
+| --- | --- |
+| 100 to 149 | 6 |
+| 150 to 199 | 46 |
+| 200 to 249 | 31 |
+| 250 to 299 | 13 |
+| 300 to 349 | 3 |
+| 350 to 399 | 1 |
+
+Lives run from 128 to 362 cycles, and half the engines had failed by cycle
+199. The longest life is 2.8 times the shortest, in engines of one type
+recorded under one operating condition (NASA PCoE, 2008). The dataset paper's
+scenario expects a spread like this: the amount and rate of damage differ from
+engine to engine (Saxena et al., 2008, Section V, p. 5), and for the data it
+generated it drew each engine's starting efficiency and flow, and the
+parameters $a$ and $b$ of its path of wear, at random (Saxena et al., 2008,
+Section V.B, p. 6; see
+[Initial wear and manufacturing variation](#initial-wear-and-manufacturing-variation)
+and [Three kinds of noise](#three-kinds-of-noise)). That FD001 was made the
+same way is this page's reading: the readme names that paper as its reference
+but describes only the starting wear (NASA PCoE, 2008).
+
+The shortest life, 128 cycles, also sets the span of the next figure: every
+training engine has at least 128 recorded cycles.
+
+### How each sensor moves on the way to failure
+
+{{figure:sensor-trends}}
+
+Each panel is one of the 14 sensors the paper keeps, in the order of its
+Table 3 (Wen et al., 2026, Table 3,
+[p. 6](../references/wen_2026_estgnn_dynamic_shap.pdf#page=6)), drawn over the
+last 128 cycles of every training engine. The engines are lined up at their
+failure, so the horizontal axis counts cycles before failure, from 127 at the
+left to 0, the last recorded cycle, at the right. At each of those 128 places
+the 100 engines give 100 readings. The line is their median, the value with
+half the readings above it and half below. The shaded band runs from the 10th
+to the 90th percentile, the values below which a tenth and nine tenths of the
+readings lie, so it holds the middle 80 or so engines. The thin grey line is
+engine 1 alone, one flight after another. Point at a panel for its numbers.
+
+The table counts, for each sensor, the engines on which its last 20 readings
+average higher than its first 20, lower, or exactly the same: the comparison
+[One training engine's record](#one-training-engines-record) makes for two
+engines, here made for all 100.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+`readings` keeps the 14 sensors in the paper's order, named by their symbols;
+the later examples in this section use it too. `cycles_left` counts each row's
+cycles before its engine's last record.
+
+```python
+from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS, symbol_to_column
+
+readings = fd001[[symbol_to_column(name) for name in PAPER_SENSOR_SYMBOLS]].set_axis(
+    list(PAPER_SENSOR_SYMBOLS), axis=1)
+by_engine = readings.assign(unit=fd001.unit).groupby("unit")
+drift = by_engine.tail(20).groupby("unit").mean() - by_engine.head(20).groupby("unit").mean()
+directions = pd.DataFrame({
+    "sensor": readings.columns,
+    "engines where it rises": (drift > 0).sum().to_numpy(),
+    "engines where it falls": (drift < 0).sum().to_numpy(),
+    "engines where it stays level": (drift == 0).sum().to_numpy(),
+})
+cycles_left = fd001.groupby("unit").cycle.transform("max") - fd001.cycle
+median_path = readings[cycles_left <= 127].groupby(cycles_left).median()
+earlier = median_path.loc[64] - median_path.loc[127]
+later = median_path.loc[0] - median_path.loc[64]
+steady = [name for name in readings.columns if name not in ("P15", "Nc")]
+assert (later[steady].abs() > 2 * earlier[steady].abs()).all()
+assert (round(earlier.T50, 3), round(later.T50, 3)) == (4.56, 21.575)
+assert sorted(readings.P15.unique()) == [21.6, 21.61] and (readings.P15 == 21.6).sum() == 406
+never_change = sorted(symbol[column] for column in symbol if fd001[column].nunique() == 1)
+assert never_change == sorted(["T2", "P2", "epr", "farB", "Nf_dmd", "PCNfR_dmd"])
+nc_with_nrc = fd001[symbol_to_column("Nc")].corr(fd001[symbol_to_column("NRc")])
+assert fd001[symbol_to_column("NRc")].nunique() == 6078 and round(nc_with_nrc, 6) == 0.963157
+```
+
+</details>
+
+<!-- sample: directions -->
+| sensor | engines where it rises | engines where it falls | engines where it stays level |
+| --- | --- | --- | --- |
+| T24 | 100 | 0 | 0 |
+| T30 | 100 | 0 | 0 |
+| T50 | 100 | 0 | 0 |
+| P15 | 40 | 0 | 60 |
+| P30 | 0 | 100 | 0 |
+| Nf | 100 | 0 | 0 |
+| Nc | 71 | 29 | 0 |
+| Ps30 | 100 | 0 | 0 |
+| phi | 0 | 100 | 0 |
+| NRf | 100 | 0 | 0 |
+| BPR | 100 | 0 | 0 |
+| htBleed | 100 | 0 | 0 |
+| W31 | 0 | 100 | 0 |
+| W32 | 0 | 100 | 0 |
+
+Twelve of the 14 sensors drift the same way on every engine: T24, T30, T50,
+Nf, Ps30, NRf, BPR and htBleed rise, and P30, phi, W31 and W32 fall. The drift
+is slow at first and quickens towards failure: for each of the twelve, the
+median moves more than twice as far over the last 64 cycles as over the 64
+before them. T50, for example, rises 4.56 °R and then 21.575 °R. A loss of
+efficiency and flow that grows exponentially, as the dataset paper models it,
+would bend this way ([Why an exponential](#why-an-exponential)), but the files
+record neither efficiency nor flow, so joining the two is this page's reading.
+Around the drift, every reading scatters from one flight to the next, as
+engine 1's grey line shows; how large that scatter is beside the drift is
+measured below.
+
+Two sensors break the pattern. **P15** is recorded at two values only, 21.60
+and 21.61 psia, and 406 of the 20,631 rows read 21.60, so on 60 engines its
+first and last 20 readings average exactly the same; a sensor that can take
+two values carries almost no information about wear (finding F-01). **Nc**
+rises on 71 engines and falls on 29, which is why its band widens towards
+failure.
+
+The other seven of the 21 sensors are not drawn. Six of them, T2, P2, epr,
+farB, Nf_dmd and PCNfR_dmd, never change in this file. The seventh, NRc, takes
+6,078 different values, but it moves almost exactly with Nc: the two correlate
+at 0.963157 over the file (how a correlation is measured is the next part's
+subject). The paper says seven sensors are removed, names six, and gives its
+rule as the removal of "features with high correlational redundancy (above
+0.95) and constant values" (Wen et al., 2026, Section 3.2.2, p. 8), so this
+project reads NRc as the seventh (assumption A-10). How it chooses its 14 is
+taught on
+[Data, Select 14 sensor columns](../learn/01_the_problem.md#3--select-14-sensor-columns-for-model-inputs).
+
+### How far the sensors move together
+
+**What a correlation is.** Wen et al. measure how two variables move together
+with the Pearson correlation coefficient (Wen et al., 2026, Section 3.2.2,
+Eq. 17, p. 8):
+
+$$r_{xy} = \frac{\sum_{i=1}^{n}(x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i - \bar{x})^2}\,\sqrt{\sum_{i=1}^{n}(y_i - \bar{y})^2}} \tag{17}$$
+
+They define $x_i$ and $y_i$ as the $i$-th observed values of the two
+variables, $\bar{x}$ and $\bar{y}$ as their means, and $n$ as the sample size
+(Wen et al., 2026, p. 8). Here the two variables are two sensors and one
+observation is one row of the file, so $n$ is 20,631. How to read the formula
+is this page's explanation, not the paper's:
+
+- The top multiplies, row by row, how far one reading lies from its average by
+  how far the other does. A product is positive when both readings lie on the
+  same side of their averages and negative when they lie on opposite sides,
+  so the sum leans positive when the two sensors tend to be high together, and
+  negative when one tends to be high while the other is low.
+- The bottom divides by each sensor's own spread, which removes the units and
+  keeps $r$ between −1 and +1.
+- At +1 every row lies on one rising straight line, at −1 on one falling line.
+  At 0 the straight line that best fits the points is flat: knowing one
+  reading does not help to predict the other along a straight line.
+
+Three real flights show the arithmetic: T50 and Ps30 over engine 1's first
+three cycles.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+three = readings.loc[fd001.unit == 1, ["T50", "Ps30"]].head(3)
+from_mean = three - three.mean()
+by_hand = pd.DataFrame({
+    "cycle": [1, 2, 3],
+    "T50": three.T50.to_numpy(),
+    "Ps30": three.Ps30.to_numpy(),
+    "T50 minus its average": from_mean.T50.round(6).to_numpy(),
+    "Ps30 minus its average": from_mean.Ps30.round(6).to_numpy(),
+    "product": (from_mean.T50 * from_mean.Ps30).round(6).to_numpy(),
+})
+r_three = (from_mean.T50 * from_mean.Ps30).sum() / np.sqrt(
+    (from_mean.T50 ** 2).sum() * (from_mean.Ps30 ** 2).sum())
+assert round(r_three, 6) == round(three.T50.corr(three.Ps30), 6) == -0.668256
+assert round(readings.T50.corr(readings.Ps30), 6) == 0.830136
+```
+
+</details>
+
+<!-- sample: by_hand -->
+| cycle | T50 | Ps30 | T50 minus its average | Ps30 minus its average | product |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 1400.6 | 47.47 | -2.046667 | 0.06 | -0.1228 |
+| 2 | 1403.14 | 47.49 | 0.493333 | 0.08 | 0.039467 |
+| 3 | 1404.2 | 47.27 | 1.553333 | -0.14 | -0.217467 |
+
+The averages are 1402.646667 °R and 47.41 psia. The three products add up to
+−0.3008. The squared distances from the averages add up to 6.845067 for T50
+and 0.0296 for Ps30, so
+
+$$r = \frac{-0.3008}{\sqrt{6.845067 \times 0.0296}} = \frac{-0.3008}{0.450127} = -0.6683$$
+
+which the code gives as −0.668256 before rounding. Over these three flights
+the two sensors moved in opposite directions. Over all 20,631 rows of the file
+the same two sensors correlate at +0.830136. Which of the two numbers says
+something about T50 and Ps30, and what it says, is the question the rest of
+this part answers.
+
+{{figure:sensor-correlations}}
+
+The left table holds the correlation of every pair of the 14 sensors over all
+20,631 rows of the training file, the 100 engines pooled. Wen et al.'s Fig. 5
+draws the same table, with four more rows and columns for the engine number,
+the cycle and two of the operating settings (Wen et al., 2026, Fig. 5, p. 8),
+and all 91 of its pairs of sensors agree with the left table to the two
+decimals it prints (finding F-23). The
+right table correlates something else: for every sensor, the change in its
+reading since the same engine's previous flight. Red means that two sensors
+move in the same direction, blue in opposite directions, and the grey middle
+that they have no straight-line relation; the stronger the colour, the larger
+the correlation. Each sensor correlates perfectly with itself, so the diagonal
+is +1 in both. Point at a square for its value.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+`changes` holds, for every row but each engine's first, the change in each
+reading since that engine's previous cycle.
+
+```python
+changes = readings.groupby(fd001.unit).diff().dropna()
+upper = np.triu_indices(14, 1)
+together = pd.DataFrame([
+    {
+        "what is correlated": what,
+        "rows": len(table),
+        "average size over the 91 pairs": round(np.abs(table.corr().to_numpy()[upper]).mean(), 6),
+        "largest size": round(np.abs(table.corr().to_numpy()[upper]).max(), 6),
+    }
+    for what, table in [("the readings", readings), ("the change since the previous flight", changes)]
+])
+```
+
+</details>
+
+<!-- sample: together -->
+| what is correlated | rows | average size over the 91 pairs | largest size |
+| --- | --- | --- | --- |
+| the readings | 20631 | 0.569119 | 0.846884 |
+| the change since the previous flight | 20531 | 0.011354 | 0.047887 |
+
+The size of a correlation is its value without its sign. Over whole lives it
+averages 0.569119 over the 91 pairs. From one flight to the next it averages
+0.011354, and the largest, Nf against NRf, is 0.047887: from one flight to the
+next, every sensor moves on its own.
+
+**Why the two tables differ.** Think of each reading as two parts added
+together. This is this page's model of the data, not the paper's: the dataset
+paper names three kinds of noise but gives the size of none of them
+([Three kinds of noise](#three-kinds-of-noise)).
+
+- A **slow part**, the drift of the figure above, which wear moves a little at
+  each flight and a long way over a life.
+- A **fast part**, the scatter, drawn afresh at every flight.
+
+From one flight to the next the slow part barely moves, so a change since the
+previous flight is almost all fast part, and the right table says that the
+fast parts of different sensors are unrelated. Over a whole life the slow
+parts move a long way, and they move together, because one fault drives them
+all: FD001 has a single fault mode, HPC degradation (NASA PCoE, 2008). The
+left table sees both parts at once. The shared slow parts pull every
+correlation towards +1 or −1, and each sensor's own scatter pulls it back
+towards 0.
+
+The right table also says something about the dataset paper's noise. Of its
+three kinds, the process noise disturbs the engine's efficiency and flow, so
+the simulator passes it on to all the outputs together, while the measurement
+noise is added to each output channel on its own (Saxena et al., 2008,
+Section V.B, p. 6). If the process noise moved the readings much from one
+flight to the next, the changes of different sensors would correlate. They do
+not, so the scatter seen here behaves like separate noise on each sensor. That
+is this page's reading of the right table; neither source says how large
+either kind of noise is.
+
+**How large the scatter is.** Suppose the scatter of one flight is unrelated
+to the scatter of the next. Then the change from one flight to the next is,
+apart from the slow part's small step, the difference of two unrelated draws.
+The variance of a quantity is the square of its typical spread, and the
+variance of a sum or a difference of two unrelated draws is the sum of their
+variances. So the variance of the change is twice the variance of the scatter,
+and the scatter's variance is half the change's.
+
+The supposition can be checked. Two neighbouring changes share one draw with
+opposite signs: the change into a flight ends on that flight's draw, and the
+change out of it starts from the same draw. If nothing else links them, one
+change correlates with the next at exactly −0.5. For all 14 sensors it lies
+between −0.510 and −0.487.
+
+The **share of the slow drift** is the fraction of a sensor's variance that is
+left once the scatter's is taken away:
+
+$$s = 1 - \frac{\sigma_{\text{scatter}}^2}{\sigma_{\text{reading}}^2}$$
+
+Here $\sigma_{\text{reading}}$ is the standard deviation of the sensor's
+readings over the whole file, their typical distance from their average, and
+$\sigma_{\text{scatter}}$ is the standard deviation of its scatter. For T50
+the readings spread 9.000605 °R and the scatter 4.030060 °R, so
+$s = 1 - (4.030060 / 9.000605)^2$, which is $0.799516$: four fifths of T50's
+variance over the file is drift, and one fifth is flight-to-flight scatter.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+`previous_change` holds, beside each change, the change one cycle earlier on
+the same engine.
+
+```python
+previous_change = changes.groupby(fd001.unit.loc[changes.index]).shift(1)
+noise_shares = pd.DataFrame({
+    "sensor": readings.columns,
+    "spread of the readings": readings.std().round(6).to_numpy(),
+    "spread of the scatter": np.sqrt(changes.var() / 2).round(6).to_numpy(),
+    "share of the slow drift": (1 - changes.var() / 2 / readings.var()).round(6).to_numpy(),
+    "correlation of one change with the next": changes.corrwith(previous_change).round(6).to_numpy(),
+})
+step = noise_shares["correlation of one change with the next"]
+assert step.min() > -0.511 and step.max() < -0.486
+```
+
+</details>
+
+<!-- sample: noise_shares -->
+| sensor | spread of the readings | spread of the scatter | share of the slow drift | correlation of one change with the next |
+| --- | --- | --- | --- | --- |
+| T24 | 0.500053 | 0.301939 | 0.63541 | -0.496507 |
+| T30 | 6.13115 | 4.000488 | 0.574262 | -0.496037 |
+| T50 | 9.000605 | 4.03006 | 0.799516 | -0.501567 |
+| P15 | 0.001389 | 0.001334 | 0.07721 | -0.486944 |
+| P30 | 0.885092 | 0.408235 | 0.787263 | -0.50991 |
+| Nf | 0.070985 | 0.030266 | 0.818213 | -0.488189 |
+| Nc | 22.08288 | 4.174574 | 0.964263 | -0.494223 |
+| Ps30 | 0.267087 | 0.101538 | 0.855471 | -0.501256 |
+| phi | 0.737553 | 0.300201 | 0.834332 | -0.498547 |
+| NRf | 0.071919 | 0.030417 | 0.821122 | -0.486982 |
+| BPR | 0.037505 | 0.020175 | 0.710637 | -0.506946 |
+| htBleed | 1.548763 | 0.946681 | 0.626374 | -0.495401 |
+| W31 | 0.180746 | 0.100997 | 0.68777 | -0.501082 |
+| W32 | 0.108251 | 0.060272 | 0.689992 | -0.502489 |
+
+**What the scatter does to a correlation.** Write one sensor's reading as
+$x = a + e$, with $a$ its slow part and $e$ its scatter, and another's as
+$y = b + f$. Put these into Equation 17.
+
+- In the top, each row's product becomes four products: the slow parts'
+  product, and three that contain a scatter term. Because $e$ and $f$ are
+  unrelated to each other and to both slow parts, those three add up to about
+  zero over many rows, so the top is the slow parts' own top.
+- In the bottom, each sum of squares becomes the slow part's plus the
+  scatter's, for the same reason. By the definition of the share of slow
+  drift, the slow part's sum of squares is the fraction $s$ of the whole. So
+  the whole is the slow part's divided by $s$, and the bottom is the slow
+  parts' own bottom divided by $\sqrt{s_x s_y}$.
+
+Dividing the top by the bottom therefore gives
+
+$$r_{xy} = r_{ab}\,\sqrt{s_x\,s_y}$$
+
+where $r_{ab}$ is the correlation of the two slow parts, and $s_x$ and $s_y$
+are the two sensors' shares of slow drift. When the slow parts move in perfect
+step, $r_{ab}$ is +1 or −1, and the size of the measured correlation is
+$\sqrt{s_x s_y}$, called here the **noise limit**: the largest size the two
+sensors' correlation can reach, given how much scatter each carries. Scatter
+can only shrink a correlation, and more rows do not undo the shrinking: it
+does not depend on $n$. Spearman (1904, pp. 89–90) called this weakening by
+"accidental" errors of measurement "attenuation", and wrote that it "cannot be
+in the least eliminated by any prolongation of the series". The derivation
+above is this page's own.
+
+Nf and NRf show it at work. NRf is the fan speed corrected for the inlet
+temperature (Wen et al., 2026, p. 5), and FD001's inlet sits at the standard
+day's temperature, so the two are nearly the same quantity (see the four fan
+speeds under
+[What comes out](#what-comes-out-21-sensors-and-four-hidden-margins)). Their
+shares of slow drift are 0.818213 and 0.821122, so their noise limit is
+$\sqrt{0.818213 \times 0.821122} = 0.819666$, and their readings correlate at
+0.826084: at the limit, within how precisely the shares can be measured from
+one file. From one flight to the next they correlate at only 0.047887, because
+each carries its own scatter, as separate measurement noise on every output
+channel would give it (Saxena et al., 2008, Section V.B, p. 6). Two readings of
+one fan speed correlate at 0.83 rather than 1, because about a fifth of each
+one's variance is its own scatter.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+share = noise_shares.set_index("sensor")["share of the slow drift"]
+limit_examples = pd.DataFrame([
+    {
+        "pair": f"{first} and {second}",
+        "share of the first": share[first],
+        "share of the second": share[second],
+        "noise limit": round(np.sqrt(share[first] * share[second]), 6),
+        "correlation of the readings": round(readings[first].corr(readings[second]), 6),
+        "correlation of the changes": round(changes[first].corr(changes[second]), 6),
+    }
+    for first, second in [("Nf", "NRf"), ("T50", "Ps30"), ("T24", "T30"), ("Nc", "T50")]
+])
+```
+
+</details>
+
+<!-- sample: limit_examples -->
+| pair | share of the first | share of the second | noise limit | correlation of the readings | correlation of the changes |
+| --- | --- | --- | --- | --- | --- |
+| Nf and NRf | 0.818213 | 0.821122 | 0.819666 | 0.826084 | 0.047887 |
+| T50 and Ps30 | 0.799516 | 0.855471 | 0.82702 | 0.830136 | 0.009879 |
+| T24 and T30 | 0.63541 | 0.574262 | 0.604063 | 0.60261 | -0.000447 |
+| Nc and T50 | 0.964263 | 0.799516 | 0.878034 | 0.297429 | -0.000507 |
+
+T50 and Ps30, and T24 and T30, sit at their limits too. Nc and T50 fall far
+below theirs, for a reason given under the next figure.
+
+{{figure:noise-limit}}
+
+Each mark is one of the 91 pairs. Across: its noise limit, from the two shares
+in the table of shares above. Up: the size of its correlation in the left
+table of the previous figure. A mark on the dashed line is a pair whose slow
+parts move in perfect step, so that the scatter alone decides how strong the
+correlation looks. Point at a mark for its pair.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+import itertools
+
+pair_limits = pd.DataFrame([
+    {
+        "first": first, "second": second,
+        "size": abs(readings[first].corr(readings[second])),
+        "limit": np.sqrt(share[first] * share[second]),
+    }
+    for first, second in itertools.combinations(readings.columns, 2)
+])
+with_nc = (pair_limits["first"] == "Nc") | (pair_limits["second"] == "Nc")
+with_p15 = (pair_limits["first"] == "P15") | (pair_limits["second"] == "P15")
+pair_limits["group"] = np.where(with_nc, "pairs with Nc",
+                                np.where(with_p15, "pairs with P15", "the other pairs"))
+ratio = pair_limits["size"] / pair_limits["limit"]
+limit_groups = (
+    ratio.groupby(pair_limits["group"]).agg(["count", "min", "max"]).round(6)
+    .reset_index()
+    .set_axis(["group", "pairs", "smallest size ÷ limit", "largest size ÷ limit"], axis=1)
+)
+plain = pair_limits["group"] == "the other pairs"
+fan = pair_limits["first"].isin(["Nf", "NRf"]) ^ pair_limits["second"].isin(["Nf", "NRf"])
+assert (plain & fan).sum() == 20 and ratio[plain & fan].max() < 0.97 < ratio[plain & ~fan].min()
+nc_with_t50 = readings.assign(unit=fd001.unit).groupby("unit").apply(
+    lambda engine: engine.Nc.corr(engine.T50))
+assert ((nc_with_t50 > 0).sum(), (nc_with_t50 < 0).sum()) == (71, 29)
+assert set(nc_with_t50.index[nc_with_t50 > 0]) == set(drift.index[drift.Nc > 0])
+```
+
+</details>
+
+<!-- sample: limit_groups -->
+| group | pairs | smallest size ÷ limit | largest size ÷ limit |
+| --- | --- | --- | --- |
+| pairs with Nc | 13 | 0.036129 | 0.434012 |
+| pairs with P15 | 12 | 0.551079 | 0.636279 |
+| the other pairs | 66 | 0.874844 | 1.012246 |
+
+For the 66 pairs that involve neither Nc nor P15, the size divided by the
+limit runs from 0.874844 to 1.012246. A ratio above 1 is impossible for the
+true values, so the 1.012246 shows how precisely the shares can be estimated
+from one file. These pairs' slow parts move in step, and how strongly any two
+of them appear to be linked is set by how much scatter each one carries. The
+lowest of them are the 20 pairs that join Nf or NRf to one of the other ten
+sensors, all below 0.97: the drift of the two fan speeds follows the others' a
+little less closely than theirs follow each other.
+
+The two groups below the line are the two exceptions of the previous figure.
+Within one engine, Nc rises and falls with T50 on the 71 engines where Nc
+rises, and against T50 on the 29 where it falls: its correlation with T50 over
+each engine's own record is positive on exactly those 71 engines and negative
+on the other 29. Pooling the engines mixes the two, and Nc's correlations fall
+to between 0.036129 and 0.434012 of their limits. P15's two recorded values do
+not fit the split into a slow part and a scatter, so its limits mean little.
+
+**What this says about the paper's reading.** Section 3.2.2 describes three
+patterns in the correlation table (Wen et al., 2026, Section 3.2.2, p. 8):
+temperature sensors (T24, T30, T50) "demonstrating strong intercorrelations
+due to thermodynamic coupling throughout the engine cycle"; pressure
+measurements (P15, P30, Ps30) that "exhibit similar correlation patterns
+reflecting the progressive compression process"; and rotational speed
+parameters (Nf, Nc, NRf, NRc) that "show high correlation coefficients,
+indicating mechanical coupling through shared shaft systems". The pairs those
+three sentences name are below, with the value the paper's Fig. 5 prints for
+each (Wen et al., 2026, Fig. 5, p. 8), this file's value and the noise limit.
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+The first column is typed in from Fig. 5, read off the page drawn at eight
+times its size.
+
+```python
+fig5_printed = {
+    ("T24", "T30"): 0.60, ("T24", "T50"): 0.71, ("T30", "T50"): 0.68,
+    ("P15", "P30"): -0.16, ("P15", "Ps30"): 0.16, ("P30", "Ps30"): -0.82,
+    ("Nf", "Nc"): -0.03, ("Nf", "NRf"): 0.83, ("Nc", "NRf"): -0.03,
+}
+paper_groups = pd.DataFrame([
+    {
+        "pair": f"{first} and {second}",
+        "printed in Fig. 5": printed,
+        "this file": round(readings[first].corr(readings[second]), 6),
+        "noise limit": round(np.sqrt(share[first] * share[second]), 6),
+    }
+    for (first, second), printed in fig5_printed.items()
+])
+assert (paper_groups["this file"].round(2) == paper_groups["printed in Fig. 5"]).all()
+assert round(readings.T50.corr(readings.phi), 2) == -0.82
+```
+
+</details>
+
+<!-- sample: paper_groups -->
+| pair | printed in Fig. 5 | this file | noise limit |
+| --- | --- | --- | --- |
+| T24 and T30 | 0.6 | 0.60261 | 0.604063 |
+| T24 and T50 | 0.71 | 0.714949 | 0.712756 |
+| T30 and T50 | 0.68 | 0.678413 | 0.677593 |
+| P15 and P30 | -0.16 | -0.15572 | 0.246545 |
+| P15 and Ps30 | 0.16 | 0.160014 | 0.257004 |
+| P30 and Ps30 | -0.82 | -0.822805 | 0.820659 |
+| Nf and Nc | -0.03 | -0.032091 | 0.888241 |
+| Nf and NRf | 0.83 | 0.826084 | 0.819666 |
+| Nc and NRf | -0.03 | -0.034763 | 0.889819 |
+
+- The three temperature pairs sit at their noise limits, and T50 correlates
+  more strongly with Ps30 (0.83) and with phi (−0.82) than with either of the
+  other two temperatures. Nothing in the table sets the temperatures apart as
+  a group.
+- P15 correlates with P30 at −0.16 and with Ps30 at +0.16, so it shares no
+  pattern with the other two pressures. P30 and Ps30, both measured at the HPC
+  outlet (Wen et al., 2026, Table 2, p. 5), correlate at −0.82: one falls
+  while the other rises.
+- The two pairs of speeds that join the fan to the core, Nf with Nc and Nc
+  with NRf, print −0.03. The fan and the core turn on different shafts
+  ([The engine and its flow path](#the-engine-and-its-flow-path)), and the
+  only strong correlation among the speeds, Nf with NRf at 0.83, joins two
+  readings of the same fan speed. NRc is not in the figure: it is the seventh
+  sensor the paper removes (assumption A-10).
+
+So the table does not show the coupling the text reads into it. Where two
+sensors correlate strongly, both drift with the one fault and carry little
+scatter of their own; where the text expects coupling through shared shafts,
+the figure prints almost none. The links the text names may exist in the
+engine, but this table is not evidence of them (finding F-23).
+
+**Do not confuse a strong correlation with a strong physical link.** In FD001
+a large correlation between two sensors says that both respond to the one
+simulated fault and that neither carries much scatter of its own. It does not
+say that one sensor drives the other, or that the two sit close together in
+the engine.
+
+**Smoothing shows the same thing from the other side.** The paper smooths the
+readings with an exponentially weighted moving average (Wen et al., 2026,
+Section 3.2.3, Eq. 18, p. 8), whose weight this project reads from a
+self-contradictory sentence as 0.5 (assumption A-04), and this project
+smooths each engine's record on its own
+([Preprocessing, Smooth each sensor](../learn/04_the_pipeline.md#2--smooth-each-sensor)).
+Smoothing takes away part of the scatter and changes nothing about how any
+engine was built. Yet it raises the correlation of T24 and T30 from 0.60 to
+0.81, and the average size over the 91 pairs from 0.57 to 0.69:
+
+<details class="process-example">
+<summary>Example in Python</summary>
+
+```python
+from thesis_gnn_rul_xai.data.smoothing import apply_ewma
+from thesis_gnn_rul_xai.graph.adjacency import build_physics_adjacency
+
+columns = [symbol_to_column(name) for name in readings.columns]
+smoothed = apply_ewma(fd001, columns, alpha=0.5)[columns].set_axis(list(readings.columns), axis=1)
+smoothing_effect = pd.DataFrame([
+    {
+        "readings": what,
+        "T24 and T30": round(table.T24.corr(table.T30), 6),
+        "average size over the 91 pairs": round(np.abs(table.corr().to_numpy()[upper]).mean(), 6),
+    }
+    for what, table in [("as recorded", readings), ("smoothed, weight 0.5", smoothed)]
+])
+table3, order = build_physics_adjacency()
+assert list(order) == list(readings.columns)
+sizes = readings.corr().abs().to_numpy()[upper]
+strongest = np.argsort(-sizes, kind="stable")[:41]
+in_strongest = {readings.columns[upper[0][k]] for k in strongest} | {
+    readings.columns[upper[1][k]] for k in strongest}
+correlation_graph = pd.DataFrame([{
+    "pairs kept": len(strongest),
+    "weakest size kept": round(sizes[strongest].min(), 6),
+    "also joined in Table 3": int((table3[upper][strongest] > 0).sum()),
+    "pairs Table 3 joins": int((table3[upper] > 0).sum()),
+    "sensors joined to nothing": ", ".join(sorted(set(readings.columns) - in_strongest)),
+}])
+```
+
+</details>
+
+<!-- sample: smoothing_effect -->
+| readings | T24 and T30 | average size over the 91 pairs |
+| --- | --- | --- |
+| as recorded | 0.60261 | 0.569119 |
+| smoothed, weight 0.5 | 0.812857 | 0.69373 |
+
+**What it means for a graph built from correlations.** This project tests the
+paper's hand-built graph against one that joins the 41 sensor pairs with the
+strongest correlations, as many pairs as Table 3 joins (assumption A-27). The
+analysis above says what those 41 are: pairs whose slow parts move in step and
+whose readings carry little scatter, wherever the two sensors sit in the
+engine. On the raw readings of all 100 engines, the 41 strongest pairs are
+those of size 0.69 and above; Nc and P15 are in none of them, and 18 of the 41
+are pairs Table 3 also joins:
+
+<!-- sample: correlation_graph -->
+| pairs kept | weakest size kept | also joined in Table 3 | pairs Table 3 joins | sensors joined to nothing |
+| --- | --- | --- | --- | --- |
+| 41 | 0.692893 | 18 | 41 | Nc, P15 |
+
+The graph the project trains with is built separately for every seed, the
+random number that decides, among other things, which training engines are
+held back to judge when to stop training. It is built from the smoothed and
+rescaled rows of that seed's training engines alone. There the weakest pair
+kept correlates at between 0.8484 and 0.8550 rather than 0.69, 17 or 18 of its
+41 pairs are also joined in Table 3, and Nc and P15 are again joined to
+nothing (assumption A-27).
+
+On the test engines the two graphs could not be told apart. The measure is the
+root mean squared error: each test engine's error in cycles, squared, averaged
+over the 100 test engines and square-rooted, a typical error in cycles. In the
+project's default network, which passes each sensor's latest smoothed reading
+to the graph layers, five training runs with different seeds gave 16.496 ±
+0.415 cycles with Table 3 and 16.592 ± 0.354 with the correlations, where ±
+gives the spread between runs. Comparing the two seed by seed gives p = 0.655:
+if the graph made no difference at all, a gap at least this large between two
+sets of five runs would still turn up about two times in three. With the
+recurrent stage of the paper's Section 2.2 in front of the graph layers, at
+the size this project chose (assumption A-26), and keeping the training pass
+that did best on the held-back engines rather than the paper's 200 passes
+(finding F-16), it was 13.234 ± 0.723 against 13.237 ± 0.967 (p = 0.995). In
+the default network the paper's graph did make late predictions rarer and
+smaller (assumption A-27). By this measure, on FD001, choosing by engineering
+judgement which sensors belong together did not make the network more
+accurate than the 41 pairs the correlations rank highest.
+
+The key idea is that in FD001 one fault drives every sensor, so twelve of the
+fourteen drift in step, and how strongly two of them then appear to correlate
+is set by how much flight-to-flight scatter each one carries, not by how the
+two are linked inside the engine.
+
+---
+
+
 ## The scoring function
 
 ### What Section VII argues
@@ -1402,6 +2117,11 @@ are followed here.)
   9-page manuscript as NASA distributes it on DASHlink; equation, table,
   figure and page numbers on this page refer to it.
   [Copy](../references/saxena_2008_damage_propagation_modeling.pdf)
+- Spearman, C. (1904). The proof and measurement of association between two
+  things. *The American Journal of Psychology*, *15*(1), 72–101.
+  https://doi.org/10.2307/1412159. No copy is held; the passages cited were
+  read in the scan the Internet Archive keeps,
+  https://archive.org/details/jstor-1412159.
 - Wen, J.-R., Liang, C.-J., Choy, Y.-S., Fei, C.-W., Li, J., & Keshtegar, B.
   (2026). Explainable spatiotemporal graph neutral network with dynamic SHAP
   enhancement for aeroengine RUL prediction. *Aerospace Science and

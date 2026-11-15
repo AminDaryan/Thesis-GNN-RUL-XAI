@@ -573,6 +573,29 @@ def test_the_correlation_figure_is_the_papers_eighteen_by_eighteen_table(raw_dir
         assert label in drawn
 
 
+def test_the_cmapss_page_charts_show_every_engine_sensor_and_pair(raw_dir: Path):
+    """One dot per training engine, one panel per sensor, both correlation tables whole, one mark per pair."""
+    import re
+
+    from thesis_gnn_rul_xai.data.sensors import PAPER_SENSOR_SYMBOLS
+
+    lives = re.findall(r"<title>Engine (\d+): failed after (\d+) cycles</title>",
+                       figures.render_figure("lifetimes"))
+    assert sorted(int(engine) for engine, _ in lives) == list(range(1, 101))
+    assert dict(lives)["39"] == "128" and dict(lives)["69"] == "362"
+    trends = figures.render_figure("sensor-trends")
+    for symbol in PAPER_SENSOR_SYMBOLS:
+        assert f"<title>{symbol}: the median of the 100 engines" in trends, symbol
+    cells = re.findall(r"<title>(\w+) and (\w+), ([^:<]+): (-?\d\.\d{3})</title>",
+                       figures.render_figure("sensor-correlations"))
+    assert len(cells) == 2 * 14 * 14 and len({what for _, _, what, _ in cells}) == 2
+    assert all(value == "1.000" for first, second, _, value in cells if first == second)
+    marks = re.findall(r"<title>(\w+) and (\w+): correlation (-?\d\.\d{3}), noise limit (\d\.\d{3})</title>",
+                       figures.render_figure("noise-limit"))
+    assert len(marks) == 91 and len({(first, second) for first, second, _, _ in marks}) == 91
+    assert ("Nf", "NRf", "0.826", "0.820") in marks
+
+
 def _node_groups(drawn: str) -> dict[str, str]:
     """Each sensor drawn in a graph figure, with the markup of its own group."""
     import re
@@ -730,7 +753,8 @@ def test_every_figure_a_taught_page_asks_for_exists(root: Path):
     import re
 
     known = set(figures.figure_names())
-    for page in sorted((root / "docs" / "learn").glob("*.md")):
+    pages = sorted((root / "docs" / "learn").glob("*.md")) + sorted((root / "docs" / "resources").glob("*.md"))
+    for page in pages:
         for name in re.findall(r"\{\{\s*figure:([a-z0-9-]+)\s*\}\}", page.read_text(encoding="utf-8")):
             assert name in known, f"{page.name} asks for unknown figure {name!r}"
 
